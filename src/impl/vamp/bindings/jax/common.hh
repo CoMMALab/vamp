@@ -37,10 +37,10 @@ namespace vamp::binding::jax
 
         for (auto i = 0U; i < a_d[0]; ++i)
         {
-            typename Robot::Configuration a_c(&a_data[i * 7], false);
+            const typename Robot::Configuration a_c(&a_data[i * 7], false);
             for (auto j = 0U; j < b_d[0]; ++j)
             {
-                typename Robot::Configuration b_c(&b_data[j * 7], false);
+                const typename Robot::Configuration b_c(&b_data[j * 7], false);
                 r_data[i * b_d[0] + j] = vamp::planning::validate_motion<Robot, rake, 2>(a_c, b_c, env);
             }
         }

@@ -37,4 +37,4 @@ VAMP_LTO = "ON"
 
 VAMP_USE_OPENMP = "ON"
 VAMP_BUILD_JAX = "ON"
-XLA_DIR = "/home/zak/micromamba/envs/gtmp/lib/python3.10/site-packages/jaxlib/include"
+XLA_DIR = "/home/anindex/miniconda3/envs/gtmp_vamp/lib/python3.10/site-packages/jaxlib/include"

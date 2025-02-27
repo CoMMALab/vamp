@@ -8,7 +8,8 @@ option(VAMP_BUILD_JAX "Build JAX Extensions." OFF)
 option(VAMP_USE_OPENMP "Use OpenMP." ON)
 option(XLA_DIR "JAX FFI Directory" "")
 
-option(VAMP_BUILD_OMPL_DEMO "Build VAMP C++ OMPL Integration Demo Script" OFF)
+option(VAMP_BUILD_CPP_DEMO "Build VAMP C++ Demo Scripts" OFF)
+option(VAMP_BUILD_OMPL_DEMO "Build VAMP C++ OMPL Integration Demo Scripts" OFF)
 option(VAMP_OMPL_PATH "Search Path for OMPL Installation - Only Needed for Demo Script" "")
 
 if(VAMP_FORCE_CLANG)
@@ -160,6 +161,12 @@ foreach(robot_name IN LISTS VAMP_ROBOT_MODULES)
     DESTINATION "${CMAKE_SOURCE_DIR}/src/vamp/_core"
   )
 endforeach()
+
+if(VAMP_BUILD_CPP_DEMO)
+  add_executable(vamp_rrtc_example scripts/cpp/rrtc_example.cc)
+  target_link_libraries(vamp_rrtc_example PRIVATE Eigen3::Eigen)
+  target_include_directories(vamp_rrtc_example SYSTEM PRIVATE ${VAMP_EXT_INCLUDES})
+endif()
 
 if(VAMP_BUILD_OMPL_DEMO)
   find_package(ompl QUIET PATHS ${VAMP_OMPL_PATH})

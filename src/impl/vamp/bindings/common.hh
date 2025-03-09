@@ -164,8 +164,9 @@ namespace vamp::binding
         {
             auto copy = configuration;
             Robot::descale_configuration(copy);
-            return (copy <= 1.F).all() and (copy >= 0.F).all() and vamp::planning::validate_motion<Robot, rake, 1>(
-                configuration, configuration, EnvironmentVector(environment));
+            return (copy <= 1.F).all() and (copy >= 0.F).all() and
+                   vamp::planning::validate_motion<Robot, rake, 1>(
+                       configuration, configuration, EnvironmentVector(environment));
         }
 
         inline static auto
@@ -319,6 +320,14 @@ namespace vamp::binding
             return {position, orientation};
         }
     };
+
+    template <typename Robot>
+    inline auto logit(typename vamp::rng::RNG<Robot::dimension>::Ptr rng, float scale) noexcept ->
+        typename Robot::Configuration
+    {
+        const auto U1 = rng->next();
+        return (U1 * (1 - U1).rcp()).log() * std::sqrt(scale);
+    }
 
     template <typename Robot>
     inline auto init_robot(nanobind::module_ &pymodule) -> nanobind::module_
@@ -689,6 +698,65 @@ namespace vamp::binding
 
                     config.to_array_unaligned(&configs[i * Robot::dimension]);
                 }
+
+                return config_nd;
+            });
+
+        submodule.def(
+            "batch_bridge_test_sample",
+            [](std::size_t batch_size,
+               float scale,
+               std::size_t max_attempts,
+               typename RH::RNG::Ptr rng,
+               const typename RH::EnvironmentInput &env) noexcept
+            {
+                using Configuration = typename RH::Configuration;
+                static constexpr auto validate = vamp::planning::validate_motion<Robot, rake, 1>;
+
+                const typename RH::EnvironmentVector env_v(env);
+
+                auto *configs = new float[batch_size * Robot::dimension];
+
+                std::size_t i = 0U, attempts = 0U;
+                for (; i < batch_size and attempts <= max_attempts; ++i)
+                {
+                    Configuration ca, cb, cc;
+                    do
+                    {
+                        if (attempts++ > max_attempts)
+                        {
+                            break;
+                        }
+
+                        ca = rng->next();
+                        Robot::scale_configuration(ca);
+
+                        if (validate(ca, ca, env_v))
+                        {
+                            continue;
+                        }
+
+                        cb = ca + logit<Robot>(rng, scale).trim();
+
+                        // There is a better way to clamp, but it works.
+                        Robot::descale_configuration(cb);
+                        cb = cb.clamp(0, 1);
+                        Robot::scale_configuration(cb);
+
+                        if (validate(cb, cb, env_v))
+                        {
+                            continue;
+                        }
+
+                        cc = ca.interpolate(cb, 0.5);
+
+                    } while (not validate(cc, cc, env_v));
+
+                    cc.to_array_unaligned(&configs[i * Robot::dimension]);
+                }
+
+                nb::capsule owner(configs, [](void *p) noexcept { delete[] (float *)p; });
+                nb::ndarray<nb::numpy, float, nb::ndim<2>> config_nd(configs, {i, Robot::dimension}, owner);
 
                 return config_nd;
             });

@@ -2,6 +2,7 @@
 
 #include <vamp/random/rng.hh>
 #include <vamp/random/halton.hh>
+#include <vamp/random/gaussian.hh>
 
 #if defined(__x86_64__)
 #include <vamp/random/xorshift.hh>
@@ -98,6 +99,7 @@ namespace vamp::binding
 
         using RNG = vamp::rng::RNG<Robot::dimension>;
         using Halton = vamp::rng::Halton<Robot::dimension>;
+        using Gaussian = vamp::rng::Gaussian<Robot::dimension>;
 #if defined(__x86_64__)
         using XORShift = vamp::rng::XORShift<Robot::dimension>;
 #endif
@@ -109,6 +111,11 @@ namespace vamp::binding
         inline static auto halton() -> typename RNG::Ptr
         {
             return std::make_shared<Halton>();
+        }
+
+        inline static auto gaussian() -> typename RNG::Ptr
+        {
+            return std::make_shared<Gaussian>();
         }
 
 #if defined(__x86_64__)
@@ -164,8 +171,9 @@ namespace vamp::binding
         {
             auto copy = configuration;
             Robot::descale_configuration(copy);
-            return (copy <= 1.F).all() and (copy >= 0.F).all() and vamp::planning::validate_motion<Robot, rake, 1>(
-                configuration, configuration, EnvironmentVector(environment));
+            return (copy <= 1.F).all() and (copy >= 0.F).all() and
+                   vamp::planning::validate_motion<Robot, rake, 1>(
+                       configuration, configuration, EnvironmentVector(environment));
         }
 
         inline static auto
@@ -319,6 +327,14 @@ namespace vamp::binding
             return {position, orientation};
         }
     };
+
+    template <typename Robot>
+    inline auto logit(typename vamp::rng::RNG<Robot::dimension>::Ptr rng, float scale) noexcept ->
+        typename Robot::Configuration
+    {
+        const auto U1 = rng->next();
+        return (U1 * (1 - U1).rcp()).log() * std::sqrt(scale);
+    }
 
     template <typename Robot>
     inline auto init_robot(nanobind::module_ &pymodule) -> nanobind::module_
@@ -523,6 +539,7 @@ namespace vamp::binding
                 "iterations", &RH::Roadmap::iterations, "Number of iterations taken to construct roadmap.");
 
         submodule.def("halton", RH::halton, "Creates a new Halton sampler.");
+        submodule.def("gaussian", RH::gaussian, "Creates a new Gaussian sampler.");
 
 #if defined(__x86_64__)
         submodule.def("xorshift", RH::xorshift, "Creates a new XORShift sampler.");
@@ -665,6 +682,7 @@ namespace vamp::binding
             [](std::size_t batch_size,
                std::size_t num_layers,
                std::size_t num_dreams,
+               float scale,
                typename RH::RNG::Ptr rng,
                const typename RH::EnvironmentInput &env) noexcept
             {
@@ -683,7 +701,7 @@ namespace vamp::binding
                     Configuration config;
                     do
                     {
-                        config = rng->next();
+                        config = rng->next() * scale;
                         Robot::scale_configuration(config);
                     } while (not validate(config, config, env_v));
 
@@ -692,6 +710,244 @@ namespace vamp::binding
 
                 return config_nd;
             });
+
+        submodule.def(
+            "batch_scale_sample",
+            [](std::size_t batch_size,
+               float scale, 
+               typename RH::RNG::Ptr rng,
+               const typename RH::EnvironmentInput &env) noexcept
+            {
+                using Configuration = typename RH::Configuration;
+                static constexpr auto validate = vamp::planning::validate_motion<Robot, rake, 1>;
+                const typename RH::EnvironmentVector env_v(env);
+
+                auto *configs = new float[batch_size * Robot::dimension];
+
+                nb::capsule owner(configs, [](void *p) noexcept { delete[] (float *)p; });
+                nb::ndarray<nb::numpy, float, nb::ndim<2>> config_nd(
+                    configs, {batch_size, Robot::dimension}, owner);
+
+                for (auto i = 0U; i < batch_size; ++i)
+                {
+                    Configuration config;
+                    do
+                    {
+                        config = rng->next() * scale;
+                        Robot::scale_configuration(config);
+                    } while (not validate(config, config, env_v));
+
+                    config.to_array_unaligned(&configs[i * Robot::dimension]);
+                }
+
+                return config_nd;
+            });
+        
+        submodule.def(
+            "batch_gaussian_sample",
+            [](std::size_t batch_size,
+               nb::ndarray<nb::numpy, float, nb::shape<Robot::dimension>> &mean,
+               float var,
+               typename RH::RNG::Ptr rng,
+               const typename RH::EnvironmentInput &env) noexcept
+            {
+                using Configuration = typename RH::Configuration;
+                Configuration mean_config(mean.data(), false);
+                Robot::descale_configuration(mean_config);
+                static constexpr auto validate = vamp::planning::validate_motion<Robot, rake, 1>;
+                const typename RH::EnvironmentVector env_v(env);
+
+                auto *configs = new float[batch_size * Robot::dimension];
+
+                nb::capsule owner(configs, [](void *p) noexcept { delete[] (float *)p; });
+                nb::ndarray<nb::numpy, float, nb::ndim<2>> config_nd(
+                    configs, {batch_size, Robot::dimension}, owner);
+
+                for (auto i = 0U; i < batch_size; ++i)
+                {
+                    Configuration config;
+                    do
+                    {
+                        config = mean_config + rng->next() * var;
+                        Robot::scale_configuration(config);
+                    } while (not validate(config, config, env_v));
+
+                    config.to_array_unaligned(&configs[i * Robot::dimension]);
+                }
+
+                return config_nd;
+            });
+
+        submodule.def(
+            "batch_bridge_test_sample",
+            [](std::size_t batch_size,
+               float scale,
+               std::size_t max_attempts,
+               typename RH::RNG::Ptr rng,
+               const typename RH::EnvironmentInput &env) noexcept
+            {
+                using Configuration = typename RH::Configuration;
+                static constexpr auto validate = vamp::planning::validate_motion<Robot, rake, 1>;
+
+                const typename RH::EnvironmentVector env_v(env);
+
+                auto *configs = new float[batch_size * Robot::dimension];
+
+                std::size_t i = 0U, attempts = 0U;
+                for (; i < batch_size and attempts <= max_attempts; ++i)
+                {
+                    Configuration ca, cb, cc;
+                    do
+                    {
+                        if (attempts++ > max_attempts)
+                        {
+                            break;
+                        }
+
+                        ca = rng->next();
+                        Robot::scale_configuration(ca);
+
+                        if (validate(ca, ca, env_v))
+                        {
+                            continue;
+                        }
+
+                        cb = ca + logit<Robot>(rng, scale).trim();
+
+                        // There is a better way to clamp, but it works.
+                        Robot::descale_configuration(cb);
+                        cb = cb.clamp(0, 1);
+                        Robot::scale_configuration(cb);
+
+                        if (validate(cb, cb, env_v))
+                        {
+                            continue;
+                        }
+
+                        cc = ca.interpolate(cb, 0.5);
+
+                    } while (not validate(cc, cc, env_v));
+
+                    cc.to_array_unaligned(&configs[i * Robot::dimension]);
+                }
+
+                nb::capsule owner(configs, [](void *p) noexcept { delete[] (float *)p; });
+                nb::ndarray<nb::numpy, float, nb::ndim<2>> config_nd(configs, {i, Robot::dimension}, owner);
+
+                return config_nd;
+            });
+
+        submodule.def(
+            "batch_bridge_test_sample",
+            [](std::size_t batch_size,
+               float scale,
+               std::size_t max_attempts,
+               typename RH::RNG::Ptr rng,
+               const typename RH::EnvironmentInput &env) noexcept
+            {
+                using Configuration = typename RH::Configuration;
+                static constexpr auto validate = vamp::planning::validate_motion<Robot, rake, 1>;
+
+                const typename RH::EnvironmentVector env_v(env);
+
+                auto *configs = new float[batch_size * Robot::dimension];
+
+                std::size_t i = 0U, attempts = 0U;
+                for (; i < batch_size and attempts <= max_attempts; ++i)
+                {
+                    Configuration ca, cb, cc;
+                    do
+                    {
+                        if (attempts++ > max_attempts)
+                        {
+                            break;
+                        }
+
+                        ca = rng->next();
+                        Robot::scale_configuration(ca);
+
+                        if (validate(ca, ca, env_v))
+                        {
+                            continue;
+                        }
+
+                        cb = ca + logit<Robot>(rng, scale).trim();
+
+                        // There is a better way to clamp, but it works.
+                        Robot::descale_configuration(cb);
+                        cb = cb.clamp(0, 1);
+                        Robot::scale_configuration(cb);
+
+                        if (validate(cb, cb, env_v))
+                        {
+                            continue;
+                        }
+
+                        cc = ca.interpolate(cb, 0.5);
+
+                    } while (not validate(cc, cc, env_v));
+
+                    cc.to_array_unaligned(&configs[i * Robot::dimension]);
+                }
+
+                nb::capsule owner(configs, [](void *p) noexcept { delete[] (float *)p; });
+                nb::ndarray<nb::numpy, float, nb::ndim<2>> config_nd(configs, {i, Robot::dimension}, owner);
+
+                return config_nd;
+            });
+
+        submodule.def(
+            "batch_surface_sample",
+            [](std::size_t batch_size,
+                float scale,
+                std::size_t max_attempts,
+                typename RH::RNG::Ptr rng,
+                const typename RH::EnvironmentInput &env) noexcept
+            {
+                using Configuration = typename RH::Configuration;
+                static constexpr auto validate = vamp::planning::validate_motion<Robot, rake, 1>;
+
+                const typename RH::EnvironmentVector env_v(env);
+
+                auto *configs = new float[batch_size * Robot::dimension];
+
+                std::size_t i = 0U, attempts = 0U;
+                for (; i < batch_size and attempts <= max_attempts; ++i)
+                {
+                    Configuration ca, cc;
+                    do
+                    {
+                        if (attempts++ > max_attempts)
+                        {
+                            break;
+                        }
+
+                        ca = rng->next();
+                        Robot::scale_configuration(ca);
+
+                        if (validate(ca, ca, env_v))
+                        {
+                            continue;
+                        }
+
+                        cc = ca + logit<Robot>(rng, scale).trim();
+
+                        // There is a better way to clamp, but it works.
+                        Robot::descale_configuration(cc);
+                        cc = cc.clamp(0, 1);
+                        Robot::scale_configuration(cc);
+
+                    } while (not validate(cc, cc, env_v));
+
+                    cc.to_array_unaligned(&configs[i * Robot::dimension]);
+                }
+
+                nb::capsule owner(configs, [](void *p) noexcept { delete[] (float *)p; });
+                nb::ndarray<nb::numpy, float, nb::ndim<2>> config_nd(configs, {i, Robot::dimension}, owner);
+
+                return config_nd;
+            });
+
 
         submodule.def(
             "batch_validate",

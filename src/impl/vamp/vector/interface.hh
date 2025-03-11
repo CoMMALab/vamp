@@ -423,6 +423,11 @@ namespace vamp
             return *d() + (other - *d()) * alpha;
         }
 
+        inline constexpr auto log() const noexcept -> D
+        {
+            return D(apply<S::template log<0>>(d()->data));
+        }
+
         template <
             typename ScalarT = typename S::ScalarT,
             typename =

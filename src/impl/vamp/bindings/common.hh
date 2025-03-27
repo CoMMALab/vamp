@@ -27,6 +27,7 @@
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/ndarray.h>
+#include <bits/stdc++.h>
 
 namespace vamp::binding
 {
@@ -840,7 +841,8 @@ namespace vamp::binding
         submodule.def(
             "batch_bridge_test_sample",
             [](std::size_t batch_size,
-               float scale,
+               float min_scale,
+               float max_scale,
                std::size_t max_attempts,
                typename RH::RNG::Ptr rng,
                const typename RH::EnvironmentInput &env) noexcept
@@ -849,6 +851,8 @@ namespace vamp::binding
                 static constexpr auto validate = vamp::planning::validate_motion<Robot, rake, 1>;
 
                 const typename RH::EnvironmentVector env_v(env);
+                std::default_random_engine gen;
+                std::uniform_real_distribution<double> scalar_rng(min_scale, max_scale);
 
                 auto *configs = new float[batch_size * Robot::dimension];
 
@@ -871,6 +875,7 @@ namespace vamp::binding
                             continue;
                         }
 
+                        float scale = scalar_rng(gen);
                         cb = ca + logit<Robot>(rng, scale).trim();
 
                         // There is a better way to clamp, but it works.

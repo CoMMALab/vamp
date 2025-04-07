@@ -1105,6 +1105,114 @@ namespace vamp::binding
             });
 
         submodule.def(
+            "get_all_paths",
+            [](const nb::ndarray<const bool, nb::ndim<1>, nb::device::cpu> &Cs_np,
+               const nb::ndarray<const bool, nb::ndim<3>, nb::device::cpu> &Ch_np,
+               const nb::ndarray<const bool, nb::ndim<2>, nb::device::cpu> &Cl_np,
+               const nb::ndarray<const bool, nb::ndim<2>, nb::device::cpu> &Vh_np)
+            {
+                const std::size_t M = Ch_np.shape(0) + 1;
+                const std::size_t N = Ch_np.shape(1);
+                const std::size_t num_goals = Cl_np.shape(1);
+
+                const auto Cs = Cs_np.view();
+                const auto Ch = Ch_np.view();
+                const auto Cl = Cl_np.view();
+                const auto Vh = Vh_np.view();
+
+                using Path = std::vector<int>;
+                using Paths = std::vector<Path>;
+                using GoalIdx = std::vector<std::vector<int>>;
+
+                Paths paths;
+                GoalIdx goal_idx;
+
+                auto dfs = [&](auto&& self, int m, Path path) -> void {
+                    int current = path.back();
+            
+                    if (m == M) {
+                        std::vector<int> goal_ids;
+                        for (int j = 0; j < num_goals; ++j) {
+                            if (Cl(current, j)) goal_ids.push_back(j);
+                        }
+                        paths.push_back(std::move(path));
+                        goal_idx.push_back(std::move(goal_ids));
+                        return;
+                    }
+            
+                    for (int n = 0; n < N; ++n) {
+                        if (Ch(m - 1, current, n) && Vh(m, n)) {
+                            Path new_path = path;
+                            new_path.push_back(n);
+                            self(self, m + 1, std::move(new_path));
+                        }
+                    }
+                };
+            
+                for (int n = 0; n < N; ++n) {
+                    if (Cs(n) && Vh(0, n)) {
+                        dfs(dfs, 1, Path{n});
+                    }
+                }
+
+                return std::make_tuple(paths, goal_idx);
+            });
+        
+        submodule.def(
+            "get_all_paths",
+            [](const nb::ndarray<const bool, nb::ndim<1>, nb::device::cpu> &Cs_np,
+               const nb::ndarray<const bool, nb::ndim<3>, nb::device::cpu> &Ch_np,
+               const nb::ndarray<const bool, nb::ndim<2>, nb::device::cpu> &Cl_np,
+               const nb::ndarray<const bool, nb::ndim<2>, nb::device::cpu> &Vh_np)
+            {
+                const std::size_t M = Ch_np.shape(0) + 1;
+                const std::size_t N = Ch_np.shape(1);
+                const std::size_t num_goals = Cl_np.shape(1);
+
+                const auto Cs = Cs_np.view();
+                const auto Ch = Ch_np.view();
+                const auto Cl = Cl_np.view();
+                const auto Vh = Vh_np.view();
+
+                using Path = std::vector<int>;
+                using Paths = std::vector<Path>;
+                using GoalIdx = std::vector<std::vector<int>>;
+
+                Paths paths;
+                GoalIdx goal_idx;
+
+                auto dfs = [&](auto&& self, int m, Path path) -> void {
+                    int current = path.back();
+            
+                    if (m == M) {
+                        std::vector<int> goal_ids;
+                        for (int j = 0; j < num_goals; ++j) {
+                            if (Cl(current, j)) goal_ids.push_back(j);
+                        }
+                        paths.push_back(std::move(path));
+                        goal_idx.push_back(std::move(goal_ids));
+                        return;
+                    }
+            
+                    for (int n = 0; n < N; ++n) {
+                        if (Ch(m - 1, current, n) && Vh(m, n)) {
+                            Path new_path = path;
+                            new_path.push_back(n);
+                            self(self, m + 1, std::move(new_path));
+                        }
+                    }
+                };
+            
+                for (int n = 0; n < N; ++n) {
+                    if (Cs(n) && Vh(0, n)) {
+                        dfs(dfs, 1, Path{n});
+                    }
+                }
+
+                return std::make_tuple(paths, goal_idx);
+            });
+
+        submodule.def(
             "incremental_batch_validate",
             [](const nb::ndarray<const FloatT, nb::shape<Robot::dimension>, nb::device::cpu> &start_config,
                const nb::ndarray<const FloatT, nb::shape<-1, -1, -1, Robot::dimension>, nb::device::cpu>

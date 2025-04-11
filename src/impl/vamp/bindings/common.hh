@@ -715,7 +715,8 @@ namespace vamp::binding
         submodule.def(
             "batch_scale_sample",
             [](std::size_t batch_size,
-               float scale, 
+               float scale,
+               std::size_t max_attempts,
                typename RH::RNG::Ptr rng,
                const typename RH::EnvironmentInput &env) noexcept
             {
@@ -729,11 +730,16 @@ namespace vamp::binding
                 nb::ndarray<nb::numpy, float, nb::ndim<2>> config_nd(
                     configs, {batch_size, Robot::dimension}, owner);
 
-                for (auto i = 0U; i < batch_size; ++i)
+                std::size_t i = 0U, attempts = 0U;
+                for (; i < batch_size and attempts <= max_attempts; ++i)
                 {
                     Configuration config;
                     do
                     {
+                        if (attempts++ > max_attempts)
+                        {
+                            break;
+                        }
                         config = rng->next() * scale;
                         Robot::scale_configuration(config);
                     } while (not validate(config, config, env_v));
@@ -743,7 +749,7 @@ namespace vamp::binding
 
                 return config_nd;
             });
-        
+
         submodule.def(
             "batch_gaussian_sample",
             [](std::size_t batch_size,

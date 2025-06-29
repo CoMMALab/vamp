@@ -1,0 +1,518 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="motoman_sda10f" path="sda10f.urdf">
+	<link name="base_link"></link>
+	<link name="torso_base_link">
+		<visual>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/base.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.344575"></sphere>
+			</geometry>
+			<origin xyz="-0.055268937580108646 -1e-06 -0.9955570624656678" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.273417"></sphere>
+			</geometry>
+			<origin xyz="-0.02623293758010864 -5e-06 -0.5391930624656678" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.325854"></sphere>
+			</geometry>
+			<origin xyz="-0.13397493758010864 5e-06 -1.0256540624656676" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="torso_link_b1">
+		<visual>
+			<origin rpy="0 0 0" xyz="0 0 0"></origin>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_b1.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.99 0.99 0.99 1"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.186756"></sphere>
+			</geometry>
+			<origin xyz="0.0884417989063263 -1.4e-05 -0.013509005435943605" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.187648"></sphere>
+			</geometry>
+			<origin xyz="0.027606798906326294 1e-06 -0.1894750054359436" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="torso_link_b2"></link>
+	<link name="arm_left_link_1_s">
+		<visual>
+			<origin rpy="0 0 0" xyz="0 0 0"></origin>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_s.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.153255"></sphere>
+			</geometry>
+			<origin xyz="-0.0008364244847297669 -0.010693374392509461 0.054167749289035796" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_left_link_2_l">
+		<visual>
+			<origin rpy="0 0 0" xyz="0 0 0"></origin>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_l.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.99 0.99 0.99 1"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.095701"></sphere>
+			</geometry>
+			<origin xyz="-0.0005080186264514923 0.0010789779880046868 0.04686171102452278" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.119311"></sphere>
+			</geometry>
+			<origin xyz="0.0029509813735485078 0.10620597798800469 0.01735771102452278" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_left_link_3_e">
+		<visual>
+			<origin rpy="0 0 0" xyz="0 0 0"></origin>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_e.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.095372"></sphere>
+			</geometry>
+			<origin xyz="0.000635216483592987 0.0035861253681182858 0.11614902027225495" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.085433"></sphere>
+			</geometry>
+			<origin xyz="-0.0006777835164070129 0.018473125368118286 0.011294020272254943" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_left_link_4_u">
+		<visual>
+			<origin rpy="0 0 0" xyz="0 0 0"></origin>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_u.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.99 0.99 0.99 1"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.089005"></sphere>
+			</geometry>
+			<origin xyz="-0.00029294500642443647 0.15812112988666377 -0.00519083533301657" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.088818"></sphere>
+			</geometry>
+			<origin xyz="-0.0014369450064244363 0.05241712988666378 -0.02130483533301657" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.080043"></sphere>
+			</geometry>
+			<origin xyz="-0.0006389450064244364 -1.1870113336226451e-05 -0.02995983533301657" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_left_link_5_r">
+		<visual>
+			<origin rpy="0 0 0" xyz="0 0 0"></origin>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_r.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.079093"></sphere>
+			</geometry>
+			<origin xyz="0.00039482690203189853 -0.0017952768961191174 0.10070505662441254" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.077046"></sphere>
+			</geometry>
+			<origin xyz="-0.0010221730979681014 -0.016996276896119118 0.012021056624412538" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_left_link_6_b">
+		<visual>
+			<origin rpy="0 0 0" xyz="0 0 0"></origin>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_b.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.99 0.99 0.99 1"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.077881"></sphere>
+			</geometry>
+			<origin xyz="-1.1407326221466067e-05 0.08190073738384246 0.006368855692148208" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.068019"></sphere>
+			</geometry>
+			<origin xyz="-0.00014040732622146607 0.00865773738384247 0.02597985569214821" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_left_link_7_t">
+		<visual>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_t.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.035041"></sphere>
+			</geometry>
+			<origin xyz="-0.004017005587935447 0.018018981373548508 -0.006590019097328186" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.035213"></sphere>
+			</geometry>
+			<origin xyz="0.017612994412064552 -0.005894018626451492 -0.006585019097328186" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.034568"></sphere>
+			</geometry>
+			<origin xyz="-0.014410005587935447 -0.012936018626451492 -0.006545019097328186" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_left_link_tool0"></link>
+	<link name="arm_right_link_1_s">
+		<visual>
+			<origin rpy="0 0 0" xyz="0 0 0"></origin>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_s.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.153255"></sphere>
+			</geometry>
+			<origin xyz="-0.0008364244847297669 -0.010693374392509461 0.054167749289035796" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_right_link_2_l">
+		<visual>
+			<origin rpy="0 0 0" xyz="0 0 0"></origin>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_l.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.99 0.99 0.99 1"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.095701"></sphere>
+			</geometry>
+			<origin xyz="-0.0005080186264514923 0.0010789779880046868 0.04686171102452278" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.119311"></sphere>
+			</geometry>
+			<origin xyz="0.0029509813735485078 0.10620597798800469 0.01735771102452278" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_right_link_3_e">
+		<visual>
+			<origin rpy="0 0 0" xyz="0 0 0"></origin>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_e.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.095372"></sphere>
+			</geometry>
+			<origin xyz="0.000635216483592987 0.0035861253681182858 0.11614902027225495" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.085433"></sphere>
+			</geometry>
+			<origin xyz="-0.0006777835164070129 0.018473125368118286 0.011294020272254943" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_right_link_4_u">
+		<visual>
+			<origin rpy="0 0 0" xyz="0 0 0"></origin>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_u.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.99 0.99 0.99 1"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.089005"></sphere>
+			</geometry>
+			<origin xyz="-0.00029294500642443647 0.15812112988666377 -0.00519083533301657" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.088818"></sphere>
+			</geometry>
+			<origin xyz="-0.0014369450064244363 0.05241712988666378 -0.02130483533301657" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.080043"></sphere>
+			</geometry>
+			<origin xyz="-0.0006389450064244364 -1.1870113336226451e-05 -0.02995983533301657" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_right_link_5_r">
+		<visual>
+			<origin rpy="0 0 0" xyz="0 0 0"></origin>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_r.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.079093"></sphere>
+			</geometry>
+			<origin xyz="0.00039482690203189853 -0.0017952768961191174 0.10070505662441254" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.077046"></sphere>
+			</geometry>
+			<origin xyz="-0.0010221730979681014 -0.016996276896119118 0.012021056624412538" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_right_link_6_b">
+		<visual>
+			<origin rpy="0 0 0" xyz="0 0 0"></origin>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_b.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.99 0.99 0.99 1"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.077881"></sphere>
+			</geometry>
+			<origin xyz="-1.1407326221466067e-05 0.08190073738384246 0.006368855692148208" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.068019"></sphere>
+			</geometry>
+			<origin xyz="-0.00014040732622146607 0.00865773738384247 0.02597985569214821" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_right_link_7_t">
+		<visual>
+			<geometry>
+				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_t.stl"></mesh>
+			</geometry>
+			<material name="">
+				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
+			</material>
+		</visual>
+		<collision>
+			<geometry>
+				<sphere radius="0.035041"></sphere>
+			</geometry>
+			<origin xyz="-0.004017005587935447 0.018018981373548508 -0.006590019097328186" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.035213"></sphere>
+			</geometry>
+			<origin xyz="0.017612994412064552 -0.005894018626451492 -0.006585019097328186" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.034568"></sphere>
+			</geometry>
+			<origin xyz="-0.014410005587935447 -0.012936018626451492 -0.006545019097328186" rpy="0 0 0"></origin>
+		</collision>
+	</link>
+	<link name="arm_right_link_tool0"></link>
+	<joint name="base_link_torso" type="fixed">
+		<parent link="base_link"></parent>
+		<child link="torso_base_link"></child>
+		<origin rpy="0 0 0" xyz="0 0 1.2"></origin>
+	</joint>
+	<joint name="torso_joint_b1" type="revolute">
+		<parent link="torso_base_link"></parent>
+		<child link="torso_link_b1"></child>
+		<origin rpy="0 0 0" xyz="0 0 0"></origin>
+		<axis xyz="0 0 1"></axis>
+		<limit effort="100" lower="-2.96705972839" upper="2.96705972839" velocity="2.26892802759"></limit>
+	</joint>
+	<joint name="torso_joint_b2" type="revolute">
+		<parent link="torso_base_link"></parent>
+		<child link="torso_link_b2"></child>
+		<origin rpy="0 0 0" xyz="0 0 0"></origin>
+		<axis xyz="0 0 1"></axis>
+		<limit effort="100" lower="-2.96705972839" upper="2.96705972839" velocity="2.26892802759"></limit>
+		<mimic joint="torso_joint_b1" multiplier="1" offset="0"></mimic>
+	</joint>
+	<joint name="arm_left_joint_1_s" type="revolute">
+		<parent link="torso_link_b1"></parent>
+		<child link="arm_left_link_1_s"></child>
+		<origin rpy="1.57079632679 0.0 0.0" xyz="0.100 0.265 0.0"></origin>
+		<axis xyz="0 0 -1"></axis>
+		<limit effort="0" lower="-3.14159265359" upper="3.14159265359" velocity="2.96705972839"></limit>
+	</joint>
+	<joint name="arm_left_joint_2_l" type="revolute">
+		<parent link="arm_left_link_1_s"></parent>
+		<child link="arm_left_link_2_l"></child>
+		<origin rpy="-1.57079632679 0.0 0.0" xyz="0.0 0.0 0.0"></origin>
+		<axis xyz="0 0 -1"></axis>
+		<limit effort="0" lower="-1.91986217719" upper="1.91986217719" velocity="2.96705972839"></limit>
+	</joint>
+	<joint name="arm_left_joint_3_e" type="revolute">
+		<parent link="arm_left_link_2_l"></parent>
+		<child link="arm_left_link_3_e"></child>
+		<origin rpy="1.57079632679 0.0 0.0" xyz="0.0 0.360 0.0"></origin>
+		<axis xyz="0 0 -1"></axis>
+		<limit effort="0" lower="-2.96705972839" upper="2.96705972839" velocity="2.96705972839"></limit>
+	</joint>
+	<joint name="arm_left_joint_4_u" type="revolute">
+		<parent link="arm_left_link_3_e"></parent>
+		<child link="arm_left_link_4_u"></child>
+		<origin rpy="-1.57079632679 0.0 0.0" xyz="0.0 0.0 0.0"></origin>
+		<axis xyz="0 0 1"></axis>
+		<limit effort="0" lower="-2.35619449019" upper="2.35619449019" velocity="2.96705972839"></limit>
+	</joint>
+	<joint name="arm_left_joint_5_r" type="revolute">
+		<parent link="arm_left_link_4_u"></parent>
+		<child link="arm_left_link_5_r"></child>
+		<origin rpy="1.57079632679 0.0 0.0" xyz="0.0 0.360 0.0"></origin>
+		<axis xyz="0 0 1"></axis>
+		<limit effort="0" lower="-3.14159265359" upper="3.14159265359" velocity="3.49065850399"></limit>
+	</joint>
+	<joint name="arm_left_joint_6_b" type="revolute">
+		<parent link="arm_left_link_5_r"></parent>
+		<child link="arm_left_link_6_b"></child>
+		<origin rpy="-1.57079632679 0.0 0.0" xyz="0.0 0.0 0.0"></origin>
+		<axis xyz="0 0 1"></axis>
+		<limit effort="0" lower="-1.91986217719" upper="1.91986217719" velocity="3.49065850399"></limit>
+	</joint>
+	<joint name="arm_left_joint_7_t" type="revolute">
+		<parent link="arm_left_link_6_b"></parent>
+		<child link="arm_left_link_7_t"></child>
+		<origin rpy="-1.57079632679 0.0 0.0" xyz="0.0 0.155 0.0"></origin>
+		<axis xyz="0 0 -1"></axis>
+		<limit effort="0" lower="-3.14159265359" upper="3.14159265359" velocity="6.98131700798"></limit>
+	</joint>
+	<joint name="arm_left_joint_tool0" type="fixed">
+		<parent link="arm_left_link_7_t"></parent>
+		<child link="arm_left_link_tool0"></child>
+		<origin rpy="0 0 3.14159265359" xyz="0 0 0"></origin>
+	</joint>
+	<joint name="arm_right_joint_1_s" type="revolute">
+		<parent link="torso_link_b1"></parent>
+		<child link="arm_right_link_1_s"></child>
+		<origin rpy="1.57079632679 0.0 -3.14159265359" xyz="0.100 -0.265 0.0"></origin>
+		<axis xyz="0 0 1"></axis>
+		<limit effort="0" lower="-3.14159265359" upper="3.14159265359" velocity="2.96705972839"></limit>
+	</joint>
+	<joint name="arm_right_joint_2_l" type="revolute">
+		<parent link="arm_right_link_1_s"></parent>
+		<child link="arm_right_link_2_l"></child>
+		<origin rpy="-1.57079632679 0.0 0.0" xyz="0.0 0.0 0.0"></origin>
+		<axis xyz="0 0 1"></axis>
+		<limit effort="0" lower="-1.91986217719" upper="1.91986217719" velocity="2.96705972839"></limit>
+	</joint>
+	<joint name="arm_right_joint_3_e" type="revolute">
+		<parent link="arm_right_link_2_l"></parent>
+		<child link="arm_right_link_3_e"></child>
+		<origin rpy="1.57079632679 0.0 0.0" xyz="0.0 0.360 0.0"></origin>
+		<axis xyz="0 0 1"></axis>
+		<limit effort="0" lower="-2.96705972839" upper="2.96705972839" velocity="2.96705972839"></limit>
+	</joint>
+	<joint name="arm_right_joint_4_u" type="revolute">
+		<parent link="arm_right_link_3_e"></parent>
+		<child link="arm_right_link_4_u"></child>
+		<origin rpy="-1.57079632679 0.0 0.0" xyz="0.0 0.0 0.0"></origin>
+		<axis xyz="0 0 -1"></axis>
+		<limit effort="0" lower="-2.35619449019" upper="2.35619449019" velocity="2.96705972839"></limit>
+	</joint>
+	<joint name="arm_right_joint_5_r" type="revolute">
+		<parent link="arm_right_link_4_u"></parent>
+		<child link="arm_right_link_5_r"></child>
+		<origin rpy="1.57079632679 0.0 0.0" xyz="0.0 0.360 0.0"></origin>
+		<axis xyz="0 0 -1"></axis>
+		<limit effort="0" lower="-3.14159265359" upper="3.14159265359" velocity="3.49065850399"></limit>
+	</joint>
+	<joint name="arm_right_joint_6_b" type="revolute">
+		<parent link="arm_right_link_5_r"></parent>
+		<child link="arm_right_link_6_b"></child>
+		<origin rpy="-1.57079632679 0.0 0.0" xyz="0.0 0.0 0.0"></origin>
+		<axis xyz="0 0 -1"></axis>
+		<limit effort="0" lower="-1.91986217719" upper="1.91986217719" velocity="3.49065850399"></limit>
+	</joint>
+	<joint name="arm_right_joint_7_t" type="revolute">
+		<parent link="arm_right_link_6_b"></parent>
+		<child link="arm_right_link_7_t"></child>
+		<origin rpy="-1.57079632679 0.0 0.0" xyz="0.0 0.155 0.0"></origin>
+		<axis xyz="0 0 1"></axis>
+		<limit effort="0" lower="-3.14159265359" upper="3.14159265359" velocity="6.98131700798"></limit>
+	</joint>
+	<joint name="arm_right_joint_tool0" type="fixed">
+		<parent link="arm_right_link_7_t"></parent>
+		<child link="arm_right_link_tool0"></child>
+		<origin rpy="0 0 3.14159265359" xyz="0 0 0"></origin>
+	</joint>
+</robot>

@@ -4,7 +4,7 @@
 	<link name="torso_base_link">
 		<visual>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/base.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/base.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
@@ -33,7 +33,7 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0"></origin>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_b1.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_b1.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.99 0.99 0.99 1"></color>
@@ -57,7 +57,7 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0"></origin>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_s.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_s.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
@@ -74,7 +74,7 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0"></origin>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_l.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_l.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.99 0.99 0.99 1"></color>
@@ -97,7 +97,7 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0"></origin>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_e.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_e.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
@@ -120,7 +120,7 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0"></origin>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_u.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_u.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.99 0.99 0.99 1"></color>
@@ -149,7 +149,7 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0"></origin>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_r.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_r.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
@@ -172,7 +172,7 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0"></origin>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_b.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_b.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.99 0.99 0.99 1"></color>
@@ -194,7 +194,7 @@
 	<link name="arm_left_link_7_t">
 		<visual>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_t.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_t.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
@@ -224,7 +224,7 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0"></origin>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_s.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_s.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
@@ -241,7 +241,7 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0"></origin>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_l.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_l.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.99 0.99 0.99 1"></color>
@@ -264,7 +264,7 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0"></origin>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_e.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_e.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
@@ -287,7 +287,7 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0"></origin>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_u.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_u.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.99 0.99 0.99 1"></color>
@@ -316,7 +316,7 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0"></origin>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_r.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_r.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>
@@ -339,7 +339,7 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0"></origin>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_b.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_b.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.99 0.99 0.99 1"></color>
@@ -361,7 +361,7 @@
 	<link name="arm_right_link_7_t">
 		<visual>
 			<geometry>
-				<mesh filename="package://motoman_sda10f_support/meshes/sda10f/visual/link_t.stl"></mesh>
+				<mesh filename="meshes/sda10f/visual/link_t.stl"></mesh>
 			</geometry>
 			<material name="">
 				<color rgba="0.129411764706 0.149019607843 0.749019607843 1.0"></color>

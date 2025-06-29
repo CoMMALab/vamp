@@ -58,6 +58,7 @@ list(APPEND VAMP_ROBOT_MODULES
   panda
   fetch
   baxter
+  motoman
 )
 
 foreach(robot_name IN LISTS VAMP_ROBOT_MODULES)

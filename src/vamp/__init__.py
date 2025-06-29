@@ -9,6 +9,7 @@ __all__ = [
     "panda",
     "fetch",
     "baxter",
+    "motoman",
     "Environment",
     "Attachment",
     "Sphere",
@@ -45,6 +46,7 @@ from ._core import SimplifyRoutine as SimplifyRoutine
 from ._core import SimplifySettings as SimplifySettings
 from ._core import Sphere as Sphere
 from ._core import baxter as baxter
+from ._core import motoman as motoman
 from ._core import fetch as fetch
 from ._core import panda as panda
 from ._core import sphere as sphere
@@ -57,6 +59,7 @@ AnyPlanningResult = Union[
     panda.PlanningResult,
     fetch.PlanningResult,
     baxter.PlanningResult,
+    motoman.PlanningResult,
     ]
 
 

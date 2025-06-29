@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include <vamp/constants.hh>
 #include <vamp/vector/utils.hh>
 
 namespace vamp
@@ -423,24 +424,24 @@ namespace vamp
             return *d() + (other - *d()) * alpha;
         }
 
+        inline constexpr auto log() const noexcept -> D
+        {
+            return D(apply<S::template log<0>>(d()->data));
+        }
+
+        inline constexpr auto remove_corrupted() const noexcept -> D
+        {
+            auto mask = sub(*d());
+            return blend(zero_vector(), mask);
+        }
+
         template <
             typename ScalarT = typename S::ScalarT,
             typename =
                 std::enable_if_t<std::is_same_v<ScalarT, float> or std::is_same_v<ScalarT, double>, bool>>
         inline constexpr auto sin() const noexcept -> D
         {
-            const auto v_sq = *d() * abs();
-            const auto s_vsq = static_cast<typename S::ScalarT>(-0.478637850138) * v_sq;
-            const auto s_v = static_cast<typename S::ScalarT>(1.503684069359) * *d();
-            const auto p = s_vsq + s_v;
-            const auto abs_p = p.abs();
-            const auto p_2 = p * abs_p;
-            const auto p_3 = p_2 * abs_p;
-            const auto d_3 = static_cast<typename S::ScalarT>(0.011596870476) * p_3;
-            const auto d_2 = static_cast<typename S::ScalarT>(0.140024078368) * p_2;
-            const auto d_1 = static_cast<typename S::ScalarT>(0.665200679751) * p;
-
-            return d_3 + d_2 + d_1;
+            return D(apply<S::template sin<0>>(d()->data));
         }
 
         template <

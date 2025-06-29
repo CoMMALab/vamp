@@ -44,6 +44,24 @@ ROBOT_JOINTS = {
         "left_w1",
         "left_w2",
         ],
+    "motoman": [
+        "torso_joint_b1",
+        "arm_left_joint_1_s",
+        "arm_left_joint_2_l",
+        "arm_left_joint_3_e",
+        "arm_left_joint_4_u",
+        "arm_left_joint_5_r",
+        "arm_left_joint_6_b",
+        "arm_left_joint_7_t",
+        "arm_right_joint_1_s",
+        "arm_right_joint_2_l",
+        "arm_right_joint_3_e",
+        "arm_right_joint_4_u",
+        "arm_right_joint_5_r",
+        "arm_right_joint_6_b",
+        "arm_right_joint_7_t",
+        "torso_joint_b2"
+        ]
     }
 
 ROBOT_RRT_RANGES = {
@@ -52,6 +70,7 @@ ROBOT_RRT_RANGES = {
     "panda": 1.0,
     "fetch": 1.0,
     "baxter": 0.5,
+    "motoman": 0.5,
     }
 
 ROBOT_RADII_RANGES = {
@@ -60,6 +79,7 @@ ROBOT_RADII_RANGES = {
     "panda": (0.012, 0.06),
     "sphere": (0.2, 0.2),
     "ur5": (0.015, 0.08),
+    "motoman": (0.034, 0.344),
     }
 
 ROBOT_FIRST_JOINT_LOCATIONS = {

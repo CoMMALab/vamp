@@ -11,7 +11,6 @@
 
 namespace vamp
 {
-
     template <>
     struct SIMDVector<__m256i>
     {

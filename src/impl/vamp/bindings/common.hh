@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vamp/planning/phs.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/random/halton.hh>
 #include <vamp/random/gaussian.hh>
@@ -18,6 +19,7 @@
 #include <vamp/planning/prm.hh>
 #include <vamp/planning/fcit.hh>
 #include <vamp/planning/rrtc.hh>
+#include <vamp/planning/aorrtc.hh>
 #include <vamp/vector.hh>
 
 #include <nanobind/nanobind.h>
@@ -101,6 +103,7 @@ namespace vamp::binding
         using RNG = vamp::rng::RNG<Robot::dimension>;
         using Halton = vamp::rng::Halton<Robot::dimension>;
         using Gaussian = vamp::rng::Gaussian<Robot::dimension>;
+        using PHS = vamp::planning::ProlateHyperspheroid<Robot::dimension>;
 #if defined(__x86_64__)
         using XORShift = vamp::rng::XORShift<Robot::dimension>;
 #endif
@@ -108,6 +111,14 @@ namespace vamp::binding
         using PRM = vamp::planning::PRM<Robot, rake, Robot::resolution>;
         using RRTC = vamp::planning::RRTC<Robot, rake, Robot::resolution>;
         using FCIT = vamp::planning::FCIT<Robot, rake, Robot::resolution>;
+        using AORRTC = vamp::planning::AORRTC<Robot, rake, Robot::resolution>;
+
+        inline static auto
+        phs_sampler(const planning::ProlateHyperspheroid<Robot::dimension> &phs, typename RNG::Ptr rng) ->
+            typename RNG::Ptr
+        {
+            return std::make_shared<planning::ProlateHyperspheroidRNG<Robot>>(phs, rng);
+        }
 
         inline static auto halton() -> typename RNG::Ptr
         {
@@ -167,18 +178,21 @@ namespace vamp::binding
         }
 
         inline static auto
-        validate_configuration(const Configuration &configuration, const EnvironmentInput &environment)
+        validate_configuration(const Configuration &configuration, const EnvironmentInput &environment, bool check_bounds = false)
             -> bool
         {
-            auto copy = configuration;
+            auto copy = configuration.trim();
             Robot::descale_configuration(copy);
-            return (copy <= 1.F).all() and (copy >= 0.F).all() and
+
+            const bool in_bounds = (copy <= 1.F).all() and (copy >= 0.F).all();
+
+            return (not check_bounds or in_bounds) and
                    vamp::planning::validate_motion<Robot, rake, 1>(
                        configuration, configuration, EnvironmentVector(environment));
         }
 
         inline static auto
-        validate(const ConfigurationArray &configuration, const EnvironmentInput &environment) -> bool
+        validate(const ConfigurationArray &configuration, const EnvironmentInput &environment, bool check_bounds = false) -> bool
         {
             const Configuration configuration_v(configuration);
             return validate_configuration(configuration_v, environment);
@@ -286,6 +300,36 @@ namespace vamp::binding
             return FCIT::solve(start_v, goals_v, EnvironmentVector(environment), settings, rng);
         }
 
+        inline static auto aorrtc(
+            const ConfigurationArray &start,
+            const ConfigurationArray &goal,
+            const EnvironmentInput &environment,
+            const vamp::planning::AORRTCSettings &settings,
+            typename RNG::Ptr rng) -> PlanningResult
+        {
+            return AORRTC::solve(
+                Configuration(start), Configuration(goal), EnvironmentVector(environment), settings, rng);
+        }
+
+        inline static auto aorrtc_multi_goal(
+            const ConfigurationArray &start,
+            const std::vector<ConfigurationArray> &goals,
+            const EnvironmentInput &environment,
+            const vamp::planning::AORRTCSettings &settings,
+            typename RNG::Ptr rng) -> PlanningResult
+        {
+            std::vector<Configuration> goals_v;
+            goals_v.reserve(goals.size());
+
+            for (const auto &goal : goals)
+            {
+                goals_v.emplace_back(goal);
+            }
+
+            const Configuration start_v(start);
+            return AORRTC::solve(start_v, goals_v, EnvironmentVector(environment), settings, rng);
+        }
+
         inline static auto roadmap(
             const ConfigurationArray &start,
             const ConfigurationArray &goal,
@@ -370,6 +414,13 @@ namespace vamp::binding
                     }
                 },
                 "Skip the next n iterations.");
+
+        nb::class_<typename RH::PHS>(submodule, "ProlateHyperspheroid", "Prolate Hyperspheroid for Robot.")
+            .def(
+                nb::init<typename RH::Configuration, typename RH::Configuration>(),
+                "Construct from two loci.")  //
+            .def("set_transverse_diameter", &RH::PHS::set_transverse_diameter)
+            .def("transform", &RH::PHS::transform);
 
         submodule.def(
             "dimension",
@@ -477,9 +528,21 @@ namespace vamp::binding
                 &RH::Path::subdivide,
                 "Subdivide the path by inserting a configuration at the midpoint of all existing segments.")
             .def(
-                "interpolate",
-                &RH::Path::interpolate,
+                "interpolate_to_resolution",
+                &RH::Path::interpolate_to_resolution,
                 "Refine the path by interpolating all segments up to the resolution provided.")
+            .def(
+                "interpolate_to_n_states",
+                &RH::Path::interpolate_to_n_states,
+                "Refine the path by interpolating to n states as even as possible.")
+            .def(
+                "validate",
+                [](typename RH::Path &p, const typename RH::EnvironmentInput &e)
+                {
+                    const typename RH::EnvironmentVector ev(e);
+                    return p.template validate<Robot, rake>(ev);
+                },
+                "Validate the path in an environment.")
             .def(
                 "numpy",
                 [](const typename RH::Path &p) noexcept
@@ -541,6 +604,7 @@ namespace vamp::binding
 
         submodule.def("halton", RH::halton, "Creates a new Halton sampler.");
         submodule.def("gaussian", RH::gaussian, "Creates a new Gaussian sampler.");
+        submodule.def("phs_sampler", RH::phs_sampler, "Creates a new PHS sampler.");
 
 #if defined(__x86_64__)
         submodule.def("xorshift", RH::xorshift, "Creates a new XORShift sampler.");
@@ -610,6 +674,26 @@ namespace vamp::binding
             "Solve the motion planning problem with FCIT*.");
 
         submodule.def(
+            "aorrtc",
+            RH::aorrtc,
+            "start"_a,
+            "goal"_a,
+            "environment"_a,
+            "settings"_a,
+            "rng"_a,
+            "Solve the motion planning problem with AORRTC.");
+
+        submodule.def(
+            "aorrtc",
+            RH::aorrtc_multi_goal,
+            "start"_a,
+            "goal"_a,
+            "environment"_a,
+            "settings"_a,
+            "rng"_a,
+            "Solve the motion planning problem with AORRTC.");
+
+        submodule.def(
             "roadmap",
             RH::roadmap,
             "start"_a,
@@ -633,6 +717,7 @@ namespace vamp::binding
             RH::validate_configuration,
             "configuration"_a,
             "environment"_a = vamp::collision::Environment<float>(),
+            "check_bounds"_a = false,
             "Check if a configuration is valid. Returns true if valid.");
 
         submodule.def(
@@ -640,6 +725,7 @@ namespace vamp::binding
             RH::validate,
             "configuration"_a,
             "environment"_a = vamp::collision::Environment<float>(),
+            "check_bounds"_a = false,
             "Check if a configuration is valid. Returns true if valid.");
 
         submodule.def(

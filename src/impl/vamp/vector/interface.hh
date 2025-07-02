@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include <vamp/constants.hh>
 #include <vamp/vector/utils.hh>
 
 namespace vamp
@@ -428,6 +429,12 @@ namespace vamp
             return D(apply<S::template log<0>>(d()->data));
         }
 
+        inline constexpr auto remove_corrupted() const noexcept -> D
+        {
+            auto mask = sub(*d());
+            return blend(zero_vector(), mask);
+        }
+
         template <
             typename ScalarT = typename S::ScalarT,
             typename =
@@ -799,7 +806,7 @@ namespace vamp
 
         inline static constexpr auto all_true(unsigned int v) noexcept -> bool
         {
-            return v == 0xffffffff;
+            return v == (static_cast<unsigned int>(1) << S::VectorWidth) - 1;
         }
 
         template <std::size_t... I>

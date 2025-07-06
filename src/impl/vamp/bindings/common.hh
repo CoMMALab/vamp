@@ -19,6 +19,7 @@
 #include <vamp/planning/prm.hh>
 #include <vamp/planning/fcit.hh>
 #include <vamp/planning/rrtc.hh>
+#include <vamp/planning/rrtc_prealloc.hh>
 #include <vamp/planning/aorrtc.hh>
 #include <vamp/vector.hh>
 
@@ -177,9 +178,10 @@ namespace vamp::binding
             return result;
         }
 
-        inline static auto
-        validate_configuration(const Configuration &configuration, const EnvironmentInput &environment, bool check_bounds = false)
-            -> bool
+        inline static auto validate_configuration(
+            const Configuration &configuration,
+            const EnvironmentInput &environment,
+            bool check_bounds = false) -> bool
         {
             auto copy = configuration.trim();
             Robot::descale_configuration(copy);
@@ -191,8 +193,10 @@ namespace vamp::binding
                        configuration, configuration, EnvironmentVector(environment));
         }
 
-        inline static auto
-        validate(const ConfigurationArray &configuration, const EnvironmentInput &environment, bool check_bounds = false) -> bool
+        inline static auto validate(
+            const ConfigurationArray &configuration,
+            const EnvironmentInput &environment,
+            bool check_bounds = false) -> bool
         {
             const Configuration configuration_v(configuration);
             return validate_configuration(configuration_v, environment);
@@ -996,10 +1000,10 @@ namespace vamp::binding
         submodule.def(
             "batch_surface_sample",
             [](std::size_t batch_size,
-                float scale,
-                std::size_t max_attempts,
-                typename RH::RNG::Ptr rng,
-                const typename RH::EnvironmentInput &env) noexcept
+               float scale,
+               std::size_t max_attempts,
+               typename RH::RNG::Ptr rng,
+               const typename RH::EnvironmentInput &env) noexcept
             {
                 using Configuration = typename RH::Configuration;
                 static constexpr auto validate = vamp::planning::validate_motion<Robot, rake, 1>;
@@ -1044,7 +1048,6 @@ namespace vamp::binding
 
                 return config_nd;
             });
-
 
         submodule.def(
             "batch_validate",
@@ -1219,37 +1222,47 @@ namespace vamp::binding
                 Paths paths;
                 GoalIdx goal_idx;
 
-                auto dfs = [&](auto&& self, int m, Path path) -> void {
+                auto dfs = [&](auto &&self, int m, Path path) -> void
+                {
                     int current = path.back();
-            
-                    if (m == M) {
+
+                    if (m == M)
+                    {
                         std::vector<int> goal_ids;
-                        for (int j = 0; j < num_goals; ++j) {
-                            if (Cl(current, j)) goal_ids.push_back(j);
+                        for (int j = 0; j < num_goals; ++j)
+                        {
+                            if (Cl(current, j))
+                            {
+                                goal_ids.push_back(j);
+                            }
                         }
                         paths.push_back(std::move(path));
                         goal_idx.push_back(std::move(goal_ids));
                         return;
                     }
-            
-                    for (int n = 0; n < N; ++n) {
-                        if (Ch(m - 1, current, n) && Vh(m, n)) {
+
+                    for (int n = 0; n < N; ++n)
+                    {
+                        if (Ch(m - 1, current, n) && Vh(m, n))
+                        {
                             Path new_path = path;
                             new_path.push_back(n);
                             self(self, m + 1, std::move(new_path));
                         }
                     }
                 };
-            
-                for (int n = 0; n < N; ++n) {
-                    if (Cs(n) && Vh(0, n)) {
+
+                for (int n = 0; n < N; ++n)
+                {
+                    if (Cs(n) && Vh(0, n))
+                    {
                         dfs(dfs, 1, Path{n});
                     }
                 }
 
                 return std::make_tuple(paths, goal_idx);
             });
-        
+
         submodule.def(
             "get_all_paths",
             [](const nb::ndarray<const bool, nb::ndim<1>, nb::device::cpu> &Cs_np,
@@ -1273,30 +1286,40 @@ namespace vamp::binding
                 Paths paths;
                 GoalIdx goal_idx;
 
-                auto dfs = [&](auto&& self, int m, Path path) -> void {
+                auto dfs = [&](auto &&self, int m, Path path) -> void
+                {
                     int current = path.back();
-            
-                    if (m == M) {
+
+                    if (m == M)
+                    {
                         std::vector<int> goal_ids;
-                        for (int j = 0; j < num_goals; ++j) {
-                            if (Cl(current, j)) goal_ids.push_back(j);
+                        for (int j = 0; j < num_goals; ++j)
+                        {
+                            if (Cl(current, j))
+                            {
+                                goal_ids.push_back(j);
+                            }
                         }
                         paths.push_back(std::move(path));
                         goal_idx.push_back(std::move(goal_ids));
                         return;
                     }
-            
-                    for (int n = 0; n < N; ++n) {
-                        if (Ch(m - 1, current, n) && Vh(m, n)) {
+
+                    for (int n = 0; n < N; ++n)
+                    {
+                        if (Ch(m - 1, current, n) && Vh(m, n))
+                        {
                             Path new_path = path;
                             new_path.push_back(n);
                             self(self, m + 1, std::move(new_path));
                         }
                     }
                 };
-            
-                for (int n = 0; n < N; ++n) {
-                    if (Cs(n) && Vh(0, n)) {
+
+                for (int n = 0; n < N; ++n)
+                {
+                    if (Cs(n) && Vh(0, n))
+                    {
                         dfs(dfs, 1, Path{n});
                     }
                 }
@@ -1401,6 +1424,119 @@ namespace vamp::binding
                                 const Configuration c_g_v(&gc_view(g, 0), false);
 
                                 cg_view(b, i, g) = validate(c_a_v, c_g_v, env_v);
+                            }
+                        }
+                    }
+                }
+            });
+
+        submodule.def(
+            "incremental_batch_validate_rrtc",
+            [](const nb::ndarray<const FloatT, nb::shape<Robot::dimension>, nb::device::cpu> &start_config,
+               const nb::ndarray<const FloatT, nb::shape<-1, -1, -1, Robot::dimension>, nb::device::cpu>
+                   &batch_layers,
+               const nb::ndarray<const FloatT, nb::shape<-1, Robot::dimension>, nb::device::cpu>
+                   &goal_configs,
+               nb::ndarray<bool, nb::shape<-1, -1, -1>, nb::device::cpu> &start_validate,
+               nb::ndarray<bool, nb::shape<-1, -1, -1, -1>, nb::device::cpu> &layer_validate,
+               nb::ndarray<bool, nb::shape<-1, -1, -1>, nb::device::cpu> &goal_validate,
+               const typename RH::EnvironmentInput &env,
+               const vamp::planning::RRTCSettings &settings,
+               std::size_t start_point_range,
+               std::size_t end_point_range) noexcept
+            {
+                using Configuration = typename RH::Configuration;
+                static constexpr auto validate =
+                    // vamp::planning::validate_motion<Robot, rake, Robot::resolution>;
+                    vamp::planning::validate_motion<Robot, rake, 2>;
+
+                const typename RH::EnvironmentVector env_v(env);
+
+                const std::size_t batch_size = batch_layers.shape(0);
+                const std::size_t num_layers = batch_layers.shape(1);
+                const std::size_t num_points = batch_layers.shape(2);
+                const std::size_t num_goals = goal_configs.shape(0);
+
+                const auto bl_view = batch_layers.view();
+                const auto gc_view = goal_configs.view();
+
+                const auto cs_view = start_validate.view();
+                const auto cl_view = layer_validate.view();
+                const auto cg_view = goal_validate.view();
+
+                const Configuration c_s_v(start_config.data(), false);
+
+#ifdef VAMP_USE_OPENMP
+#pragma omp parallel firstprivate(                                                                           \
+        c_s_v,                                                                                               \
+            bl_view,                                                                                         \
+            gc_view,                                                                                         \
+            num_points,                                                                                      \
+            num_layers,                                                                                      \
+            batch_size,                                                                                      \
+            num_goals,                                                                                       \
+            env_v,                                                                                           \
+            start_point_range,                                                                               \
+            end_point_range) shared(cs_view, cl_view, cg_view) default(none)
+#endif
+                {
+                    vamp::planning::RRTC_Alloc<Robot, rake, Robot::resolution> rrtc(settings);
+                    auto rng = RH::halton();
+
+                    const auto check_connect = [&rrtc, &rng, &settings, &env_v](const auto &a, const auto &b){
+                        rng->reset();
+                        auto result = rrtc.solve(a, b, env_v, settings, rng);
+                        return result.path.size() > 1;
+                    };
+
+#ifdef VAMP_USE_OPENMP
+#pragma omp for collapse(2) schedule(dynamic, 1000) nowait
+#endif
+                    for (auto b = 0U; b < batch_size; ++b)
+                    {
+                        for (auto i = start_point_range; i < end_point_range; ++i)
+                        {
+                            const Configuration c_b_v(&bl_view(b, 0, i, 0), false);
+                            cs_view(b, 0, i) = check_connect(c_s_v, c_b_v, env_v);
+                        }
+                    }
+
+                    if (num_layers > 1)
+                    {
+#ifdef VAMP_USE_OPENMP
+#pragma omp for collapse(4) schedule(dynamic, 1000) nowait
+#endif
+                        for (auto b = 0U; b < batch_size; ++b)
+                        {
+                            for (auto l = 0U; l < num_layers - 1; ++l)
+                            {
+                                for (auto i = start_point_range; i < end_point_range; ++i)
+                                {
+                                    for (auto j = 0U; j < end_point_range; ++j)
+                                    {
+                                        const Configuration c_a_v(&bl_view(b, l, i, 0), false);
+                                        const Configuration c_b_v(&bl_view(b, l + 1, j, 0), false);
+
+                                        cl_view(b, l, i, j) = check_connect(c_a_v, c_b_v, env_v);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+#ifdef VAMP_USE_OPENMP
+#pragma omp for collapse(3) schedule(dynamic, 1000) nowait
+#endif
+                    for (auto b = 0U; b < batch_size; ++b)
+                    {
+                        for (auto i = start_point_range; i < end_point_range; ++i)
+                        {
+                            for (auto g = 0U; g < num_goals; ++g)
+                            {
+                                const Configuration c_a_v(&bl_view(b, num_layers - 1, i, 0), false);
+                                const Configuration c_g_v(&gc_view(g, 0), false);
+
+                                cg_view(b, i, g) = check_connect(c_a_v, c_g_v, env_v);
                             }
                         }
                     }

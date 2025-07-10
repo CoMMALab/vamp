@@ -20,7 +20,7 @@ namespace vamp::planning
         static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot::dimension>;
 
-        std::unique_ptr<float> buffer;
+        std::unique_ptr<float, void (*)(void *) noexcept> buffer;
         std::vector<std::size_t> parents;
         std::vector<float> radii;
 
@@ -30,14 +30,14 @@ namespace vamp::planning
         };
 
         RRTC_Alloc(const RRTCSettings &settings)
+          : buffer(
+                std::unique_ptr<float, decltype(&free)>(
+                    vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
+                        settings.max_samples * Configuration::num_scalars_rounded),
+                    &free))
+          , parents(settings.max_samples)
+          , radii(settings.max_samples)
         {
-            buffer = std::unique_ptr<float, decltype(&free)>(
-                vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
-                    settings.max_samples * Configuration::num_scalars_rounded),
-                &free);
-
-            parents = std::vector<std::size_t>(settings.max_samples);
-            radii = std::vector<float>(settings.max_samples);
         }
 
         inline auto solve(
@@ -57,19 +57,16 @@ namespace vamp::planning
 
             auto start_time = std::chrono::steady_clock::now();
 
-            for (const auto &goal : goals)
+            if (validate_motion<Robot, rake, resolution>(start, goal, environment))
             {
-                if (validate_motion<Robot, rake, resolution>(start, goal, environment))
-                {
-                    result.path.emplace_back(start);
-                    result.path.emplace_back(goal);
-                    result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
-                    result.iterations = 0;
-                    result.size.emplace_back(1);
-                    result.size.emplace_back(1);
+                result.path.emplace_back(start);
+                result.path.emplace_back(goal);
+                result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
+                result.iterations = 0;
+                result.size.emplace_back(1);
+                result.size.emplace_back(1);
 
-                    return result;
-                }
+                return result;
             }
 
             // trees
@@ -86,14 +83,11 @@ namespace vamp::planning
             parents[start_index] = start_index;
             radii[start_index] = std::numeric_limits<float>::max();
 
-            for (const auto &goal : goals)
-            {
-                goal.to_array(buffer_index(free_index));
-                goal_tree.insert(NNNode<dimension>{free_index, {buffer_index(free_index)}});
-                parents[free_index] = free_index;
-                radii[free_index] = std::numeric_limits<float>::max();
-                free_index++;
-            }
+            goal.to_array(buffer_index(free_index));
+            goal_tree.insert(NNNode<dimension>{free_index, {buffer_index(free_index)}});
+            parents[free_index] = free_index;
+            radii[free_index] = std::numeric_limits<float>::max();
+            free_index++;
 
             while (iter++ < settings.max_iterations and free_index < settings.max_samples)
             {

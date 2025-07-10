@@ -1477,13 +1477,15 @@ namespace vamp::binding
             num_goals,                                                                                       \
             env_v,                                                                                           \
             start_point_range,                                                                               \
-            end_point_range) shared(cs_view, cl_view, cg_view) default(none)
+            end_point_range,                                                                                 \
+            settings) shared(cs_view, cl_view, cg_view) default(none)
 #endif
                 {
                     vamp::planning::RRTC_Alloc<Robot, rake, Robot::resolution> rrtc(settings);
                     auto rng = RH::halton();
 
-                    const auto check_connect = [&rrtc, &rng, &settings, &env_v](const auto &a, const auto &b){
+                    const auto check_connect = [&rrtc, &rng, &settings, &env_v](const auto &a, const auto &b)
+                    {
                         rng->reset();
                         auto result = rrtc.solve(a, b, env_v, settings, rng);
                         return result.path.size() > 1;
@@ -1497,7 +1499,7 @@ namespace vamp::binding
                         for (auto i = start_point_range; i < end_point_range; ++i)
                         {
                             const Configuration c_b_v(&bl_view(b, 0, i, 0), false);
-                            cs_view(b, 0, i) = check_connect(c_s_v, c_b_v, env_v);
+                            cs_view(b, 0, i) = check_connect(c_s_v, c_b_v);
                         }
                     }
 
@@ -1517,7 +1519,7 @@ namespace vamp::binding
                                         const Configuration c_a_v(&bl_view(b, l, i, 0), false);
                                         const Configuration c_b_v(&bl_view(b, l + 1, j, 0), false);
 
-                                        cl_view(b, l, i, j) = check_connect(c_a_v, c_b_v, env_v);
+                                        cl_view(b, l, i, j) = check_connect(c_a_v, c_b_v);
                                     }
                                 }
                             }
@@ -1536,7 +1538,7 @@ namespace vamp::binding
                                 const Configuration c_a_v(&bl_view(b, num_layers - 1, i, 0), false);
                                 const Configuration c_g_v(&gc_view(g, 0), false);
 
-                                cg_view(b, i, g) = check_connect(c_a_v, c_g_v, env_v);
+                                cg_view(b, i, g) = check_connect(c_a_v, c_g_v);
                             }
                         }
                     }

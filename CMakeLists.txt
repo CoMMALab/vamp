@@ -8,6 +8,7 @@ option(VAMP_BUILD_JAX "Build JAX Extensions." OFF)
 option(VAMP_USE_OPENMP "Use OpenMP." ON)
 option(XLA_DIR "JAX FFI Directory" "")
 
+option(VAMP_BUILD_PYTHON "Build Python module" ON)
 option(VAMP_BUILD_CPP_DEMO "Build VAMP C++ Demo Scripts" OFF)
 option(VAMP_BUILD_OMPL_DEMO "Build VAMP C++ OMPL Integration Demo Scripts" OFF)
 option(VAMP_OMPL_PATH "Search Path for OMPL Installation - Only Needed for Demo Script" "")
@@ -50,131 +51,134 @@ include(CompilerSettings)
 include(FetchInitCPM)
 include(Dependencies)
 
-list(APPEND VAMP_EXT_SOURCES
-  src/impl/vamp/bindings/python.cc
-  src/impl/vamp/bindings/environment.cc
-  src/impl/vamp/bindings/settings.cc
-)
-
-list(APPEND VAMP_ROBOT_MODULES
-  sphere
-  ur5
-  panda
-  fetch
-  baxter
-)
-
-foreach(robot_name IN LISTS VAMP_ROBOT_MODULES)
-  list(APPEND VAMP_EXT_SOURCES "src/impl/vamp/bindings/${robot_name}.cc")
-endforeach()
-
-if(VAMP_BUILD_JAX)
-  list(APPEND VAMP_ROBOT_JAX_MODULES
-    panda
-    fetch
-  )
-
-  list(APPEND VAMP_EXT_SOURCES "src/impl/vamp/bindings/jax/jax.cc")
-
-  foreach(robot_name IN LISTS VAMP_ROBOT_JAX_MODULES)
-    list(APPEND VAMP_EXT_SOURCES "src/impl/vamp/bindings/jax/${robot_name}.cc")
-  endforeach()
-
-  add_definitions(-DVAMP_BUILD_JAX)
-endif()
-
-if(VAMP_USE_OPENMP)
-  add_definitions(-DVAMP_USE_OPENMP)
-endif()
-
-list(APPEND VAMP_EXT_INCLUDES
-  ${NIGH_INCLUDE_DIRS}
-  ${PDQSORT_INCLUDE_DIRS}
+list(APPEND VAMP_INCLUDES
   src/impl
 )
 
-nanobind_add_module(_core_ext
-  ${VAMP_EXT_SOURCES}
-  NOMINSIZE
-)
+if(VAMP_BUILD_PYTHON)
+    list(APPEND VAMP_EXT_SOURCES
+      src/impl/vamp/bindings/python.cc
+      src/impl/vamp/bindings/environment.cc
+      src/impl/vamp/bindings/settings.cc
+    )
 
-target_include_directories(_core_ext
-    SYSTEM PRIVATE
-    ${VAMP_EXT_INCLUDES}
-)
+    list(APPEND VAMP_ROBOT_MODULES
+      sphere
+      ur5
+      panda
+      fetch
+      baxter
+    )
 
-if(VAMP_BUILD_JAX)
-  target_include_directories(_core_ext PRIVATE ${XLA_DIR})
+    foreach(robot_name IN LISTS VAMP_ROBOT_MODULES)
+      list(APPEND VAMP_EXT_SOURCES "src/impl/vamp/bindings/${robot_name}.cc")
+    endforeach()
+
+    if(VAMP_BUILD_JAX)
+      list(APPEND VAMP_ROBOT_JAX_MODULES
+        panda
+        fetch
+      )
+
+      list(APPEND VAMP_EXT_SOURCES "src/impl/vamp/bindings/jax/jax.cc")
+
+      foreach(robot_name IN LISTS VAMP_ROBOT_JAX_MODULES)
+        list(APPEND VAMP_EXT_SOURCES "src/impl/vamp/bindings/jax/${robot_name}.cc")
+      endforeach()
+
+      add_definitions(-DVAMP_BUILD_JAX)
+    endif()
+
+    if(VAMP_USE_OPENMP)
+      add_definitions(-DVAMP_USE_OPENMP)
+    endif()
+
+    nanobind_add_module(_core_ext
+        NB_STATIC
+        STABLE_ABI
+        NOMINSIZE
+        ${VAMP_EXT_SOURCES}
+        ${VAMP_SOURCES}
+    )
+
+    target_include_directories(_core_ext
+        SYSTEM PRIVATE
+        ${VAMP_INCLUDES}
+    )
+
+    if(VAMP_BUILD_JAX)
+      target_include_directories(_core_ext PRIVATE ${XLA_DIR})
+    endif()
+
+    target_link_libraries(_core_ext
+        PRIVATE
+        Eigen3::Eigen
+    )
+
+    if(VAMP_USE_OPENMP)
+      target_link_libraries(_core_ext
+        PRIVATE OpenMP::OpenMP_CXX
+      )
+    endif()
+
+    if($ENV{GITHUB_ACTIONS})
+      set(STUB_PREFIX "")
+    else()
+      set(STUB_PREFIX "${CMAKE_BINARY_DIR}/stubs/")
+    endif()
+
+    nanobind_add_stub(
+      vamp_stub
+      MODULE _core_ext
+      OUTPUT "${STUB_PREFIX}__init__.pyi"
+      PYTHON_PATH $<TARGET_FILE_DIR:_core_ext>
+      DEPENDS _core_ext
+      VERBOSE
+    )
+
+    foreach(robot_name IN LISTS VAMP_ROBOT_MODULES)
+      nanobind_add_stub(
+        "vamp_${robot_name}_stub"
+        MODULE "_core_ext.${robot_name}"
+        OUTPUT "${STUB_PREFIX}${robot_name}.pyi"
+        PYTHON_PATH $<TARGET_FILE_DIR:_core_ext>
+        DEPENDS _core_ext
+        VERBOSE
+      )
+    endforeach()
+
+    install(
+      TARGETS _core_ext
+      LIBRARY
+      DESTINATION vamp/_core
+    )
+
+    install(
+      FILES "${STUB_PREFIX}__init__.pyi"
+      DESTINATION "${CMAKE_SOURCE_DIR}/src/vamp/_core"
+    )
+
+    foreach(robot_name IN LISTS VAMP_ROBOT_MODULES)
+      install(
+        FILES "${STUB_PREFIX}${robot_name}.pyi"
+        DESTINATION "${CMAKE_SOURCE_DIR}/src/vamp/_core"
+      )
+    endforeach()
 endif()
-
-target_link_libraries(_core_ext
-  PRIVATE Eigen3::Eigen
-)
-
-
-if(VAMP_USE_OPENMP)
-  target_link_libraries(_core_ext
-    PRIVATE OpenMP::OpenMP_CXX
-  )
-endif()
-
-if($ENV{GITHUB_ACTIONS})
-  set(STUB_PREFIX "")
-else()
-  set(STUB_PREFIX "${CMAKE_BINARY_DIR}/stubs/")
-endif()
-
-nanobind_add_stub(
-  vamp_stub
-  MODULE _core_ext
-  OUTPUT "${STUB_PREFIX}__init__.pyi"
-  PYTHON_PATH $<TARGET_FILE_DIR:_core_ext>
-  DEPENDS _core_ext
-  VERBOSE
-)
-
-foreach(robot_name IN LISTS VAMP_ROBOT_MODULES)
-  nanobind_add_stub(
-    "vamp_${robot_name}_stub"
-    MODULE "_core_ext.${robot_name}"
-    OUTPUT "${STUB_PREFIX}${robot_name}.pyi"
-    PYTHON_PATH $<TARGET_FILE_DIR:_core_ext>
-    DEPENDS _core_ext
-    VERBOSE
-  )
-endforeach()
-
-install(
-  TARGETS _core_ext
-  LIBRARY
-  DESTINATION vamp/_core
-)
-
-install(
-  FILES "${STUB_PREFIX}__init__.pyi"
-  DESTINATION "${CMAKE_SOURCE_DIR}/src/vamp/_core"
-)
-
-foreach(robot_name IN LISTS VAMP_ROBOT_MODULES)
-  install(
-    FILES "${STUB_PREFIX}${robot_name}.pyi"
-    DESTINATION "${CMAKE_SOURCE_DIR}/src/vamp/_core"
-  )
-endforeach()
 
 if(VAMP_BUILD_CPP_DEMO)
-  add_executable(vamp_rrtc_example scripts/cpp/rrtc_example.cc)
+  add_executable(vamp_rrtc_example scripts/cpp/rrtc_example.cc ${VAMP_SOURCES})
   target_link_libraries(vamp_rrtc_example PRIVATE Eigen3::Eigen)
-  target_include_directories(vamp_rrtc_example SYSTEM PRIVATE ${VAMP_EXT_INCLUDES})
+  target_include_directories(vamp_rrtc_example SYSTEM PRIVATE ${VAMP_INCLUDES})
 endif()
 
 if(VAMP_BUILD_OMPL_DEMO)
   find_package(ompl QUIET PATHS ${VAMP_OMPL_PATH})
 
   if(ompl_FOUND)
-    add_executable(vamp_ompl_integration scripts/cpp/ompl_integration.cc)
+    add_executable(vamp_ompl_integration scripts/cpp/ompl_integration.cc ${VAMP_SOURCES})
     target_link_libraries(vamp_ompl_integration PRIVATE ompl::ompl Eigen3::Eigen)
-    target_include_directories(vamp_ompl_integration SYSTEM PRIVATE ${VAMP_EXT_INCLUDES})
+    target_include_directories(vamp_ompl_integration SYSTEM PRIVATE ${VAMP_INCLUDES})
   else()
     message(WARNING "OMPL not found! Cannot build OMPL demo.")
   endif()

@@ -22,6 +22,7 @@ from vamp._core import Sphere as Sphere
 from vamp._core import baxter as baxter
 from vamp._core import fetch as fetch
 from vamp._core import panda as panda
+from vamp._core import pandatopp as pandatopp
 from vamp._core import sphere as sphere
 from vamp._core import ur5 as ur5
 from vamp.constants import *
@@ -34,6 +35,7 @@ AnyPlanningResult = Union[
     panda.PlanningResult,
     fetch.PlanningResult,
     baxter.PlanningResult,
+    pandatopp.PlanningResult,
     ]
 
 

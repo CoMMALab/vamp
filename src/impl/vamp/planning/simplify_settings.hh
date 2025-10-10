@@ -9,6 +9,7 @@ namespace vamp::planning
         BSPLINE,
         REDUCE,
         SHORTCUT,
+        SHORTCUT_BEZ,
         PERTURB,
     };
 
@@ -44,8 +45,10 @@ namespace vamp::planning
         std::size_t interpolate{0};
         std::vector<SimplifyRoutine> operations{{SHORTCUT, BSPLINE}};
 
+        bool bez = false;
         ReduceSettings reduce;
         ShortcutSettings shortcut;
+        ShortcutSettings shortcut_bez;
         BSplineSettings bspline;
         PerturbSettings perturb;
     };

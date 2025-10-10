@@ -1,11 +1,18 @@
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
-	# Need explicit AVX2 for some MacOS clang versions
-	set(VAMP_ARCH "-march=native -mavx2")
-elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
-	# ARM platforms (aarch64 / arm64)
-	set(VAMP_ARCH "-mcpu=native -mtune=native")
-else()
-	message(FATAL_ERROR "Unsupported architecture ${CMAKE_SYSTEM_PROCESSOR}")
+# Allow users to override VAMP_ARCH (e.g., for Docker builds targeting different hardware)
+if(NOT DEFINED VAMP_ARCH)
+	if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+		# Need explicit AVX2 for some MacOS clang versions
+		set(VAMP_ARCH "-march=native -mavx2")
+	elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+		# ARM platforms (aarch64 / arm64)
+		set(VAMP_ARCH "-mcpu=native -mtune=native")
+		# Fix for GCC 13+ NEON vector type conversion errors
+		if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+			string(APPEND VAMP_ARCH " -flax-vector-conversions")
+		endif()
+	else()
+		message(FATAL_ERROR "Unsupported architecture ${CMAKE_SYSTEM_PROCESSOR}")
+	endif()
 endif()
 
 # default fast args that work on all platforms
@@ -21,12 +28,14 @@ if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64") # x86 supports additional flags
 	endif()
 endif()
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${VAMP_ARCH} -Wall -Wextra")
+# Vector types have their alignment hints ignored all over the place, so ignore these warnings.
+# Should be fine on any modern PC.
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${VAMP_ARCH} -Wall -Wextra -Wno-ignored-attributes")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -g")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 ${VAMP_FAST_ARGS}")
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${VAMP_ARCH} -Wall -Wextra")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${VAMP_ARCH} -Wall -Wextra -Wno-ignored-attributes")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g -O0")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -g")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 ${VAMP_FAST_ARGS}")

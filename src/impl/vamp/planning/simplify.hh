@@ -8,12 +8,13 @@
 #include <vamp/planning/validate.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/vector.hh>
+#include <vamp/planning/bezier.hh>
 
 namespace vamp::planning
 {
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline static auto smooth_bspline(
-        Path<Robot::dimension> &path,
+        Path<Robot> &path,
         const collision::Environment<FloatVector<rake>> &environment,
         const BSplineSettings &settings) -> bool
     {
@@ -54,10 +55,10 @@ namespace vamp::planning
 
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline static auto reduce_path_vertices(
-        Path<Robot::dimension> &path,
+        Path<Robot> &path,
         const collision::Environment<FloatVector<rake>> &environment,
         const ReduceSettings &settings,
-        const typename vamp::rng::RNG<Robot::dimension>::Ptr rng) -> bool
+        const typename vamp::rng::RNG<Robot>::Ptr rng) -> bool
     {
         if (path.size() < 3)
         {
@@ -114,7 +115,7 @@ namespace vamp::planning
 
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline static auto shortcut_path(
-        Path<Robot::dimension> &path,
+        Path<Robot> &path,
         const collision::Environment<FloatVector<rake>> &environment,
         const ShortcutSettings & /*settings*/) -> bool
     {
@@ -141,11 +142,39 @@ namespace vamp::planning
     }
 
     template <typename Robot, std::size_t rake, std::size_t resolution>
+    inline static auto shortcut_bez_path(
+        Path<Robot> &path,
+        const collision::Environment<FloatVector<rake>> &environment,
+        const ShortcutSettings & /*settings*/) -> bool
+    {
+        if (path.size() < 3)
+        {
+            return false;
+        }
+
+        bool result = false;
+        for (auto i = 0U; i < path.size() - 2; ++i)
+        {
+            for (auto j = path.size() - 1; j > i + 1; --j)
+            {
+                if (validate_bez_motion<Robot, rake, resolution>(path[i], path[j], environment))
+                {
+                    path.erase(path.begin() + i + 1, path.begin() + j);
+                    result = true;
+                    break;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    template <typename Robot, std::size_t rake, std::size_t resolution>
     inline static auto perturb_path(
-        Path<Robot::dimension> &path,
+        Path<Robot> &path,
         const collision::Environment<FloatVector<rake>> &environment,
         const PerturbSettings &settings,
-        const typename vamp::rng::RNG<Robot::dimension>::Ptr rng) -> bool
+        const typename vamp::rng::RNG<Robot>::Ptr rng) -> bool
     {
         if (path.size() < 3)
         {
@@ -191,14 +220,23 @@ namespace vamp::planning
 
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline auto simplify(
-        const Path<Robot::dimension> &path,
+        const Path<Robot> &path,
         const collision::Environment<FloatVector<rake>> &environment,
         const SimplifySettings &settings,
-        const typename vamp::rng::RNG<Robot::dimension>::Ptr rng) -> PlanningResult<Robot::dimension>
+        const typename vamp::rng::RNG<Robot>::Ptr rng) -> PlanningResult<Robot>
     {
         auto start_time = std::chrono::steady_clock::now();
 
-        PlanningResult<Robot::dimension> result;
+        PlanningResult<Robot> result;
+
+        if (settings.bez) {
+            // const auto shortcut_bez = [&result, &environment, settings]()
+            //     { return shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut_bez); };
+            // result.path
+            result.path = path;
+            shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut_bez);
+            return result;
+        }
 
         const auto bspline = [&result, &environment, settings]()
         { return smooth_bspline<Robot, rake, resolution>(result.path, environment, settings.bspline); };
@@ -209,6 +247,7 @@ namespace vamp::planning
         };
         const auto shortcut = [&result, &environment, settings]()
         { return shortcut_path<Robot, rake, resolution>(result.path, environment, settings.shortcut); };
+        
         const auto perturb = [&result, &environment, settings, rng]()
         { return perturb_path<Robot, rake, resolution>(result.path, environment, settings.perturb, rng); };
 
@@ -216,6 +255,7 @@ namespace vamp::planning
             {BSPLINE, bspline},
             {REDUCE, reduce},
             {SHORTCUT, shortcut},
+            // {SHORTCUT_BEZ, shortcut_bez},
             {PERTURB, perturb},
         };
 
@@ -255,6 +295,87 @@ namespace vamp::planning
             }
         }
 
+        result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
+        return result;
+    }
+
+    // ADD BEZ INTERPLATION
+    template <typename Robot, std::size_t rake, std::size_t resolution>
+    inline auto compute_traj(
+        const Path<Robot> &path,
+        const collision::Environment<FloatVector<rake>> &environment,
+        const SimplifySettings &settings,
+        const typename vamp::rng::RNG<Robot>::Ptr rng) -> PlanningResult<Robot>
+    {
+        auto start_time = std::chrono::steady_clock::now();
+
+        // object to store result
+        // path param
+        PlanningResult<Robot> result;
+
+        // for waypoint in path, call topple_nn_forward  
+        for (int i = 0; i < path.size() - 1; i++) {
+            std::vector<double> x;
+            auto path_arr = path[i].to_array();
+            auto path_arr1 = path[i + 1].to_array();   
+            // std::cout << path_arr.size() << std::endl;
+            for (int j = 0; j < Robot::dimension; j++) {
+                x.push_back(static_cast<double>(path_arr[j]));
+            }
+            for (int j = 0; j < Robot::dimension; j++) {
+                x.push_back(static_cast<double>(path_arr1[j]));
+            }
+            std::array<double, 29> out;
+
+            Robot::template topple_nn_forward(x, out);
+
+            // build the anchors
+            row_matrix anchors(6, Robot::dimension / 3);
+
+            // initial point
+            for (int j = 0; j < Robot::dimension / 3; ++j) {
+                anchors(0, j) = x[j];
+            }
+
+            // intermediate points
+            for (int j = 1; j <= 4; j++) {
+                for (int k = 0; k < Robot::dimension / 3; ++k) {
+                    anchors(j, k) = out[(j - 1) * Robot::dimension / 3 + k];
+                }
+            }
+
+            // final point
+            for (int j = 0; j < Robot::dimension / 3; j++) {
+                anchors(5, j) = x[j + Robot::dimension];
+            }
+
+            // std::cout << anchors.row(5) << std::endl;
+
+            int T = out[28] * 1000;
+
+            Bezier bez(anchors);
+
+            std::vector<state> waypts = bez.generate_trajectory(T);
+            // convert waypoints to floatvector
+            for (int j = 0; j < waypts.size(); j++) {
+                alignas(vamp::FloatVectorAlignment)
+                std::array<float, vamp::FloatVector<Robot::dimension>::num_scalars_rounded> tmp = {};
+
+                // copy and cast the actual Dim scalars
+                for (int k = 0; k < Robot::dimension; ++k) {
+                    tmp[k] = static_cast<double>(waypts[j](0, static_cast<int>(k)));
+                    if (k > Robot::dimension / 3) {
+                        tmp[k] = 0;
+                    }
+                }
+
+                // construct the SIMD vector (constructor takes pointer to float data)
+                vamp::FloatVector<Robot::dimension> vv(tmp.data());
+                result.path.emplace_back(vv);
+                // std::cout << waypts[j] << std::endl;
+            }
+        }
+       
         result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
         return result;
     }

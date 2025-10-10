@@ -1,11 +1,13 @@
 # 🧛 Vector-Accelerated Motion Planning (VAMP)
 
+[![Build Check](https://github.com/KavrakiLab/vamp/actions/workflows/build.yml/badge.svg)](https://github.com/KavrakiLab/vamp/actions/workflows/build.yml)
+[![Format Check](https://github.com/KavrakiLab/vamp/actions/workflows/format.yml/badge.svg)](https://github.com/KavrakiLab/vamp/actions/workflows/format.yml)
+[![PyPI - Version](https://img.shields.io/pypi/v/vamp-planner)](https://pypi.org/project/vamp-planner/)
+
 [![arXiv VAMP](https://img.shields.io/badge/arXiv-2309.14545-b31b1b.svg)](https://arxiv.org/abs/2309.14545)
 [![arXiv CAPT](https://img.shields.io/badge/arXiv-2406.02807-b31b1b.svg)](https://arxiv.org/abs/2406.02807)
 [![arXiv FCIT](https://img.shields.io/badge/arXiv-2411.17902-b31b1b.svg)](https://arxiv.org/abs/2411.17902)
 [![arXiv AORRTC](https://img.shields.io/badge/arXiv-2505.10542-b31b1b.svg)](https://arxiv.org/abs/2505.10542)
-[![Build Check](https://github.com/KavrakiLab/vamp/actions/workflows/build.yml/badge.svg)](https://github.com/KavrakiLab/vamp/actions/workflows/build.yml)
-[![Format Check](https://github.com/KavrakiLab/vamp/actions/workflows/format.yml/badge.svg)](https://github.com/KavrakiLab/vamp/actions/workflows/format.yml)
 
 ![Demo video](resources/capt_demo.gif)
 
@@ -69,7 +71,15 @@ If you use AORRTC, please use the following citation:
 }
 ```
 
-## Building and Installing
+## Installation
+
+You can simply download the latest release of VAMP from PyPI with:
+```bash
+pip install vamp-planner
+```
+
+> [!IMPORTANT]  
+> VAMP comes with precompiled robots! If you want to add your own, use [cricket](https://github.com/CoMMALab/cricket) and follow the instructions there.
 
 VAMP requires the following system dependencies:
 - [CMake](https://cmake.org/) version 3.16 or greater.
@@ -81,6 +91,9 @@ VAMP requires the following system dependencies:
   To install on Ubuntu 22.04, `sudo apt install python3-dev`.
 - [`Eigen3`](https://eigen.tuxfamily.org/index.php?title=Main_Page) for some vector/matrix operations.
   To install on Ubuntu 22.04, `sudo apt install libeigen3-dev`.
+  Note that we require at least Eigen 3.4, which is not available by default on Ubuntu 20.04.
+
+### Installation from Source
 
 VAMP fetches the following external dependencies via [CPM](https://github.com/cpm-cmake/CPM.cmake):
 - [`nanobind`](https://github.com/wjakob/nanobind): for Python bindings
@@ -88,11 +101,11 @@ VAMP fetches the following external dependencies via [CPM](https://github.com/cp
 - [`pdqsort`](https://github.com/orlp/pdqsort): for fast sorting
 - [`SIMDxorshift`](https://github.com/lemire/SIMDxorshift): alternative fast random numbers for x86 machines
 
-
-Download the code and submodules:
+Download the code:
 ```bash
 git clone git@github.com:KavrakiLab/vamp.git
 ```
+
 ### Python
 For use through Python, install with `pip`:
 ```bash
@@ -121,10 +134,20 @@ pip install --no-build-isolation -Ceditable.rebuild=true -ve .
 If you wish to extend `vamp` via C++, please build directly with CMake, e.g.:
 ```
 cd vamp
-cmake -B build -DCMAKE_BUILD_TYPE=Release .
+cmake -Bbuild -DCMAKE_BUILD_TYPE=Release .
 cmake --build build
 ```
 Please see `CMakeLists.txt` for further build configuration options.
+
+#### Architecture-Specific Build Options
+By default, VAMP builds with `-march=native` for optimal performance on the build machine. For builds targeting different hardware (e.g., Docker containers), you can override the architecture flags:
+```bash
+cmake -Bbuild -DCMAKE_BUILD_TYPE=Release -DVAMP_ARCH="-march=x86-64-v3 -mavx2" .
+```
+
+Example options:
+- `-march=x86-64-v3 -mavx2`: Supports most modern x86_64 systems (2013+), includes BMI2 instructions required by VAMP
+- `-march=native -mavx2`: Default setting, optimizes for build machine's specific CPU
 
 ### Docker
 We provide example dockerfiles in `docker/` that show installation on Ubuntu 20.04, 22.04, and 24.04.
@@ -163,15 +186,29 @@ python resources/problem_tar_to_pkl_json.py --robot panda
 ```
 This only needs to be run once.
 
+## Custom Robots
+VAMP uses a tracing compilation step to generate code for the SIMD raked collision check.
+This compiler is available in the  [`cricket`](https://github.com/CoMMALab/cricket) repository.
+There are instructions in `cricket`'s readme for how to setup a new robot.
+You will also need to come up with a spherical decomposition of the robot's collision geometry.
+This can be done automatically with the tool [`foam`](https://github.com/CoMMALab/foam/).
+
+> [!WARNING]  
+> There may be some tuning of the spherization of the robot necessary to get everything to work! Start with a finer approximation of the robot and work up from there.
+
+## Robot-Specific Functions
 Each robot in VAMP is provided as a Python submodule (e.g., `vamp.panda`, `vamp.fetch`) and supports the following functions:
-- `rrtc`: RRT-Connect. See [Supported Planners](#Supported-Planners)
-- `prm`: PRM. See [Supported Planners](#Supported-Planners)
-- `roadmap`: returns the constructed roadmap generated by PRM
-- `simplify`: simplifies a planned path
-- `validate`: checks if a standalone configuration in collision
-- `sphere_validity`: returns a list, for each sphere in the robot model, of the names of all objects currently colliding with the sphere
-- `fk`: performs FK to compute the locations of all robot collision spheres
-- `filter_from_pointcloud`: removes points in the pointcloud that are currently in collision with the robot (i.e., points which probably belong to the robot, if the robot is in a known valid configuration)
+- `rrtc`: RRT-Connect. See [Supported Planners](#Supported-Planners).
+- `prm`: PRM. See [Supported Planners](#Supported-Planners).
+- `fcit`: FCIT*. See [Supported Planners](#Supported-Planners).
+- `aorrtc`: AORRTC. See [Supported Planners](#Supported-Planners).
+- `roadmap`: returns the constructed roadmap generated by PRM.
+- `simplify`: simplifies a planned path.
+- `validate`: checks if a standalone configuration in collision.
+- `debug`: returns information on what spheres of the robot are colliding with each other and the environment.
+- `fk`: performs FK to compute the locations of all robot collision spheres.
+- `eefk`: compute the end-effector transform for a given configuration. Used by attachments.
+- `filter_self_from_pointcloud`: removes points in the pointcloud that are currently in collision with the robot (i.e., points which probably belong to the robot, if the robot is in a known valid configuration).
 
 For the flying sphere in $\mathbb{R}^3$, additional operations are available to set the domain of the sphere and the radius:
 - `vamp.sphere.set_lows()` and `vamp.sphere.set_highs()` to set bounding box of space
@@ -275,6 +312,7 @@ Inside `impl/vamp`, the code is divided into the following directories:
 - `vector.hh` and `vector/`:
   Our abstract SIMD interface that underpins much of the core C++ library.
   The interface for these types is described in `interface.hh`, and the actual implementations of the operations for specific instruction sets are in `avx.hh` (for x86 AVX2) and `neon.hh` (for ARM NEON).
+  
 - `bindings/`:
   Python bindings, via [nanobind](https://github.com/wjakob/nanobind).
   The main module is described starting in `python.cc`, with code separated out logically for more efficient compilation.

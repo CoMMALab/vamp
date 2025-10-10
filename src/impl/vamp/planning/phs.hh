@@ -32,9 +32,10 @@ namespace vamp::planning
 
     }  // namespace utils
 
-    template <std::size_t dimension>
+    template <typename Robot>
     class ProlateHyperspheroid
     {
+        static constexpr auto dimension = Robot::dimension;
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     public:
@@ -90,13 +91,13 @@ namespace vamp::planning
         }
 
     private:
-        float transverse_diameter{0.};
-        float min_transverse_diameter;
-        float phs_measure;
-
         vamp::FloatVector<dimension> focus_1;
         vamp::FloatVector<dimension> focus_2;
         vamp::FloatVector<dimension> center;
+
+        float transverse_diameter{0.};
+        float min_transverse_diameter;
+        float phs_measure;
 
         using EigenVector = Eigen::Vector<float, dimension>;
         using EigenMatrix = Eigen::Matrix<float, dimension, dimension>;
@@ -114,8 +115,9 @@ namespace vamp::planning
             }
             else
             {
-                const EigenVector transverse_axis =
-                    vamp::vector_to_eigen((focus_2 - focus_1) / min_transverse_diameter);
+                const EigenVector f1 = vamp::vector_to_eigen(focus_1);
+                const EigenVector f2 = vamp::vector_to_eigen(focus_2);
+                const EigenVector transverse_axis = (f2 - f1) / min_transverse_diameter;
                 const EigenMatrix wahba_prob = transverse_axis * EigenMatrix::Identity().col(0).transpose();
 
                 Eigen::JacobiSVD<EigenMatrix, Eigen::NoQRPreconditioner> svd(
@@ -128,6 +130,7 @@ namespace vamp::planning
         }
 
         void update_transformation()
+
         {
             const float conjugate_diamater = std::sqrt(
                 transverse_diameter * transverse_diameter -
@@ -142,18 +145,35 @@ namespace vamp::planning
     };
 
     template <typename Robot>
-    struct ProlateHyperspheroidRNG : public rng::RNG<Robot::dimension>
+    struct ProlateHyperspheroidRNG : public rng::RNG<Robot>
     {
-        ProlateHyperspheroidRNG(
-            ProlateHyperspheroid<Robot::dimension> phs,
-            typename vamp::rng::RNG<Robot::dimension>::Ptr &rng)
+        ProlateHyperspheroidRNG(ProlateHyperspheroid<Robot> phs, typename vamp::rng::RNG<Robot>::Ptr &rng)
           : phs(phs), rng(rng)
         {
         }
 
+        inline void reset() noexcept override
+        {
+            rng->reset();
+            rng->dist.reset();
+        }
+
+        inline auto next() noexcept -> FloatVector<Robot::dimension> override
+        {
+            auto x = phs.transform(uniform_in_ball());
+
+            // Clamp values
+            Robot::descale_configuration(x);
+            x.clamp(0.F, 1.F);
+            Robot::scale_configuration(x);
+
+            return x;
+        }
+
         inline auto logit() noexcept -> vamp::FloatVector<Robot::dimension>
         {
-            const auto U1 = rng->next();
+            auto U1 = rng->next();
+            Robot::descale_configuration(U1);
             return (U1 * (1 - U1).rcp()).log() * std::sqrt(vamp::utils::constants::pi / 8.F);
         }
 
@@ -169,23 +189,8 @@ namespace vamp::planning
                    uniform_on_ball();
         }
 
-        inline void reset() noexcept override
-        {
-            rng->reset();
-            rng->dist.reset();
-        }
-
-        inline auto next() noexcept -> FloatVector<Robot::dimension> override
-        {
-            auto x = phs.transform(uniform_in_ball());
-
-            // HACK: Planners expect output to be in unit hypercube...
-            Robot::descale_configuration(x);
-            return x.clamp(0.F, 1.F);
-        }
-
-        ProlateHyperspheroid<Robot::dimension> phs;
-        typename vamp::rng::RNG<Robot::dimension>::Ptr rng;
+        ProlateHyperspheroid<Robot> phs;
+        typename vamp::rng::RNG<Robot>::Ptr rng;
     };
 
 }  // namespace vamp::planning

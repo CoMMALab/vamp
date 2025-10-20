@@ -1,6 +1,6 @@
 import vamp
 import numpy as np
-from vamp import pybullet_interface as vpb
+# from vamp import pybullet_interface as vpb
 import pinocchio.visualize
 import os
 import time
@@ -25,23 +25,55 @@ model, collision_model, visual_model = pinocchio.buildModelsFromUrdf(
     path + "/fr3_franka_hand.urdf", path + "/fr3/collision", None
 )
 
-plane_geom = fcl.Box(0.4, 0.2, 0.5)
-plane_name = "front_plane"
-plane_placement = pinocchio.SE3(pinocchio.utils.rotate('x', 0), np.array([0.5, 0, 0.25]))
-plane_object = pinocchio.GeometryObject(
-    name=plane_name, parent_joint=0, parent_frame=0, placement=plane_placement, collision_geometry=plane_geom
-)
-plane_object.meshColor = np.array([0, 0, 0, 1])
-visual_model.addGeometryObject(plane_object)
+# plane_geom = fcl.Box(0.4, 0.2, 0.5)
+# plane_name = "front_plane"
+# plane_placement = pinocchio.SE3(pinocchio.utils.rotate('x', 0), np.array([0.5, 0, 0.25]))
+# plane_object = pinocchio.GeometryObject(
+#     name=plane_name, parent_joint=0, parent_frame=0, placement=plane_placement, collision_geometry=plane_geom
+# )
+# plane_object.meshColor = np.array([0, 0, 0, 1])
+# visual_model.addGeometryObject(plane_object)
 
-plane_geom = fcl.Box(0.4, 0.2, 0.5)
-plane_name = "front_plane1"
-plane_placement = pinocchio.SE3(pinocchio.utils.rotate('x', 0), np.array([0.5, 0, 1.1]))
-plane_object = pinocchio.GeometryObject(
-    name=plane_name, parent_joint=0, parent_frame=0, placement=plane_placement, collision_geometry=plane_geom
-)
-plane_object.meshColor = np.array([0, 0, 0, 1])
-visual_model.addGeometryObject(plane_object)
+# plane_geom = fcl.Box(0.4, 0.2, 0.5)
+# plane_name = "front_plane1"
+# plane_placement = pinocchio.SE3(pinocchio.utils.rotate('x', 0), np.array([0.5, 0, 1.05]))
+# plane_object = pinocchio.GeometryObject(
+#     name=plane_name, parent_joint=0, parent_frame=0, placement=plane_placement, collision_geometry=plane_geom
+# )
+# plane_object.meshColor = np.array([0, 0, 0, 1])
+# visual_model.addGeometryObject(plane_object)
+
+
+
+rng = vamp_module.halton()
+
+plan_settings.max_iterations = 1000000
+plan_settings.max_samples = 1000000
+plan_settings.range = 2
+simp_settings.bez = True
+plan_settings.radius = 16
+
+# xyz, rpy, lwh
+cuboids_data = [
+        # back
+        [[0.5, 0.0, 1.3], [0.0, 0.0, 0.0], [0.4, 0.1, 0.5]],
+        # front wall
+        [[0.5, 0.0, 0.0], [0.0, 0.0, 0.0], [0.2, 0.1, 0.5]],
+        # ground plane
+        [[0, 0, -0.15], [0.0, 0.0, 0.0], [1.0, 1.0, 0.1]],
+        [[0.4, -0.6, 0.8], [0, 0, 0], [0.2, 0.1, 0.5]]
+    ]
+
+for i in range(len(cuboids_data)):
+    cuboid = cuboids_data[i]
+    plane_geom = fcl.Box(cuboid[2][0] * 2, cuboid[2][1] * 2, cuboid[2][2])
+    plane_name = f"front_plane{i}"
+    plane_placement = pinocchio.SE3(pinocchio.utils.rotate('x', 0), np.array([cuboid[0][0], cuboid[0][1], cuboid[0][2] - (cuboid[0][2]) / (abs(cuboid[0][2]) + 0.01) * (cuboid[2][2] / 2)]))
+    plane_object = pinocchio.GeometryObject(
+        name=plane_name, parent_joint=0, parent_frame=0, placement=plane_placement, collision_geometry=plane_geom
+    )
+    plane_object.meshColor = np.array([0, 0, 0, 1])
+    visual_model.addGeometryObject(plane_object)
 
 viz = pinocchio.visualize.MeshcatVisualizer(model, collision_model, visual_model)
 
@@ -54,29 +86,6 @@ except ImportError as err:
     print(err)
     exit(0)
 viz.loadViewerModel()
-
-rng = vamp_module.halton()
-
-plan_settings.max_iterations = 10000
-plan_settings.max_samples = 10000
-plan_settings.range = 2
-simp_settings.bez = True
-
-# xyz, rpy, lwh
-cuboids_data = [
-        # table
-        #[[0.0, 0.0, -0.08], [0.0, 0.0, 0.0], [1.5, 1.5, 0.1]],
-        # roof
-        # [[0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [1.5, 1.5, 0.1]],
-        # right wall
-        # [[-0.4, 0.0, 0.91], [0.0, 0.0, 0.0], [0.01, 1.0, 1.0]],
-        # back
-        [[0.5, 0.0, 1.35], [0.0, 0.0, 0.0], [0.2, 0.1, 0.5]],
-        # front wall
-        [[0.5, 0.0, 0.0], [0.0, 0.0, 0.0], [0.2, 0.1, 0.5]],
-        # ground plane
-        [[0, 0, -0.2], [0.0, 0.0, 0.0], [1.0, 1.0, 0.1]],
-    ]
 
 # sim = vpb.PyBulletSimulator(str("../resources/panda/panda.urdf"), vamp_module.joint_names(), True)
 

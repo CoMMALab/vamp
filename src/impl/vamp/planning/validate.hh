@@ -118,7 +118,8 @@ namespace vamp::planning
         // const std::size_t n = std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
         // no idea if this is correct (its not)
         // std::cout << "check collision" << std::endl;
-        const std::size_t n = static_cast<float>(resolution) / 2;
+        // make n related to path length later
+        const std::size_t n = static_cast<float>(resolution);
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                  Robot::template fkcc<rake>(environment, block);
                                                 

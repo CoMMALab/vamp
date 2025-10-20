@@ -119,7 +119,7 @@ namespace vamp::planning
         // no idea if this is correct (its not)
         // std::cout << "check collision" << std::endl;
         // make n related to path length later
-        const std::size_t n = static_cast<float>(resolution);
+        const std::size_t n = static_cast<float>(resolution) / 2;
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                  Robot::template fkcc<rake>(environment, block);
                                                 

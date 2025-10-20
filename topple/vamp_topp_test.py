@@ -47,28 +47,28 @@ model, collision_model, visual_model = pinocchio.buildModelsFromUrdf(
 
 rng = vamp_module.halton()
 
-plan_settings.max_iterations = 1000000
-plan_settings.max_samples = 1000000
-plan_settings.range = 2
+plan_settings.max_iterations = 100000
+plan_settings.max_samples = 100000
+plan_settings.range = 10
 simp_settings.bez = True
-plan_settings.radius = 16
+plan_settings.radius = 10
 
 # xyz, rpy, lwh
 cuboids_data = [
         # back
-        [[0.5, 0.0, 1.3], [0.0, 0.0, 0.0], [0.4, 0.1, 0.5]],
+        # [[0.0, 0.0, 1.3], [0.0, 0.0, 0.0], [1.6, 0.1, 0.5]],
         # front wall
         [[0.5, 0.0, 0.0], [0.0, 0.0, 0.0], [0.2, 0.1, 0.5]],
         # ground plane
         [[0, 0, -0.15], [0.0, 0.0, 0.0], [1.0, 1.0, 0.1]],
-        [[0.4, -0.6, 0.8], [0, 0, 0], [0.2, 0.1, 0.5]]
+        # [[0.4, -0.6, 0.8], [0, 0, 0], [0.2, 0.1, 0.5]]
     ]
 
 for i in range(len(cuboids_data)):
     cuboid = cuboids_data[i]
-    plane_geom = fcl.Box(cuboid[2][0] * 2, cuboid[2][1] * 2, cuboid[2][2])
+    plane_geom = fcl.Box(cuboid[2][0] * 2, cuboid[2][1] * 2, 2 * cuboid[2][2])
     plane_name = f"front_plane{i}"
-    plane_placement = pinocchio.SE3(pinocchio.utils.rotate('x', 0), np.array([cuboid[0][0], cuboid[0][1], cuboid[0][2] - (cuboid[0][2]) / (abs(cuboid[0][2]) + 0.01) * (cuboid[2][2] / 2)]))
+    plane_placement = pinocchio.SE3(pinocchio.utils.rotate('x', 0), np.array([cuboid[0][0], cuboid[0][1], cuboid[0][2]]))
     plane_object = pinocchio.GeometryObject(
         name=plane_name, parent_joint=0, parent_frame=0, placement=plane_placement, collision_geometry=plane_geom
     )
@@ -113,16 +113,87 @@ result = vamp_module.simplify(result.path, env, simp_settings, rng)
 traj = vamp_module.compute_traj(result.path, env, simp_settings, rng)
 # print(traj.path.numpy(), flush=True)
 q_path = traj.path.numpy()[:, 0:7]
+# later make vamp output qd_path
+qd_path = []
+for i in range(len(q_path) - 1):
+    qd_path.append((q_path[i + 1] - q_path[i]) / 0.001)
+qd_path.append(pos2[7:14])
+qd_path = np.array(qd_path)
 
 viz.display(q_path[0])
 
 input("Ready, press any key: ")
-q_curr = None
+q_curr = pos1[0:7]
 for i in range(0, len(q_path), 5):
     ts = time.perf_counter()
+    # q_curr += qd_path[i] * 0.001
     q_curr = q_path[i]
     viz.display(q_curr)
     tf = time.perf_counter()
     # print(tf - ts)
     # time.sleep(0.0001)
+
+def exec_vels(qd_path):
+    robot = Robot("172.16.0.2")
+
+    try:
+        # Set collision behavior
+        lower_torque_thresholds = [20.0, 20.0, 18.0, 18.0, 16.0, 14.0, 12.0]
+        upper_torque_thresholds = [20.0, 20.0, 18.0, 18.0, 16.0, 14.0, 12.0]
+        lower_force_thresholds = [20.0, 20.0, 20.0, 25.0, 25.0, 25.0]
+        upper_force_thresholds = [20.0, 20.0, 20.0, 25.0, 25.0, 25.0]
+
+        robot.set_collision_behavior(
+            lower_torque_thresholds,
+            upper_torque_thresholds,
+            lower_force_thresholds,
+            upper_force_thresholds,
+        )
+
+        # Start joint position control with external control loop
+        active_control = robot.start_joint_position_control(ControllerMode.CartesianImpedance)
+
+        initial_position = [0.0] * 7
+        time_elapsed = 0.0
+        motion_finished = False
+
+        # External control loop
+        while not motion_finished:
+            # Read robot state and duration
+            robot_state, duration = active_control.readOnce()
+
+            # Update time
+            time_elapsed += duration.to_sec()
+
+            # On first iteration, capture initial position
+            if time_elapsed <= duration.to_sec():
+                initial_position = robot_state.q_d if hasattr(robot_state, "q_d") else robot_state.q
+
+            # Calculate delta angle using the same formula as in C++ example
+            delta_angle = np.pi / 8.0 * (1 - np.cos(np.pi / 2.5 * time_elapsed))
+
+            # Update joint positions
+            new_positions = [
+                initial_position[0],
+                initial_position[1],
+                initial_position[2],
+                initial_position[3] + delta_angle,
+                initial_position[4] + delta_angle,
+                initial_position[5],
+                initial_position[6] + delta_angle,
+            ]
+
+            # Set joint positions
+            joint_positions = JointPositions(new_positions)
+
+            # Set motion_finished flag to True on the last update
+            if time_elapsed >= 5.0:
+                joint_positions.motion_finished = True
+                motion_finished = True
+                print("Finished motion, shutting down example")
+
+            # Send command to robot
+            active_control.writeOnce(joint_positions)
+    except:
+        print("Error")
 

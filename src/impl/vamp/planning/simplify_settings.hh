@@ -9,7 +9,6 @@ namespace vamp::planning
         BSPLINE,
         REDUCE,
         SHORTCUT,
-        SHORTCUT_BEZ,
         PERTURB,
     };
 
@@ -48,7 +47,6 @@ namespace vamp::planning
         bool bez = false;
         ReduceSettings reduce;
         ShortcutSettings shortcut;
-        ShortcutSettings shortcut_bez;
         BSplineSettings bspline;
         PerturbSettings perturb;
     };

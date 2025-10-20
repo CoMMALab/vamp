@@ -57,9 +57,9 @@ viz.loadViewerModel()
 
 rng = vamp_module.halton()
 
-plan_settings.max_iterations = 100000
-plan_settings.max_samples = 100000
-plan_settings.range = 1
+plan_settings.max_iterations = 10000
+plan_settings.max_samples = 10000
+plan_settings.range = 2
 simp_settings.bez = True
 
 # xyz, rpy, lwh
@@ -109,11 +109,11 @@ viz.display(q_path[0])
 
 input("Ready, press any key: ")
 q_curr = None
-for i in range(len(q_path)):
+for i in range(0, len(q_path), 5):
     ts = time.perf_counter()
     q_curr = q_path[i]
     viz.display(q_curr)
     tf = time.perf_counter()
-    print(tf - ts)
+    # print(tf - ts)
     # time.sleep(0.0001)
 

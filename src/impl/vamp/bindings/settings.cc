@@ -113,7 +113,6 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("reduce", &vp::SimplifySettings::reduce)
         .def_rw("bez", &vp::SimplifySettings::bez)
         .def_rw("shortcut", &vp::SimplifySettings::shortcut)
-        .def_rw("shortcut_bez", &vp::SimplifySettings::shortcut_bez)
         .def_rw("perturb", &vp::SimplifySettings::perturb)
         .def_rw("bspline", &vp::SimplifySettings::bspline);
 }

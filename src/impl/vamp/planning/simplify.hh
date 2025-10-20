@@ -54,6 +54,92 @@ namespace vamp::planning
     }
 
     template <typename Robot, std::size_t rake, std::size_t resolution>
+    inline static auto smooth_bspline_bez(
+        Path<Robot> &path,
+        const collision::Environment<FloatVector<rake>> &environment,
+        const BSplineSettings &settings) -> bool
+    {
+        if (path.size() < 3)
+        {
+            return false;
+        }
+
+        bool changed = false;
+        for (auto step = 0U; step < settings.max_steps; ++step)
+        {
+            path.subdivide();
+
+            bool updated = false;
+            for (auto index = 2U; index < path.size() - 1; index += 2)
+            {
+                const auto temp_1 = path[index].interpolate(path[index - 1], settings.midpoint_interpolation);
+                const auto temp_2 = path[index].interpolate(path[index + 1], settings.midpoint_interpolation);
+                const auto midpoint = temp_1.interpolate(temp_2, 0.5);
+
+                // check if time gets reduced
+                // only shortcut if time improves
+                // get start and end as arrays
+                double og_time = 0;
+                std::array<double, 2 * Robot::dimension> x;
+                std::array<double, 4 * Robot::dimension / 3 + 1> out;
+                for (int k = 0; k < Robot::dimension; k++) {
+                    x[k] = static_cast<double>(path[index - 1].to_array()[k]);
+                }
+                for (int k = 0; k < Robot::dimension; k++) {
+                    x[k + Robot::dimension] = static_cast<double>(path[index].to_array()[k]);
+                }
+                Robot::template topple_nn_forward(x, out);
+                og_time += out[4 * Robot::dimension / 3];
+
+                for (int k = 0; k < Robot::dimension; k++) {
+                    x[k] = static_cast<double>(path[index].to_array()[k]);
+                }
+                for (int k = 0; k < Robot::dimension; k++) {
+                    x[k + Robot::dimension] = static_cast<double>(path[index + 1].to_array()[k]);
+                }
+                Robot::template topple_nn_forward(x, out);
+                og_time += out[4 * Robot::dimension / 3];
+
+                double cut_time = 0;
+                for (int l = 0; l < Robot::dimension; l++) {
+                    x[l] = static_cast<double>(path[index - 1].to_array()[l]);
+                }
+                for (int l = 0; l < Robot::dimension; l++) {
+                    x[l + Robot::dimension] = static_cast<double>(midpoint.to_array()[l]);
+                }
+                Robot::template topple_nn_forward(x, out);
+                cut_time += out[4 * Robot::dimension / 3];
+
+                for (int l = 0; l < Robot::dimension; l++) {
+                    x[l] = static_cast<double>(midpoint.to_array()[l]);
+                }
+                for (int l = 0; l < Robot::dimension; l++) {
+                    x[l + Robot::dimension] = static_cast<double>(path[index + 1].to_array()[l]);
+                }
+                Robot::template topple_nn_forward(x, out);
+                cut_time += out[4 * Robot::dimension / 3];
+
+                if (cut_time <= og_time) {
+                    if (path[index].distance(midpoint) > settings.min_change and
+                        validate_bez_motion<Robot, rake, resolution>(path[index - 1], midpoint, environment) and
+                        validate_bez_motion<Robot, rake, resolution>(midpoint, path[index + 1], environment))
+                    {
+                        path[index] = midpoint;
+                        changed |= (updated = true);
+                    }
+                }
+            }
+
+            if (not updated)
+            {
+                break;
+            }
+        }
+
+        return changed;
+    }
+
+    template <typename Robot, std::size_t rake, std::size_t resolution>
     inline static auto reduce_path_vertices(
         Path<Robot> &path,
         const collision::Environment<FloatVector<rake>> &environment,
@@ -157,11 +243,38 @@ namespace vamp::planning
         {
             for (auto j = path.size() - 1; j > i + 1; --j)
             {
-                if (validate_bez_motion<Robot, rake, resolution>(path[i], path[j], environment))
-                {
-                    path.erase(path.begin() + i + 1, path.begin() + j);
-                    result = true;
-                    break;
+                // only shortcut if time improves
+                // get start and end as arrays
+                std::array<double, 2 * Robot::dimension> x;
+                std::array<double, 4 * Robot::dimension / 3 + 1> out;
+                for (int k = 0; k < Robot::dimension; k++) {
+                    x[k] = static_cast<double>(path[i].to_array()[k]);
+                }
+                for (int k = 0; k < Robot::dimension; k++) {
+                    x[k + Robot::dimension] = static_cast<double>(path[j].to_array()[k]);
+                }
+                Robot::template topple_nn_forward(x, out);
+                double cut_time = out[4 * Robot::dimension / 3];
+                double og_time = 0;
+                // get un shortcutted time
+                for (int k = i; k < j; k++) {
+                    for (int l = 0; l < Robot::dimension; l++) {
+                        x[l] = static_cast<double>(path[k].to_array()[l]);
+                    }
+                    for (int l = 0; l < Robot::dimension; l++) {
+                        x[l + Robot::dimension] = static_cast<double>(path[k + 1].to_array()[l]);
+                    }
+                    Robot::template topple_nn_forward(x, out);
+                    og_time += out[4 * Robot::dimension / 3];
+                }
+
+                if (cut_time <= og_time) {
+                    if (validate_bez_motion<Robot, rake, resolution>(path[i], path[j], environment))
+                    {
+                        path.erase(path.begin() + i + 1, path.begin() + j);
+                        result = true;
+                        break;
+                    }
                 }
             }
         }
@@ -234,7 +347,8 @@ namespace vamp::planning
             //     { return shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut_bez); };
             // result.path
             result.path = path;
-            shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut_bez);
+            smooth_bspline_bez<Robot, rake, resolution>(result.path, environment, settings.bspline);
+            shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut);
             return result;
         }
 
@@ -255,7 +369,6 @@ namespace vamp::planning
             {BSPLINE, bspline},
             {REDUCE, reduce},
             {SHORTCUT, shortcut},
-            // {SHORTCUT_BEZ, shortcut_bez},
             {PERTURB, perturb},
         };
 

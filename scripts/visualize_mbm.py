@@ -10,12 +10,12 @@ from vamp import pointcloud as vpc
 
 
 def main(
-    robot: str = "panda",                  # Robot to plan for
-    planner: str = "rrtc",                 # Planner name to use
+    robot: str = "pandatopp",                  # Robot to plan for
+    planner: str = "rrtctopp",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
     problem: str = "",                     # Problem name
     index: int = 1,                        # Problem index
-    sampler_name: str = "halton",          # Sampler to use.
+    sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
     pointcloud: bool = False,              # Use pointcloud rather than primitive geometry
@@ -28,7 +28,7 @@ def main(
     if robot not in vamp.robots:
         raise RuntimeError(f"Robot {robot} does not exist in VAMP!")
 
-    robot_dir = Path(__file__).parent.parent / 'resources' / robot
+    robot_dir = Path(__file__).parent.parent / 'resources' / "panda"
     with open(robot_dir / dataset, 'rb') as f:
         data = pickle.load(f)
 
@@ -37,6 +37,13 @@ def main(
         planner,
         **kwargs,
         )
+    plan_settings.max_iterations = 1000000
+    plan_settings.max_samples = 100000
+    plan_settings.range = 8
+    simp_settings.bez = True
+    plan_settings.radius = 16
+    plan_settings.min_radius = 1
+    plan_settings.alpha = 0.0000001
 
     if not problem:
         problem = list(data['problems'].keys())[0]
@@ -56,7 +63,7 @@ Existing problems: {list(data['problems'].keys())}"""
     if pointcloud:
         r_min, r_max = vamp_module.min_max_radii()
         (env, original_pc, filtered_pc, filter_time, build_time) = vpc.problem_dict_to_pointcloud(
-            robot,
+            "panda",
             r_min,
             r_max,
             problem_data,
@@ -85,6 +92,12 @@ CAPT Construction Time: {build_time * 1e-6:5.3f}ms
     sampler = getattr(vamp_module, sampler_name)()
     sampler.skip(skip_rng_iterations)
 
+    for i in range(14):
+        start.append(0)
+    for goal in goals:
+        for j in range(14):
+            goal.append(0)
+
     if valid:
         result = planner_func(start, goals, env, plan_settings, sampler)
         solved = result.solved
@@ -112,7 +125,10 @@ Simplified: {stats['simplified_path_cost']:5.3f}"""
             )
 
         plan = simplify.path
-        plan.interpolate_to_resolution(vamp_module.resolution())
+        plan = vamp_module.compute_traj(plan, env, simp_settings, sampler).path.numpy()
+        print(len(plan))
+        plan = plan[0:-1:15]
+        # plan.interpolate_to_resolution(vamp_module.resolution())
 
     if valid and not solved:
         print("Failed to solve problem! Displaying start and goals.")
@@ -135,7 +151,7 @@ n Graph States: {result.size}
         for goal in goals:
             plan.append(goal)
 
-    sim = vpb.PyBulletSimulator(str(robot_dir / f"{robot}_spherized.urdf"), vamp_module.joint_names(), True)
+    sim = vpb.PyBulletSimulator(str(robot_dir / f"panda_spherized.urdf"), vamp_module.joint_names(), True)
     sim.add_environment_from_problem_dict(problem_data, display_object_names)
 
     if pointcloud:

@@ -227,6 +227,20 @@ namespace vamp::planning
         return result;
     }
 
+    // rewrite this so hopefully time can be minimized
+    // inorder traversal
+    inline static void reconstruct(std::vector<int>& waypts, int l, int r, std::vector<std::vector<int>>& BT) {
+        int k = BT[l][r];
+        if (k == -1) {
+            waypts.push_back(l);
+            waypts.push_back(r);
+        }
+        else {
+            reconstruct(waypts, l, k, BT);
+            waypts.pop_back();
+            reconstruct(waypts, k, r, BT);
+        }
+    }
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline static auto shortcut_bez_path(
         Path<Robot> &path,
@@ -237,16 +251,84 @@ namespace vamp::planning
         {
             return false;
         }
+        
 
         bool result = false;
-        for (auto i = 0U; i < path.size() - 2; ++i)
-        {
-            for (auto j = path.size() - 1; j > i + 1; --j)
-            {
-                // only shortcut if time improves
-                // get start and end as arrays
-                std::array<double, 2 * Robot::dimension> x;
-                std::array<double, 4 * Robot::dimension / 3 + 1> out;
+        // REPLACE BELOW WITH A DP FORMULATION
+        // for (auto i = 0U; i < path.size() - 2; ++i)
+        // {
+        //     for (auto j = path.size() - 1; j > i + 1; --j)
+        //     {
+        //         // only shortcut if time improves
+        //         // get start and end as arrays
+        //         std::array<double, 2 * Robot::dimension> x;
+        //         std::array<double, 4 * Robot::dimension / 3 + 1> out;
+        //         for (int k = 0; k < Robot::dimension; k++) {
+        //             x[k] = static_cast<double>(path[i].to_array()[k]);
+        //         }
+        //         for (int k = 0; k < Robot::dimension; k++) {
+        //             x[k + Robot::dimension] = static_cast<double>(path[j].to_array()[k]);
+        //         }
+        //         Robot::template topple_nn_forward(x, out);
+        //         double cut_time = out[4 * Robot::dimension / 3];
+        //         double og_time = 0;
+        //         // get un shortcutted time
+        //         for (int k = i; k < j; k++) {
+        //             for (int l = 0; l < Robot::dimension; l++) {
+        //                 x[l] = static_cast<double>(path[k].to_array()[l]);
+        //             }
+        //             for (int l = 0; l < Robot::dimension; l++) {
+        //                 x[l + Robot::dimension] = static_cast<double>(path[k + 1].to_array()[l]);
+        //             }
+        //             Robot::template topple_nn_forward(x, out);
+        //             og_time += out[4 * Robot::dimension / 3];
+        //         }
+
+        //         if (cut_time <= og_time) {
+        //             if (validate_bez_motion<Robot, rake, resolution>(path[i], path[j], environment))
+        //             {
+        //                 path.erase(path.begin() + i + 1, path.begin() + j);
+        //                 result = true;
+        //                 break;
+        //             }
+        //         }
+        //     }
+        // }
+
+        // let T[i, j] = minimum time collision free path from waypt i to j
+        // T[i] = min over i <= k < j {T[i, k] + T[k, j]} vs direct path
+        double T[path.size()][path.size()];
+        // backtrack table
+        std::vector<std::vector<int>> BT(path.size(), std::vector<int>(path.size()));
+        std::array<double, 2 * Robot::dimension> x;
+        std::array<double, 4 * Robot::dimension / 3 + 1> out;
+        for (int i = 0; i < path.size(); i++) {
+            for (int j = i; j < path.size(); j++) {
+                if (i == j) {
+                    T[i][j] = 0;
+                    BT[i][j] = -1;
+                }
+                else if (j == i + 1) {
+                    for (int k = 0; k < Robot::dimension; k++) {
+                        x[k] = static_cast<double>(path[i].to_array()[k]);
+                    }
+                    for (int k = 0; k < Robot::dimension; k++) {
+                        x[k + Robot::dimension] = static_cast<double>(path[j].to_array()[k]);
+                    }
+                    Robot::template topple_nn_forward(x, out);
+                    T[i][j] = out[4 * Robot::dimension / 3];
+                    BT[i][j] = -1;
+                }
+            }
+        }
+        // fill by sliding window
+        for (int l = 2; l < path.size(); l++) {
+            for (int s = 0; s < path.size() - l; s++) {
+                int i = s;
+                int j = l + s;
+                int min_k = -1;
+                double min = 1000000;
+
                 for (int k = 0; k < Robot::dimension; k++) {
                     x[k] = static_cast<double>(path[i].to_array()[k]);
                 }
@@ -254,30 +336,39 @@ namespace vamp::planning
                     x[k + Robot::dimension] = static_cast<double>(path[j].to_array()[k]);
                 }
                 Robot::template topple_nn_forward(x, out);
-                double cut_time = out[4 * Robot::dimension / 3];
-                double og_time = 0;
-                // get un shortcutted time
-                for (int k = i; k < j; k++) {
-                    for (int l = 0; l < Robot::dimension; l++) {
-                        x[l] = static_cast<double>(path[k].to_array()[l]);
-                    }
-                    for (int l = 0; l < Robot::dimension; l++) {
-                        x[l + Robot::dimension] = static_cast<double>(path[k + 1].to_array()[l]);
-                    }
-                    Robot::template topple_nn_forward(x, out);
-                    og_time += out[4 * Robot::dimension / 3];
+                if (validate_bez_motion<Robot, rake, resolution>(path[i], path[j], environment)) {
+                    min_k = -1;
+                    min = out[4 * Robot::dimension / 3];
+                    BT[i][j] = -1;
                 }
-
-                if (cut_time <= og_time) {
-                    if (validate_bez_motion<Robot, rake, resolution>(path[i], path[j], environment))
-                    {
-                        path.erase(path.begin() + i + 1, path.begin() + j);
-                        result = true;
-                        break;
+                
+                for (int k = i + 1; k < j; k++) {
+                    if (T[i][k] + T[k][j] < min) {
+                        BT[i][j] = k;
+                        min = T[i][k] + T[k][j];
                     }
                 }
+                T[i][j] = min;
             }
         }
+        // reconstruct traj by getting waypoints
+        // for (int i = 0; i < path.size(); i++) {
+        //     for (int j = 0; j < path.size(); j++) {
+        //         std::cout << T[i][j] << " ";
+        //     }
+        //     std::cout << std::endl;
+        // } 
+        std::vector<int> waypts;
+        reconstruct(waypts, 0, path.size() - 1, BT);
+        if (waypts.size() == path.size()) {
+            return result;
+        }
+        // std::cout << "reached" << std::endl;
+        for (int i = 0; i < waypts.size(); i++) {
+            path[i] = path[waypts[i]];
+        }
+        path.erase(path.begin() + waypts.size(), path.begin() + path.size());
+        result = true;
 
         return result;
     }

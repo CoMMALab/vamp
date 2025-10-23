@@ -45,18 +45,18 @@ model, collision_model, visual_model = pinocchio.buildModelsFromUrdf(
 
 
 
-rng = vamp_module.halton()
+rng = vamp_module.xorshift()
 
 plan_settings.max_iterations = 100000
 plan_settings.max_samples = 100000
-plan_settings.range = 10
+plan_settings.range = 8
 simp_settings.bez = True
-plan_settings.radius = 10
+plan_settings.radius = 16
 
 # xyz, rpy, lwh
 cuboids_data = [
         # back
-        # [[0.0, 0.0, 1.3], [0.0, 0.0, 0.0], [1.6, 0.1, 0.5]],
+        [[0.0, 0.0, 1.3], [0.0, 0.0, 0.0], [1.6, 0.1, 0.5]],
         # front wall
         [[0.5, 0.0, 0.0], [0.0, 0.0, 0.0], [0.2, 0.1, 0.5]],
         # ground plane
@@ -119,6 +119,8 @@ for i in range(len(q_path) - 1):
     qd_path.append((q_path[i + 1] - q_path[i]) / 0.001)
 qd_path.append(pos2[7:14])
 qd_path = np.array(qd_path)
+
+print(len(qd_path))
 
 viz.display(q_path[0])
 

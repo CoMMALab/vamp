@@ -1052,386 +1052,492 @@ namespace vamp::binding
                 return config_nd;
             });
 
-        submodule.def(
-            "batch_validate",
-            [](const nb::ndarray<const FloatT, nb::shape<Robot::dimension>, nb::device::cpu> &start_config,
-               const nb::ndarray<const FloatT, nb::shape<-1, -1, -1, Robot::dimension>, nb::device::cpu>
-                   &batch_layers,
-               const nb::ndarray<const FloatT, nb::shape<-1, Robot::dimension>, nb::device::cpu>
-                   &goal_configs,
-               const typename RH::EnvironmentInput &env) noexcept
+            submodule.def(
+    "validate_motion_batch",
+            [](const nb::ndarray<const float, nb::shape<-1, Robot::dimension>, nb::device::cpu> &a,
+            const nb::ndarray<const float, nb::shape<-1, Robot::dimension>, nb::device::cpu> &b,
+            const vamp::collision::Environment<float> &environment = vamp::collision::Environment<float>()) 
+            -> nb::ndarray<nb::numpy, bool, nb::shape<-1>, nb::device::cpu>
             {
-                using Configuration = typename RH::Configuration;
-                static constexpr auto validate =
-                    // vamp::planning::validate_motion<Robot, rake, Robot::resolution>;
-                    vamp::planning::validate_motion<Robot, rake, 2>;
+                const std::size_t n = a.shape(0);
 
-                const typename RH::EnvironmentVector env_v(env);
+                // Allocate output array
+                bool* results_data = new bool[n];
+                nb::capsule owner(results_data, [](void *p) noexcept { delete[] (bool*)p; });
 
-                const std::size_t batch_size = batch_layers.shape(0);
-                const std::size_t num_layers = batch_layers.shape(1);
-                const std::size_t num_points = batch_layers.shape(2);
-                const std::size_t num_goals = goal_configs.shape(0);
+                auto a_view = a.view();
+                auto b_view = b.view();
 
-                const auto bl_view = batch_layers.view();
-                const auto gc_view = goal_configs.view();
-
-                const std::size_t cs_size = batch_size * num_points;
-                const std::size_t cl_size =
-                    std::max(batch_size * (num_layers - 1) * num_points * num_points, 1UL);
-                const std::size_t cg_size = batch_size * num_points * num_goals;
-
-                auto *cs = new bool[cs_size];
-                auto *cl = new bool[cl_size];
-                auto *cg = new bool[cg_size];
-
-                nb::capsule cs_owner(cs, [](void *p) noexcept { delete[] (bool *)p; });
-                nb::capsule cl_owner(cl, [](void *p) noexcept { delete[] (bool *)p; });
-                nb::capsule cg_owner(cg, [](void *p) noexcept { delete[] (bool *)p; });
-
-                nb::ndarray<nb::numpy, bool, nb::ndim<3>> cs_nd(cs, {batch_size, 1, num_points}, cs_owner);
-                nb::ndarray<nb::numpy, bool, nb::ndim<4>> cl_nd(
-                    cl, {batch_size, num_layers - 1, num_points, num_points}, cl_owner);
-                nb::ndarray<nb::numpy, bool, nb::ndim<3>> cg_nd(
-                    cg, {batch_size, num_points, num_goals}, cg_owner);
-
-                const auto cs_view = cs_nd.view();
-                const auto cl_view = cl_nd.view();
-                const auto cg_view = cg_nd.view();
-
-                const Configuration c_s_v(start_config.data(), false);
-
-#ifdef VAMP_USE_OPENMP
-#pragma omp parallel firstprivate(                                                                           \
-        c_s_v, bl_view, gc_view, num_points, num_layers, batch_size, num_goals, env_v)                       \
-    shared(cs_view, cl_view, cg_view) default(none)
-#endif
+                #ifdef _OPENMP
+                #pragma omp parallel for schedule(dynamic, 1000)
+                #endif
+                for (std::size_t i = 0; i < n; ++i)
                 {
-#ifdef VAMP_USE_OPENMP
-#pragma omp for collapse(2) schedule(dynamic, 1000) nowait
-#endif
-                    for (auto b = 0U; b < batch_size; ++b)
-                    {
-                        for (auto i = 0U; i < num_points; ++i)
-                        {
-                            const Configuration c_b_v(&bl_view(b, 0, i, 0), false);
-                            cs_view(b, 0, i) = validate(c_s_v, c_b_v, env_v);
-                        }
-                    }
-
-                    if (num_layers > 1)
-                    {
-#ifdef VAMP_USE_OPENMP
-#pragma omp for collapse(4) schedule(dynamic, 1000) nowait
-#endif
-                        for (auto b = 0U; b < batch_size; ++b)
-                        {
-                            for (auto l = 0U; l < num_layers - 1; ++l)
-                            {
-                                for (auto i = 0U; i < num_points; ++i)
-                                {
-                                    for (auto j = 0U; j < num_points; ++j)
-                                    {
-                                        const Configuration c_a_v(&bl_view(b, l, i, 0), false);
-                                        const Configuration c_b_v(&bl_view(b, l + 1, j, 0), false);
-
-                                        cl_view(b, l, i, j) = validate(c_a_v, c_b_v, env_v);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-#ifdef VAMP_USE_OPENMP
-#pragma omp for collapse(3) schedule(dynamic, 1000) nowait
-#endif
-                    for (auto b = 0U; b < batch_size; ++b)
-                    {
-                        for (auto i = 0U; i < num_points; ++i)
-                        {
-                            for (auto g = 0U; g < num_goals; ++g)
-                            {
-                                const Configuration c_a_v(&bl_view(b, num_layers - 1, i, 0), false);
-                                const Configuration c_g_v(&gc_view(g, 0), false);
-
-                                cg_view(b, i, g) = validate(c_a_v, c_g_v, env_v);
-                            }
-                        }
-                    }
+                    typename RH::ConfigurationArray config_a, config_b;
+                    std::copy_n(&a_view(i, 0), Robot::dimension, config_a.begin());
+                    std::copy_n(&b_view(i, 0), Robot::dimension, config_b.begin());
+                    
+                    results_data[i] = RH::validate_motion(config_a, config_b, environment);
                 }
 
-                return std::make_tuple(cs_nd, cl_nd, cg_nd);
-            });
+                return nb::ndarray<nb::numpy, bool, nb::shape<-1>, nb::device::cpu>(
+                    results_data, {n}, owner);
+            },
+            "a"_a,
+            "b"_a,
+            "environment"_a = vamp::collision::Environment<float>(),
+            "Validate a batch of motions in parallel and return boolean results.");
 
         submodule.def(
-            "initial_incremental_arrays",
-            [](const nb::ndarray<const FloatT, nb::shape<Robot::dimension>, nb::device::cpu> &start_config,
-               const nb::ndarray<const FloatT, nb::shape<-1, -1, -1, Robot::dimension>, nb::device::cpu>
-                   &batch_layers,
-               const nb::ndarray<const FloatT, nb::shape<-1, Robot::dimension>, nb::device::cpu>
-                   &goal_configs)
+            "rrtc_batch",
+            [](const nb::ndarray<const float, nb::shape<-1, Robot::dimension>, nb::device::cpu> &start,
+            const nb::ndarray<const float, nb::shape<-1, Robot::dimension>, nb::device::cpu> &goal,
+            const typename RH::EnvironmentInput &environment,
+            const vamp::planning::RRTCSettings &settings) 
+            -> std::vector<typename RH::PlanningResult>
             {
-                const std::size_t batch_size = batch_layers.shape(0);
-                const std::size_t num_layers = batch_layers.shape(1);
-                const std::size_t num_points = batch_layers.shape(2);
-                const std::size_t num_goals = goal_configs.shape(0);
+                const std::size_t n = start.shape(0);
+                std::vector<typename RH::PlanningResult> results(n);
 
-                const std::size_t cs_size = batch_size * num_points;
-                const std::size_t cl_size =
-                    std::max(batch_size * (num_layers - 1) * num_points * num_points, 1UL);
-                const std::size_t cg_size = batch_size * num_points * num_goals;
+                auto start_view = start.view();
+                auto goal_view = goal.view();
 
-                auto *cs = new bool[cs_size];
-                auto *cl = new bool[cl_size];
-                auto *cg = new bool[cg_size];
-
-                memset(cs, 0, cs_size * sizeof(bool));
-                memset(cl, 0, cl_size * sizeof(bool));
-                memset(cg, 0, cg_size * sizeof(bool));
-
-                nb::capsule cs_owner(cs, [](void *p) noexcept { delete[] (bool *)p; });
-                nb::capsule cl_owner(cl, [](void *p) noexcept { delete[] (bool *)p; });
-                nb::capsule cg_owner(cg, [](void *p) noexcept { delete[] (bool *)p; });
-
-                nb::ndarray<nb::numpy, bool, nb::ndim<3>> cs_nd(cs, {batch_size, 1, num_points}, cs_owner);
-                nb::ndarray<nb::numpy, bool, nb::ndim<4>> cl_nd(
-                    cl, {batch_size, num_layers - 1, num_points, num_points}, cl_owner);
-                nb::ndarray<nb::numpy, bool, nb::ndim<3>> cg_nd(
-                    cg, {batch_size, num_points, num_goals}, cg_owner);
-
-                return std::make_tuple(cs_nd, cl_nd, cg_nd);
-            });
-
-        submodule.def(
-            "get_all_paths",
-            [](const nb::ndarray<const bool, nb::ndim<1>, nb::device::cpu> &Cs_np,
-               const nb::ndarray<const bool, nb::ndim<3>, nb::device::cpu> &Ch_np,
-               const nb::ndarray<const bool, nb::ndim<2>, nb::device::cpu> &Cl_np,
-               const nb::ndarray<const bool, nb::ndim<2>, nb::device::cpu> &Vh_np)
-            {
-                const std::size_t M = Ch_np.shape(0) + 1;
-                const std::size_t N = Ch_np.shape(1);
-                const std::size_t num_goals = Cl_np.shape(1);
-
-                const auto Cs = Cs_np.view();
-                const auto Ch = Ch_np.view();
-                const auto Cl = Cl_np.view();
-                const auto Vh = Vh_np.view();
-
-                using Path = std::vector<int>;
-                using Paths = std::vector<Path>;
-                using GoalIdx = std::vector<std::vector<int>>;
-
-                Paths paths;
-                GoalIdx goal_idx;
-
-                auto dfs = [&](auto &&self, int m, Path path) -> void
+                #ifdef _OPENMP
+                #pragma omp parallel for schedule(dynamic, 1000)
+                #endif
+                for (std::size_t i = 0; i < n; ++i)
                 {
-                    int current = path.back();
-
-                    if (m == M)
-                    {
-                        std::vector<int> goal_ids;
-                        for (int j = 0; j < num_goals; ++j)
-                        {
-                            if (Cl(current, j))
-                            {
-                                goal_ids.push_back(j);
-                            }
-                        }
-                        paths.push_back(std::move(path));
-                        goal_idx.push_back(std::move(goal_ids));
-                        return;
-                    }
-
-                    for (int n = 0; n < N; ++n)
-                    {
-                        if (Ch(m - 1, current, n) && Vh(m, n))
-                        {
-                            Path new_path = path;
-                            new_path.push_back(n);
-                            self(self, m + 1, std::move(new_path));
-                        }
-                    }
-                };
-
-                for (int n = 0; n < N; ++n)
-                {
-                    if (Cs(n) && Vh(0, n))
-                    {
-                        dfs(dfs, 1, Path{n});
-                    }
+                    typename RH::ConfigurationArray config_start, config_goal;
+                    std::copy_n(&start_view(i, 0), Robot::dimension, config_start.begin());
+                    std::copy_n(&goal_view(i, 0), Robot::dimension, config_goal.begin());
+                    
+                    typename RH::RNG::Ptr rng = RH::halton();
+                    results[i] = RH::rrtc_single(config_start, config_goal, environment, settings, rng);
                 }
 
-                return std::make_tuple(paths, goal_idx);
-            });
+                return results;
+            },
+            "start"_a,
+            "goal"_a,
+            "environment"_a,
+            "settings"_a,
+            "Run RRTC on a batch of start/goal configurations in parallel and return PlanningResult objects.");
 
         submodule.def(
-            "get_all_paths",
-            [](const nb::ndarray<const bool, nb::ndim<1>, nb::device::cpu> &Cs_np,
-               const nb::ndarray<const bool, nb::ndim<3>, nb::device::cpu> &Ch_np,
-               const nb::ndarray<const bool, nb::ndim<2>, nb::device::cpu> &Cl_np,
-               const nb::ndarray<const bool, nb::ndim<2>, nb::device::cpu> &Vh_np)
+            "aorrtc_batch",
+            [](const nb::ndarray<const float, nb::shape<-1, Robot::dimension>, nb::device::cpu> &start,
+            const nb::ndarray<const float, nb::shape<-1, Robot::dimension>, nb::device::cpu> &goal,
+            const typename RH::EnvironmentInput &environment,
+            const vamp::planning::AORRTCSettings &settings) 
+            -> std::vector<typename RH::PlanningResult>
             {
-                const std::size_t M = Ch_np.shape(0) + 1;
-                const std::size_t N = Ch_np.shape(1);
-                const std::size_t num_goals = Cl_np.shape(1);
+                const std::size_t n = start.shape(0);
+                std::vector<typename RH::PlanningResult> results(n);
 
-                const auto Cs = Cs_np.view();
-                const auto Ch = Ch_np.view();
-                const auto Cl = Cl_np.view();
-                const auto Vh = Vh_np.view();
+                auto start_view = start.view();
+                auto goal_view = goal.view();
 
-                using Path = std::vector<int>;
-                using Paths = std::vector<Path>;
-                using GoalIdx = std::vector<std::vector<int>>;
-
-                Paths paths;
-                GoalIdx goal_idx;
-
-                auto dfs = [&](auto &&self, int m, Path path) -> void
+                #ifdef _OPENMP
+                #pragma omp parallel for schedule(dynamic, 1000)
+                #endif
+                for (std::size_t i = 0; i < n; ++i)
                 {
-                    int current = path.back();
-
-                    if (m == M)
-                    {
-                        std::vector<int> goal_ids;
-                        for (int j = 0; j < num_goals; ++j)
-                        {
-                            if (Cl(current, j))
-                            {
-                                goal_ids.push_back(j);
-                            }
-                        }
-                        paths.push_back(std::move(path));
-                        goal_idx.push_back(std::move(goal_ids));
-                        return;
-                    }
-
-                    for (int n = 0; n < N; ++n)
-                    {
-                        if (Ch(m - 1, current, n) && Vh(m, n))
-                        {
-                            Path new_path = path;
-                            new_path.push_back(n);
-                            self(self, m + 1, std::move(new_path));
-                        }
-                    }
-                };
-
-                for (int n = 0; n < N; ++n)
-                {
-                    if (Cs(n) && Vh(0, n))
-                    {
-                        dfs(dfs, 1, Path{n});
-                    }
+                    typename RH::ConfigurationArray config_start, config_goal;
+                    std::copy_n(&start_view(i, 0), Robot::dimension, config_start.begin());
+                    std::copy_n(&goal_view(i, 0), Robot::dimension, config_goal.begin());
+                    
+                    typename RH::RNG::Ptr rng = RH::halton();
+                    results[i] = RH::aorrtc(config_start, config_goal, environment, settings, rng);
                 }
 
-                return std::make_tuple(paths, goal_idx);
-            });
+                return results;
+            },
+            "start"_a,
+            "goal"_a,
+            "environment"_a,
+            "settings"_a,
+            "Run AO-RRTC on a batch of start/goal configurations in parallel and return PlanningResult objects.");
 
-        submodule.def(
-            "incremental_batch_validate",
-            [](const nb::ndarray<const FloatT, nb::shape<Robot::dimension>, nb::device::cpu> &start_config,
-               const nb::ndarray<const FloatT, nb::shape<-1, -1, -1, Robot::dimension>, nb::device::cpu>
-                   &batch_layers,
-               const nb::ndarray<const FloatT, nb::shape<-1, Robot::dimension>, nb::device::cpu>
-                   &goal_configs,
-               nb::ndarray<bool, nb::shape<-1, -1, -1>, nb::device::cpu> &start_validate,
-               nb::ndarray<bool, nb::shape<-1, -1, -1, -1>, nb::device::cpu> &layer_validate,
-               nb::ndarray<bool, nb::shape<-1, -1, -1>, nb::device::cpu> &goal_validate,
-               const typename RH::EnvironmentInput &env,
-               std::size_t start_point_range,
-               std::size_t end_point_range) noexcept
-            {
-                using Configuration = typename RH::Configuration;
-                static constexpr auto validate =
-                    // vamp::planning::validate_motion<Robot, rake, Robot::resolution>;
-                    vamp::planning::validate_motion<Robot, rake, 2>;
+//         submodule.def(
+//             "batch_validate",
+//             [](const nb::ndarray<const FloatT, nb::shape<Robot::dimension>, nb::device::cpu> &start_config,
+//                const nb::ndarray<const FloatT, nb::shape<-1, -1, -1, Robot::dimension>, nb::device::cpu>
+//                    &batch_layers,
+//                const nb::ndarray<const FloatT, nb::shape<-1, Robot::dimension>, nb::device::cpu>
+//                    &goal_configs,
+//                const typename RH::EnvironmentInput &env) noexcept
+//             {
+//                 using Configuration = typename RH::Configuration;
+//                 static constexpr auto validate =
+//                     // vamp::planning::validate_motion<Robot, rake, Robot::resolution>;
+//                     vamp::planning::validate_motion<Robot, rake, 2>;
 
-                const typename RH::EnvironmentVector env_v(env);
+//                 const typename RH::EnvironmentVector env_v(env);
 
-                const std::size_t batch_size = batch_layers.shape(0);
-                const std::size_t num_layers = batch_layers.shape(1);
-                const std::size_t num_points = batch_layers.shape(2);
-                const std::size_t num_goals = goal_configs.shape(0);
+//                 const std::size_t batch_size = batch_layers.shape(0);
+//                 const std::size_t num_layers = batch_layers.shape(1);
+//                 const std::size_t num_points = batch_layers.shape(2);
+//                 const std::size_t num_goals = goal_configs.shape(0);
 
-                const auto bl_view = batch_layers.view();
-                const auto gc_view = goal_configs.view();
+//                 const auto bl_view = batch_layers.view();
+//                 const auto gc_view = goal_configs.view();
 
-                const auto cs_view = start_validate.view();
-                const auto cl_view = layer_validate.view();
-                const auto cg_view = goal_validate.view();
+//                 const std::size_t cs_size = batch_size * num_points;
+//                 const std::size_t cl_size =
+//                     std::max(batch_size * (num_layers - 1) * num_points * num_points, 1UL);
+//                 const std::size_t cg_size = batch_size * num_points * num_goals;
 
-                const Configuration c_s_v(start_config.data(), false);
+//                 auto *cs = new bool[cs_size];
+//                 auto *cl = new bool[cl_size];
+//                 auto *cg = new bool[cg_size];
 
-#ifdef VAMP_USE_OPENMP
-#pragma omp parallel firstprivate(                                                                           \
-        c_s_v,                                                                                               \
-            bl_view,                                                                                         \
-            gc_view,                                                                                         \
-            num_points,                                                                                      \
-            num_layers,                                                                                      \
-            batch_size,                                                                                      \
-            num_goals,                                                                                       \
-            env_v,                                                                                           \
-            start_point_range,                                                                               \
-            end_point_range) shared(cs_view, cl_view, cg_view) default(none)
-#endif
-                {
-#ifdef VAMP_USE_OPENMP
-#pragma omp for collapse(2) schedule(dynamic, 1000) nowait
-#endif
-                    for (auto b = 0U; b < batch_size; ++b)
-                    {
-                        for (auto i = start_point_range; i < end_point_range; ++i)
-                        {
-                            const Configuration c_b_v(&bl_view(b, 0, i, 0), false);
-                            cs_view(b, 0, i) = validate(c_s_v, c_b_v, env_v);
-                        }
-                    }
+//                 nb::capsule cs_owner(cs, [](void *p) noexcept { delete[] (bool *)p; });
+//                 nb::capsule cl_owner(cl, [](void *p) noexcept { delete[] (bool *)p; });
+//                 nb::capsule cg_owner(cg, [](void *p) noexcept { delete[] (bool *)p; });
 
-                    if (num_layers > 1)
-                    {
-#ifdef VAMP_USE_OPENMP
-#pragma omp for collapse(4) schedule(dynamic, 1000) nowait
-#endif
-                        for (auto b = 0U; b < batch_size; ++b)
-                        {
-                            for (auto l = 0U; l < num_layers - 1; ++l)
-                            {
-                                for (auto i = start_point_range; i < end_point_range; ++i)
-                                {
-                                    for (auto j = 0U; j < end_point_range; ++j)
-                                    {
-                                        const Configuration c_a_v(&bl_view(b, l, i, 0), false);
-                                        const Configuration c_b_v(&bl_view(b, l + 1, j, 0), false);
+//                 nb::ndarray<nb::numpy, bool, nb::ndim<3>> cs_nd(cs, {batch_size, 1, num_points}, cs_owner);
+//                 nb::ndarray<nb::numpy, bool, nb::ndim<4>> cl_nd(
+//                     cl, {batch_size, num_layers - 1, num_points, num_points}, cl_owner);
+//                 nb::ndarray<nb::numpy, bool, nb::ndim<3>> cg_nd(
+//                     cg, {batch_size, num_points, num_goals}, cg_owner);
 
-                                        cl_view(b, l, i, j) = validate(c_a_v, c_b_v, env_v);
-                                    }
-                                }
-                            }
-                        }
-                    }
+//                 const auto cs_view = cs_nd.view();
+//                 const auto cl_view = cl_nd.view();
+//                 const auto cg_view = cg_nd.view();
 
-#ifdef VAMP_USE_OPENMP
-#pragma omp for collapse(3) schedule(dynamic, 1000) nowait
-#endif
-                    for (auto b = 0U; b < batch_size; ++b)
-                    {
-                        for (auto i = start_point_range; i < end_point_range; ++i)
-                        {
-                            for (auto g = 0U; g < num_goals; ++g)
-                            {
-                                const Configuration c_a_v(&bl_view(b, num_layers - 1, i, 0), false);
-                                const Configuration c_g_v(&gc_view(g, 0), false);
+//                 const Configuration c_s_v(start_config.data(), false);
 
-                                cg_view(b, i, g) = validate(c_a_v, c_g_v, env_v);
-                            }
-                        }
-                    }
-                }
-            });
+// #ifdef VAMP_USE_OPENMP
+// #pragma omp parallel firstprivate(                                                                           \
+//         c_s_v, bl_view, gc_view, num_points, num_layers, batch_size, num_goals, env_v)                       \
+//     shared(cs_view, cl_view, cg_view) default(none)
+// #endif
+//                 {
+// #ifdef VAMP_USE_OPENMP
+// #pragma omp for collapse(2) schedule(dynamic, 1000) nowait
+// #endif
+//                     for (auto b = 0U; b < batch_size; ++b)
+//                     {
+//                         for (auto i = 0U; i < num_points; ++i)
+//                         {
+//                             const Configuration c_b_v(&bl_view(b, 0, i, 0), false);
+//                             cs_view(b, 0, i) = validate(c_s_v, c_b_v, env_v);
+//                         }
+//                     }
+
+//                     if (num_layers > 1)
+//                     {
+// #ifdef VAMP_USE_OPENMP
+// #pragma omp for collapse(4) schedule(dynamic, 1000) nowait
+// #endif
+//                         for (auto b = 0U; b < batch_size; ++b)
+//                         {
+//                             for (auto l = 0U; l < num_layers - 1; ++l)
+//                             {
+//                                 for (auto i = 0U; i < num_points; ++i)
+//                                 {
+//                                     for (auto j = 0U; j < num_points; ++j)
+//                                     {
+//                                         const Configuration c_a_v(&bl_view(b, l, i, 0), false);
+//                                         const Configuration c_b_v(&bl_view(b, l + 1, j, 0), false);
+
+//                                         cl_view(b, l, i, j) = validate(c_a_v, c_b_v, env_v);
+//                                     }
+//                                 }
+//                             }
+//                         }
+//                     }
+
+// #ifdef VAMP_USE_OPENMP
+// #pragma omp for collapse(3) schedule(dynamic, 1000) nowait
+// #endif
+//                     for (auto b = 0U; b < batch_size; ++b)
+//                     {
+//                         for (auto i = 0U; i < num_points; ++i)
+//                         {
+//                             for (auto g = 0U; g < num_goals; ++g)
+//                             {
+//                                 const Configuration c_a_v(&bl_view(b, num_layers - 1, i, 0), false);
+//                                 const Configuration c_g_v(&gc_view(g, 0), false);
+
+//                                 cg_view(b, i, g) = validate(c_a_v, c_g_v, env_v);
+//                             }
+//                         }
+//                     }
+//                 }
+
+//                 return std::make_tuple(cs_nd, cl_nd, cg_nd);
+//             });
+
+//         submodule.def(
+//             "initial_incremental_arrays",
+//             [](const nb::ndarray<const FloatT, nb::shape<Robot::dimension>, nb::device::cpu> &start_config,
+//                const nb::ndarray<const FloatT, nb::shape<-1, -1, -1, Robot::dimension>, nb::device::cpu>
+//                    &batch_layers,
+//                const nb::ndarray<const FloatT, nb::shape<-1, Robot::dimension>, nb::device::cpu>
+//                    &goal_configs)
+//             {
+//                 const std::size_t batch_size = batch_layers.shape(0);
+//                 const std::size_t num_layers = batch_layers.shape(1);
+//                 const std::size_t num_points = batch_layers.shape(2);
+//                 const std::size_t num_goals = goal_configs.shape(0);
+
+//                 const std::size_t cs_size = batch_size * num_points;
+//                 const std::size_t cl_size =
+//                     std::max(batch_size * (num_layers - 1) * num_points * num_points, 1UL);
+//                 const std::size_t cg_size = batch_size * num_points * num_goals;
+
+//                 auto *cs = new bool[cs_size];
+//                 auto *cl = new bool[cl_size];
+//                 auto *cg = new bool[cg_size];
+
+//                 memset(cs, 0, cs_size * sizeof(bool));
+//                 memset(cl, 0, cl_size * sizeof(bool));
+//                 memset(cg, 0, cg_size * sizeof(bool));
+
+//                 nb::capsule cs_owner(cs, [](void *p) noexcept { delete[] (bool *)p; });
+//                 nb::capsule cl_owner(cl, [](void *p) noexcept { delete[] (bool *)p; });
+//                 nb::capsule cg_owner(cg, [](void *p) noexcept { delete[] (bool *)p; });
+
+//                 nb::ndarray<nb::numpy, bool, nb::ndim<3>> cs_nd(cs, {batch_size, 1, num_points}, cs_owner);
+//                 nb::ndarray<nb::numpy, bool, nb::ndim<4>> cl_nd(
+//                     cl, {batch_size, num_layers - 1, num_points, num_points}, cl_owner);
+//                 nb::ndarray<nb::numpy, bool, nb::ndim<3>> cg_nd(
+//                     cg, {batch_size, num_points, num_goals}, cg_owner);
+
+//                 return std::make_tuple(cs_nd, cl_nd, cg_nd);
+//             });
+
+//         submodule.def(
+//             "get_all_paths",
+//             [](const nb::ndarray<const bool, nb::ndim<1>, nb::device::cpu> &Cs_np,
+//                const nb::ndarray<const bool, nb::ndim<3>, nb::device::cpu> &Ch_np,
+//                const nb::ndarray<const bool, nb::ndim<2>, nb::device::cpu> &Cl_np,
+//                const nb::ndarray<const bool, nb::ndim<2>, nb::device::cpu> &Vh_np)
+//             {
+//                 const std::size_t M = Ch_np.shape(0) + 1;
+//                 const std::size_t N = Ch_np.shape(1);
+//                 const std::size_t num_goals = Cl_np.shape(1);
+
+//                 const auto Cs = Cs_np.view();
+//                 const auto Ch = Ch_np.view();
+//                 const auto Cl = Cl_np.view();
+//                 const auto Vh = Vh_np.view();
+
+//                 using Path = std::vector<int>;
+//                 using Paths = std::vector<Path>;
+//                 using GoalIdx = std::vector<std::vector<int>>;
+
+//                 Paths paths;
+//                 GoalIdx goal_idx;
+
+//                 auto dfs = [&](auto &&self, int m, Path path) -> void
+//                 {
+//                     int current = path.back();
+
+//                     if (m == M)
+//                     {
+//                         std::vector<int> goal_ids;
+//                         for (int j = 0; j < num_goals; ++j)
+//                         {
+//                             if (Cl(current, j))
+//                             {
+//                                 goal_ids.push_back(j);
+//                             }
+//                         }
+//                         paths.push_back(std::move(path));
+//                         goal_idx.push_back(std::move(goal_ids));
+//                         return;
+//                     }
+
+//                     for (int n = 0; n < N; ++n)
+//                     {
+//                         if (Ch(m - 1, current, n) && Vh(m, n))
+//                         {
+//                             Path new_path = path;
+//                             new_path.push_back(n);
+//                             self(self, m + 1, std::move(new_path));
+//                         }
+//                     }
+//                 };
+
+//                 for (int n = 0; n < N; ++n)
+//                 {
+//                     if (Cs(n) && Vh(0, n))
+//                     {
+//                         dfs(dfs, 1, Path{n});
+//                     }
+//                 }
+
+//                 return std::make_tuple(paths, goal_idx);
+//             });
+
+//         submodule.def(
+//             "get_all_paths",
+//             [](const nb::ndarray<const bool, nb::ndim<1>, nb::device::cpu> &Cs_np,
+//                const nb::ndarray<const bool, nb::ndim<3>, nb::device::cpu> &Ch_np,
+//                const nb::ndarray<const bool, nb::ndim<2>, nb::device::cpu> &Cl_np,
+//                const nb::ndarray<const bool, nb::ndim<2>, nb::device::cpu> &Vh_np)
+//             {
+//                 const std::size_t M = Ch_np.shape(0) + 1;
+//                 const std::size_t N = Ch_np.shape(1);
+//                 const std::size_t num_goals = Cl_np.shape(1);
+
+//                 const auto Cs = Cs_np.view();
+//                 const auto Ch = Ch_np.view();
+//                 const auto Cl = Cl_np.view();
+//                 const auto Vh = Vh_np.view();
+
+//                 using Path = std::vector<int>;
+//                 using Paths = std::vector<Path>;
+//                 using GoalIdx = std::vector<std::vector<int>>;
+
+//                 Paths paths;
+//                 GoalIdx goal_idx;
+
+//                 auto dfs = [&](auto &&self, int m, Path path) -> void
+//                 {
+//                     int current = path.back();
+
+//                     if (m == M)
+//                     {
+//                         std::vector<int> goal_ids;
+//                         for (int j = 0; j < num_goals; ++j)
+//                         {
+//                             if (Cl(current, j))
+//                             {
+//                                 goal_ids.push_back(j);
+//                             }
+//                         }
+//                         paths.push_back(std::move(path));
+//                         goal_idx.push_back(std::move(goal_ids));
+//                         return;
+//                     }
+
+//                     for (int n = 0; n < N; ++n)
+//                     {
+//                         if (Ch(m - 1, current, n) && Vh(m, n))
+//                         {
+//                             Path new_path = path;
+//                             new_path.push_back(n);
+//                             self(self, m + 1, std::move(new_path));
+//                         }
+//                     }
+//                 };
+
+//                 for (int n = 0; n < N; ++n)
+//                 {
+//                     if (Cs(n) && Vh(0, n))
+//                     {
+//                         dfs(dfs, 1, Path{n});
+//                     }
+//                 }
+
+//                 return std::make_tuple(paths, goal_idx);
+//             });
+
+//         submodule.def(
+//             "incremental_batch_validate",
+//             [](const nb::ndarray<const FloatT, nb::shape<Robot::dimension>, nb::device::cpu> &start_config,
+//                const nb::ndarray<const FloatT, nb::shape<-1, -1, -1, Robot::dimension>, nb::device::cpu>
+//                    &batch_layers,
+//                const nb::ndarray<const FloatT, nb::shape<-1, Robot::dimension>, nb::device::cpu>
+//                    &goal_configs,
+//                nb::ndarray<bool, nb::shape<-1, -1, -1>, nb::device::cpu> &start_validate,
+//                nb::ndarray<bool, nb::shape<-1, -1, -1, -1>, nb::device::cpu> &layer_validate,
+//                nb::ndarray<bool, nb::shape<-1, -1, -1>, nb::device::cpu> &goal_validate,
+//                const typename RH::EnvironmentInput &env,
+//                std::size_t start_point_range,
+//                std::size_t end_point_range) noexcept
+//             {
+//                 using Configuration = typename RH::Configuration;
+//                 static constexpr auto validate =
+//                     // vamp::planning::validate_motion<Robot, rake, Robot::resolution>;
+//                     vamp::planning::validate_motion<Robot, rake, 2>;
+
+//                 const typename RH::EnvironmentVector env_v(env);
+
+//                 const std::size_t batch_size = batch_layers.shape(0);
+//                 const std::size_t num_layers = batch_layers.shape(1);
+//                 const std::size_t num_points = batch_layers.shape(2);
+//                 const std::size_t num_goals = goal_configs.shape(0);
+
+//                 const auto bl_view = batch_layers.view();
+//                 const auto gc_view = goal_configs.view();
+
+//                 const auto cs_view = start_validate.view();
+//                 const auto cl_view = layer_validate.view();
+//                 const auto cg_view = goal_validate.view();
+
+//                 const Configuration c_s_v(start_config.data(), false);
+
+// #ifdef VAMP_USE_OPENMP
+// #pragma omp parallel firstprivate(                                                                           \
+//         c_s_v,                                                                                               \
+//             bl_view,                                                                                         \
+//             gc_view,                                                                                         \
+//             num_points,                                                                                      \
+//             num_layers,                                                                                      \
+//             batch_size,                                                                                      \
+//             num_goals,                                                                                       \
+//             env_v,                                                                                           \
+//             start_point_range,                                                                               \
+//             end_point_range) shared(cs_view, cl_view, cg_view) default(none)
+// #endif
+//                 {
+// #ifdef VAMP_USE_OPENMP
+// #pragma omp for collapse(2) schedule(dynamic, 1000) nowait
+// #endif
+//                     for (auto b = 0U; b < batch_size; ++b)
+//                     {
+//                         for (auto i = start_point_range; i < end_point_range; ++i)
+//                         {
+//                             const Configuration c_b_v(&bl_view(b, 0, i, 0), false);
+//                             cs_view(b, 0, i) = validate(c_s_v, c_b_v, env_v);
+//                         }
+//                     }
+
+//                     if (num_layers > 1)
+//                     {
+// #ifdef VAMP_USE_OPENMP
+// #pragma omp for collapse(4) schedule(dynamic, 1000) nowait
+// #endif
+//                         for (auto b = 0U; b < batch_size; ++b)
+//                         {
+//                             for (auto l = 0U; l < num_layers - 1; ++l)
+//                             {
+//                                 for (auto i = start_point_range; i < end_point_range; ++i)
+//                                 {
+//                                     for (auto j = 0U; j < end_point_range; ++j)
+//                                     {
+//                                         const Configuration c_a_v(&bl_view(b, l, i, 0), false);
+//                                         const Configuration c_b_v(&bl_view(b, l + 1, j, 0), false);
+
+//                                         cl_view(b, l, i, j) = validate(c_a_v, c_b_v, env_v);
+//                                     }
+//                                 }
+//                             }
+//                         }
+//                     }
+
+// #ifdef VAMP_USE_OPENMP
+// #pragma omp for collapse(3) schedule(dynamic, 1000) nowait
+// #endif
+//                     for (auto b = 0U; b < batch_size; ++b)
+//                     {
+//                         for (auto i = start_point_range; i < end_point_range; ++i)
+//                         {
+//                             for (auto g = 0U; g < num_goals; ++g)
+//                             {
+//                                 const Configuration c_a_v(&bl_view(b, num_layers - 1, i, 0), false);
+//                                 const Configuration c_g_v(&gc_view(g, 0), false);
+
+//                                 cg_view(b, i, g) = validate(c_a_v, c_g_v, env_v);
+//                             }
+//                         }
+//                     }
+//                 }
+//             });
 
         submodule.def(
             "incremental_batch_validate_rrtc",

@@ -52,8 +52,28 @@ namespace unc::robotics::nigh::metric
         static auto distance(const Type &a, const Type &b) -> float
         {
             const auto diff = vamp::FloatVector<kDimensions>(a.v) - vamp::FloatVector<kDimensions>(b.v);
-            return diff.l2_norm();
+            if (kDimensions < 21) {
+                return diff.l2_norm();
+            }
+
+            alignas(vamp::FloatVectorAlignment)
+            std::array<float, vamp::FloatVector<kDimensions>::num_scalars_rounded> tmp = {};
+            // bias towards small velocity/acceleration distace
+            for (int i = 0; i < kDimensions; i++) {
+                if (i < kDimensions / 3) {
+                    tmp[i] =  1 * diff.to_array()[i];
+                }
+                else if (i < 2 * kDimensions / 3) {
+                    tmp[i] = 1 * diff.to_array()[i];
+                }
+                else {
+                    tmp[i] = 1 * diff.to_array()[i];
+                }
+            }
+            const auto diff2 = vamp::FloatVector<kDimensions>(tmp.data());
+            return diff2.l2_norm();
         }
+
     };
 }  // namespace unc::robotics::nigh::metric
 

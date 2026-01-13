@@ -1,6 +1,6 @@
 import vamp
 import numpy as np
-# from vamp import pybullet_interface as vpb
+from vamp import pybullet_interface as vpb
 import pinocchio.visualize
 import os
 import time
@@ -45,24 +45,42 @@ model, collision_model, visual_model = pinocchio.buildModelsFromUrdf(
 
 
 
-rng = vamp_module.xorshift()
+rng = vamp_module.halton()
 
 plan_settings.max_iterations = 100000
-plan_settings.max_samples = 100000
-plan_settings.range = 8
+plan_settings.max_samples = 1000000
+plan_settings.range = 1
 simp_settings.bez = True
-plan_settings.radius = 16
+plan_settings.radius = 2
+plan_settings.min_radius = 0.5
 
 # xyz, rpy, lwh
 cuboids_data = [
         # back
-        [[0.0, 0.0, 1.3], [0.0, 0.0, 0.0], [1.6, 0.1, 0.5]],
+        # [[0.0, 0.0, 1.3], [0.0, 0.0, 0.0], [1.6, 0.1, 0.5]],
         # front wall
-        [[0.5, 0.0, 0.0], [0.0, 0.0, 0.0], [0.2, 0.1, 0.5]],
+        # [[0.5, 0.0, 0.0], [0.0, 0.0, 0.0], [0.2, 0.1, 0.5]],
         # ground plane
         [[0, 0, -0.15], [0.0, 0.0, 0.0], [1.0, 1.0, 0.1]],
         # [[0.4, -0.6, 0.8], [0, 0, 0], [0.2, 0.1, 0.5]]
     ]
+spheres = [
+    [0.35, 0, 0.6],
+    [0.25, 0.25, 0.25],
+    # [0, 0.55, 0.45],
+    [-0.35, 0, 0.25],
+    [-0.25, -0.35, 0.5],
+    # [0, -0.55, 0.25],
+    [0.25, -0.35, 0.8],
+    [0.35, 0.35, 0.3],
+    # [0, 0.55, 0.4],
+    [-0.35, 0.35, 0.45],
+    [-0.55, 0, 0.8],
+    [-0.35, -0.35, 0.45],
+    # [0, -0.55, 0.4],
+    [0.35, -0.35, 0.45],
+]
+spheres = np.array(spheres)
 
 for i in range(len(cuboids_data)):
     cuboid = cuboids_data[i]
@@ -75,27 +93,43 @@ for i in range(len(cuboids_data)):
     plane_object.meshColor = np.array([0, 0, 0, 1])
     visual_model.addGeometryObject(plane_object)
 
-viz = pinocchio.visualize.MeshcatVisualizer(model, collision_model, visual_model)
-
-try:
-    viz.initViewer(zmq_url="tcp://127.0.0.1:6000")
-except ImportError as err:
-    print(
-        "Error while initializing the viewer. It seems you should install Python meshcat"
+for i in range(len(spheres)):
+    sphere = spheres[i]
+    sphere_geom = fcl.Sphere(0.05)
+    sphere_name = f"sphere{i}"
+    sphere_placement = pinocchio.SE3(pinocchio.utils.rotate('x', 0), sphere)
+    sphere_object = pinocchio.GeometryObject(
+        name=sphere_name, parent_joint=0, parent_frame=0, placement=sphere_placement, collision_geometry=sphere_geom
     )
-    print(err)
-    exit(0)
-viz.loadViewerModel()
+    sphere_object.meshColor = np.array([1, 1, 1, 1])
+    visual_model.addGeometryObject(sphere_object)
 
-# sim = vpb.PyBulletSimulator(str("../resources/panda/panda.urdf"), vamp_module.joint_names(), True)
+# viz = pinocchio.visualize.MeshcatVisualizer(model, collision_model, visual_model)
+
+# try:
+#     viz.initViewer(zmq_url="tcp://127.0.0.1:6002")
+# except ImportError as err:
+#     print(
+#         "Error while initializing the viewer. It seems you should install Python meshcat"
+#     )
+#     print(err)
+#     exit(0)
+# viz.loadViewerModel()
+
 
 env = vamp.Environment()
-cuboids = [vamp.Cuboid(*data) for data in cuboids_data]
-for cuboid in cuboids:
-    env.add_cuboid(cuboid)
+sim = vpb.PyBulletSimulator(str("../resources/panda/panda.urdf"), vamp_module.joint_names(), True)
 
-# for cuboid in cuboids_data:
-#     sim.add_cuboid(cuboid[2], cuboid[0], cuboid[1])
+# cuboids = [vamp.Cuboid(*data) for data in cuboids_data]
+# for cuboid in cuboids:
+#     env.add_cuboid(cuboid)
+
+spheres = [vamp.Sphere(sphere, 0.05) for sphere in spheres]
+for sphere in spheres:
+    env.add_sphere(sphere)
+    sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z])
+
+
 
 ts = time.perf_counter()
 result = planner_func(np.array(pos1), np.array(pos2), env, plan_settings, rng)
@@ -111,29 +145,30 @@ else:
 # simple = vamp_module.simplify(result.path, env, simp_settings, rng)
 result = vamp_module.simplify(result.path, env, simp_settings, rng)
 traj = vamp_module.compute_traj(result.path, env, simp_settings, rng)
-# print(traj.path.numpy(), flush=True)
+
+path = traj.path.numpy()
 q_path = traj.path.numpy()[:, 0:7]
-# later make vamp output qd_path
-qd_path = []
-for i in range(len(q_path) - 1):
-    qd_path.append((q_path[i + 1] - q_path[i]) / 0.001)
-qd_path.append(pos2[7:14])
-qd_path = np.array(qd_path)
+# for p in path:
+#     if not vamp_module.validate(p, env, True):
+#         print("Invalid state in plan!") # :(
+#         break
 
-print(len(qd_path))
+# viz.display(q_path[0])
+sim.animate(path[np.arange(0, len(path), 5)])
 
-viz.display(q_path[0])
-
-input("Ready, press any key: ")
-q_curr = pos1[0:7]
-for i in range(0, len(q_path), 5):
-    ts = time.perf_counter()
-    # q_curr += qd_path[i] * 0.001
-    q_curr = q_path[i]
-    viz.display(q_curr)
-    tf = time.perf_counter()
-    # print(tf - ts)
-    # time.sleep(0.0001)
+# input("Ready, press any key: ")
+# q_curr = pos1[0:7]
+# for i in range(0, len(q_path), 1):
+#     ts = time.perf_counter()
+#     # q_curr += qd_path[i] * 0.001
+#     q_curr = q_path[i]
+#     print(path[i])
+#     # if not vamp_module.validate(path[i], env, False):
+#     #     print(f"Invalid state {i} in plan!") # :(
+#     viz.display(q_curr)
+#     tf = time.perf_counter()
+#     # print(tf - ts)
+#     # time.sleep(0.0001)
 
 def exec_vels(qd_path):
     robot = Robot("172.16.0.2")

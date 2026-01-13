@@ -11,6 +11,10 @@ namespace vamp::planning
         float alpha = 0.0001;
         float min_radius = 1.;
 
+        // attempt at better sampling strategy for higher order terms
+        // -1 if no special sampling
+        float sample_radius = -1;
+
         bool balance = true;
         float tree_ratio = 1.;
 

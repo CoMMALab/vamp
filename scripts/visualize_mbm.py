@@ -13,7 +13,7 @@ def main(
     robot: str = "pandatopp",                  # Robot to plan for
     planner: str = "rrtctopp",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "",                     # Problem name
+    problem: str = "bookshelf_thin",                     # Problem name
     index: int = 1,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
@@ -21,7 +21,7 @@ def main(
     pointcloud: bool = False,              # Use pointcloud rather than primitive geometry
     samples_per_object: int = 10000,       # If pointcloud, samples per object to use
     filter_radius: float = 0.02,           # Filter radius for pointcloud filtering
-    filter_cull: bool = True,              # Cull pointcloud around robot by maximum distance
+    filter_cull: bool = False,              # Cull pointcloud around robot by maximum distance
     **kwargs,
     ):
 
@@ -37,13 +37,13 @@ def main(
         planner,
         **kwargs,
         )
-    plan_settings.max_iterations = 1000000
-    plan_settings.max_samples = 100000
-    plan_settings.range = 8
+    plan_settings.max_iterations = 10000000
+    plan_settings.max_samples = 10000000
+    plan_settings.range = 2
     simp_settings.bez = True
-    plan_settings.radius = 16
-    plan_settings.min_radius = 1
-    plan_settings.alpha = 0.0000001
+    plan_settings.radius = 8
+    plan_settings.min_radius = 0.1
+
 
     if not problem:
         problem = list(data['problems'].keys())[0]
@@ -126,8 +126,12 @@ Simplified: {stats['simplified_path_cost']:5.3f}"""
 
         plan = simplify.path
         plan = vamp_module.compute_traj(plan, env, simp_settings, sampler).path.numpy()
-        print(len(plan))
-        plan = plan[0:-1:15]
+        # print(len(plan))
+        # plan = plan[0:-1:15]
+        for p in plan:
+            if not vamp_module.validate(p, env, True):
+                print("Invalid state in plan!") # :(
+                break
         # plan.interpolate_to_resolution(vamp_module.resolution())
 
     if valid and not solved:

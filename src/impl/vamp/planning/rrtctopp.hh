@@ -125,7 +125,6 @@ namespace vamp::planning
                 typename Robot::ConfigurationBuffer temp_array;
                 temp.to_array(temp_array.data());
 
-
                 const auto nearest = tree_a->nearest(NNFloatArray<dimension>{temp_array.data()});
                 // std::cout << "nearest reached" << std::endl;
 
@@ -142,11 +141,14 @@ namespace vamp::planning
                     continue;
                 }
 
+                // gets nearest by only configuration
                 const auto nearest_configuration = nearest_node.as_vector();
 
                 auto nearest_vector = temp - nearest_configuration;
 
+
                 bool reach = nearest_distance < settings.range;
+                // replace with nn inference
                 auto extension_vector =
                     (reach) ? nearest_vector : nearest_vector * (settings.range / nearest_distance);
 
@@ -257,7 +259,6 @@ namespace vamp::planning
             result.iterations = iter;
             result.size.emplace_back(start_tree.size());
             result.size.emplace_back(goal_tree.size());
-            // std::cout << "done" << std::endl;
             return result;
         }
     };

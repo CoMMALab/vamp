@@ -130,39 +130,40 @@ namespace vamp::planning
         }
 
         // slide the rake back along bez (i.e. compute new timesteps to rake)
-        // this is stupid
         const auto backstep = percents.broadcast(0) / n;
         // for (int i = 0; i < backstep.to_array().size(); i++) {
-        //     std::cout << backstep.to_array()[i] << std::endl;
+        //     std::cout << backstep.to_array()[i] << " ";
         // }
-
+        // std::cout << backstep.to_array().size() << std::endl;
         // std::cout << "sliding rake" << std::endl;
-        for (int i = 1; i < n; i++)
+        for (int i = 1; i <= n; i++)
         {
             // evaluate states in rake
             // this is wrong as fuk
             auto times = (percents - i * backstep).to_array();
             // for (int j = 0; j < rake; j++) {
-            //     // std::cout << times[j] << std::endl;
-            //     states_arr[j] = (bez.evaluate(static_cast<double>(times[j])));
+            //     std::cout << times[j] << " ";
+            // //     // states_arr[j] = (bez.evaluate(static_cast<double>(times[j])));
             // }
+            // std::cout << std::endl;
 
+            // wrong index FIX
             std::array<std::array<float, rake>, Robot::dimension / 3> configs;
-            for (int i = 0; i < rake; i++) {
-                const auto &state = bez.evaluate(static_cast<double>(times[i]));
+            for (int j = 0; j < rake; j++) {
+                const auto &state = bez.evaluate(static_cast<double>(times[j]));
 
-                for (auto j = 0U; j < Robot::dimension / 3; ++j)
+                for (auto k = 0U; k < Robot::dimension / 3; ++k)
                 {
-                    configs[j][i] = state[j];
+                    configs[k][j] = state[k];
                 }
             }
 
-            // CHECK FOR CORRECTNES
-            for (int i = 0; i < Robot::dimension / 3; i++)
+            // CHECK FOR CORRECTNES 
+            for (int j = 0; j < Robot::dimension / 3; j++)
             {
-                block[i] = FloatVector<rake>(configs[i]);
-                // std::cout << block[i] << std::endl;
+                block[j] = FloatVector<rake>(configs[j]);
             }
+            // std::cout << block << std::endl;
 
             // collision checkig is broken, ask someone wtf any of this shit is
             bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
@@ -189,7 +190,6 @@ namespace vamp::planning
         auto start_arr = start.to_array();
 
         for (int i = 0; i < Robot::dimension; ++i) {
-            // this line for some reason changes the value of i
             x[i] = static_cast<double>(start_arr[i]);
         }
         auto goal_arr = goal.to_array();

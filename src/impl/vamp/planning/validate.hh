@@ -82,6 +82,7 @@ namespace vamp::planning
     inline constexpr auto validate_bez(
         const typename Robot::Configuration &start,
         Bezier bez,
+        float T,
         const collision::Environment<FloatVector<rake>> &environment) -> bool
     {
         // std::cout << "inside validate bez" << std::endl;
@@ -119,7 +120,7 @@ namespace vamp::planning
         // no idea if this is correct (its not)
         // std::cout << "check collision" << std::endl;
         // make n related to path length later
-        const std::size_t n = static_cast<float>(resolution);
+        const std::size_t n = static_cast<float>(resolution) * T * static_cast<float>(rake) * 4;
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                  Robot::template fkcc<rake>(environment, block);
                                                 
@@ -216,12 +217,14 @@ namespace vamp::planning
             }
         }
 
+        float T = out[28];
+
         // final point
         for (int i = 0; i < Robot::dimension / 3; i++) {
             anchors(5, i) = static_cast<double>(goal_arr[i]);
         }
 
         Bezier bez(anchors);
-        return validate_bez<Robot, rake, resolution>(start, bez, environment);
+        return validate_bez<Robot, rake, resolution>(start, bez, T, environment);
     }    
 }  // namespace vamp::planning

@@ -284,14 +284,14 @@ namespace vamp::planning
                     og_time += out[4 * Robot::dimension / 3];
                 }
 
-                if (cut_time <= og_time) {
+                // if (cut_time <= og_time) {
                     if (validate_bez_motion<Robot, rake, resolution>(path[i], path[j], environment))
                     {
                         path.erase(path.begin() + i + 1, path.begin() + j);
                         result = true;
                         break;
                     }
-                }
+                // }
             }
         }
 
@@ -438,10 +438,12 @@ namespace vamp::planning
             //     { return shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut_bez); };
             // result.path
             result.path = path;
-            smooth_bspline_bez<Robot, rake, resolution>(result.path, environment, settings.bspline);
             shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut);
             smooth_bspline_bez<Robot, rake, resolution>(result.path, environment, settings.bspline);
             shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut);
+            smooth_bspline_bez<Robot, rake, resolution>(result.path, environment, settings.bspline);
+            shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut);
+            
             return result;
         }
 

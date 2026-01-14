@@ -47,8 +47,8 @@ namespace vamp::planning {
                     state P(1, this->anchors.rows());
                     for (int i = 0; i <= this->degree; i++) {
                         P(0, i) = ((this->combs[i] * 
-                        (pow(1.0 - t * 1.0 / T, 1.0 * this->degree - i)) * 
-                        (pow(1.0 * t / T, 1.0 * i))));
+                        (pow(1.0 - t * 1.0 / T, this->degree - i)) * 
+                        (pow(1.0 * t / T, i))));
                     }
                     state s = P * this->anchors;
                     traj.push_back(s);
@@ -60,8 +60,8 @@ namespace vamp::planning {
                 state P(1, this->anchors.rows());
                 for (int i = 0; i <= this->degree; i++) {
                     P(0, i) = ((this->combs[i] * 
-                    (pow(1.0 - t * 1.0, 1.0 * this->degree - i)) * 
-                    (pow(1.0 * t, 1.0 * i))));
+                    (pow(1.0 - t * 1.0, this->degree - i)) * 
+                    (pow(1.0 * t, i))));
                 }
                 state s = P * this->anchors;
                 return s;

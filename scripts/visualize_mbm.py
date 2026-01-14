@@ -14,7 +14,7 @@ def main(
     planner: str = "rrtctopp",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
     problem: str = "bookshelf_thin",                     # Problem name
-    index: int = 1,                        # Problem index
+    index: int = 2,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -38,11 +38,13 @@ def main(
         **kwargs,
         )
     plan_settings.max_iterations = 10000000
-    plan_settings.max_samples = 10000000
-    plan_settings.range = 2
+    plan_settings.max_samples = 1000000
+    plan_settings.range = 1
     simp_settings.bez = True
     plan_settings.radius = 8
-    plan_settings.min_radius = 0.1
+    plan_settings.min_radius = 0.5
+    plan_settings.balance = True
+    plan_settings.start_tree_first = False
 
 
     if not problem:
@@ -128,10 +130,10 @@ Simplified: {stats['simplified_path_cost']:5.3f}"""
         plan = vamp_module.compute_traj(plan, env, simp_settings, sampler).path.numpy()
         # print(len(plan))
         # plan = plan[0:-1:15]
-        for p in plan:
-            if not vamp_module.validate(p, env, True):
-                print("Invalid state in plan!") # :(
-                break
+        # for p in plan:
+        #     if not vamp_module.validate(p, env, False):
+        #         print("Invalid state in plan!") # :(
+        #         break
         # plan.interpolate_to_resolution(vamp_module.resolution())
 
     if valid and not solved:
@@ -182,7 +184,8 @@ n Graph States: {result.size}
 
                 break
 
-    sim.animate(plan)
+    # sim.animate(simplify.path)
+    sim.animate(plan[np.arange(0, len(plan), 5)])
 
 
 if __name__ == "__main__":

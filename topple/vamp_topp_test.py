@@ -45,24 +45,25 @@ model, collision_model, visual_model = pinocchio.buildModelsFromUrdf(
 
 
 
-rng = vamp_module.halton()
+rng = vamp_module.xorshift()
 
 plan_settings.max_iterations = 100000
 plan_settings.max_samples = 1000000
-plan_settings.range = 1
+plan_settings.range = 4
 simp_settings.bez = True
-plan_settings.radius = 2
+plan_settings.radius = 8
 plan_settings.min_radius = 0.5
+plan_settings.balance = False
 
 # xyz, rpy, lwh
 cuboids_data = [
         # back
-        # [[0.0, 0.0, 1.3], [0.0, 0.0, 0.0], [1.6, 0.1, 0.5]],
+        # [[0.0, 0.0, 1.5], [0.0, 0.0, 0.0], [1.6, 0.1, 0.5]],
         # front wall
-        # [[0.5, 0.0, 0.0], [0.0, 0.0, 0.0], [0.2, 0.1, 0.5]],
+        [[0.5, 0.0, 0.0], [0.0, 0.0, 0.0], [0.2, 0.1, 0.5]],
         # ground plane
         [[0, 0, -0.15], [0.0, 0.0, 0.0], [1.0, 1.0, 0.1]],
-        # [[0.4, -0.6, 0.8], [0, 0, 0], [0.2, 0.1, 0.5]]
+        [[0.4, -0.7, 0.8], [0, 0, 0], [0.2, 0.1, 0.5]]
     ]
 spheres = [
     [0.35, 0, 0.6],
@@ -120,9 +121,11 @@ for i in range(len(spheres)):
 env = vamp.Environment()
 sim = vpb.PyBulletSimulator(str("../resources/panda/panda.urdf"), vamp_module.joint_names(), True)
 
-# cuboids = [vamp.Cuboid(*data) for data in cuboids_data]
-# for cuboid in cuboids:
-#     env.add_cuboid(cuboid)
+cuboids = [vamp.Cuboid(*data) for data in cuboids_data]
+for cuboid in cuboids:
+    env.add_cuboid(cuboid)
+for cuboid in cuboids_data:
+    sim.add_cuboid(cuboid[2], cuboid[0], cuboid[1])
 
 spheres = [vamp.Sphere(sphere, 0.05) for sphere in spheres]
 for sphere in spheres:

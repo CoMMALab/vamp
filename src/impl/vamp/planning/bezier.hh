@@ -4,8 +4,8 @@
 
 
 namespace vamp::planning {
-    using row_matrix = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
-    using state = Eigen::Matrix<double, 1, Eigen::Dynamic, Eigen::RowMajor>;
+    using row_matrix = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+    using state = Eigen::Matrix<float, 1, Eigen::Dynamic, Eigen::RowMajor>;
 
     // maybe optimize this, i.e. compute once and store somewhere
     inline static int comb(int n, int k) {
@@ -30,9 +30,9 @@ namespace vamp::planning {
         public:
             row_matrix anchors;
             int degree;
-            std::array<double, 6> combs;
+            std::array<int, 6> combs;
 
-            Bezier(row_matrix anchors) {
+            Bezier(row_matrix anchors) noexcept {
                 this->anchors = anchors;
                 this->degree = anchors.rows() - 1;
                 // compute bez comb
@@ -56,7 +56,7 @@ namespace vamp::planning {
                 return traj;
             }
             
-            state evaluate(double t) {
+            state evaluate(float t) {
                 state P(1, this->anchors.rows());
                 for (int i = 0; i <= this->degree; i++) {
                     P(0, i) = ((this->combs[i] * 

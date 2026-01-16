@@ -49,7 +49,7 @@ rng = vamp_module.xorshift()
 
 plan_settings.max_iterations = 100000
 plan_settings.max_samples = 1000000
-plan_settings.range = 4
+plan_settings.range = 2
 simp_settings.bez = True
 plan_settings.radius = 8
 plan_settings.min_radius = 0.5
@@ -58,7 +58,7 @@ plan_settings.balance = False
 # xyz, rpy, lwh
 cuboids_data = [
         # back
-        # [[0.0, 0.0, 1.5], [0.0, 0.0, 0.0], [1.6, 0.1, 0.5]],
+        [[0.0, 0.0, 1.5], [0.0, 0.0, 0.0], [1.6, 0.1, 0.5]],
         # front wall
         [[0.5, 0.0, 0.0], [0.0, 0.0, 0.0], [0.2, 0.1, 0.5]],
         # ground plane
@@ -83,32 +83,32 @@ spheres = [
 ]
 spheres = np.array(spheres)
 
-for i in range(len(cuboids_data)):
-    cuboid = cuboids_data[i]
-    plane_geom = fcl.Box(cuboid[2][0] * 2, cuboid[2][1] * 2, 2 * cuboid[2][2])
-    plane_name = f"front_plane{i}"
-    plane_placement = pinocchio.SE3(pinocchio.utils.rotate('x', 0), np.array([cuboid[0][0], cuboid[0][1], cuboid[0][2]]))
-    plane_object = pinocchio.GeometryObject(
-        name=plane_name, parent_joint=0, parent_frame=0, placement=plane_placement, collision_geometry=plane_geom
-    )
-    plane_object.meshColor = np.array([0, 0, 0, 1])
-    visual_model.addGeometryObject(plane_object)
+# for i in range(len(cuboids_data)):
+#     cuboid = cuboids_data[i]
+#     plane_geom = fcl.Box(cuboid[2][0] * 2, cuboid[2][1] * 2, 2 * cuboid[2][2])
+#     plane_name = f"front_plane{i}"
+#     plane_placement = pinocchio.SE3(pinocchio.utils.rotate('x', 0), np.array([cuboid[0][0], cuboid[0][1], cuboid[0][2]]))
+#     plane_object = pinocchio.GeometryObject(
+#         name=plane_name, parent_joint=0, parent_frame=0, placement=plane_placement, collision_geometry=plane_geom
+#     )
+#     plane_object.meshColor = np.array([0, 0, 0, 1])
+#     visual_model.addGeometryObject(plane_object)
 
-for i in range(len(spheres)):
-    sphere = spheres[i]
-    sphere_geom = fcl.Sphere(0.05)
-    sphere_name = f"sphere{i}"
-    sphere_placement = pinocchio.SE3(pinocchio.utils.rotate('x', 0), sphere)
-    sphere_object = pinocchio.GeometryObject(
-        name=sphere_name, parent_joint=0, parent_frame=0, placement=sphere_placement, collision_geometry=sphere_geom
-    )
-    sphere_object.meshColor = np.array([1, 1, 1, 1])
-    visual_model.addGeometryObject(sphere_object)
+# for i in range(len(spheres)):
+#     sphere = spheres[i]
+#     sphere_geom = fcl.Sphere(0.05)
+#     sphere_name = f"sphere{i}"
+#     sphere_placement = pinocchio.SE3(pinocchio.utils.rotate('x', 0), sphere)
+#     sphere_object = pinocchio.GeometryObject(
+#         name=sphere_name, parent_joint=0, parent_frame=0, placement=sphere_placement, collision_geometry=sphere_geom
+#     )
+#     sphere_object.meshColor = np.array([1, 1, 1, 1])
+#     visual_model.addGeometryObject(sphere_object)
 
 # viz = pinocchio.visualize.MeshcatVisualizer(model, collision_model, visual_model)
 
 # try:
-#     viz.initViewer(zmq_url="tcp://127.0.0.1:6002")
+#     viz.initViewer(zmq_url="tcp://127.0.0.1:6000")
 # except ImportError as err:
 #     print(
 #         "Error while initializing the viewer. It seems you should install Python meshcat"
@@ -145,7 +145,6 @@ else:
     print("failed")
     exit()
 # print(result.path.numpy())
-# simple = vamp_module.simplify(result.path, env, simp_settings, rng)
 result = vamp_module.simplify(result.path, env, simp_settings, rng)
 traj = vamp_module.compute_traj(result.path, env, simp_settings, rng)
 

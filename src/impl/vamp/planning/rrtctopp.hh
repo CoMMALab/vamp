@@ -114,7 +114,9 @@ namespace vamp::planning
                 if ((not settings.balance) or ratio < settings.tree_ratio)
                 {
                     // std::cout << "swapping trees" << std::endl;
+                    // THIS IS POTENTIALLT AN ISSUE, COLLISION MUST BE CHECKED IN THE START TO GOAL DIRECTION
                     std::swap(tree_a, tree_b);
+                    // starts with goal tree
                     tree_a_is_start = not tree_a_is_start;
                     // std::cout << "trees swapped" << std::endl;
 
@@ -152,10 +154,22 @@ namespace vamp::planning
                 auto extension_vector =
                     (reach) ? nearest_vector : nearest_vector * (settings.range / nearest_distance);
 
-                if (validate_bez_motion<Robot, rake, resolution>(
+
+                // TESTING
+                bool valid_extension = false;
+                if (!tree_a_is_start) {
+                    valid_extension = validate_bez_motion<Robot, rake, resolution>(
+                        nearest_configuration + extension_vector,
+                        nearest_configuration,
+                        environment); 
+                }
+                else {
+                    valid_extension = validate_bez_motion<Robot, rake, resolution>(
                         nearest_configuration,
                         nearest_configuration + extension_vector,
-                        environment))
+                        environment);
+                }
+                if (valid_extension)
                 {
                     float *new_configuration_index = buffer_index(free_index);
                     auto new_configuration = nearest_configuration + extension_vector;
@@ -191,8 +205,10 @@ namespace vamp::planning
                     std::size_t i_extension = 0;
                     auto prior = new_configuration;
                     for (; i_extension < n_extensions and
-                           validate_bez_motion<Robot, rake, resolution>(
-                               prior, prior + increment, environment) and
+                           !tree_a_is_start ? validate_bez_motion<Robot, rake, resolution>(
+                                prior + increment, prior, environment) :
+                               validate_bez_motion<Robot, rake, resolution>(
+                                prior, prior + increment,environment) and
                            free_index < settings.max_samples;
                          ++i_extension)
                     {

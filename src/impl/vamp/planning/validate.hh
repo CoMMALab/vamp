@@ -78,106 +78,114 @@ namespace vamp::planning
     }
 
     // topple addons
+    // template <typename Robot, std::size_t rake, std::size_t resolution>
+    // inline constexpr auto validate_bez(
+    //     const typename Robot::Configuration &start,
+    //     float distance,
+    //     Bezier bez,
+    //     const collision::Environment<FloatVector<rake>> &environment) -> bool
+    // {
+    //     // std::cout << "inside validate bez" << std::endl;
+    //     // TODO: Fix use of reinterpret_cast in pack() so that this can be constexpr
+    //     const auto percents = FloatVector<rake>(Percents<rake>::percents);
+
+    //     typename Robot::template ConfigurationBlock<rake> block;
+
+    //     // HACK: broadcast() implicitly assumes that the rake is exactly VectorWidth
+    //     // use percents as times to get configs
+    //     // std::array<state, rake> states_arr;
+    //     auto percents_arr = percents.to_array();
+
+    //     for (auto j = 0U; j < Robot::dimension / 3; j++)  
+    //     {  
+    //         // Collect the i-th dimension values for all rake configurations  
+    //         std::array<float, rake> dim_values;  
+    //         for (auto k = 0U; k < rake; k++)  
+    //         {  
+    //             const auto &state = bez.evaluate(static_cast<float>(percents_arr[k]));  
+    //             dim_values[k] = state[j];
+    //         }  
+    //         // Broadcast these values across SIMD lanes  
+    //         block[j] = FloatVector<rake>(dim_values);  
+    //     }
+
+    //     const std::size_t n = std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
+
+    //     bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
+    //                                              Robot::template fkcc<rake>(environment, block);
+                                                
+    //     // std::cout << valid << std::endl;
+    //     if (not valid or n == 1)
+    //     {
+    //         return valid;
+    //     }
+
+    //     // slide the rake back along bez (i.e. compute new timesteps to rake)
+    //     const auto backstep = percents.broadcast(0) / n;
+    //     for (auto i = 1U; i < n; i++)
+    //     {
+    //         // evaluate states in rake
+    //         auto times = (percents - i * backstep).to_array();
+
+    //         for (auto j = 0U; j < Robot::dimension / 3; j++)  
+    //         {  
+    //             // Collect the i-th dimension values for all rake configurations  
+    //             std::array<float, rake> dim_values;  
+    //             for (auto k = 0U; k < rake; k++)  
+    //             {  
+    //                 const auto &state = bez.evaluate(static_cast<float>(times[k]));  
+    //                 dim_values[k] = state[j];
+    //             }  
+    //             // Broadcast these values across SIMD lanes  
+    //             block[j] = FloatVector<rake>(dim_values);  
+    //         }
+    //         // std::cout << block << std::endl;
+
+    //         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
+    //                                                  Robot::template fkcc<rake>(environment, block);
+    //         if (not valid)
+    //         {
+    //             return false;
+    //         }
+    //     }
+
+    //     return true;
+    // }
+
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline constexpr auto validate_bez(
         const typename Robot::Configuration &start,
+        int T,
         Bezier bez,
-        float T,
         const collision::Environment<FloatVector<rake>> &environment) -> bool
     {
-        // std::cout << "inside validate bez" << std::endl;
-        // TODO: Fix use of reinterpret_cast in pack() so that this can be constexpr
-        const auto percents = FloatVector<rake>(Percents<rake>::percents);
-        // for (int i = 0; i < rake; i++) {
-        //     std::cout << percents << std::endl;
-        // }
-
-        typename Robot::template ConfigurationBlock<rake> block;
-
-        // HACK: broadcast() implicitly assumes that the rake is exactly VectorWidth
-        // use percents as times to get configs
-        // std::array<state, rake> states_arr;
-        auto percents_arr = percents.to_array();
-
-        std::array<std::array<float, rake>, Robot::dimension / 3> configs;
-        for (int i = 0; i < rake; i++) {
-            const auto &state = bez.evaluate(static_cast<double>(percents_arr[i]));
-
-            for (auto j = 0U; j < Robot::dimension / 3; ++j)
-            {
-                configs[j][i] = state[j];
-            }
-        }
-
-        // CHECK FOR CORRECTNES
-        for (int i = 0; i < Robot::dimension / 3; i++)
-        {
-            block[i] = FloatVector<rake>(configs[i]);
-            // std::cout << block[i] << std::endl;
-        }
-
-        // const std::size_t n = std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
-        // no idea if this is correct (its not)
-        // std::cout << "check collision" << std::endl;
-        // make n related to path length later
-        const std::size_t n = static_cast<float>(resolution) * T * static_cast<float>(rake) * 4;
-        bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
-                                                 Robot::template fkcc<rake>(environment, block);
-                                                
-        // std::cout << valid << std::endl;
-        if (not valid or n == 1)
-        {
-            return valid;
-        }
-
-        // slide the rake back along bez (i.e. compute new timesteps to rake)
-        const auto backstep = percents.broadcast(0) / n;
-        // for (int i = 0; i < backstep.to_array().size(); i++) {
-        //     std::cout << backstep.to_array()[i] << " ";
-        // }
-        // std::cout << backstep.to_array().size() << std::endl;
-        // std::cout << "sliding rake" << std::endl;
-        for (int i = 1; i <= n; i++)
-        {
-            // evaluate states in rake
-            // this is wrong as fuk
-            auto times = (percents - i * backstep).to_array();
-            // for (int j = 0; j < rake; j++) {
-            //     std::cout << times[j] << " ";
-            // //     // states_arr[j] = (bez.evaluate(static_cast<double>(times[j])));
-            // }
-            // std::cout << std::endl;
-
-            // wrong index FIX
-            std::array<std::array<float, rake>, Robot::dimension / 3> configs;
-            for (int j = 0; j < rake; j++) {
-                const auto &state = bez.evaluate(static_cast<double>(times[j]));
-
-                for (auto k = 0U; k < Robot::dimension / 3; ++k)
-                {
-                    configs[k][j] = state[k];
+        // just check every configuration along bez
+        for (auto t = 0U; t < T; t += rake) {
+            typename Robot::template ConfigurationBlock<rake> block;
+            for (auto i = 0U; i < Robot::dimension / 3; i++) {
+                std::array<float, rake> dim_values;
+                for (auto j = 0U; j < rake; j++) {
+                    float time = static_cast<float>(t + j) / static_cast<float>(T);
+                    if (time > 1.0) {
+                        time = 1.0;
+                    }
+                    const auto state = bez.evaluate(time);
+                    dim_values[j] = state(i);
                 }
+                block[i] = FloatVector<rake>(dim_values);
             }
-
-            // CHECK FOR CORRECTNES 
-            for (int j = 0; j < Robot::dimension / 3; j++)
-            {
-                block[j] = FloatVector<rake>(configs[j]);
-            }
-            // std::cout << block << std::endl;
-
-            // collision checkig is broken, ask someone wtf any of this shit is
+            // print block for debug
+            // for (auto i = 0U; i < Robot::dimension / 3; i++) {
+            //     std::cout << "block row " << i << ": " << block[i] << std::endl;
+            // }
             bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                      Robot::template fkcc<rake>(environment, block);
-            if (not valid)
-            {
+            if (not valid) {
                 return false;
             }
         }
-
         return true;
     }
-
     // only call this
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline constexpr auto validate_bez_motion(
@@ -187,44 +195,44 @@ namespace vamp::planning
     {
         // std::cout << "inside validate bez motion" << std::endl;
         // build input to MLP
-        std::array<double, 42> x;
+        std::array<float, Robot::dimension * 2> x;
         auto start_arr = start.to_array();
 
-        for (int i = 0; i < Robot::dimension; ++i) {
-            x[i] = static_cast<double>(start_arr[i]);
+        for (auto i = 0U; i < Robot::dimension; i++) {
+            x[i] = static_cast<float>(start_arr[i]);
         }
         auto goal_arr = goal.to_array();
-        for (int i = 0U; i < Robot::dimension; ++i) {
-            x[Robot::dimension + i] = static_cast<double>(goal_arr[i]);
+        for (auto i = 0U; i < Robot::dimension; i++) {
+            x[Robot::dimension + i] = static_cast<float>(goal_arr[i]);
         }
 
         // array to store inference output
-        std::array<double, 29> out;
+        std::array<float, 29> out;
         Robot::template topple_nn_forward(x, out);
 
         // build the anchors
         row_matrix anchors(6, Robot::dimension / 3);
 
         // initial point
-        for (int i = 0; i < Robot::dimension / 3; ++i) {
-            anchors(0, i) = static_cast<double>(start_arr[i]);
+        for (auto i = 0U; i < Robot::dimension / 3; i++) {
+            anchors(0, i) = static_cast<float>(start_arr[i]);
         }
 
         // intermediate points
-        for (int i = 1; i <= 4; i++) {
-            for (int j = 0; j < Robot::dimension / 3; ++j) {
+        for (auto i = 1U; i <= 4; i++) {
+            for (auto j = 0U; j < Robot::dimension / 3; j++) {
                 anchors(i, j) = out[(i - 1) * Robot::dimension / 3 + j];
             }
         }
 
-        float T = out[28];
+        int T = out[28] * 1000;
 
         // final point
-        for (int i = 0; i < Robot::dimension / 3; i++) {
-            anchors(5, i) = static_cast<double>(goal_arr[i]);
+        for (auto i = 0U; i < Robot::dimension / 3; i++) {
+            anchors(5, i) = static_cast<float>(goal_arr[i]);
         }
 
         Bezier bez(anchors);
-        return validate_bez<Robot, rake, resolution>(start, bez, T, environment);
-    }    
+        return validate_bez<Robot, rake, resolution>(start, T, bez, environment);
+    }
 }  // namespace vamp::planning

@@ -17,6 +17,7 @@ __all__ = [
     "AORRTCSettings",
     "SimplifySettings",
     "SimplifyRoutine",
+    "Bezier",
     "filter_pointcloud",
     ]
 
@@ -42,6 +43,7 @@ from ._core import FCITSettings as FCITSettings
 from ._core import AORRTCSettings as AORRTCSettings
 from ._core import SimplifyRoutine as SimplifyRoutine
 from ._core import SimplifySettings as SimplifySettings
+from ._core import Bezier as Bezier
 from ._core import filter_pointcloud as filter_pointcloud
 
 robots = _core.robots()

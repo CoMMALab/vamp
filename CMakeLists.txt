@@ -11,6 +11,14 @@ option(VAMP_BUILD_CPP_DEMO "Build VAMP C++ Demo Scripts" OFF)
 option(VAMP_BUILD_OMPL_DEMO "Build VAMP C++ OMPL Integration Demo Scripts" OFF)
 option(VAMP_OMPL_PATH "Search Path for OMPL Installation - Only Needed for Demo Script" "")
 
+
+
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+set(CMAKE_CXX_VISIBILITY_PRESET default)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN OFF)
+
+
+
 if(VAMP_FORCE_CLANG)
   find_program(CLANG "clang")
   find_program(CLANGPP "clang++")

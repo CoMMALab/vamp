@@ -79,42 +79,42 @@ namespace vamp::planning
                 // check if time gets reduced
                 // only shortcut if time improves
                 // get start and end as arrays
-                double og_time = 0;
-                std::array<double, 2 * Robot::dimension> x;
-                std::array<double, 4 * Robot::dimension / 3 + 1> out;
-                for (int k = 0; k < Robot::dimension; k++) {
-                    x[k] = static_cast<double>(path[index - 1].to_array()[k]);
+                float og_time = 0;
+                std::array<float, 2 * Robot::dimension> x;
+                std::array<float, 4 * Robot::dimension / 3 + 1> out;
+                for (auto k = 0U; k < Robot::dimension; k++) {
+                    x[k] = static_cast<float>(path[index - 1].to_array()[k]);
                 }
-                for (int k = 0; k < Robot::dimension; k++) {
-                    x[k + Robot::dimension] = static_cast<double>(path[index].to_array()[k]);
-                }
-                Robot::template topple_nn_forward(x, out);
-                og_time += out[4 * Robot::dimension / 3];
-
-                for (int k = 0; k < Robot::dimension; k++) {
-                    x[k] = static_cast<double>(path[index].to_array()[k]);
-                }
-                for (int k = 0; k < Robot::dimension; k++) {
-                    x[k + Robot::dimension] = static_cast<double>(path[index + 1].to_array()[k]);
+                for (auto k = 0U; k < Robot::dimension; k++) {
+                    x[k + Robot::dimension] = static_cast<float>(path[index].to_array()[k]);
                 }
                 Robot::template topple_nn_forward(x, out);
                 og_time += out[4 * Robot::dimension / 3];
 
-                double cut_time = 0;
-                for (int l = 0; l < Robot::dimension; l++) {
-                    x[l] = static_cast<double>(path[index - 1].to_array()[l]);
+                for (auto k = 0U; k < Robot::dimension; k++) {
+                    x[k] = static_cast<float>(path[index].to_array()[k]);
                 }
-                for (int l = 0; l < Robot::dimension; l++) {
-                    x[l + Robot::dimension] = static_cast<double>(midpoint.to_array()[l]);
+                for (auto k = 0U; k < Robot::dimension; k++) {
+                    x[k + Robot::dimension] = static_cast<float>(path[index + 1].to_array()[k]);
+                }
+                Robot::template topple_nn_forward(x, out);
+                og_time += out[4 * Robot::dimension / 3];
+
+                float cut_time = 0;
+                for (auto l = 0U; l < Robot::dimension; l++) {
+                    x[l] = static_cast<float>(path[index - 1].to_array()[l]);
+                }
+                for (auto l = 0U; l < Robot::dimension; l++) {
+                    x[l + Robot::dimension] = static_cast<float>(midpoint.to_array()[l]);
                 }
                 Robot::template topple_nn_forward(x, out);
                 cut_time += out[4 * Robot::dimension / 3];
 
-                for (int l = 0; l < Robot::dimension; l++) {
-                    x[l] = static_cast<double>(midpoint.to_array()[l]);
+                for (auto l = 0U; l < Robot::dimension; l++) {
+                    x[l] = static_cast<float>(midpoint.to_array()[l]);
                 }
-                for (int l = 0; l < Robot::dimension; l++) {
-                    x[l + Robot::dimension] = static_cast<double>(path[index + 1].to_array()[l]);
+                for (auto l = 0U; l < Robot::dimension; l++) {
+                    x[l + Robot::dimension] = static_cast<float>(path[index + 1].to_array()[l]);
                 }
                 Robot::template topple_nn_forward(x, out);
                 cut_time += out[4 * Robot::dimension / 3];
@@ -261,37 +261,37 @@ namespace vamp::planning
             {
                 // only shortcut if time improves
                 // get start and end as arrays
-                std::array<double, 2 * Robot::dimension> x;
-                std::array<double, 4 * Robot::dimension / 3 + 1> out;
-                for (int k = 0; k < Robot::dimension; k++) {
-                    x[k] = static_cast<double>(path[i].to_array()[k]);
+                std::array<float, 2 * Robot::dimension> x;
+                std::array<float, 4 * Robot::dimension / 3 + 1> out;
+                for (auto k = 0U; k < Robot::dimension; k++) {
+                    x[k] = static_cast<float>(path[i].to_array()[k]);
                 }
-                for (int k = 0; k < Robot::dimension; k++) {
-                    x[k + Robot::dimension] = static_cast<double>(path[j].to_array()[k]);
+                for (auto k = 0U; k < Robot::dimension; k++) {
+                    x[k + Robot::dimension] = static_cast<float>(path[j].to_array()[k]);
                 }
                 Robot::template topple_nn_forward(x, out);
-                double cut_time = out[4 * Robot::dimension / 3];
-                double og_time = 0;
+                float cut_time = out[4 * Robot::dimension / 3];
+                float og_time = 0;
                 // get un shortcutted time
-                for (int k = i; k < j; k++) {
-                    for (int l = 0; l < Robot::dimension; l++) {
-                        x[l] = static_cast<double>(path[k].to_array()[l]);
+                for (auto k = i; k < j; k++) {
+                    for (auto l = 0U; l < Robot::dimension; l++) {
+                        x[l] = static_cast<float>(path[k].to_array()[l]);
                     }
-                    for (int l = 0; l < Robot::dimension; l++) {
-                        x[l + Robot::dimension] = static_cast<double>(path[k + 1].to_array()[l]);
+                    for (auto l = 0U; l < Robot::dimension; l++) {
+                        x[l + Robot::dimension] = static_cast<float>(path[k + 1].to_array()[l]);
                     }
                     Robot::template topple_nn_forward(x, out);
                     og_time += out[4 * Robot::dimension / 3];
                 }
 
-                // if (cut_time <= og_time) {
+                if (cut_time <= og_time) {
                     if (validate_bez_motion<Robot, rake, resolution>(path[i], path[j], environment))
                     {
                         path.erase(path.begin() + i + 1, path.begin() + j);
                         result = true;
                         break;
                     }
-                // }
+                }
             }
         }
 
@@ -439,13 +439,10 @@ namespace vamp::planning
             // result.path
             result.path = path;
             shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut);
-            smooth_bspline_bez<Robot, rake, resolution>(result.path, environment, settings.bspline);
-            shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut);
-            smooth_bspline_bez<Robot, rake, resolution>(result.path, environment, settings.bspline);
-            shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut);
-            
+        
             return result;
         }
+        std::cout << "reached here" << std::endl;
 
         const auto bspline = [&result, &environment, settings]()
         { return smooth_bspline<Robot, rake, resolution>(result.path, environment, settings.bspline); };
@@ -522,18 +519,18 @@ namespace vamp::planning
         PlanningResult<Robot> result;
 
         // for waypoint in path, call topple_nn_forward  
-        for (int i = 0; i < path.size() - 1; i++) {
-            std::vector<double> x;
+        for (auto i = 0U; i < path.size() - 1; i++) {
+            std::array<float, Robot::dimension * 2> x;
             auto path_arr = path[i].to_array();
             auto path_arr1 = path[i + 1].to_array();   
             // std::cout << path_arr.size() << std::endl;
-            for (int j = 0; j < Robot::dimension; j++) {
-                x.push_back(static_cast<double>(path_arr[j]));
+            for (auto j = 0U; j < Robot::dimension; j++) {
+                x[j] = static_cast<float>(path_arr[j]);
             }
-            for (int j = 0; j < Robot::dimension; j++) {
-                x.push_back(static_cast<double>(path_arr1[j]));
+            for (auto j = 0U; j < Robot::dimension; j++) {
+                x[j + Robot::dimension] = static_cast<float>(path_arr1[j]);
             }
-            std::array<double, 29> out;
+            std::array<float, 29> out;
 
             Robot::template topple_nn_forward(x, out);
 
@@ -541,49 +538,46 @@ namespace vamp::planning
             row_matrix anchors(6, Robot::dimension / 3);
 
             // initial point
-            for (int j = 0; j < Robot::dimension / 3; ++j) {
-                anchors(0, j) = x[j];
+            for (auto j = 0U; j < Robot::dimension / 3; j++) {
+                anchors(0, j) = path_arr[j];
             }
 
             // intermediate points
-            for (int j = 1; j <= 4; j++) {
-                for (int k = 0; k < Robot::dimension / 3; ++k) {
+            for (auto j = 1U; j <= 4; j++) {
+                for (auto k = 0U; k < Robot::dimension / 3; k++) {
                     anchors(j, k) = out[(j - 1) * Robot::dimension / 3 + k];
                 }
             }
 
             // final point
-            for (int j = 0; j < Robot::dimension / 3; j++) {
-                anchors(5, j) = x[j + Robot::dimension];
+            for (auto j = 0U; j < Robot::dimension / 3; j++) {
+                anchors(5, j) = path_arr1[j];
             }
 
-            // std::cout << anchors.row(5) << std::endl;
 
             int T = out[28] * 1000;
-            if (T < 0) {
-                std::cout << "negative time!" << std::endl;
-            }
 
             Bezier bez(anchors);
 
             std::vector<state> waypts = bez.generate_trajectory(T);
             // convert waypoints to floatvector
-            for (int j = 0; j < waypts.size(); j++) {
+            for (auto j = 0U; j < waypts.size(); j++) {
                 alignas(vamp::FloatVectorAlignment)
                 std::array<float, vamp::FloatVector<Robot::dimension>::num_scalars_rounded> tmp = {};
 
                 // copy and cast the actual Dim scalars
-                for (int k = 0; k < Robot::dimension; ++k) {
-                    tmp[k] = static_cast<double>(waypts[j](0, static_cast<int>(k)));
-                    if (k > Robot::dimension / 3) {
+                for (auto k = 0U; k < Robot::dimension; k++) {
+                    if (k >= Robot::dimension / 3) {
                         tmp[k] = 0;
+                    }
+                    else {
+                        tmp[k] = static_cast<float>(waypts[j](0, static_cast<int>(k)));
                     }
                 }
 
                 // construct the SIMD vector (constructor takes pointer to float data)
                 vamp::FloatVector<Robot::dimension> vv(tmp.data());
                 result.path.emplace_back(vv);
-                // std::cout << waypts[j] << std::endl;
             }
         }
        

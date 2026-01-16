@@ -18,6 +18,7 @@ from vamp._core import RRTCSettings as RRTCSettings
 from vamp._core import FCITNeighborParams as FCITNeighborParams
 from vamp._core import FCITSettings as FCITSettings
 from vamp._core import SimplifySettings as SimplifySettings
+from vamp._core import Bezier as Bezier
 from vamp._core import Sphere as Sphere
 from vamp._core import baxter as baxter
 from vamp._core import fetch as fetch

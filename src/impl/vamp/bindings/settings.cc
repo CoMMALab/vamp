@@ -4,8 +4,13 @@
 #include <vamp/planning/rrtc_settings.hh>
 #include <vamp/planning/aorrtc_settings.hh>
 #include <vamp/planning/simplify_settings.hh>
+#include <vamp/planning/bezier.hh>
+#include <Eigen/Dense>
 
 #include <nanobind/stl/vector.h>
+#include <nanobind/nanobind.h>
+#include <nanobind/stl/array.h>
+#include <nanobind/eigen/dense.h>
 
 namespace nb = nanobind;
 namespace vp = vamp::planning;
@@ -115,4 +120,13 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("shortcut", &vp::SimplifySettings::shortcut)
         .def_rw("perturb", &vp::SimplifySettings::perturb)
         .def_rw("bspline", &vp::SimplifySettings::bspline);
+    
+    // expose beziers for debug
+    nb::class_<vp::Bezier>(pymodule, "Bezier")
+        .def(nb::init<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>())
+        .def_rw("anchors", &vp::Bezier::anchors)
+        .def_rw("degree", &vp::Bezier::degree)
+        .def_rw("combs", &vp::Bezier::combs)
+        .def("evaluate", &vp::Bezier::evaluate)
+        .def("generate_trajectory", &vp::Bezier::generate_trajectory);
 }

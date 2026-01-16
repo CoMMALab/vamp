@@ -13,13 +13,13 @@ def main(
     robot: str = "pandatopp",                  # Robot to plan for
     planner: str = "rrtctopp",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "bookshelf_thin",                     # Problem name
-    index: int = 2,                        # Problem index
+    problem: str = "bookshelf_small",                     # Problem name
+    index: int = 4,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
     pointcloud: bool = False,              # Use pointcloud rather than primitive geometry
-    samples_per_object: int = 10000,       # If pointcloud, samples per object to use
+    samples_per_object: int = 20000,       # If pointcloud, samples per object to use
     filter_radius: float = 0.02,           # Filter radius for pointcloud filtering
     filter_cull: bool = False,              # Cull pointcloud around robot by maximum distance
     **kwargs,
@@ -37,14 +37,13 @@ def main(
         planner,
         **kwargs,
         )
-    plan_settings.max_iterations = 10000000
-    plan_settings.max_samples = 1000000
-    plan_settings.range = 1
+    plan_settings.max_iterations = 1000000
+    plan_settings.max_samples = 10000000
+    plan_settings.range = 8
     simp_settings.bez = True
-    plan_settings.radius = 8
-    plan_settings.min_radius = 0.5
-    plan_settings.balance = True
-    plan_settings.start_tree_first = False
+    plan_settings.radius = 16
+    plan_settings.min_radius = 4
+    plan_settings.dynamic_domain = True
 
 
     if not problem:
@@ -128,13 +127,7 @@ Simplified: {stats['simplified_path_cost']:5.3f}"""
 
         plan = simplify.path
         plan = vamp_module.compute_traj(plan, env, simp_settings, sampler).path.numpy()
-        # print(len(plan))
-        # plan = plan[0:-1:15]
-        # for p in plan:
-        #     if not vamp_module.validate(p, env, False):
-        #         print("Invalid state in plan!") # :(
-        #         break
-        # plan.interpolate_to_resolution(vamp_module.resolution())
+        
 
     if valid and not solved:
         print("Failed to solve problem! Displaying start and goals.")
@@ -163,26 +156,34 @@ n Graph States: {result.size}
     if pointcloud:
         sim.draw_pointcloud(filtered_pc)
 
-    if not valid:
-        for state in [start, *goals]:
-            if not vamp_module.validate(state, env):
-                print(f"Displaying colliding spheres for first invalid state: {state}")
-                debug = vamp_module.debug(state, env)
-                invalid = set([x[0] for x in filter(lambda x: x[1], enumerate(debug[0]))])
+    # if not valid:
+    #     for state in [start, *goals]:
+    # for state in plan:
+    #     # if not vamp_module.validate(state, env):
+    #     # state = state[0:7]
+    #     print(f"Displaying colliding spheres for first invalid state: {state}")
+    #     debug = vamp_module.debug(state, env)
+    #     # invalid = set([x[0] for x in filter(lambda x: x[1], enumerate(debug[0]))])
 
-                for (a, b) in debug[1]:
-                    invalid.add(a)
-                    invalid.add(b)
+    #     # for (a, b) in debug[1]:
+    #     #     invalid.add(a)
+    #     #     invalid.add(b)
 
-                spheres = vamp_module.fk(state)
-                for i in range(len(spheres)):
-                    sphere = spheres[i]
-                    if i in invalid:
-                        sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 0., 0., 1.])
-                    else:
-                        sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 1., 1., 1.])
+    #     # spheres = vamp_module.fk(state)
+    #     # for i in range(len(spheres)):
+    #     #     sphere = spheres[i]
+    #     #     if i in invalid:
+    #     #         sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 0., 0., 1.])
+    #     #     else:
+    #     #         sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 1., 1., 1.])
+    #     for i, colliding in enumerate(debug[0]):  
+    #         if colliding:  
+    #             spheres = vamp_module.fk(state)  
+    #             s = spheres[i]  
+    #             for i in range(len(spheres)):
+    #                 sphere = spheres[i]
+    #                 sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 0., 0., 1.])
 
-                break
 
     # sim.animate(simplify.path)
     sim.animate(plan[np.arange(0, len(plan), 5)])

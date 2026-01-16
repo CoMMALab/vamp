@@ -1,4 +1,6 @@
 build/
+dev/
+log/
 .cache/
 compile_commands.json
 *.out.*

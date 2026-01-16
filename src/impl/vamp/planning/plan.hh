@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+#include <map>
 #include <limits>
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/nn.hh>
@@ -176,6 +178,7 @@ namespace vamp::planning
         std::size_t nanoseconds{0};
         std::size_t iterations{0};
         std::vector<std::size_t> size;
+        std::map<std::string, std::size_t> stats;
     };
 
     template <typename Robot>

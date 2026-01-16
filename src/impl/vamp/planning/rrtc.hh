@@ -153,6 +153,20 @@ namespace vamp::planning
                     {
                         radii[nearest_node.index] *= (1 + settings.alpha);
                     }
+                    
+                    // Check connection to every node in goal tree
+                    // Get data list from goal tree
+                    auto tree_b_data = tree_b->list();
+                    for (const auto &data : tree_b_data)
+                    {
+                        const auto goal_configuration = data.as_vector();
+                        if (validate_motion<Robot, rake, resolution>(
+                                new_configuration, goal_configuration, environment))
+                        {
+                            result.stats.emplace("first_connection", iter);
+                            break;
+                        }
+                    }
 
                     // Extend to goal tree
                     const auto other_nearest =

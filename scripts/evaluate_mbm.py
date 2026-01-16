@@ -62,10 +62,13 @@ def main(
         if name not in problem:
             continue
 
+        problem_results = []
         failures = []
         invalids = []
         print(f"Evaluating {robot} on {name}: ")
         for i, data in tqdm(enumerate(pset)):
+            # if i != 77:
+            #     continue
             total_problems += 1
 
             if not data['valid']:
@@ -106,10 +109,45 @@ def main(
                 simple = vamp_module.simplify(result.path, env, simp_settings, sampler)
 
                 trial_result = vamp.results_to_dict(result, simple)
+                if planner == "rrtc":
+                    if "first_connection" in result.stats:
+                        trial_result["first_connection"] = result.stats["first_connection"]
+                    else:
+                        trial_result["first_connection"] = result.iterations
                 if pointcloud:
                     trial_result.update(pointcloud_results)
 
+                
+                trial_result["problem"] = name
+                trial_result["problem_index"] = i
+
+
                 results.append(trial_result)
+                problem_results.append(trial_result)
+
+        if problem_results:
+            df_prob = pd.DataFrame.from_dict(problem_results)
+
+            # Process for saving
+            df_prob["planning_time"] = df_prob["planning_time"].dt.microseconds
+            df_prob["simplification_time"] = df_prob["simplification_time"].dt.microseconds
+            df_prob["avg_time_per_iteration"] = df_prob["planning_iterations"] / df_prob["planning_time"]
+
+            if pointcloud:
+                df_prob["total_build_and_plan_time"] = df_prob["total_time"] + df_prob["filter_time"] + df_prob["capt_build_time"]
+                df_prob["filter_time"] = df_prob["filter_time"].dt.microseconds / 1e3
+                df_prob["capt_build_time"] = df_prob["capt_build_time"].dt.microseconds / 1e3
+                df_prob["total_build_and_plan_time"] = df_prob["total_build_and_plan_time"].dt.microseconds / 1e3
+
+            if planner == "rrtc":
+                df_prob["difference_connection"] = df_prob["planning_iterations"] - df_prob["first_connection"]
+
+            df_prob["total_time"] = df_prob["total_time"].dt.microseconds
+
+            save_path = f"log/{robot}/{name}_{planner}_results.csv"
+            Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+            df_prob.to_csv(save_path, index = False)
+            print(f"Saved results for {name} to {save_path}")
 
         failed_problems += len(failures)
 
@@ -136,6 +174,9 @@ def main(
         df["capt_build_time"] = df["capt_build_time"].dt.microseconds / 1e3
         df["total_build_and_plan_time"] = df["total_build_and_plan_time"].dt.microseconds / 1e3
 
+    if planner == "rrtc":
+        df["difference_connection"] = df["planning_iterations"] - df["first_connection"] 
+
     df["total_time"] = df["total_time"].dt.microseconds
 
     # Get summary statistics
@@ -145,6 +186,7 @@ def main(
         "total_time",
         "planning_iterations",
         "avg_time_per_iteration",
+        "difference_connection",
         ]].describe(percentiles = [0.25, 0.5, 0.75, 0.95])
     time_stats.drop(index = ["count"], inplace = True)
 
@@ -172,6 +214,7 @@ def main(
                 'Total Time (μs)',
                 'Planning Iters.',
                 'Time per Iter. (μs)',
+                'Diff Con',
                 ],
             tablefmt = 'github'
             )

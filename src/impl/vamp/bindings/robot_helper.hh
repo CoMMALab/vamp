@@ -31,6 +31,7 @@
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
+#include <nanobind/stl/map.h>
 #include <nanobind/eigen/dense.h>
 #include <nanobind/ndarray.h>
 
@@ -495,7 +496,8 @@ namespace vamp::binding
                 "iterations",
                 &HPN::PlanningResult::iterations,
                 "Number of planner iterations used to find the path.")
-            .def_ro("size", &HPN::PlanningResult::size, "Size of the internal planner datastructures.");
+            .def_ro("size", &HPN::PlanningResult::size, "Size of the internal planner datastructures.")
+            .def_ro("stats", &HPN::PlanningResult::stats, "");
 
         nb::class_<typename HPN::Roadmap>(submodule, "Roadmap", "Undirected graph in configuration space.")
             .def(nb::init<>(), "Empty constructor.")

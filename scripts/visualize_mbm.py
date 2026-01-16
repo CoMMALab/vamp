@@ -13,8 +13,8 @@ def main(
     robot: str = "pandatopp",                  # Robot to plan for
     planner: str = "rrtctopp",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "bookshelf_small",                     # Problem name
-    index: int = 4,                        # Problem index
+    problem: str = "table_under_pick",                     # Problem name
+    index: int = 69,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -37,13 +37,15 @@ def main(
         planner,
         **kwargs,
         )
-    plan_settings.max_iterations = 1000000
-    plan_settings.max_samples = 10000000
-    plan_settings.range = 8
+    plan_settings.max_iterations = 100000000
+    plan_settings.max_samples = 100000000
+    plan_settings.range = 4
     simp_settings.bez = True
     plan_settings.radius = 16
-    plan_settings.min_radius = 4
+    plan_settings.min_radius = 2
     plan_settings.dynamic_domain = True
+    # this helps is actually solve
+    plan_settings.alpha = 0.000001
 
 
     if not problem:

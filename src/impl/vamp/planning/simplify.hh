@@ -443,7 +443,6 @@ namespace vamp::planning
         
             return result;
         }
-        std::cout << "reached here" << std::endl;
 
         const auto bspline = [&result, &environment, settings]()
         { return smooth_bspline<Robot, rake, resolution>(result.path, environment, settings.bspline); };

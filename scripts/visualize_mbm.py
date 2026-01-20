@@ -13,8 +13,8 @@ def main(
     robot: str = "pandatopp",                  # Robot to plan for
     planner: str = "rrtctopp",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "table_under_pick",                     # Problem name
-    index: int = 69,                        # Problem index
+    problem: str = "cage",                     # Problem name
+    index: int = 1,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -37,12 +37,12 @@ def main(
         planner,
         **kwargs,
         )
-    plan_settings.max_iterations = 100000000
-    plan_settings.max_samples = 100000000
-    plan_settings.range = 4
+    plan_settings.max_iterations = 10000000
+    plan_settings.max_samples = 10000000
+    plan_settings.range = 8
     simp_settings.bez = True
     plan_settings.radius = 16
-    plan_settings.min_radius = 2
+    plan_settings.min_radius = 4
     plan_settings.dynamic_domain = True
     # this helps is actually solve
     plan_settings.alpha = 0.000001
@@ -160,31 +160,31 @@ n Graph States: {result.size}
 
     # if not valid:
     #     for state in [start, *goals]:
-    # for state in plan:
-    #     # if not vamp_module.validate(state, env):
-    #     # state = state[0:7]
-    #     print(f"Displaying colliding spheres for first invalid state: {state}")
-    #     debug = vamp_module.debug(state, env)
-    #     # invalid = set([x[0] for x in filter(lambda x: x[1], enumerate(debug[0]))])
+    for state in plan:
+        # if not vamp_module.validate(state, env):
+        # state = state[0:7]
+        # print(f"Displaying colliding spheres for first invalid state: {state}")
+        debug = vamp_module.debug(state, env)
+        # invalid = set([x[0] for x in filter(lambda x: x[1], enumerate(debug[0]))])
 
-    #     # for (a, b) in debug[1]:
-    #     #     invalid.add(a)
-    #     #     invalid.add(b)
+        # for (a, b) in debug[1]:
+        #     invalid.add(a)
+        #     invalid.add(b)
 
-    #     # spheres = vamp_module.fk(state)
-    #     # for i in range(len(spheres)):
-    #     #     sphere = spheres[i]
-    #     #     if i in invalid:
-    #     #         sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 0., 0., 1.])
-    #     #     else:
-    #     #         sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 1., 1., 1.])
-    #     for i, colliding in enumerate(debug[0]):  
-    #         if colliding:  
-    #             spheres = vamp_module.fk(state)  
-    #             s = spheres[i]  
-    #             for i in range(len(spheres)):
-    #                 sphere = spheres[i]
-    #                 sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 0., 0., 1.])
+        # spheres = vamp_module.fk(state)
+        # for i in range(len(spheres)):
+        #     sphere = spheres[i]
+        #     if i in invalid:
+        #         sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 0., 0., 1.])
+        #     else:
+        #         sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 1., 1., 1.])
+        for i, colliding in enumerate(debug[0]):  
+            if colliding:  
+                spheres = vamp_module.fk(state)  
+                s = spheres[i]  
+                for i in range(len(spheres)):
+                    sphere = spheres[i]
+                    sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 0., 0., 1.])
 
 
     # sim.animate(simplify.path)

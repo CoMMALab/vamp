@@ -438,7 +438,7 @@ namespace vamp::planning
             //     { return shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut_bez); };
             // result.path
             result.path = path;
-            smooth_bspline_bez<Robot, rake, resolution>(result.path, environment, settings.bspline);
+            // smooth_bspline_bez<Robot, rake, resolution>(result.path, environment, settings.bspline);
             shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut);
         
             return result;

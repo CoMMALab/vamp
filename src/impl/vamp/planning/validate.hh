@@ -6,6 +6,8 @@
 #include <vamp/vector.hh>
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/bezier.hh>
+#include <chrono>
+#include <iostream>
 
 namespace vamp::planning
 {
@@ -87,6 +89,7 @@ namespace vamp::planning
     {
         // std::cout << "inside validate bez" << std::endl;
         // TODO: Fix use of reinterpret_cast in pack() so that this can be constexpr
+        // auto ts = std::chrono::steady_clock::now();
         const auto percents = FloatVector<rake>(Percents<rake>::percents);
 
         typename Robot::template ConfigurationBlock<rake> block;
@@ -95,8 +98,9 @@ namespace vamp::planning
         // use percents as times to get configs
         // std::array<state, rake> states_arr;
         auto percents_arr = percents.to_array();
+        int robot_dim_q = Robot::dimension / 3;
 
-        for (auto j = 0U; j < Robot::dimension / 3; j++)  
+        for (auto j = 0U; j < robot_dim_q; j++)  
         {  
             // Collect the i-th dimension values for all rake configurations  
             std::array<float, rake> dim_values;  
@@ -109,7 +113,8 @@ namespace vamp::planning
             block[j] = FloatVector<rake>(dim_values);  
         }
 
-        const std::size_t n = resolution * T * rake;
+        const std::size_t n = resolution * T / rake;
+        // std::cout << n << std::endl;
 
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                  Robot::template fkcc<rake>(environment, block);
@@ -127,7 +132,7 @@ namespace vamp::planning
             // evaluate states in rake
             auto times = (percents - i * backstep).to_array();
 
-            for (auto j = 0U; j < Robot::dimension / 3; j++)  
+            for (auto j = 0U; j < robot_dim_q; j++)  
             {  
                 // Collect the i-th dimension values for all rake configurations  
                 std::array<float, rake> dim_values;  
@@ -148,7 +153,9 @@ namespace vamp::planning
                 return false;
             }
         }
-
+        // auto tf = std::chrono::steady_clock::now();
+        // std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
+        // std::cout << "CC time: " << elapsed_ms.count() << std::endl;
         return true;
     }
 
@@ -160,11 +167,12 @@ namespace vamp::planning
     //     const collision::Environment<FloatVector<rake>> &environment) -> bool
     // {
     //     // just check every configuration along bez
-    //     for (auto t = 0U; t < T; t += rake) {
+    //     int step = 4;
+    //     for (auto t = 0U; t < T; t += step * rake) {
     //         typename Robot::template ConfigurationBlock<rake> block;
     //         for (auto i = 0U; i < Robot::dimension / 3; i++) {
     //             std::array<float, rake> dim_values;
-    //             for (auto j = 0U; j < rake; j++) {
+    //             for (auto j = 0U; j < step * rake; j+=step) {
     //                 float time = static_cast<float>(t + j) / static_cast<float>(T);
     //                 if (time > 1.0) {
     //                     time = 1.0;
@@ -197,6 +205,7 @@ namespace vamp::planning
         // build input to MLP
         std::array<float, Robot::dimension * 2> x;
         auto start_arr = start.to_array();
+        int robot_dim_q = Robot::dimension / 3;
 
         for (auto i = 0U; i < Robot::dimension; i++) {
             x[i] = static_cast<float>(start_arr[i]);
@@ -208,27 +217,32 @@ namespace vamp::planning
 
         // array to store inference output
         std::array<float, 29> out;
+
+        // auto ts = std::chrono::steady_clock::now();
         Robot::template topple_nn_forward(x, out);
+        // auto tf = std::chrono::steady_clock::now();
+        // std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
+        // std::cout << "NN inference: " << elapsed_ms.count() << std::endl;
 
         // build the anchors
-        row_matrix anchors(6, Robot::dimension / 3);
+        row_matrix anchors(6, robot_dim_q);
 
         // initial point
-        for (auto i = 0U; i < Robot::dimension / 3; i++) {
+        for (auto i = 0U; i < robot_dim_q; i++) {
             anchors(0, i) = static_cast<float>(start_arr[i]);
         }
 
         // intermediate points
         for (auto i = 1U; i <= 4; i++) {
-            for (auto j = 0U; j < Robot::dimension / 3; j++) {
-                anchors(i, j) = out[(i - 1) * Robot::dimension / 3 + j];
+            for (auto j = 0U; j < robot_dim_q; j++) {
+                anchors(i, j) = out[(i - 1) * robot_dim_q + j];
             }
         }
 
         float T = out[28];
 
         // final point
-        for (auto i = 0U; i < Robot::dimension / 3; i++) {
+        for (auto i = 0U; i < robot_dim_q; i++) {
             anchors(5, i) = static_cast<float>(goal_arr[i]);
         }
 

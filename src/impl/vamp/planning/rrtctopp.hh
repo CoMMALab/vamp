@@ -157,7 +157,7 @@ namespace vamp::planning
 
                 // TESTING
                 bool valid_extension = false;
-                if (!tree_a_is_start) {
+                if (not tree_a_is_start) {
                     valid_extension = validate_bez_motion<Robot, rake, resolution>(
                         nearest_configuration + extension_vector,
                         nearest_configuration,
@@ -205,10 +205,10 @@ namespace vamp::planning
                     std::size_t i_extension = 0;
                     auto prior = new_configuration;
                     for (; i_extension < n_extensions and
-                           !tree_a_is_start ? validate_bez_motion<Robot, rake, resolution>(
+                           not tree_a_is_start ? validate_bez_motion<Robot, rake, resolution>(
                                 prior + increment, prior, environment) :
                                validate_bez_motion<Robot, rake, resolution>(
-                                prior, prior + increment,environment) and
+                                prior, prior + increment, environment) and
                            free_index < settings.max_samples;
                          ++i_extension)
                     {

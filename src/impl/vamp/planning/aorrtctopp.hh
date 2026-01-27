@@ -10,7 +10,7 @@
 #include <vamp/planning/simplify.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/aorrtc_settings.hh>
-#include <vamp/planning/rrtc.hh>
+#include <vamp/planning/rrtctopp.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
 #include <vamp/vector.hh>
@@ -18,7 +18,7 @@
 namespace vamp::planning
 {
     template <typename Robot, std::size_t rake, std::size_t resolution>
-    struct AOX_RRTC
+    struct AOX_RRTCTOPP
     {
         using Configuration = typename Robot::Configuration;
         static constexpr auto dimension = Robot::dimension;
@@ -84,7 +84,7 @@ namespace vamp::planning
             return {*new_nearest_node, new_nearest_distance};
         }
 
-        AOX_RRTC(std::size_t max_samples)
+        AOX_RRTCTOPP(std::size_t max_samples)
           : buffer(
                 std::unique_ptr<float, decltype(&free)>(
                     vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
@@ -142,7 +142,7 @@ namespace vamp::planning
                 if ((not rrtc_settings.balance) or ratio < rrtc_settings.tree_ratio)
                 {
                     std::swap(tree_a, tree_b);
-                    tree_a_is_start = not tree_a_is_start;
+                    tree_a_is_start = not tree_a_is_start; // BE CAREFUL
                 }
 
                 const auto temp = rng->next();
@@ -156,6 +156,7 @@ namespace vamp::planning
                 const auto &root_vert = tree_a_is_start ? start_vert : goal_vert;
                 const auto &target_vert = tree_a_is_start ? goal_vert : start_vert;
 
+                // PROBABLY REPLACE WITH NN INFERENCE
                 const float g_hat = temp.distance(root_vert.array);
                 const float h_hat = temp.distance(target_vert.array);
                 const float f_hat = g_hat + h_hat;
@@ -170,6 +171,7 @@ namespace vamp::planning
                 const float c_rand = (rng->dist.uniform_01() * c_range) + g_hat;
 
                 // Find nearest with asymmetric cost function
+                // MODIFY FIND NEAREST
                 auto [nearest_node, nearest_distance] = find_nearest(tree_a, root_vert, temp, c_rand);
                 if (rrtc_settings.dynamic_domain and radii[nearest_node.index] < nearest_distance)
                 {
@@ -181,16 +183,28 @@ namespace vamp::planning
                 const auto extension_vector =
                     (reach) ? nearest_vector : nearest_vector * (rrtc_settings.range / nearest_distance);
 
+
+                
                 // Evaluate edge reaching towards sample
-                if (validate_vector<Robot, rake, resolution>(
+                bool valid_extension = false;
+                if (not tree_a_is_start) {
+                    valid_extension = validate_bez_motion<Robot, rake, resolution>(
+                        nearest_node.array + extension_vector,
                         nearest_node.array,
-                        extension_vector,
-                        (reach) ? nearest_distance : rrtc_settings.range,
-                        environment))
+                        environment); 
+                }
+                else {
+                    valid_extension = validate_bez_motion<Robot, rake, resolution>(
+                        nearest_node.array,
+                        nearest_node.array + extension_vector,
+                        environment);
+                }
+                if (valid_extension)
                 {
                     const auto new_configuration = nearest_node.array + extension_vector;
 
                     // Calculate and store actual node cost
+                    // REPLACE WITH NN INFERENCE
                     auto new_cost = nearest_node.cost + new_configuration.distance(nearest_node.array);
 
                     // If resampling costs to try and find a better parent...
@@ -218,11 +232,17 @@ namespace vamp::planning
                                 break;
                             }
                             // Validate edge to newly found parent
-                            else if (validate_vector<Robot, rake, resolution>(
-                                         new_nearest_node.array,
-                                         new_configuration - new_nearest_node.array,
-                                         new_nearest_distance,
-                                         environment))
+                            else if (not tree_a_is_start ? 
+                                        validate_bez_motion<Robot, rake, resolution>(
+                                            new_configuration,
+                                            new_nearest_node.array,
+                                            environment) : 
+                                        validate_bez_motion<Robot, rake, resolution>(
+                                            new_nearest_node.array,
+                                            new_configuration,
+                                            environment
+                                        )
+                                    )
                             {
                                 // Congratulations to the new parent
                                 nearest_node = new_nearest_node;
@@ -271,8 +291,11 @@ namespace vamp::planning
                     std::size_t i_extension = 0;
                     auto prior = new_configuration;
                     for (; i_extension < n_extensions and
-                           validate_vector<Robot, rake, resolution>(
-                               prior, increment, increment_length, environment) and
+                           not tree_a_is_start ? validate_bez_motion<Robot, rake, resolution>(
+                               prior + increment, prior, environment) : 
+                               validate_bez_motion<Robot,rake, resolution>(
+                                prior, prior + increment, environment
+                               ) and
                            free_index < rrtc_settings.max_samples;
                          ++i_extension)
                     {
@@ -348,13 +371,13 @@ namespace vamp::planning
     // ---------------------------------------------
 
     template <typename Robot, std::size_t rake, std::size_t resolution>
-    struct AORRTC
+    struct AORRTCTOPP
     {
         using Configuration = typename Robot::Configuration;
         static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
-        using AOX_RRTC = typename vamp::planning::AOX_RRTC<Robot, rake, resolution>;
-        using RRTC = typename vamp::planning::RRTC<Robot, rake, resolution>;
+        using AOX_RRTCTOPP = typename vamp::planning::AOX_RRTCTOPP<Robot, rake, resolution>;
+        using RRTCTOPP = typename vamp::planning::RRTCTOPP<Robot, rake, resolution>;
 
         inline static auto solve(
             const Configuration &start,
@@ -382,8 +405,8 @@ namespace vamp::planning
 
             // Configure internal RRTC settings
             RRTCSettings &rrtc_settings = settings.rrtc;
-            rrtc_settings.max_iterations = max_iterations;
-            rrtc_settings.max_samples = max_samples;
+            // rrtc_settings.max_iterations = max_iterations;
+            // rrtc_settings.max_samples = max_samples;
 
             PlanningResult<Robot> result;
             float best_path_cost = std::numeric_limits<float>::max();
@@ -392,7 +415,7 @@ namespace vamp::planning
             do
             {
                 // Find an initial solution
-                result = RRTC::solve(start, goals, environment, rrtc_settings, rng);
+                result = RRTCTOPP::solve(start, goals, environment, rrtc_settings, rng);
                 iters += result.iterations;
             } while (result.path.empty() and iters < settings.max_iterations);
 
@@ -424,7 +447,7 @@ namespace vamp::planning
 
             auto phs_rng = std::make_shared<ProlateHyperspheroidRNG<Robot>>(phs, rng);
 
-            AOX_RRTC instance(max_samples);
+            AOX_RRTCTOPP instance(max_samples);
 
             // If we get close to straight line, just call it.
             // Also handles numerical issues with PHS when too close to straight line...
@@ -452,11 +475,11 @@ namespace vamp::planning
                 {
                     if (settings.use_phs and goals.size() == 1)
                     {
-                        result = RRTC::solve(start, goals, environment, rrtc_settings, phs_rng);
+                        result = RRTCTOPP::solve(start, goals, environment, rrtc_settings, phs_rng);
                     }
                     else
                     {
-                        result = RRTC::solve(start, goals, environment, rrtc_settings, rng);
+                        result = RRTCTOPP::solve(start, goals, environment, rrtc_settings, rng);
                     }
                 }
 

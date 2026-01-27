@@ -51,7 +51,7 @@
 
 namespace vamp::planning
 {
-    template <std::size_t dimension>
+    template <typename Robot, std::size_t dimension>
     struct GNATNode
     {
         std::size_t index;
@@ -59,10 +59,17 @@ namespace vamp::planning
         FloatVector<dimension> array;
 
         // AOX distance function (MODIFY FOR TOPPLE?)
+        // inline static auto distance(const GNATNode<dimension> &a, const GNATNode<dimension> &b) -> float
+        // {
+        //     // Configuration space distance + Cost space distance
+        //     return std::sqrt(std::pow(a.array.distance(b.array), 2) + std::pow(a.cost - b.cost, 2));
+        // }
+
+        // gotta make sure this works
         inline static auto distance(const GNATNode<dimension> &a, const GNATNode<dimension> &b) -> float
         {
             // Configuration space distance + Cost space distance
-            return std::sqrt(std::pow(a.array.distance(b.array), 2) + std::pow(a.cost - b.cost, 2));
+            return Robot::template get_nn_time(a.array, b.array);
         }
     };
 

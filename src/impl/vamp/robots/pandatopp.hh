@@ -394,6 +394,16 @@ namespace vamp::robots
                 out[i] = y[i];
         }
 
+        // helper function
+        template <typename InputVector, typename OutputVector>
+        static inline auto get_nn_time(const InputVector &start, OutputVector &goal) noexcept 
+        {
+            std::array<float, dimension * 2> x;
+            std::array<float, 4 * dimension / 3 + 1> out;
+            topple_nn_forward(x, out);
+            return out[4 * dimension / 3];
+        }
+
         template <std::size_t rake>
         inline static void sphere_fk(const ConfigurationBlock<rake> &x, Spheres<rake> &out) noexcept
         {

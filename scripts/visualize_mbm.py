@@ -12,9 +12,9 @@ import toppra.algorithm as algo
 
 def topple(
     robot: str = "pandatopp",                  # Robot to plan for
-    planner: str = "rrtctopp",                 # Planner name to use
+    planner: str = "aorrtctopp",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "table_under_pick",                     # Problem name
+    problem: str = "box",                     # Problem name
     index: int = 45,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
@@ -38,16 +38,28 @@ def topple(
         planner,
         **kwargs,
         )
-    plan_settings.max_iterations = 10000000
-    plan_settings.max_samples = 1000000
-    plan_settings.range = 16
-    simp_settings.bez = True
-    plan_settings.radius = 16
-    plan_settings.min_radius = 4
-    plan_settings.dynamic_domain = True
-    # this helps is actually solve
-    plan_settings.alpha = 0.000001
+    # plan_settings.max_iterations = 10000000
+    # plan_settings.max_samples = 1000000
+    # plan_settings.range = 12
+    # plan_settings.radius = 16
+    # plan_settings.min_radius = 8
+    # plan_settings.dynamic_domain = False
+    # simp_settings.bez = True
 
+    plan_settings.max_iterations = 100
+    plan_settings.max_internal_iterations = 10000000
+    plan_settings.max_samples = 1000000
+    plan_settings.rrtc.max_iterations = 10000000
+    plan_settings.rrtc.max_samples = 1000000
+    plan_settings.rrtc.range = 12
+    plan_settings.simplify.bez = True
+    plan_settings.rrtc.radius = 16
+    plan_settings.rrtc.min_radius = 8
+    plan_settings.rrtc.dynamic_domain = False
+    plan_settings.use_phs = True
+    plan_settings.optimize = True
+    plan_settings.simplify_intermediate = True
+    simp_settings.bez = True
 
     if not problem:
         problem = list(data['problems'].keys())[0]
@@ -352,5 +364,5 @@ n Graph States: {result.size}
     sim.animate(plan[np.arange(0, len(plan), 15)])
 
 if __name__ == "__main__":
-    # Fire(topple)
-    Fire(toppra)
+    Fire(topple)
+    # Fire(toppra)

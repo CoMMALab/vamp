@@ -104,6 +104,10 @@ namespace vamp::robots
         static inline auto topple_nn_forward(const InputVector &x, OutputVector &out) noexcept {
             return;
         }
+        template <typename InputVector, typename OutputVector>
+        static inline auto get_nn_time(const InputVector &start, OutputVector &goal) noexcept {
+            return;
+        }
         
         template <std::size_t rake>
         static auto fkcc(

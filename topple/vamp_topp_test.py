@@ -1,10 +1,8 @@
 import vamp
 import numpy as np
 from vamp import pybullet_interface as vpb
-import pinocchio.visualize
 import os
 import time
-import hppfcl as fcl
 
 pos1 = [0.9941923543408971, -0.051116248331033905, 0.55644523090925, -2.204390838326673, 0.016857619708280643, 2.293574043590873, 0.702844622050357]
 pos2 = [-1.4847849572216933, 0.013402851810183476, -0.16617785697236934, -2.1464311136674072, 0.017834601468841655, 2.245508108743958, 0.7687104453444691]
@@ -17,13 +15,8 @@ for i in range(14):
     planner_func,
     plan_settings,
     simp_settings,
-) = vamp.configure_robot_and_planner_with_kwargs("pandatopp", "rrtctopp")
+) = vamp.configure_robot_and_planner_with_kwargs("pandatopp", "aorrtctopp")
 
-# robot model, collision model, visual model
-path = os.getcwd()
-model, collision_model, visual_model = pinocchio.buildModelsFromUrdf(
-    path + "/fr3_franka_hand.urdf", path + "/fr3/collision", None
-)
 
 # plane_geom = fcl.Box(0.4, 0.2, 0.5)
 # plane_name = "front_plane"
@@ -49,11 +42,11 @@ rng = vamp_module.xorshift()
 
 plan_settings.max_iterations = 100000
 plan_settings.max_samples = 1000000
-plan_settings.range = 2
+plan_settings.range = 12
 simp_settings.bez = True
-plan_settings.radius = 8
-plan_settings.min_radius = 0.5
-plan_settings.balance = False
+plan_settings.radius = 16
+plan_settings.min_radius = 8
+plan_settings.balance = True
 
 # xyz, rpy, lwh
 cuboids_data = [

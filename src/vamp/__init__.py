@@ -98,6 +98,11 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
         if robot_name in ROBOT_RRT_RANGES:
             plan_settings.rrtc.range = ROBOT_RRT_RANGES[robot_name]
 
+    elif planner_name == "aorrtctopp":
+        plan_settings = AORRTCSettings()
+        if robot_name in ROBOT_RRT_RANGES:
+            plan_settings.rrtc.range = ROBOT_RRT_RANGES[robot_name]
+
     else:
         raise NotImplementedError(f"Automatic setup for planner {planner_name} is not implemented yet!")
 
@@ -140,7 +145,7 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
                 print(f"Setting simplification - {sub} - {sk}: {v}")
                 setattr(sub_setting, sk, v)
 
-    if planner_name == "aorrtc":
+    if planner_name == "aorrtc" or planner_name == "aorrtctopp":
         plan_settings.simplify = simp_settings
 
     return robot_module, planner_func, plan_settings, simp_settings

@@ -15,7 +15,7 @@ def topple(
     planner: str = "aorrtctopp",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
     problem: str = "box",                     # Problem name
-    index: int = 45,                        # Problem index
+    index: int = 53,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry

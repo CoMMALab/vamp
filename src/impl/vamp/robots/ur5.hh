@@ -112,8 +112,8 @@ namespace vamp::robots
             return;
         }
         template <typename InputVector, typename OutputVector>
-        static inline auto get_nn_time(const InputVector &start, OutputVector &goal) noexcept {
-            return;
+        static inline auto get_nn_time(const InputVector &start, OutputVector &goal) noexcept -> float {
+            return 0.0f;
         }
         
         template <std::size_t rake>

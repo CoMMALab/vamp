@@ -163,7 +163,7 @@ namespace vamp::robots
 
         // topple forward pass
         template <typename InputVector, typename OutputVector>
-        static inline auto topple_nn_forward(const InputVector &x, OutputVector &out) noexcept
+        inline static auto topple_nn_forward(const InputVector &x, OutputVector &out) noexcept
         {
             std::array<float, 32> v;
             std::array<float, 29> y;
@@ -396,10 +396,19 @@ namespace vamp::robots
 
         // helper function
         template <typename InputVector, typename OutputVector>
-        static inline auto get_nn_time(const InputVector &start, OutputVector &goal) noexcept 
+        inline static auto get_nn_time(const InputVector start, const OutputVector &goal) noexcept -> float
         {
+            auto start_arr = start.to_array();
+            auto goal_arr = goal.to_array();
             std::array<float, dimension * 2> x;
             std::array<float, 4 * dimension / 3 + 1> out;
+            for (auto i = 0U; i < dimension; i++) {
+                x[i] = start_arr[i];
+            }
+            for (auto i = 0U; i < dimension; i++) {
+                x[i + dimension] = goal_arr[i];
+            }
+
             topple_nn_forward(x, out);
             return out[4 * dimension / 3];
         }

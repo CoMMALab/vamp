@@ -70,7 +70,7 @@ namespace vamp::planning
             nn->nearestR(temp_node, NNNode::distance(temp_node, root), near_list);
 
             const auto *new_nearest_node = &near_list[0];
-            float new_nearest_distance = c.distance(new_nearest_node->array);
+            float new_nearest_distance = Robot::template get_nn_time(c, new_nearest_node->array);
 
             for (auto idx = 1U; new_nearest_node->cost > 0                                //
                                 and cost < new_nearest_node->cost + new_nearest_distance  //
@@ -78,7 +78,7 @@ namespace vamp::planning
                  ++idx)
             {
                 new_nearest_node = &near_list[idx];
-                new_nearest_distance = c.distance(new_nearest_node->array);
+                new_nearest_distance = Robot::template get_nn_time(c, new_nearest_node->array);
             }
 
             return {*new_nearest_node, new_nearest_distance};
@@ -151,14 +151,14 @@ namespace vamp::planning
                     goal_verts.begin(),
                     goal_verts.end(),
                     [&temp](const auto &a, const auto &b)
-                    { return temp.distance(a.array) < temp.distance(b.array); });
+                    { return Robot::template get_nn_time(temp, a.array) < Robot::template get_nn_time(temp, b.array); });
 
                 const auto &root_vert = tree_a_is_start ? start_vert : goal_vert;
                 const auto &target_vert = tree_a_is_start ? goal_vert : start_vert;
 
                 // PROBABLY REPLACE WITH NN INFERENCE
-                const float g_hat = temp.distance(root_vert.array);
-                const float h_hat = temp.distance(target_vert.array);
+                const float g_hat = Robot::template get_nn_time(temp, root_vert.array);
+                const float h_hat = Robot::template get_nn_time(temp, target_vert.array);
                 const float f_hat = g_hat + h_hat;
 
                 // The range between the minimum possible cost and maximum allowable cost
@@ -205,12 +205,12 @@ namespace vamp::planning
 
                     // Calculate and store actual node cost
                     // REPLACE WITH NN INFERENCE
-                    auto new_cost = nearest_node.cost + new_configuration.distance(nearest_node.array);
+                    auto new_cost = nearest_node.cost + Robot::template get_nn_time(new_configuration, nearest_node.array);
 
                     // If resampling costs to try and find a better parent...
                     if (settings.cost_bound_resample)
                     {
-                        const float g_hat = new_configuration.distance(root_vert.array);
+                        const float g_hat = Robot::template get_nn_time(new_configuration, root_vert.array);
 
                         // Continuously resample cost until an invalid connection is found
                         for (auto i = 0U; i < settings.max_cost_bound_resamples; ++i)
@@ -319,8 +319,7 @@ namespace vamp::planning
                         {
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.cost += result.path[result.path.size() - 1].distance(
-                                result.path[result.path.size() - 2]);
+                            result.cost += Robot::template get_nn_time(result.path[result.path.size() - 1], result.path[result.path.size() - 2]);
                             current = parent;
                         }
 
@@ -331,8 +330,7 @@ namespace vamp::planning
                         {
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.cost += result.path[result.path.size() - 1].distance(
-                                result.path[result.path.size() - 2]);
+                            result.cost += Robot::template get_nn_time(result.path[result.path.size() - 1], result.path[result.path.size() - 2]);
                             current = parent;
                         }
 
@@ -439,7 +437,7 @@ namespace vamp::planning
             float best_possible_cost = std::numeric_limits<float>::max();
             for (const auto &goal : goals)
             {
-                best_possible_cost = std::min(best_possible_cost, start.distance(goal));
+                best_possible_cost = std::min(best_possible_cost, 0.1f);
             }
 
             ProlateHyperspheroid<Robot> phs(start, goals[0]);
@@ -457,7 +455,7 @@ namespace vamp::planning
                 // Update internal maximum iterations
                 // rrtc_settings.max_iterations =
                 //     std::min(settings.max_iterations - iters, settings.max_internal_iterations);
-                std::cout << iters << std::endl;
+                // std::cout << iters << std::endl;
                 // By default, use AORRTC
                 if (not settings.anytime)
                 {

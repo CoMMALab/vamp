@@ -15,8 +15,8 @@ def topple(
     robot: str = "pandatopp",                  # Robot to plan for
     planner: str = "aorrtctopp",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "box",                     # Problem name
-    index: int = 53,                        # Problem index
+    problem: str = "bookshelf_small",                     # Problem name
+    index: int = 55,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -47,10 +47,13 @@ def topple(
     # plan_settings.dynamic_domain = False
     # simp_settings.bez = True
 
+<<<<<<< HEAD
     plan_settings.max_iterations = 10000000
+=======
+    plan_settings.max_iterations = 10000
+>>>>>>> f052b3dcf2e83fb8c303cb3082caae29bf793ada
     plan_settings.max_samples = 1000000
     plan_settings.rrtc.max_iterations = 10000000
-    plan_settings.rrtc.max_samples = 1000000
     plan_settings.rrtc.range = 12
     plan_settings.simplify.bez = True
     plan_settings.rrtc.radius = 16

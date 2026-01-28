@@ -8,6 +8,7 @@ from vamp import pointcloud as vpc
 import toppra as ta
 import toppra.constraint as constraint
 import toppra.algorithm as algo
+import time
 
 
 def topple(
@@ -46,8 +47,7 @@ def topple(
     # plan_settings.dynamic_domain = False
     # simp_settings.bez = True
 
-    plan_settings.max_iterations = 100
-    plan_settings.max_internal_iterations = 10000000
+    plan_settings.max_iterations = 10000000
     plan_settings.max_samples = 1000000
     plan_settings.rrtc.max_iterations = 10000000
     plan_settings.rrtc.max_samples = 1000000

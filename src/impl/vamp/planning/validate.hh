@@ -113,7 +113,7 @@ namespace vamp::planning
             block[j] = FloatVector<rake>(dim_values);  
         }
 
-        const std::size_t n = resolution * T / rake;
+        const std::size_t n = resolution * T / rake * 2;
         // std::cout << n << std::endl;
 
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :

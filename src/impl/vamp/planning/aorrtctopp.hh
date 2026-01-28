@@ -405,8 +405,8 @@ namespace vamp::planning
 
             // Configure internal RRTC settings
             RRTCSettings &rrtc_settings = settings.rrtc;
-            // rrtc_settings.max_iterations = max_iterations;
-            // rrtc_settings.max_samples = max_samples;
+            rrtc_settings.max_iterations = max_iterations;
+            rrtc_settings.max_samples = max_samples;
 
             PlanningResult<Robot> result;
             float best_path_cost = std::numeric_limits<float>::max();
@@ -451,13 +451,12 @@ namespace vamp::planning
 
             // If we get close to straight line, just call it.
             // Also handles numerical issues with PHS when too close to straight line...
-            std::cout << best_path_cost - best_possible_cost << std::endl;
+            std::cout << "Optimizing" << std::endl;
             while (iters < max_iterations and (best_path_cost - best_possible_cost) > 1e-8)
             {
                 // Update internal maximum iterations
-                // rrtc_settings.max_iterations =
-                //     std::min(settings.max_iterations - iters, settings.max_internal_iterations);
-                std::cout << iters << std::endl;
+                rrtc_settings.max_iterations =
+                    std::min(settings.max_iterations - iters, settings.max_internal_iterations);
                 // By default, use AORRTC
                 if (not settings.anytime)
                 {

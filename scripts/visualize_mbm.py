@@ -16,7 +16,7 @@ def topple(
     planner: str = "aorrtctopp",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
     problem: str = "box",                     # Problem name
-    index: int = 53,                        # Problem index
+    index: int = 32,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -54,7 +54,7 @@ def topple(
     plan_settings.rrtc.radius = 16
     plan_settings.rrtc.min_radius = 4
     plan_settings.rrtc.dynamic_domain = False
-    plan_settings.use_phs = True
+    plan_settings.use_phs = False
     plan_settings.optimize = False
     plan_settings.simplify_intermediate = True
     simp_settings.bez = True

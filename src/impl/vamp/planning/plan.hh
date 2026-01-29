@@ -31,6 +31,30 @@ namespace vamp::planning
             return std::numeric_limits<float>::infinity();
         }
 
+        [[nodiscard]] inline auto time() const noexcept -> float
+        {
+            if (this->size() > 2)
+            {
+                float time = 0;
+                for (auto i = 0U; i < this->size() - 1; ++i)
+                {
+                    // time += this->operator[](i).distance(this->operator[](i + 1));
+                    time += Robot::template get_nn_time(
+                        this->operator[](i), this->operator[](i + 1));
+                }
+
+                return time;
+            }
+
+            if (this->size() == 2)
+            {
+                // return this->front().distance(this->back());
+                return Robot::template get_nn_time(this->front(), this->back());
+            }
+
+            return std::numeric_limits<float>::infinity();
+        }
+
         inline auto subdivide() noexcept
         {
             Path<Robot> new_path;

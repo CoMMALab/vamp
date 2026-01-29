@@ -405,7 +405,7 @@ namespace vamp::planning
 
             // Configure internal RRTC settings
             RRTCSettings &rrtc_settings = settings.rrtc;
-            rrtc_settings.max_iterations = max_iterations;
+            // rrtc_settings.max_iterations = max_iterations;
             rrtc_settings.max_samples = max_samples;
 
             PlanningResult<Robot> result;
@@ -428,13 +428,14 @@ namespace vamp::planning
             // Exit early if trivial, unsolved, or not optimizing
             if (not settings.optimize or result.path.empty() or result.path.size() == 2)
             {
+                result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
                 return result;
             }
 
             // We have a new best solution
             PlanningResult<Robot> final_result;
             final_result.path = result.path;
-            best_path_cost = result.path.cost();
+            best_path_cost = result.path.cost(); // this needs to be redefined for time
 
             float best_possible_cost = std::numeric_limits<float>::max();
             for (const auto &goal : goals)
@@ -457,6 +458,7 @@ namespace vamp::planning
                 // Update internal maximum iterations
                 rrtc_settings.max_iterations =
                     std::min(settings.max_iterations - iters, settings.max_internal_iterations);
+                // rrtc_settings.max_iterations = rrtc_settings.max_iterations - iters;
                 // std::cout << iters << std::endl;
                 // By default, use AORRTC
                 if (not settings.anytime)

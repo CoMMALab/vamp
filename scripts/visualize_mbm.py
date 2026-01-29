@@ -55,8 +55,9 @@ def topple(
     plan_settings.rrtc.min_radius = 4
     plan_settings.rrtc.dynamic_domain = False
     plan_settings.use_phs = False
-    plan_settings.optimize = False
+    plan_settings.optimize = True
     plan_settings.simplify_intermediate = True
+    plan_settings.max_runs = 4
     simp_settings.bez = True
 
     if not problem:

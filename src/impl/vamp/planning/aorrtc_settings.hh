@@ -20,6 +20,7 @@ namespace vamp::planning
         std::size_t max_internal_iterations = 100000;
         std::size_t max_samples = 100000;
         std::size_t max_cost_bound_resamples = 1000;
+        std::size_t max_runs = 10;
     };
 
 }  // namespace vamp::planning

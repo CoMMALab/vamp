@@ -4,7 +4,7 @@
 #include <memory>
 
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/aox_nn.hh>
+#include <vamp/planning/aox_nn_topp.hh>
 #include <vamp/planning/phs.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/simplify.hh>
@@ -24,8 +24,8 @@ namespace vamp::planning
         static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
 
-        using NNNode = GNATNode<dimension>;
-        using NN = NearestNeighborsGNAT<NNNode>;
+        using NNNode = TNATNode<Robot, dimension>;
+        using NN = NearestNeighborsTNAT<Robot, NNNode>;
 
         std::unique_ptr<float, decltype(&free)> buffer;
         std::vector<std::size_t> parents;
@@ -205,12 +205,14 @@ namespace vamp::planning
 
                     // Calculate and store actual node cost
                     // REPLACE WITH NN INFERENCE
-                    auto new_cost = nearest_node.cost + Robot::template get_nn_time(new_configuration, nearest_node.array);
+                    auto new_cost = tree_a_is_start ? nearest_node.cost + Robot::template get_nn_time(nearest_node.array, new_configuration) :
+                                                     nearest_node.cost + Robot::template get_nn_time(new_configuration, nearest_node.array);
 
                     // If resampling costs to try and find a better parent...
                     if (settings.cost_bound_resample)
                     {
-                        const float g_hat = Robot::template get_nn_time(new_configuration, root_vert.array);
+                        const float g_hat = tree_a_is_start ? Robot::template get_nn_time(root_vert.array, new_configuration) :
+                                                             Robot::template get_nn_time(new_configuration, root_vert.array);
 
                         // Continuously resample cost until an invalid connection is found
                         for (auto i = 0U; i < settings.max_cost_bound_resamples; ++i)
@@ -319,7 +321,7 @@ namespace vamp::planning
                         {
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.cost += Robot::template get_nn_time(result.path[result.path.size() - 1], result.path[result.path.size() - 2]);
+                            result.cost += Robot::template get_nn_time(result.path[result.path.size() - 2], result.path[result.path.size() - 1]);
                             current = parent;
                         }
 
@@ -449,18 +451,13 @@ namespace vamp::planning
 
             // If we get close to straight line, just call it.
             // Also handles numerical issues with PHS when too close to straight line...
-            std::cout << "Optimizing" << std::endl;
+            // std::cout << "Optimizing" << std::endl;
             while (iters < max_iterations and (best_path_cost - best_possible_cost) > 1e-8)
             {
                 // Update internal maximum iterations
-<<<<<<< HEAD
                 rrtc_settings.max_iterations =
                     std::min(settings.max_iterations - iters, settings.max_internal_iterations);
-=======
-                // rrtc_settings.max_iterations =
-                //     std::min(settings.max_iterations - iters, settings.max_internal_iterations);
                 // std::cout << iters << std::endl;
->>>>>>> f052b3dcf2e83fb8c303cb3082caae29bf793ada
                 // By default, use AORRTC
                 if (not settings.anytime)
                 {

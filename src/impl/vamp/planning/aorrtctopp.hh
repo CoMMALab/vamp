@@ -411,6 +411,7 @@ namespace vamp::planning
             PlanningResult<Robot> result;
             float best_path_cost = std::numeric_limits<float>::max();
             std::size_t iters = 0;
+            std::size_t runs = 0;
 
             do
             {
@@ -453,7 +454,7 @@ namespace vamp::planning
             // If we get close to straight line, just call it.
             // Also handles numerical issues with PHS when too close to straight line...
             // std::cout << "Optimizing" << std::endl;
-            while (iters < max_iterations and (best_path_cost - best_possible_cost) > 1e-8)
+            while (iters < max_iterations and (best_path_cost - best_possible_cost) > 1e-8 and runs++ < settings.max_runs)
             {
                 // Update internal maximum iterations
                 rrtc_settings.max_iterations =

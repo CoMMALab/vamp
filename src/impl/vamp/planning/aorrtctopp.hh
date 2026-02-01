@@ -452,7 +452,7 @@ namespace vamp::planning
 
             // If we get close to straight line, just call it.
             // Also handles numerical issues with PHS when too close to straight line...
-            std::cout << "Optimizing" << std::endl;
+            // std::cout << "Optimizing" << std::endl;
             while (iters < max_iterations and (best_path_cost - best_possible_cost) > 1e-8)
             {
                 // Update internal maximum iterations
@@ -504,7 +504,8 @@ namespace vamp::planning
                         // Update best solution
                         final_result.path = result.path;
                         best_path_cost = result.path.time();
-                        phs_rng->phs.set_transverse_diameter(best_path_cost);
+                        auto best_path_length = result.path.cost();
+                        phs_rng->phs.set_transverse_diameter(best_path_length); // this creates optimality problems
                     }
                 }
             }

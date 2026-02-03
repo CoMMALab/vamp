@@ -155,20 +155,56 @@ namespace vamp::planning
                     (reach) ? nearest_vector : nearest_vector * (settings.range / nearest_distance);
 
 
-                // TESTING
-                bool valid_extension = false;
-                if (not tree_a_is_start) {
-                    valid_extension = validate_bez_motion<Robot, rake, resolution>(
-                        nearest_configuration + extension_vector,
+                // add linear check first, then repeatedly draw samples until collision free/notfree
+                bool linear_check = validate_bez_linear<Robot, rake, resolution>(
                         nearest_configuration,
+                        nearest_configuration + extension_vector,
                         environment); 
+
+                bool valid_extension = !tree_a_is_start ? 
+                        validate_bez_motion<Robot, rake, resolution>(nearest_configuration + extension_vector,
+                                                                    nearest_configuration,
+                                                                    environment) : 
+                        validate_bez_motion<Robot, rake, resolution>(nearest_configuration,
+                                                                    nearest_configuration + extension_vector,
+                                                                    environment);
+
+                // do some focused resampling only when linear is valid but bezier is not
+                // keep the position dimensions, only resample H.O.T.
+                if (linear_check && !valid_extension) {
+                    auto q0_arr = nearest_configuration.to_array();
+                    auto q1_arr = (nearest_configuration + extension_vector).to_array();
+                    std::array<float, Robot::dimension / 3> q0_temp;
+                    std::array<float, Robot::dimension / 3> q1_temp;
+                    for (auto i = 0U; i < Robot::dimension / 3; i++) {
+                        q0_temp[i] = q0_arr[i];
+                        q1_temp[i] = q1_arr[i];
+                    }
+                    FloatVector q0(q0_temp);
+                    FloatVector q1(q1_temp);
+
+                    for (auto i = 0U; i < settings.bez_resamples; i++) {
+                        auto resamp0 = rng->next();
+                        auto resamp1 = rng->next();
+                        for (auto j = 0U; j < Robot::dimension / 3; j++) {
+                            resamp0[i] = q0[i];
+                            resamp1[i] = q1[i];
+                        }
+                        valid_extension = !tree_a_is_start ? 
+                                validate_bez_motion<Robot, rake, resolution>(resamp1,
+                                                                            resamp0,
+                                                                            environment) : 
+                                validate_bez_motion<Robot, rake, resolution>(resamp0,
+                                                                            resamp1,
+                                                                            environment);
+                        if (valid_extension) {
+                            nearest_configuration = resamp0;
+                            extension_vector = resamp1;
+                            break;
+                        }
+                    }
                 }
-                else {
-                    valid_extension = validate_bez_motion<Robot, rake, resolution>(
-                        nearest_configuration,
-                        nearest_configuration + extension_vector,
-                        environment);
-                }
+                
                 if (valid_extension)
                 {
                     float *new_configuration_index = buffer_index(free_index);

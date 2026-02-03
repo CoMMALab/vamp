@@ -157,7 +157,7 @@ namespace vamp::planning
     // if the line works, try to find some combination of velocity and accel
     // so the bez works too
     template <typename Robot, std::size_t rake, std::size_t resolution>
-    inline constexpr auto validate_bez_prelim(
+    inline constexpr auto validate_bez_linear(
         const typename Robot::Configuration &start,
         const typename Robot::Configuration &goal,
         const collision::Environment<FloatVector<rake>> &environment

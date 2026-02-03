@@ -87,16 +87,10 @@ namespace vamp::planning
         Bezier bez,
         const collision::Environment<FloatVector<rake>> &environment) -> bool
     {
-        // std::cout << "inside validate bez" << std::endl;
-        // TODO: Fix use of reinterpret_cast in pack() so that this can be constexpr
-        // auto ts = std::chrono::steady_clock::now();
         const auto percents = FloatVector<rake>(Percents<rake>::percents);
 
         typename Robot::template ConfigurationBlock<rake> block;
 
-        // HACK: broadcast() implicitly assumes that the rake is exactly VectorWidth
-        // use percents as times to get configs
-        // std::array<state, rake> states_arr;
         auto percents_arr = percents.to_array();
         int robot_dim_q = Robot::dimension / 3;
 
@@ -159,42 +153,67 @@ namespace vamp::planning
         return true;
     }
 
-    // template <typename Robot, std::size_t rake, std::size_t resolution>
-    // inline constexpr auto validate_bez(
-    //     const typename Robot::Configuration &start,
-    //     int T,
-    //     Bezier bez,
-    //     const collision::Environment<FloatVector<rake>> &environment) -> bool
-    // {
-    //     // just check every configuration along bez
-    //     int step = 4;
-    //     for (auto t = 0U; t < T; t += step * rake) {
-    //         typename Robot::template ConfigurationBlock<rake> block;
-    //         for (auto i = 0U; i < Robot::dimension / 3; i++) {
-    //             std::array<float, rake> dim_values;
-    //             for (auto j = 0U; j < step * rake; j+=step) {
-    //                 float time = static_cast<float>(t + j) / static_cast<float>(T);
-    //                 if (time > 1.0) {
-    //                     time = 1.0;
-    //                 }
-    //                 const auto state = bez.evaluate(time);
-    //                 dim_values[j] = state(i);
-    //             }
-    //             block[i] = FloatVector<rake>(dim_values);
-    //         }
-    //         // print block for debug
-    //         // for (auto i = 0U; i < Robot::dimension / 3; i++) {
-    //         //     std::cout << "block row " << i << ": " << block[i] << std::endl;
-    //         // }
-    //         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
-    //                                                  Robot::template fkcc<rake>(environment, block);
-    //         if (not valid) {
-    //             return false;
-    //         }
-    //     }
-    //     return true;
-    // }
-    // only call this
+    // attempt to do more informed sampling for narrow problems
+    // if the line works, try to find some combination of velocity and accel
+    // so the bez works too
+    template <typename Robot, std::size_t rake, std::size_t resolution>
+    inline constexpr auto validate_bez_prelim(
+        const typename Robot::Configuration &start,
+        const typename Robot::Configuration &goal,
+        const collision::Environment<FloatVector<rake>> &environment
+    ) {
+        // obtain the position only as floatvector, do the same collision check as normal vamp
+        auto start_arr = start.to_array();
+        auto goal_arr = goal.to_array();
+        std::array<float, Robot::dimension / 3> q_start;
+        std::array<float, Robot::dimension / 3> q_goal;
+        for (auto i = 0U; i < Robot::dimension / 3; i++) {
+            q_start[i] = start_arr[i];
+            q_goal[i] = goal_arr[i];
+        }
+        FloatVector start_vec(q_start);
+        FloatVector goal_vec(q_goal);
+        auto vector = goal_vec - start_vec;
+
+        // collision check routine
+        const auto percents = FloatVector<rake>(Percents<rake>::percents);
+
+        typename Robot::template ConfigurationBlock<rake> block;
+
+        // HACK: broadcast() implicitly assumes that the rake is exactly VectorWidth
+        for (auto i = 0U; i < Robot::dimension; ++i)
+        {
+            block[i] = start_vec.broadcast(i) + (vector.broadcast(i) * percents);
+        }
+
+        const std::size_t n = std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
+
+        bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
+                                                 Robot::template fkcc<rake>(environment, block);
+        if (not valid or n == 1)
+        {
+            return valid;
+        }
+
+        const auto backstep = vector / (rake * n);
+        for (auto i = 1U; i < n; ++i)
+        {
+            for (auto j = 0U; j < Robot::dimension; ++j)
+            {
+                block[j] = block[j] - backstep.broadcast(j);
+            }
+
+            bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
+                                                     Robot::template fkcc<rake>(environment, block);
+            if (not valid)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+    
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline constexpr auto validate_bez_motion(
         const typename Robot::Configuration &start,

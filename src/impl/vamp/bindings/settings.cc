@@ -23,7 +23,10 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("tree_ratio", &vp::RRTCSettings::tree_ratio)
         .def_rw("max_iterations", &vp::RRTCSettings::max_iterations)
         .def_rw("max_samples", &vp::RRTCSettings::max_samples)
-        .def_rw("start_tree_first", &vp::RRTCSettings::start_tree_first);
+        .def_rw("start_tree_first", &vp::RRTCSettings::start_tree_first)
+        .def_rw("random_connect", &vp::RRTCSettings::random_connect)
+        .def_rw("random_connect_attempts", &vp::RRTCSettings::random_connect_attempts)
+        .def_rw("random_connect_interval", &vp::RRTCSettings::random_connect_interval);
 
     nb::class_<vp::AORRTCSettings>(pymodule, "AORRTCSettings")
         .def(nb::init<>())

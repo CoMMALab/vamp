@@ -240,6 +240,7 @@ namespace vamp::planning
 
                     std::size_t i_extension = 0;
                     auto prior = new_configuration;
+                    // do the new resampling shit here too
                     for (; i_extension < n_extensions and
                            not tree_a_is_start ? validate_bez_motion<Robot, rake, resolution>(
                                 prior + increment, prior, environment) :

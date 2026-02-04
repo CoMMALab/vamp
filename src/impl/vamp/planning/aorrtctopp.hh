@@ -58,7 +58,7 @@ namespace vamp::planning
         //* ------------------ ------ -------------------
         // Only need to check nodes that are closer than the root of the tree, since connecting to the
         // root will always be valid
-        inline auto find_nearest(NN *nn, const NNNode &root, const Configuration &c, float cost)
+        inline auto find_nearest(NN *nn, const NNNode &root, const Configuration &c, float cost, bool reverse)
             -> std::pair<NNNode, float>
         {
             std::vector<NNNode> near_list;
@@ -70,7 +70,7 @@ namespace vamp::planning
             nn->nearestR(temp_node, NNNode::distance(temp_node, root), near_list);
 
             const auto *new_nearest_node = &near_list[0];
-            float new_nearest_distance = Robot::template get_nn_time(c, new_nearest_node->array);
+            float new_nearest_distance = reverse ? Robot::template get_nn_time(c, new_nearest_node->array) : Robot::template get_nn_time(new_nearest_node->array, c);
 
             for (auto idx = 1U; new_nearest_node->cost > 0                                //
                                 and cost < new_nearest_node->cost + new_nearest_distance  //
@@ -78,7 +78,7 @@ namespace vamp::planning
                  ++idx)
             {
                 new_nearest_node = &near_list[idx];
-                new_nearest_distance = Robot::template get_nn_time(c, new_nearest_node->array);
+                new_nearest_distance = reverse ? Robot::template get_nn_time(c, new_nearest_node->array) : Robot::template get_nn_time(new_nearest_node->array, c);
             }
 
             return {*new_nearest_node, new_nearest_distance};
@@ -157,8 +157,8 @@ namespace vamp::planning
                 const auto &target_vert = tree_a_is_start ? goal_vert : start_vert;
 
                 // PROBABLY REPLACE WITH NN INFERENCE
-                const float g_hat = Robot::template get_nn_time(temp, root_vert.array);
-                const float h_hat = Robot::template get_nn_time(temp, target_vert.array);
+                const float g_hat = not tree_a_is_start ? Robot::template get_nn_time(temp, root_vert.array) : Robot::template get_nn_time(root_vert.array, temp);
+                const float h_hat = not tree_a_is_start ? Robot::template get_nn_time(temp, target_vert.array) : Robot::template get_nn_time(target_vert.array, temp);
                 const float f_hat = g_hat + h_hat;
 
                 // The range between the minimum possible cost and maximum allowable cost
@@ -172,7 +172,7 @@ namespace vamp::planning
 
                 // Find nearest with asymmetric cost function
                 // MODIFY FIND NEAREST
-                auto [nearest_node, nearest_distance] = find_nearest(tree_a, root_vert, temp, c_rand);
+                auto [nearest_node, nearest_distance] = find_nearest(tree_a, root_vert, temp, c_rand, not tree_a_is_start);
                 if (rrtc_settings.dynamic_domain and radii[nearest_node.index] < nearest_distance)
                 {
                     continue;
@@ -252,7 +252,7 @@ namespace vamp::planning
                             const float c_rand = (rng->dist.uniform_01() * c_range) + g_hat;
 
                             auto [new_nearest_node, new_nearest_distance] =
-                                find_nearest(tree_a, root_vert, new_configuration, c_rand);
+                                find_nearest(tree_a, root_vert, new_configuration, c_rand, not tree_a_is_start);
 
 
                             
@@ -309,7 +309,7 @@ namespace vamp::planning
                     // Therefore, our maximum allowable cost for a connection through the other tree is
                     // max_cost - vertex_cost
                     const auto [other_nearest_node, other_nearest_distance] =
-                        find_nearest(tree_b, target_vert, new_configuration, max_cost - new_cost);
+                        find_nearest(tree_b, target_vert, new_configuration, max_cost - new_cost, not tree_a_is_start);
                     const auto other_nearest_vector = other_nearest_node.array - new_configuration;
 
                     // Just to be safe, make sure we've improved upon our best solution
@@ -372,11 +372,7 @@ namespace vamp::planning
                     }
 
                     for (; i_extension < n_extensions and
-                           not tree_a_is_start ? validate_bez_motion<Robot, rake, resolution>(
-                               prior + increment, prior, environment) : 
-                               validate_bez_motion<Robot,rake, resolution>(
-                                prior, prior + increment, environment
-                               ) and
+                           valid_extension and
                            free_index < rrtc_settings.max_samples;
                          ++i_extension)
                     {
@@ -583,7 +579,6 @@ namespace vamp::planning
                 // Update internal maximum iterations
                 rrtc_settings.max_iterations =
                     std::min(settings.max_iterations - iters, settings.max_internal_iterations);
-                // rrtc_settings.max_iterations = rrtc_settings.max_iterations - iters;
                 // std::cout << iters << std::endl;
                 // By default, use AORRTC
                 if (not settings.anytime)

@@ -144,7 +144,8 @@ def main(
 
             df_prob["total_time"] = df_prob["total_time"].dt.microseconds
 
-            save_path = f"log/{robot}/{name}_{planner}_results.csv"
+            # save_path = f"log/{robot}/{name}_{planner}_results.csv"
+            save_path = f"log/exp/{robot}_exp4/{name}_{planner}_rand{plan_settings.random_connect}_conn{plan_settings.random_connect_attempts}_intv{plan_settings.random_connect_interval}_results.csv"
             Path(save_path).parent.mkdir(parents=True, exist_ok=True)
             df_prob.to_csv(save_path, index = False)
             print(f"Saved results for {name} to {save_path}")

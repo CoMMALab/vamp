@@ -2,6 +2,7 @@ build/
 dev/
 log/
 .cache/
+.vscode/
 compile_commands.json
 *.out.*
 *.swp

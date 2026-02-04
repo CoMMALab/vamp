@@ -171,8 +171,8 @@ namespace vamp::planning
             q_start[i] = start_arr[i];
             q_goal[i] = goal_arr[i];
         }
-        FloatVector start_vec(q_start);
-        FloatVector goal_vec(q_goal);
+        FloatVector<Robot::dimension / 3> start_vec(q_start);
+        FloatVector<Robot::dimension / 3> goal_vec(q_goal);
         auto vector = goal_vec - start_vec;
 
         // collision check routine
@@ -186,6 +186,7 @@ namespace vamp::planning
             block[i] = start_vec.broadcast(i) + (vector.broadcast(i) * percents);
         }
 
+        auto distance = vector.l2_norm();
         const std::size_t n = std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
 
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :

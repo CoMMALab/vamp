@@ -180,25 +180,56 @@ namespace vamp::planning
 
                 const auto nearest_vector = temp - nearest_node.array;
                 bool reach = nearest_distance < rrtc_settings.range;
-                const auto extension_vector =
+                auto extension_vector =
                     (reach) ? nearest_vector : nearest_vector * (rrtc_settings.range / nearest_distance);
 
 
                 
                 // Evaluate edge reaching towards sample
-                bool valid_extension = false;
-                if (not tree_a_is_start) {
-                    valid_extension = validate_bez_motion<Robot, rake, resolution>(
-                        nearest_node.array + extension_vector,
+                bool linear_check = false;
+                linear_check = validate_bez_linear<Robot, rake, resolution>(
                         nearest_node.array,
+                        nearest_node.array + extension_vector,
                         environment); 
+                
+                bool valid_extension = false;
+                valid_extension = not tree_a_is_start ? 
+                        validate_bez_motion<Robot, rake, resolution>(nearest_node.array + extension_vector,
+                                                                    nearest_node.array,
+                                                                    environment) : 
+                        validate_bez_motion<Robot, rake, resolution>(nearest_node.array,
+                                                                    nearest_node.array + extension_vector,
+                                                                    environment);
+                if (linear_check and not valid_extension) {
+                    auto q_arr = (nearest_node.array + extension_vector).to_array();
+
+                    for (auto i = 0U; i < rrtc_settings.bez_resamples; i++) {
+                        auto resamp = (rng->uniform.sample()).to_array();
+                        std::array<float, Robot::dimension> resamp_arr;
+                        for (auto j = 0U; j < Robot::dimension; j++) {
+                            if (j < Robot::dimension / 3) { // position dimensions
+                                resamp_arr[j] = q_arr[j];
+                            }
+                            else { // H.O.T. dimensions
+                                resamp_arr[j] = resamp[j];
+                            }
+                        }
+                        FloatVector<Robot::dimension> resamp_vec(resamp_arr);
+                        valid_extension = not tree_a_is_start ? 
+                                validate_bez_motion<Robot, rake, resolution>(resamp_vec,
+                                                                            nearest_node.array,
+                                                                            environment) : 
+                                validate_bez_motion<Robot, rake, resolution>(nearest_node.array,
+                                                                            resamp_vec,
+                                                                            environment);
+
+                        if (valid_extension) {
+                            extension_vector = resamp_vec - nearest_node.array;
+                            break;
+                        }
+                    }
                 }
-                else {
-                    valid_extension = validate_bez_motion<Robot, rake, resolution>(
-                        nearest_node.array,
-                        nearest_node.array + extension_vector,
-                        environment);
-                }
+            
                 if (valid_extension)
                 {
                     const auto new_configuration = nearest_node.array + extension_vector;
@@ -223,6 +254,8 @@ namespace vamp::planning
                             auto [new_nearest_node, new_nearest_distance] =
                                 find_nearest(tree_a, root_vert, new_configuration, c_rand);
 
+
+                            
                             // If we have connected:
                             //      to the same parent
                             //      with a worse cost
@@ -288,10 +321,56 @@ namespace vamp::planning
                     // Extend incrementally towards other tree
                     const std::size_t n_extensions = std::ceil(other_nearest_distance / rrtc_settings.range);
                     const float increment_length = other_nearest_distance / static_cast<float>(n_extensions);
-                    const auto increment = other_nearest_vector * (1.0F / static_cast<float>(n_extensions));
+                    auto increment = other_nearest_vector * (1.0F / static_cast<float>(n_extensions));
 
                     std::size_t i_extension = 0;
                     auto prior = new_configuration;
+
+                    linear_check = false;
+                    linear_check = validate_bez_linear<Robot, rake, resolution>(
+                        prior,
+                        prior + increment,
+                        environment);
+
+                    valid_extension = false;
+                    valid_extension = not tree_a_is_start ? 
+                        validate_bez_motion<Robot, rake, resolution>(prior + increment,
+                                                                    prior,
+                                                                    environment) : 
+                        validate_bez_motion<Robot, rake, resolution>(prior,
+                                                                    prior + increment,
+                                                                    environment);
+
+                    if (linear_check and not valid_extension) {
+                        auto q_arr = (prior + increment).to_array();
+
+                        for (auto i = 0U; i < rrtc_settings.bez_resamples; i++) {
+                            auto resamp = (rng->uniform.sample()).to_array();
+                            std::array<float, Robot::dimension> resamp_arr;
+                            for (auto j = 0U; j < Robot::dimension; j++) {
+                                if (j < Robot::dimension / 3) { // position dimensions
+                                    resamp_arr[j] = q_arr[j];
+                                }
+                                else { // H.O.T. dimensions
+                                    resamp_arr[j] = resamp[j];
+                                }
+                            }
+                            FloatVector<Robot::dimension> resamp_vec(resamp_arr);
+                            valid_extension = not tree_a_is_start ? 
+                                    validate_bez_motion<Robot, rake, resolution>(resamp_vec,
+                                                                                prior,
+                                                                                environment) : 
+                                    validate_bez_motion<Robot, rake, resolution>(prior,
+                                                                                resamp_vec,
+                                                                                environment);
+
+                            if (valid_extension) {
+                                increment = resamp_vec - prior;
+                                break;
+                            }
+                        }
+                    }
+
                     for (; i_extension < n_extensions and
                            not tree_a_is_start ? validate_bez_motion<Robot, rake, resolution>(
                                prior + increment, prior, environment) : 
@@ -301,7 +380,7 @@ namespace vamp::planning
                            free_index < rrtc_settings.max_samples;
                          ++i_extension)
                     {
-                        const auto next = prior + increment;
+                        auto next = prior + increment;
                         add_to_tree(
                             tree_a,
                             next,
@@ -311,6 +390,51 @@ namespace vamp::planning
 
                         free_index++;
                         prior = next;
+
+                        linear_check = false;
+                        linear_check = validate_bez_linear<Robot, rake, resolution>(
+                            prior,
+                            prior + increment,
+                            environment);
+
+                        valid_extension = false;
+                        valid_extension = not tree_a_is_start ? 
+                            validate_bez_motion<Robot, rake, resolution>(prior + increment,
+                                                                    prior,
+                                                                    environment) : 
+                            validate_bez_motion<Robot, rake, resolution>(prior,
+                                                                    prior + increment,
+                                                                    environment);
+
+                        if (linear_check and not valid_extension) {
+                            auto q_arr = (prior + increment).to_array();
+
+                            for (auto i = 0U; i < rrtc_settings.bez_resamples; i++) {
+                                auto resamp = (rng->uniform.sample()).to_array();
+                                std::array<float, Robot::dimension> resamp_arr;
+                                for (auto j = 0U; j < Robot::dimension; j++) {
+                                    if (j < Robot::dimension / 3) { // position dimensions
+                                        resamp_arr[j] = q_arr[j];
+                                    }
+                                    else { // H.O.T. dimensions
+                                        resamp_arr[j] = resamp[j];
+                                    }
+                                }
+                                FloatVector<Robot::dimension> resamp_vec(resamp_arr);
+                                valid_extension = not tree_a_is_start ? 
+                                        validate_bez_motion<Robot, rake, resolution>(resamp_vec,
+                                                                                    prior,
+                                                                                    environment) : 
+                                        validate_bez_motion<Robot, rake, resolution>(prior,
+                                                                                    resamp_vec,
+                                                                                    environment);
+
+                                if (valid_extension) {
+                                    increment = resamp_vec - prior;
+                                    break;
+                                }
+                            }
+                        }
                     }
 
                     if (i_extension == n_extensions)  // connected

@@ -3,6 +3,7 @@
 #include <memory>
 #include <vamp/vector.hh>
 #include <vamp/random/distribution.hh>
+#include <vamp/random/uniform.hh>
 
 namespace vamp::rng
 {
@@ -14,5 +15,6 @@ namespace vamp::rng
         virtual inline auto next() noexcept -> FloatVector<Robot::dimension> = 0;
 
         Distribution dist;
+        Uniform<Robot> uniform;
     };
 }  // namespace vamp::rng

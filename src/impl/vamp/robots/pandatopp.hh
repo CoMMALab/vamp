@@ -56,22 +56,21 @@ namespace vamp::robots
             3.909600019454956,
             5.934199810028076,
             
-            5.24, // velocity ranges
-            5.24,
-            5.24,
-            5.24,
-            10.52,
-            8.36,
-            10.52,
+            5.24 * 0.75, // velocity ranges
+            5.24 * 0.75,
+            5.24 * 0.75,
+            5.24 * 0.75,
+            10.52 * 0.75,
+            8.36 * 0.75,
+            10.52 * 0.75,
 
-            20, // acceleration ranges
-            20,
-            20,
-            20,
-            20,
-            20,
-            20};
-
+            20 * 0.75, // acceleration ranges
+            20 * 0.75,
+            20 * 0.75,
+            20 * 0.75,
+            20 * 0.75,
+            20 * 0.75,
+            20 * 0.75};
         alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> s_a{
             -2.967099905014038, // position mins
             -1.8325999975204468,
@@ -81,21 +80,21 @@ namespace vamp::robots
             -0.08730000257492065,
             -2.967099905014038,
 
-            -2.62, // velocity mins
-            -2.62,
-            -2.62,
-            -2.62,
-            -5.26,
-            -4.18,
-            -5.26, 
+            -2.62 * 0.75, // velocity mins
+            -2.62 * 0.75,
+            -2.62 * 0.75,
+            -2.62 * 0.75,
+            -5.26 * 0.75,
+            -4.18 * 0.75,
+            -5.26 * 0.75, 
 
-            -10, // acceleration mins
-            -10,
-            -10,
-            -10,
-            -10,
-            -10,
-            -10};
+            -10 * 0.75, // acceleration mins
+            -10 * 0.75,
+            -10 * 0.75,
+            -10 * 0.75,
+            -10 * 0.75,
+            -10 * 0.75,
+            -10 * 0.75};
 
         alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> d_m{
             0.16851471364498138, // position descale

@@ -15,7 +15,7 @@ def topple(
     robot: str = "pandatopp",                  # Robot to plan for
     planner: str = "aorrtctopp",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "cage",                     # Problem name
+    problem: str = "box",                     # Problem name
     index: int = 4,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations

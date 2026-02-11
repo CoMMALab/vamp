@@ -15,8 +15,8 @@ def topple(
     robot: str = "pandatopp",                  # Robot to plan for
     planner: str = "aorrtctopp",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "box",                     # Problem name
-    index: int = 4,                        # Problem index
+    problem: str = "bookshelf_thin",                     # Problem name
+    index: int = 2,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -39,21 +39,21 @@ def topple(
         planner,
         **kwargs,
         )
-    # plan_settings.max_iterations = 10000
+    # plan_settings.max_iterations = 1000000
     # plan_settings.max_samples = 1000000
-    # plan_settings.bez_resamples = 10
+    # plan_settings.bez_resamples = 100
     # plan_settings.range = 8
     # plan_settings.radius = 16
     # plan_settings.min_radius = 4
     # plan_settings.dynamic_domain = False
     # simp_settings.bez = True
 
-    plan_settings.max_iterations = 2500
-    plan_settings.rrtc.max_iterations = 10000000
+    plan_settings.max_iterations = 2000
+    plan_settings.rrtc.max_iterations = 1000000
     plan_settings.max_samples = 100000
-    plan_settings.rrtc.range = 12
+    plan_settings.rrtc.range = 8
     plan_settings.simplify.bez = True
-    plan_settings.rrtc.bez_resamples = 100
+    plan_settings.rrtc.bez_resamples = 50
     plan_settings.rrtc.radius = 16
     plan_settings.rrtc.min_radius = 4
     plan_settings.rrtc.dynamic_domain = False
@@ -143,6 +143,7 @@ Simplified: {stats['simplified_path_cost']:5.3f}"""
             )
 
         plan = simplify.path
+        # plan = result.path
         plan = vamp_module.compute_traj(plan, env, simp_settings, sampler).path.numpy()
         
 
@@ -211,7 +212,7 @@ def toppra(
     robot: str = "panda",                  # Robot to plan for
     planner: str = "rrtc",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "table_under_pick",                     # Problem name
+    problem: str = "cage",                     # Problem name
     index: int = 45,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations

@@ -30,7 +30,7 @@ namespace vamp::planning {
         public:
             row_matrix anchors;
             int degree;
-            std::array<int, 6> combs;
+            std::array<int, 10> combs;
 
             Bezier(row_matrix anchors) noexcept {
                 this->anchors = anchors;
@@ -65,6 +65,17 @@ namespace vamp::planning {
                 }
                 state s = P * this->anchors;
                 return s;
+            }
+
+            Bezier derivative() {
+                // analytically, derivative of curve B(t) is B'(t) = P_{n - 1}Q
+                // where Q_i = n(C_{i + 1} - C_{i})
+                row_matrix Q(this->degree, this->anchors.cols());
+                for (int i = 0; i < this->degree; i++) {
+                    Q.row(i) = this->degree * (this->anchors.row(i + 1) - this->anchors.row(i));
+                }
+                Bezier dB(Q);
+                return dB;
             }
     };
 }

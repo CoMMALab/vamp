@@ -16,6 +16,7 @@ namespace vamp::robots
         static constexpr float min_radius = 0.012000000104308128;
         static constexpr float max_radius = 0.07999999821186066;
         static constexpr std::size_t resolution = 32;
+        static constexpr std::size_t topple_out_dim = 6;
 
         static constexpr std::array<std::string_view, dimension> joint_names = {
             "panda_joint1",

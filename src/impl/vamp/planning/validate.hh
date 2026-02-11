@@ -224,11 +224,12 @@ namespace vamp::planning
     {
         // obtain the position only as floatvector, do the same collision check as normal vamp
         const auto percents = FloatVector<rake>(Percents<rake>::percents);
+        const auto robot_dim_q = Robot::dimension / 3;
 
         // typename Robot::template ConfigurationBlock<rake> block;
-        std::array<float, Robot::dimension / 3> vlim_arr;
-        for (auto i = 0U; i < Robot::dimension / 3; i++) {
-            vlim_arr[i] = Robot::s_a[Robot::dimension / 3 + i] + Robot::s_m[Robot::dimension / 3 + i];
+        std::array<float, robot_dim_q> vlim_arr;
+        for (auto i = 0U; i < robot_dim_q; i++) {
+            vlim_arr[i] = Robot::s_a[robot_dim_q + i] + Robot::s_m[robot_dim_q + i];
         }
         // FloatVector<Robot::dimension / 3> vlim(vlim_arr);
         auto dbez = bez.derivative();
@@ -236,21 +237,21 @@ namespace vamp::planning
         auto percents_arr = percents.to_array();
         for (auto i = 0U; i < percents_arr.size(); i++) {
             auto vel = dbez.evaluate(static_cast<float>(percents_arr[i])) / T;
-            for (auto j = 0U; j < Robot::dimension / 3; j++) {
+            for (auto j = 0U; j < robot_dim_q; j++) {
                 if (std::abs(vel(j)) > vlim_arr[j]) {
                     return false;
                 }
             }
         }
 
-        const std::size_t n = resolution * T / rake;
+        const std::size_t n = resolution * T * 2 / rake;
         const auto backstep = percents.broadcast(0) / n;
         for (auto i = 1U; i < n; ++i)
         {
             auto times = (percents - i * backstep).to_array();
             for (auto j = 0U; j < times.size(); j++) {
                 auto vel = dbez.evaluate(static_cast<float>(times[j])) / T;
-                for (auto k = 0U; k < Robot::dimension / 3; k++) {
+                for (auto k = 0U; k < robot_dim_q; k++) {
                     if (std::abs(vel(k)) > vlim_arr[k]) {
                         return false;
                     }
@@ -268,12 +269,12 @@ namespace vamp::planning
     {
         // obtain the position only as floatvector, do the same collision check as normal vamp
         const auto percents = FloatVector<rake>(Percents<rake>::percents);
-
+        const auto robot_dim_q = Robot::dimension / 3;
         // typename Robot::template ConfigurationBlock<rake> block;
 
-        std::array<float, Robot::dimension / 3> alim_arr;
-        for (auto i = 0U; i < Robot::dimension / 3; i++) {
-            alim_arr[i] = Robot::s_a[2 * Robot::dimension / 3 + i] + Robot::s_m[2 * Robot::dimension / 3 + i];
+        std::array<float, robot_dim_q> alim_arr;
+        for (auto i = 0U; i < robot_dim_q; i++) {
+            alim_arr[i] = Robot::s_a[2 * robot_dim_q + i] + Robot::s_m[2 * robot_dim_q + i];
         }
         // FloatVector<Robot::dimension / 3> vlim(vlim_arr);
         auto ddbez = bez.derivative().derivative();
@@ -281,21 +282,21 @@ namespace vamp::planning
         auto percents_arr = percents.to_array();
         for (auto i = 0U; i < percents_arr.size(); i++) {
             auto acc = ddbez.evaluate(static_cast<float>(percents_arr[i])) / (T * T);
-            for (auto j = 0U; j < Robot::dimension / 3; j++) {
+            for (auto j = 0U; j < robot_dim_q; j++) {
                 if (std::abs(acc(j)) > alim_arr[j]) {
                     return false;
                 }
             }
         }
         
-        const std::size_t n = resolution * T / rake;
+        const std::size_t n = resolution * T * 2 / rake;
         const auto backstep = percents.broadcast(0) / n;
         for (auto i = 1U; i < n; ++i)
         {
             auto times = (percents - i * backstep).to_array();
             for (auto j = 0U; j < times.size(); j++) {
                 auto acc = ddbez.evaluate(static_cast<float>(times[j])) / (T * T);
-                for (auto k = 0U; k < Robot::dimension / 3; k++) {
+                for (auto k = 0U; k < robot_dim_q; k++) {
                     if (std::abs(acc(k)) > alim_arr[k]) {
                         return false;
                     }

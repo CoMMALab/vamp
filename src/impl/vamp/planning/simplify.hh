@@ -64,6 +64,8 @@ namespace vamp::planning
             return false;
         }
 
+        const auto robot_dim_q = Robot::dimension / 3;
+
         bool changed = false;
         for (auto step = 0U; step < settings.max_steps; ++step)
         {
@@ -81,7 +83,7 @@ namespace vamp::planning
                 // get start and end as arrays
                 float og_time = 0;
                 std::array<float, 2 * Robot::dimension> x;
-                std::array<float, Robot::topple_out_dim * Robot::dimension / 3 + 1> out;
+                std::array<float, Robot::topple_out_dim * robot_dim_q + 1> out;
                 for (auto k = 0U; k < Robot::dimension; k++) {
                     x[k] = static_cast<float>(path[index - 1].to_array()[k]);
                 }
@@ -89,7 +91,7 @@ namespace vamp::planning
                     x[k + Robot::dimension] = static_cast<float>(path[index].to_array()[k]);
                 }
                 Robot::template topple_nn_forward(x, out);
-                og_time += out[Robot::topple_out_dim * Robot::dimension / 3];
+                og_time += out[Robot::topple_out_dim * robot_dim_q];
 
                 for (auto k = 0U; k < Robot::dimension; k++) {
                     x[k] = static_cast<float>(path[index].to_array()[k]);
@@ -98,7 +100,7 @@ namespace vamp::planning
                     x[k + Robot::dimension] = static_cast<float>(path[index + 1].to_array()[k]);
                 }
                 Robot::template topple_nn_forward(x, out);
-                og_time += out[Robot::topple_out_dim * Robot::dimension / 3];
+                og_time += out[Robot::topple_out_dim * robot_dim_q];
 
                 float cut_time = 0;
                 for (auto l = 0U; l < Robot::dimension; l++) {
@@ -108,7 +110,7 @@ namespace vamp::planning
                     x[l + Robot::dimension] = static_cast<float>(midpoint.to_array()[l]);
                 }
                 Robot::template topple_nn_forward(x, out);
-                cut_time += out[Robot::topple_out_dim * Robot::dimension / 3];
+                cut_time += out[Robot::topple_out_dim * robot_dim_q];
 
                 for (auto l = 0U; l < Robot::dimension; l++) {
                     x[l] = static_cast<float>(midpoint.to_array()[l]);
@@ -117,7 +119,7 @@ namespace vamp::planning
                     x[l + Robot::dimension] = static_cast<float>(path[index + 1].to_array()[l]);
                 }
                 Robot::template topple_nn_forward(x, out);
-                cut_time += out[Robot::topple_out_time * Robot::dimension / 3];
+                cut_time += out[Robot::topple_out_dim * robot_dim_q];
 
                 if (cut_time <= og_time) {
                     if (path[index].distance(midpoint) > settings.min_change and
@@ -252,6 +254,7 @@ namespace vamp::planning
             return false;
         }
         
+        const auto robot_dim_q = Robot::dimension / 3;
 
         bool result = false;
         // REPLACE BELOW WITH A DP FORMULATION
@@ -301,7 +304,7 @@ namespace vamp::planning
         // backtrack table
         std::vector<std::vector<int>> BT(path.size(), std::vector<int>(path.size()));
         std::array<float, 2 * Robot::dimension> x;
-        std::array<float, Robot::topple_out_dim * Robot::dimension / 3 + 1> out;
+        std::array<float, Robot::topple_out_dim * robot_dim_q + 1> out;
         for (int i = 0; i < path.size(); i++) {
             for (int j = i; j < path.size(); j++) {
                 if (i == j) {
@@ -316,7 +319,7 @@ namespace vamp::planning
                         x[k + Robot::dimension] = static_cast<float>(path[j].to_array()[k]);
                     }
                     Robot::template topple_nn_forward(x, out);
-                    T[i][j] = out[Robot::topple_out_dim * Robot::dimension / 3];
+                    T[i][j] = out[Robot::topple_out_dim * robot_dim_q];
                     BT[i][j] = -1;
                 }
             }
@@ -338,7 +341,7 @@ namespace vamp::planning
                 Robot::template topple_nn_forward(x, out);
                 if (validate_bez_motion<Robot, rake, resolution>(path[i], path[j], environment)) {
                     min_k = -1;
-                    min = out[Robot::topple_out_dim * Robot::dimension / 3];
+                    min = out[Robot::topple_out_dim * robot_dim_q];
                     BT[i][j] = -1;
                 }
                 
@@ -514,6 +517,7 @@ namespace vamp::planning
     {
         auto start_time = std::chrono::steady_clock::now();
 
+        const auto robot_dim_q = Robot::dimension / 3;
         // object to store result
         // path param
         PlanningResult<Robot> result;
@@ -530,32 +534,32 @@ namespace vamp::planning
             for (auto j = 0U; j < Robot::dimension; j++) {
                 x[j + Robot::dimension] = static_cast<float>(path_arr1[j]);
             }
-            std::array<float, Robot::topple_out_dim * Robot::dimension / 3 + 1> out;
+            std::array<float, Robot::topple_out_dim * robot_dim_q + 1> out;
 
             Robot::template topple_nn_forward(x, out);
 
             // build the anchors
-            row_matrix anchors(Robot::topple_out_dim + 2, Robot::dimension / 3);
+            row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
 
             // initial point
-            for (auto j = 0U; j < Robot::dimension / 3; j++) {
+            for (auto j = 0U; j < robot_dim_q; j++) {
                 anchors(0, j) = path_arr[j];
             }
 
             // intermediate points
             for (auto j = 1U; j <= Robot::topple_out_dim; j++) {
-                for (auto k = 0U; k < Robot::dimension / 3; k++) {
-                    anchors(j, k) = out[(j - 1) * Robot::dimension / 3 + k];
+                for (auto k = 0U; k < robot_dim_q; k++) {
+                    anchors(j, k) = out[(j - 1) * robot_dim_q + k];
                 }
             }
 
             // final point
-            for (auto j = 0U; j < Robot::dimension / 3; j++) {
+            for (auto j = 0U; j < robot_dim_q; j++) {
                 anchors(Robot::topple_out_dim + 1, j) = path_arr1[j];
             }
 
 
-            int T = out[Robot::topple_out_dim * Robot::dimension / 3] * 1000;
+            int T = out[Robot::topple_out_dim * robot_dim_q] * 1000;
 
             Bezier bez(anchors);
 
@@ -567,7 +571,7 @@ namespace vamp::planning
 
                 // copy and cast the actual Dim scalars
                 for (auto k = 0U; k < Robot::dimension; k++) {
-                    if (k >= Robot::dimension / 3) {
+                    if (k >= robot_dim_q) {
                         tmp[k] = 0;
                     }
                     else {

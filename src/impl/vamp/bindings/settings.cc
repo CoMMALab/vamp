@@ -29,7 +29,8 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_iterations", &vp::RRTCSettings::max_iterations)
         .def_rw("max_samples", &vp::RRTCSettings::max_samples)
         .def_rw("start_tree_first", &vp::RRTCSettings::start_tree_first)
-        .def_rw("bez_resamples", &vp::RRTCSettings::bez_resamples);
+        .def_rw("bez_resamples", &vp::RRTCSettings::bez_resamples)
+        .def_rw("bez_resample_radius", &vp::RRTCSettings::bez_resample_radius);
 
     nb::class_<vp::AORRTCSettings>(pymodule, "AORRTCSettings")
         .def(nb::init<>())
@@ -44,7 +45,9 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_internal_iterations", &vp::AORRTCSettings::max_internal_iterations)
         .def_rw("max_cost_bound_resamples", &vp::AORRTCSettings::max_cost_bound_resamples)
         .def_rw("max_samples", &vp::AORRTCSettings::max_samples)
-        .def_rw("max_runs", &vp::AORRTCSettings::max_runs);
+        .def_rw("max_runs", &vp::AORRTCSettings::max_runs)
+        .def_rw("t_radius", &vp::AORRTCSettings::t_radius)
+        .def_rw("min_t_radius", &vp::AORRTCSettings::min_t_radius);
 
     // TODO: Redesign a neater form of RoadmapSettings/NeighborParams
     // TODO: Expose the other NeighborParams types

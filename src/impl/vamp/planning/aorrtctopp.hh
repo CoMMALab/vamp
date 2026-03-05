@@ -29,7 +29,9 @@ namespace vamp::planning
 
         std::unique_ptr<float, decltype(&free)> buffer;
         std::vector<std::size_t> parents;
+        // add buffer to store times and dists
         std::vector<float> radii;
+        std::vector<float> times;
         std::vector<float> costs;
 
         inline auto buffer_index(std::size_t index) -> float *
@@ -44,6 +46,7 @@ namespace vamp::planning
             c.to_array(buffer_index(index));
 
             radii[index] = std::numeric_limits<float>::max();
+            times[index] = std::numeric_limits<float>::max();
             parents[index] = parent_index;
             costs[index] = cost;
 
@@ -93,6 +96,7 @@ namespace vamp::planning
         {
             parents.resize(max_samples);
             radii.resize(max_samples);
+            times.resize(max_samples);
             costs.resize(max_samples);
         }
 
@@ -173,15 +177,18 @@ namespace vamp::planning
                 // Find nearest with asymmetric cost function
                 // MODIFY FIND NEAREST
                 auto [nearest_node, nearest_distance] = find_nearest(tree_a, root_vert, temp, c_rand, not tree_a_is_start);
-                if (rrtc_settings.dynamic_domain and radii[nearest_node.index] < nearest_distance)
+                if (rrtc_settings.dynamic_domain and 
+                    times[nearest_node.index] < nearest_distance and 
+                    radii[nearest_node.index] < (temp - nearest_node.array).l2_norm())
                 {
                     continue;
                 }
 
                 const auto nearest_vector = temp - nearest_node.array;
-                bool reach = nearest_distance < rrtc_settings.range;
-                auto extension_vector =
-                    (reach) ? nearest_vector : nearest_vector * (rrtc_settings.range / nearest_distance);
+                // bool reach = nearest_distance < rrtc_settings.range;
+                // auto extension_vector =
+                //     (reach) ? nearest_vector : nearest_vector * (rrtc_settings.range / nearest_distance);
+                auto extension_vector = nearest_vector;
 
 
                 
@@ -204,7 +211,7 @@ namespace vamp::planning
                     auto q_arr = (nearest_node.array + extension_vector).to_array();
 
                     for (auto i = 0U; i < rrtc_settings.bez_resamples; i++) {
-                        auto resamp = (rng->uniform.sample()).to_array();
+                        auto resamp = (rng->next()).to_array();
                         std::array<float, Robot::dimension> resamp_arr;
                         for (auto j = 0U; j < Robot::dimension; j++) {
                             if (j < Robot::dimension / 3) { // position dimensions
@@ -300,6 +307,12 @@ namespace vamp::planning
                         radii[nearest_node.index] *= (1 + rrtc_settings.alpha);
                     }
 
+                    if (rrtc_settings.dynamic_domain and
+                        times[nearest_node.index] != std::numeric_limits<float>::max())
+                    {
+                        times[nearest_node.index] *= (1 + rrtc_settings.alpha);
+                    }
+
                     // Extend to goal tree
 
                     // Because we are extending to the other tree, we need to change our upper cost bound
@@ -345,7 +358,7 @@ namespace vamp::planning
                         auto q_arr = (prior + increment).to_array();
 
                         for (auto i = 0U; i < rrtc_settings.bez_resamples; i++) {
-                            auto resamp = (rng->uniform.sample()).to_array();
+                            auto resamp = (rng->next()).to_array();
                             std::array<float, Robot::dimension> resamp_arr;
                             for (auto j = 0U; j < Robot::dimension; j++) {
                                 if (j < Robot::dimension / 3) { // position dimensions
@@ -406,7 +419,7 @@ namespace vamp::planning
                             auto q_arr = (prior + increment).to_array();
 
                             for (auto i = 0U; i < rrtc_settings.bez_resamples; i++) {
-                                auto resamp = (rng->uniform.sample()).to_array();
+                                auto resamp = (rng->next()).to_array();
                                 std::array<float, Robot::dimension> resamp_arr;
                                 for (auto j = 0U; j < Robot::dimension; j++) {
                                     if (j < Robot::dimension / 3) { // position dimensions
@@ -476,6 +489,17 @@ namespace vamp::planning
                             radii[nearest_node.index] * (1.F - rrtc_settings.alpha),
                             rrtc_settings.min_radius);
                     }
+
+                    if (times[nearest_node.index] == std::numeric_limits<float>::max())
+                    {
+                        times[nearest_node.index] = settings.t_radius;
+                    }
+                    else
+                    {
+                        times[nearest_node.index] = std::max(
+                            times[nearest_node.index] * (1.F - rrtc_settings.alpha),
+                            settings.min_t_radius);
+                    }
                 }
             }
 
@@ -533,12 +557,17 @@ namespace vamp::planning
             std::size_t iters = 0;
             std::size_t runs = 0;
 
+            AOX_RRTCTOPP instance(max_samples);
+
             do
             {
                 // Find an initial solution
-                result = RRTCTOPP::solve(start, goals, environment, rrtc_settings, rng);
+                // result = RRTCTOPP::solve(start, goals, environment, rrtc_settings, rng);
+                result = instance.solve(start, goals, environment, settings, best_path_cost, rng);
                 iters += result.iterations;
             } while (result.path.empty() and iters < settings.max_iterations);
+            std::cout << "Initial solution found." << std::endl;
+            fflush(stdout);
 
             // Simplify solution if enabled
             if (settings.simplify_intermediate and not result.path.empty())
@@ -569,13 +598,15 @@ namespace vamp::planning
 
             auto phs_rng = std::make_shared<ProlateHyperspheroidRNG<Robot>>(phs, rng);
 
-            AOX_RRTCTOPP instance(max_samples);
+            // AOX_RRTCTOPP instance(max_samples);
 
             // If we get close to straight line, just call it.
             // Also handles numerical issues with PHS when too close to straight line...
             // std::cout << "Optimizing" << std::endl;
             while (iters < max_iterations and (best_path_cost - best_possible_cost) > 1e-8 and runs++ < settings.max_runs)
             {
+                std::cout << "Refining solution" << std::endl;
+                fflush(stdout);
                 // Update internal maximum iterations
                 rrtc_settings.max_iterations =
                     std::min(settings.max_iterations - iters, settings.max_internal_iterations);
@@ -627,6 +658,8 @@ namespace vamp::planning
                         auto best_path_length = result.path.cost();
                         phs_rng->phs.set_transverse_diameter(best_path_length); // this creates optimality problems
                     }
+                    // rrtc_settings.range /= 2;
+                    // rrtc_settings.radius /= 2;
                 }
             }
 

@@ -107,7 +107,7 @@ namespace vamp::planning
             block[j] = FloatVector<rake>(dim_values);  
         }
 
-        const std::size_t n = resolution * T / rake * 2;
+        const std::size_t n = resolution * T * rake;
         // std::cout << n << std::endl;
 
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
@@ -360,8 +360,8 @@ namespace vamp::planning
 
         Bezier bez(anchors);
         bool bez_valid = validate_bez<Robot, rake, resolution>(start, T, bez, environment);
-        bool dbez_valid = validate_dbez<Robot, rake, resolution>(bez, T);
-        bool ddbez_valid = validate_ddbez<Robot, rake, resolution>(bez, T);
-        return bez_valid and dbez_valid and ddbez_valid;
+        // bool dbez_valid = validate_dbez<Robot, rake, resolution>(bez, T);
+        // bool ddbez_valid = validate_ddbez<Robot, rake, resolution>(bez, T);
+        return bez_valid;
     }
 }  // namespace vamp::planning

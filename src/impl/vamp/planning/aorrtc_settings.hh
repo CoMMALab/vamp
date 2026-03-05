@@ -21,6 +21,8 @@ namespace vamp::planning
         std::size_t max_samples = 100000;
         std::size_t max_cost_bound_resamples = 1000;
         std::size_t max_runs = 10;
+        float t_radius = 2.0;
+        float min_t_radius = 1.5;
     };
 
 }  // namespace vamp::planning

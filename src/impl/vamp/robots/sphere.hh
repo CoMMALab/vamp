@@ -18,6 +18,7 @@ namespace vamp::robots
         static constexpr auto dimension = 3;
         static constexpr auto n_spheres = 1;
         static constexpr auto resolution = 32;
+        static constexpr std::size_t topple_out_dim = 6;
 
         static constexpr float &min_radius = radius;
         static constexpr float &max_radius = radius;
@@ -49,6 +50,16 @@ namespace vamp::robots
         {
             radius = new_radius;
         }
+
+        alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> s_m{
+            20,
+            20,
+            5};
+
+        alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> s_a{
+            -10,
+            -10,
+            5};
 
         inline static void set_lows(std::array<float, 3> new_lows) noexcept
         {

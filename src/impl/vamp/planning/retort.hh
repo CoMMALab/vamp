@@ -4,12 +4,12 @@
 #include <memory>
 
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/aox_nn_topp.hh>
+#include <vamp/planning/retort_nn.hh>
 #include <vamp/planning/phs.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/simplify.hh>
 #include <vamp/planning/validate.hh>
-#include <vamp/planning/aorrtc_settings.hh>
+#include <vamp/planning/retort_settings.hh>
 #include <vamp/planning/rrtctopp.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
@@ -18,14 +18,14 @@
 namespace vamp::planning
 {
     template <typename Robot, std::size_t rake, std::size_t resolution>
-    struct AOX_RRTCTOPP
+    struct AOX_RETORT
     {
         using Configuration = typename Robot::Configuration;
         static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
 
-        using NNNode = TNATNode<Robot, dimension>;
-        using NN = NearestNeighborsTNAT<Robot, NNNode>;
+        using NNNode = TDNATNode<Robot, dimension>;
+        using NN = NearestNeighborsTDNAT<Robot, NNNode>;
 
         std::unique_ptr<float, decltype(&free)> buffer;
         std::vector<std::size_t> parents;
@@ -61,7 +61,7 @@ namespace vamp::planning
         //* ------------------ ------ -------------------
         // Only need to check nodes that are closer than the root of the tree, since connecting to the
         // root will always be valid
-        inline auto find_nearest(NN *nn, const NNNode &root, const Configuration &c, float cost, bool reverse)
+        inline auto find_nearest(NN *nn, const NNNode &root, const Configuration &c, float cost, bool reverse, float w1, float w2)
             -> std::pair<NNNode, float>
         {
             std::vector<NNNode> near_list;
@@ -70,10 +70,10 @@ namespace vamp::planning
             near_list.reserve(nn->size());
 
             auto temp_node = NNNode{0, cost, c};
-            nn->nearestR(temp_node, NNNode::distance(temp_node, root), near_list);
+            nn->nearestR(temp_node, NNNode::distance_w(temp_node, root, w1, w2), near_list, w1, w2);
 
             const auto *new_nearest_node = &near_list[0];
-            float new_nearest_distance = reverse ? Robot::template get_nn_time(c, new_nearest_node->array) : Robot::template get_nn_time(new_nearest_node->array, c);
+            float new_nearest_distance = reverse ? NNNode::distance_w(temp_node, *new_nearest_node, w1, w2) : NNNode::distance_w(*new_nearest_node, temp_node, w1, w2);
 
             for (auto idx = 1U; new_nearest_node->cost > 0                                //
                                 and cost < new_nearest_node->cost + new_nearest_distance  //
@@ -81,13 +81,13 @@ namespace vamp::planning
                  ++idx)
             {
                 new_nearest_node = &near_list[idx];
-                new_nearest_distance = reverse ? Robot::template get_nn_time(c, new_nearest_node->array) : Robot::template get_nn_time(new_nearest_node->array, c);
+                new_nearest_distance = reverse ? NNNode::distance_w(temp_node, *new_nearest_node, w1, w2) : NNNode::distance_w(*new_nearest_node, temp_node, w1, w2);
             }
 
             return {*new_nearest_node, new_nearest_distance};
         }
 
-        AOX_RRTCTOPP(std::size_t max_samples)
+        AOX_RETORT(std::size_t max_samples)
           : buffer(
                 std::unique_ptr<float, decltype(&free)>(
                     vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
@@ -104,7 +104,7 @@ namespace vamp::planning
             const Configuration &start,
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
-            const AORRTCSettings &settings,
+            const RETORTSettings &settings,
             const float max_cost,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
@@ -176,7 +176,7 @@ namespace vamp::planning
 
                 // Find nearest with asymmetric cost function
                 // MODIFY FIND NEAREST
-                auto [nearest_node, nearest_distance] = find_nearest(tree_a, root_vert, temp, c_rand, not tree_a_is_start);
+                auto [nearest_node, nearest_distance] = find_nearest(tree_a, root_vert, temp, c_rand, not tree_a_is_start, 0, 1);
                 if (rrtc_settings.dynamic_domain and 
                     times[nearest_node.index] < nearest_distance and 
                     radii[nearest_node.index] < (temp - nearest_node.array).l2_norm())
@@ -185,61 +185,27 @@ namespace vamp::planning
                 }
 
                 const auto nearest_vector = temp - nearest_node.array;
-                // bool reach = nearest_distance < rrtc_settings.range;
-                // auto extension_vector =
-                //     (reach) ? nearest_vector : nearest_vector * (rrtc_settings.range / nearest_distance);
-                auto extension_vector = nearest_vector;
-
-
+                bool reach = nearest_distance < rrtc_settings.range;
+                auto extension_vector =
+                    (reach) ? nearest_vector : nearest_vector * (rrtc_settings.range / nearest_distance);
+                auto new_node = nearest_node.array + extension_vector;
                 
-                // Evaluate edge reaching towards sample
-                bool linear_check = false;
-                linear_check = validate_bez_linear<Robot, rake, resolution>(
-                        nearest_node.array,
-                        nearest_node.array + extension_vector,
-                        environment); 
+                // get closest in time to new node
+                // auto [nearest_node_t, nearest_distance_t] = find_nearest(tree_a, root_vert, new_node, c_rand, not tree_a_is_start, 0.1, 1);
+                // nearest_node = nearest_node_t;
                 
                 bool valid_extension = false;
                 valid_extension = not tree_a_is_start ? 
-                        validate_bez_motion<Robot, rake, resolution>(nearest_node.array + extension_vector,
+                        validate_bez_motion<Robot, rake, resolution>(new_node,
                                                                     nearest_node.array,
                                                                     environment) : 
                         validate_bez_motion<Robot, rake, resolution>(nearest_node.array,
-                                                                    nearest_node.array + extension_vector,
+                                                                    new_node,
                                                                     environment);
-                if (linear_check and not valid_extension) {
-                    auto q_arr = (nearest_node.array + extension_vector).to_array();
-
-                    for (auto i = 0U; i < rrtc_settings.bez_resamples; i++) {
-                        auto resamp = (rng->next()).to_array();
-                        std::array<float, Robot::dimension> resamp_arr;
-                        for (auto j = 0U; j < Robot::dimension; j++) {
-                            if (j < Robot::dimension / 3) { // position dimensions
-                                resamp_arr[j] = q_arr[j];
-                            }
-                            else { // H.O.T. dimensions
-                                resamp_arr[j] = resamp[j];
-                            }
-                        }
-                        FloatVector<Robot::dimension> resamp_vec(resamp_arr);
-                        valid_extension = not tree_a_is_start ? 
-                                validate_bez_motion<Robot, rake, resolution>(resamp_vec,
-                                                                            nearest_node.array,
-                                                                            environment) : 
-                                validate_bez_motion<Robot, rake, resolution>(nearest_node.array,
-                                                                            resamp_vec,
-                                                                            environment);
-
-                        if (valid_extension) {
-                            extension_vector = resamp_vec - nearest_node.array;
-                            break;
-                        }
-                    }
-                }
             
                 if (valid_extension)
                 {
-                    const auto new_configuration = nearest_node.array + extension_vector;
+                    const auto new_configuration = new_node;
 
                     // Calculate and store actual node cost
                     // REPLACE WITH NN INFERENCE
@@ -259,7 +225,7 @@ namespace vamp::planning
                             const float c_rand = (rng->dist.uniform_01() * c_range) + g_hat;
 
                             auto [new_nearest_node, new_nearest_distance] =
-                                find_nearest(tree_a, root_vert, new_configuration, c_rand, not tree_a_is_start);
+                                find_nearest(tree_a, root_vert, new_configuration, c_rand, not tree_a_is_start, 0, 1);
 
 
                             
@@ -322,7 +288,7 @@ namespace vamp::planning
                     // Therefore, our maximum allowable cost for a connection through the other tree is
                     // max_cost - vertex_cost
                     const auto [other_nearest_node, other_nearest_distance] =
-                        find_nearest(tree_b, target_vert, new_configuration, max_cost - new_cost, not tree_a_is_start);
+                        find_nearest(tree_b, target_vert, new_configuration, max_cost - new_cost, not tree_a_is_start, 0, 1);
                     const auto other_nearest_vector = other_nearest_node.array - new_configuration;
 
                     // Just to be safe, make sure we've improved upon our best solution
@@ -339,12 +305,6 @@ namespace vamp::planning
                     std::size_t i_extension = 0;
                     auto prior = new_configuration;
 
-                    linear_check = false;
-                    linear_check = validate_bez_linear<Robot, rake, resolution>(
-                        prior,
-                        prior + increment,
-                        environment);
-
                     valid_extension = false;
                     valid_extension = not tree_a_is_start ? 
                         validate_bez_motion<Robot, rake, resolution>(prior + increment,
@@ -353,36 +313,6 @@ namespace vamp::planning
                         validate_bez_motion<Robot, rake, resolution>(prior,
                                                                     prior + increment,
                                                                     environment);
-
-                    if (linear_check and not valid_extension) {
-                        auto q_arr = (prior + increment).to_array();
-
-                        for (auto i = 0U; i < rrtc_settings.bez_resamples; i++) {
-                            auto resamp = (rng->next()).to_array();
-                            std::array<float, Robot::dimension> resamp_arr;
-                            for (auto j = 0U; j < Robot::dimension; j++) {
-                                if (j < Robot::dimension / 3) { // position dimensions
-                                    resamp_arr[j] = q_arr[j];
-                                }
-                                else { // H.O.T. dimensions
-                                    resamp_arr[j] = resamp[j];
-                                }
-                            }
-                            FloatVector<Robot::dimension> resamp_vec(resamp_arr);
-                            valid_extension = not tree_a_is_start ? 
-                                    validate_bez_motion<Robot, rake, resolution>(resamp_vec,
-                                                                                prior,
-                                                                                environment) : 
-                                    validate_bez_motion<Robot, rake, resolution>(prior,
-                                                                                resamp_vec,
-                                                                                environment);
-
-                            if (valid_extension) {
-                                increment = resamp_vec - prior;
-                                break;
-                            }
-                        }
-                    }
 
                     for (; i_extension < n_extensions and
                            valid_extension and
@@ -400,12 +330,6 @@ namespace vamp::planning
                         free_index++;
                         prior = next;
 
-                        linear_check = false;
-                        linear_check = validate_bez_linear<Robot, rake, resolution>(
-                            prior,
-                            prior + increment,
-                            environment);
-
                         valid_extension = false;
                         valid_extension = not tree_a_is_start ? 
                             validate_bez_motion<Robot, rake, resolution>(prior + increment,
@@ -414,36 +338,6 @@ namespace vamp::planning
                             validate_bez_motion<Robot, rake, resolution>(prior,
                                                                     prior + increment,
                                                                     environment);
-
-                        if (linear_check and not valid_extension) {
-                            auto q_arr = (prior + increment).to_array();
-
-                            for (auto i = 0U; i < rrtc_settings.bez_resamples; i++) {
-                                auto resamp = (rng->next()).to_array();
-                                std::array<float, Robot::dimension> resamp_arr;
-                                for (auto j = 0U; j < Robot::dimension; j++) {
-                                    if (j < Robot::dimension / 3) { // position dimensions
-                                        resamp_arr[j] = q_arr[j];
-                                    }
-                                    else { // H.O.T. dimensions
-                                        resamp_arr[j] = resamp[j];
-                                    }
-                                }
-                                FloatVector<Robot::dimension> resamp_vec(resamp_arr);
-                                valid_extension = not tree_a_is_start ? 
-                                        validate_bez_motion<Robot, rake, resolution>(resamp_vec,
-                                                                                    prior,
-                                                                                    environment) : 
-                                        validate_bez_motion<Robot, rake, resolution>(prior,
-                                                                                    resamp_vec,
-                                                                                    environment);
-
-                                if (valid_extension) {
-                                    increment = resamp_vec - prior;
-                                    break;
-                                }
-                            }
-                        }
                     }
 
                     if (i_extension == n_extensions)  // connected
@@ -515,19 +409,19 @@ namespace vamp::planning
     // ---------------------------------------------
 
     template <typename Robot, std::size_t rake, std::size_t resolution>
-    struct AORRTCTOPP
+    struct RETORT
     {
         using Configuration = typename Robot::Configuration;
         static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
-        using AOX_RRTCTOPP = typename vamp::planning::AOX_RRTCTOPP<Robot, rake, resolution>;
+        using AOX_RETORT = typename vamp::planning::AOX_RETORT<Robot, rake, resolution>;
         using RRTCTOPP = typename vamp::planning::RRTCTOPP<Robot, rake, resolution>;
 
         inline static auto solve(
             const Configuration &start,
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
-            const AORRTCSettings &settings,
+            const RETORTSettings &settings,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
@@ -537,13 +431,13 @@ namespace vamp::planning
             const Configuration &start,
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
-            const AORRTCSettings &settings_in,
+            const RETORTSettings &settings_in,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
             auto start_time = std::chrono::steady_clock::now();
 
             // Update the settings for internal searches
-            AORRTCSettings settings = settings_in;  // make a mutable copy
+            RETORTSettings settings = settings_in;  // make a mutable copy
             const std::size_t &max_samples = settings.max_samples;
             const std::size_t &max_iterations = settings.max_iterations;
 
@@ -557,7 +451,7 @@ namespace vamp::planning
             std::size_t iters = 0;
             std::size_t runs = 0;
 
-            AOX_RRTCTOPP instance(max_samples);
+            AOX_RETORT instance(max_samples);
 
             do
             {
@@ -658,8 +552,6 @@ namespace vamp::planning
                         auto best_path_length = result.path.cost();
                         phs_rng->phs.set_transverse_diameter(best_path_length); // this creates optimality problems
                     }
-                    // rrtc_settings.range /= 2;
-                    // rrtc_settings.radius /= 2;
                 }
             }
 

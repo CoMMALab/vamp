@@ -41,6 +41,7 @@ from ._core import RRTCSettings as RRTCSettings
 from ._core import FCITNeighborParams as FCITNeighborParams
 from ._core import FCITSettings as FCITSettings
 from ._core import AORRTCSettings as AORRTCSettings
+from ._core import RETORTSettings as RETORTSettings
 from ._core import SimplifyRoutine as SimplifyRoutine
 from ._core import SimplifySettings as SimplifySettings
 from ._core import Bezier as Bezier
@@ -102,6 +103,10 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
         plan_settings = AORRTCSettings()
         if robot_name in ROBOT_RRT_RANGES:
             plan_settings.rrtc.range = ROBOT_RRT_RANGES[robot_name]
+    elif planner_name == "retort":
+        plan_settings = RETORTSettings()
+        if robot_name in ROBOT_RRT_RANGES:
+            plan_settings.rrtc.range = ROBOT_RRT_RANGES[robot_name]
 
     else:
         raise NotImplementedError(f"Automatic setup for planner {planner_name} is not implemented yet!")
@@ -145,7 +150,7 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
                 print(f"Setting simplification - {sub} - {sk}: {v}")
                 setattr(sub_setting, sk, v)
 
-    if planner_name == "aorrtc" or planner_name == "aorrtctopp":
+    if planner_name == "aorrtc" or planner_name == "aorrtctopp" or planner_name == "retort":
         plan_settings.simplify = simp_settings
 
     return robot_module, planner_func, plan_settings, simp_settings

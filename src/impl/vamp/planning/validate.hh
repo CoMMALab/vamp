@@ -107,7 +107,7 @@ namespace vamp::planning
             block[j] = FloatVector<rake>(dim_values);  
         }
 
-        const std::size_t n = resolution * T / rake * 2;
+        const std::size_t n = resolution * T * rake;
         // std::cout << n << std::endl;
 
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
@@ -214,6 +214,98 @@ namespace vamp::planning
 
         return true;
     }
+
+    // rake this at some point
+    template <typename Robot, std::size_t rake, std::size_t resolution>
+    inline constexpr auto validate_dbez(
+        Bezier bez,
+        float T
+    ) 
+    {
+        // obtain the position only as floatvector, do the same collision check as normal vamp
+        const auto percents = FloatVector<rake>(Percents<rake>::percents);
+        const auto robot_dim_q = Robot::dimension / 3;
+
+        // typename Robot::template ConfigurationBlock<rake> block;
+        std::array<float, robot_dim_q> vlim_arr;
+        for (auto i = 0U; i < robot_dim_q; i++) {
+            vlim_arr[i] = Robot::s_a[robot_dim_q + i] + Robot::s_m[robot_dim_q + i];
+        }
+        // FloatVector<Robot::dimension / 3> vlim(vlim_arr);
+        auto dbez = bez.derivative();
+
+        auto percents_arr = percents.to_array();
+        for (auto i = 0U; i < percents_arr.size(); i++) {
+            auto vel = dbez.evaluate(static_cast<float>(percents_arr[i])) / T;
+            for (auto j = 0U; j < robot_dim_q; j++) {
+                if (std::abs(vel(j)) > vlim_arr[j]) {
+                    return false;
+                }
+            }
+        }
+
+        const std::size_t n = resolution * T * 2 / rake;
+        const auto backstep = percents.broadcast(0) / n;
+        for (auto i = 1U; i < n; ++i)
+        {
+            auto times = (percents - i * backstep).to_array();
+            for (auto j = 0U; j < times.size(); j++) {
+                auto vel = dbez.evaluate(static_cast<float>(times[j])) / T;
+                for (auto k = 0U; k < robot_dim_q; k++) {
+                    if (std::abs(vel(k)) > vlim_arr[k]) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    template <typename Robot, std::size_t rake, std::size_t resolution>
+    inline constexpr auto validate_ddbez(
+        Bezier bez,
+        float T
+    ) 
+    {
+        // obtain the position only as floatvector, do the same collision check as normal vamp
+        const auto percents = FloatVector<rake>(Percents<rake>::percents);
+        const auto robot_dim_q = Robot::dimension / 3;
+        // typename Robot::template ConfigurationBlock<rake> block;
+
+        std::array<float, robot_dim_q> alim_arr;
+        for (auto i = 0U; i < robot_dim_q; i++) {
+            alim_arr[i] = Robot::s_a[2 * robot_dim_q + i] + Robot::s_m[2 * robot_dim_q + i];
+        }
+        // FloatVector<Robot::dimension / 3> vlim(vlim_arr);
+        auto ddbez = bez.derivative().derivative();
+
+        auto percents_arr = percents.to_array();
+        for (auto i = 0U; i < percents_arr.size(); i++) {
+            auto acc = ddbez.evaluate(static_cast<float>(percents_arr[i])) / (T * T);
+            for (auto j = 0U; j < robot_dim_q; j++) {
+                if (std::abs(acc(j)) > alim_arr[j]) {
+                    return false;
+                }
+            }
+        }
+        
+        const std::size_t n = resolution * T * 2 / rake;
+        const auto backstep = percents.broadcast(0) / n;
+        for (auto i = 1U; i < n; ++i)
+        {
+            auto times = (percents - i * backstep).to_array();
+            for (auto j = 0U; j < times.size(); j++) {
+                auto acc = ddbez.evaluate(static_cast<float>(times[j])) / (T * T);
+                for (auto k = 0U; k < robot_dim_q; k++) {
+                    if (std::abs(acc(k)) > alim_arr[k]) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
     
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline constexpr auto validate_bez_motion(
@@ -236,7 +328,7 @@ namespace vamp::planning
         }
 
         // array to store inference output
-        std::array<float, 29> out;
+        std::array<float, Robot::topple_out_dim * Robot::dimension / 3 + 1> out;
 
         // auto ts = std::chrono::steady_clock::now();
         Robot::template topple_nn_forward(x, out);
@@ -245,7 +337,7 @@ namespace vamp::planning
         // std::cout << "NN inference: " << elapsed_ms.count() << std::endl;
 
         // build the anchors
-        row_matrix anchors(6, robot_dim_q);
+        row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
 
         // initial point
         for (auto i = 0U; i < robot_dim_q; i++) {
@@ -253,20 +345,23 @@ namespace vamp::planning
         }
 
         // intermediate points
-        for (auto i = 1U; i <= 4; i++) {
+        for (auto i = 1U; i <= Robot::topple_out_dim; i++) {
             for (auto j = 0U; j < robot_dim_q; j++) {
                 anchors(i, j) = out[(i - 1) * robot_dim_q + j];
             }
         }
 
-        float T = out[28];
+        float T = out[Robot::topple_out_dim * Robot::dimension / 3];
 
         // final point
         for (auto i = 0U; i < robot_dim_q; i++) {
-            anchors(5, i) = static_cast<float>(goal_arr[i]);
+            anchors(Robot::topple_out_dim + 1, i) = static_cast<float>(goal_arr[i]);
         }
 
         Bezier bez(anchors);
-        return validate_bez<Robot, rake, resolution>(start, T, bez, environment);
+        bool bez_valid = validate_bez<Robot, rake, resolution>(start, T, bez, environment);
+        // bool dbez_valid = validate_dbez<Robot, rake, resolution>(bez, T);
+        // bool ddbez_valid = validate_ddbez<Robot, rake, resolution>(bez, T);
+        return bez_valid;
     }
 }  // namespace vamp::planning

@@ -177,7 +177,7 @@ namespace vamp::planning
                     auto q_arr = (nearest_configuration + extension_vector).to_array();
 
                     for (auto i = 0U; i < settings.bez_resamples; i++) {
-                        auto resamp = (rng->uniform.sample()).to_array();
+                        auto resamp = (rng->next()).to_array();
                         std::array<float, Robot::dimension> resamp_arr;
                         for (auto j = 0U; j < Robot::dimension; j++) {
                             if (j < Robot::dimension / 3) { // position dimensions
@@ -258,7 +258,7 @@ namespace vamp::planning
                         auto q_arr = (prior + increment).to_array();
 
                         for (auto i = 0U; i < settings.bez_resamples; i++) {
-                            auto resamp = (rng->uniform.sample()).to_array();
+                            auto resamp = (rng->next()).to_array();
                             std::array<float, Robot::dimension> resamp_arr;
                             for (auto j = 0U; j < Robot::dimension; j++) {
                                 if (j < Robot::dimension / 3) { // position dimensions
@@ -320,7 +320,7 @@ namespace vamp::planning
                             auto q_arr = (prior + increment).to_array();
 
                             for (auto i = 0U; i < settings.bez_resamples; i++) {
-                                auto resamp = (rng->uniform.sample()).to_array();
+                                auto resamp = (rng->next()).to_array();
                                 std::array<float, Robot::dimension> resamp_arr;
                                 for (auto j = 0U; j < Robot::dimension; j++) {
                                     if (j < Robot::dimension / 3) { // position dimensions

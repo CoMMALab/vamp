@@ -13,10 +13,10 @@ import time
 
 def topple(
     robot: str = "pandatopp",                  # Robot to plan for
-    planner: str = "aorrtctopp",                 # Planner name to use
+    planner: str = "retort",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "bookshelf_small",                     # Problem name
-    index: int = 67,                        # Problem index
+    problem: str = "bookshelf_thin",                     # Problem name
+    index: int = 68,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -39,28 +39,30 @@ def topple(
         planner,
         **kwargs,
         )
-    # plan_settings.max_iterations = 10000
+    # plan_settings.max_iterations = 1000000
     # plan_settings.max_samples = 1000000
-    # plan_settings.bez_resamples = 10
+    # plan_settings.bez_resamples = 100
     # plan_settings.range = 8
     # plan_settings.radius = 16
     # plan_settings.min_radius = 4
     # plan_settings.dynamic_domain = False
     # simp_settings.bez = True
 
-    plan_settings.max_iterations = 2500
+    plan_settings.max_iterations = 10000000
     plan_settings.rrtc.max_iterations = 10000000
-    plan_settings.max_samples = 10000
-    plan_settings.rrtc.range = 12
+    plan_settings.max_samples = 10000000
+    plan_settings.rrtc.range = 10
     plan_settings.simplify.bez = True
-    plan_settings.rrtc.bez_resamples = 0
-    plan_settings.rrtc.radius = 16
-    plan_settings.rrtc.min_radius = 4
+    plan_settings.rrtc.radius = 20
+    plan_settings.rrtc.min_radius = 5
+    plan_settings.t_radius = 2
+    plan_settings.min_t_radius = 2
     plan_settings.rrtc.dynamic_domain = True
+    plan_settings.rrtc.alpha = 0.00001
     plan_settings.use_phs = False
-    plan_settings.optimize = True
+    plan_settings.optimize = False
     plan_settings.simplify_intermediate = True
-    plan_settings.max_runs = 20
+    plan_settings.max_runs = 1
     simp_settings.bez = True
 
     if not problem:
@@ -117,7 +119,10 @@ CAPT Construction Time: {build_time * 1e-6:5.3f}ms
             goal.append(0)
 
     if valid:
+        ts = time.perf_counter()
         result = planner_func(start, goals, env, plan_settings, sampler)
+        tf = time.perf_counter()
+        print(tf - ts)
         solved = result.solved
     else:
         print("Problem is invalid!")
@@ -143,7 +148,9 @@ Simplified: {stats['simplified_path_cost']:5.3f}"""
             )
 
         plan = simplify.path
+        # plan = result.path
         plan = vamp_module.compute_traj(plan, env, simp_settings, sampler).path.numpy()
+        print(plan.shape)
         
 
     if valid and not solved:
@@ -211,7 +218,7 @@ def toppra(
     robot: str = "panda",                  # Robot to plan for
     planner: str = "rrtc",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "table_under_pick",                     # Problem name
+    problem: str = "cage",                     # Problem name
     index: int = 45,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations

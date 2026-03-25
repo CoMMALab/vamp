@@ -12,6 +12,7 @@ namespace vamp::planning
         float min_radius = 1.;
 
         std::size_t bez_resamples = 10;
+        float bez_resample_radius = 1.0;
 
         bool balance = true;
         float tree_ratio = 1.;

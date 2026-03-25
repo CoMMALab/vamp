@@ -24,6 +24,7 @@
 #include <vamp/planning/aorrtc.hh>
 #include <vamp/planning/rrtctopp.hh>
 #include <vamp/planning/aorrtctopp.hh>
+#include <vamp/planning/retort.hh>
 #include <vamp/vector.hh>
 
 #include <nanobind/nanobind.h>
@@ -236,9 +237,14 @@ namespace vamp::binding
         using RRTCTOPP = PlannerHelper<
             vamp::planning::RRTCTOPP<Robot, rake, Robot::resolution>,
             vamp::planning::RRTCSettings>;
+
         using AORRTCTOPP = PlannerHelper<
             vamp::planning::AORRTCTOPP<Robot, rake, Robot::resolution>,
             vamp::planning::AORRTCSettings>;
+
+        using RETORT = PlannerHelper<
+            vamp::planning::RETORT<Robot, rake, Robot::resolution>,
+            vamp::planning::RETORTSettings>;
 
         inline static auto fk(const Type &c_in) -> std::vector<vamp::collision::Sphere<float>>
         {
@@ -606,6 +612,7 @@ namespace vamp::binding
         PLANNER("aorrtc", AORRTC, "AORRTC");
         PLANNER("rrtctopp", RRTCTOPP, "RRTCTOPP");
         PLANNER("aorrtctopp", AORRTCTOPP, "AORRTCTOPP");
+        PLANNER("retort", RETORT, "RETORT");
 
         if constexpr (has_set_lows_v<Robot>)
         {

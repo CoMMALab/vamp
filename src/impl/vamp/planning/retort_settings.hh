@@ -5,7 +5,7 @@
 
 namespace vamp::planning
 {
-    struct AORRTCSettings
+    struct RETORTSettings
     {
         RRTCSettings rrtc;
         SimplifySettings simplify;

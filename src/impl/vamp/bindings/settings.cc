@@ -3,6 +3,7 @@
 #include <vamp/planning/roadmap.hh>
 #include <vamp/planning/rrtc_settings.hh>
 #include <vamp/planning/aorrtc_settings.hh>
+#include <vamp/planning/retort_settings.hh>
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/planning/bezier.hh>
 #include <Eigen/Dense>
@@ -29,7 +30,8 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_iterations", &vp::RRTCSettings::max_iterations)
         .def_rw("max_samples", &vp::RRTCSettings::max_samples)
         .def_rw("start_tree_first", &vp::RRTCSettings::start_tree_first)
-        .def_rw("bez_resamples", &vp::RRTCSettings::bez_resamples);
+        .def_rw("bez_resamples", &vp::RRTCSettings::bez_resamples)
+        .def_rw("bez_resample_radius", &vp::RRTCSettings::bez_resample_radius);
 
     nb::class_<vp::AORRTCSettings>(pymodule, "AORRTCSettings")
         .def(nb::init<>())
@@ -43,8 +45,24 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_iterations", &vp::AORRTCSettings::max_iterations)
         .def_rw("max_internal_iterations", &vp::AORRTCSettings::max_internal_iterations)
         .def_rw("max_cost_bound_resamples", &vp::AORRTCSettings::max_cost_bound_resamples)
-        .def_rw("max_samples", &vp::AORRTCSettings::max_samples)
-        .def_rw("max_runs", &vp::AORRTCSettings::max_runs);
+        .def_rw("max_samples", &vp::AORRTCSettings::max_samples);
+    
+    nb::class_<vp::RETORTSettings>(pymodule, "RETORTSettings")
+        .def(nb::init<>())
+        .def_rw("rrtc", &vp::RETORTSettings::rrtc)
+        .def_rw("simplify", &vp::RETORTSettings::simplify)
+        .def_rw("optimize", &vp::RETORTSettings::optimize)
+        .def_rw("cost_bound_resample", &vp::RETORTSettings::cost_bound_resample)
+        .def_rw("simplify_intermediate", &vp::RETORTSettings::simplify_intermediate)
+        .def_rw("use_phs", &vp::RETORTSettings::use_phs)
+        .def_rw("anytime", &vp::RETORTSettings::anytime)
+        .def_rw("max_iterations", &vp::RETORTSettings::max_iterations)
+        .def_rw("max_internal_iterations", &vp::RETORTSettings::max_internal_iterations)
+        .def_rw("max_cost_bound_resamples", &vp::RETORTSettings::max_cost_bound_resamples)
+        .def_rw("max_samples", &vp::RETORTSettings::max_samples)
+        .def_rw("max_runs", &vp::RETORTSettings::max_runs)
+        .def_rw("t_radius", &vp::RETORTSettings::t_radius)
+        .def_rw("min_t_radius", &vp::RETORTSettings::min_t_radius);
 
     // TODO: Redesign a neater form of RoadmapSettings/NeighborParams
     // TODO: Expose the other NeighborParams types

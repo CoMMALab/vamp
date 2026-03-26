@@ -190,9 +190,6 @@ namespace vamp::planning
                     (reach) ? nearest_vector : nearest_vector * (rrtc_settings.range / nearest_distance);
                 auto new_node = nearest_node.array + extension_vector;
                 
-                // get closest in time to new node
-                // auto [nearest_node_t, nearest_distance_t] = find_nearest(tree_a, root_vert, new_node, c_rand, not tree_a_is_start, 0.1, 1);
-                // nearest_node = nearest_node_t;
                 
                 bool valid_extension = false;
                 valid_extension = not tree_a_is_start ? 
@@ -202,6 +199,7 @@ namespace vamp::planning
                         validate_bez_motion<Robot, rake, resolution>(nearest_node.array,
                                                                     new_node,
                                                                     environment);
+                // valid_extension = validate_motion<Robot, rake, resolution>(nearest_node.array, new_node, environment);
             
                 if (valid_extension)
                 {
@@ -256,6 +254,12 @@ namespace vamp::planning
                                 nearest_node = new_nearest_node;
                                 new_cost = new_nearest_node.cost + new_nearest_distance;
                             }
+                            // else if (validate_motion<Robot, rake, resolution>(nearest_node.array, new_node, environment))
+                            // {
+                            //     // Congratulations to the new parent
+                            //     nearest_node = new_nearest_node;
+                            //     new_cost = new_nearest_node.cost + new_nearest_distance;
+                            // }
                             // The edge is invalid, we have failed a connection. Stop resampling!
                             else
                             {
@@ -313,6 +317,7 @@ namespace vamp::planning
                         validate_bez_motion<Robot, rake, resolution>(prior,
                                                                     prior + increment,
                                                                     environment);
+                    // valid_extension = validate_motion<Robot, rake, resolution>(nearest_node.array, new_node, environment);
 
                     for (; i_extension < n_extensions and
                            valid_extension and
@@ -338,6 +343,7 @@ namespace vamp::planning
                             validate_bez_motion<Robot, rake, resolution>(prior,
                                                                     prior + increment,
                                                                     environment);
+                        // valid_extension = validate_motion<Robot, rake, resolution>(nearest_node.array, new_node, environment);
                     }
 
                     if (i_extension == n_extensions)  // connected

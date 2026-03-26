@@ -13,9 +13,9 @@ import time
 
 def topple(
     robot: str = "pandatopp",                  # Robot to plan for
-    planner: str = "rrtctopp",                 # Planner name to use
+    planner: str = "tortle",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "cage",                     # Problem name
+    problem: str = "box",                     # Problem name
     index: int = 66,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
@@ -39,31 +39,31 @@ def topple(
         planner,
         **kwargs,
         )
-    plan_settings.max_iterations = 1000000
-    plan_settings.max_samples = 1000000
-    plan_settings.bez_resamples = 0
-    plan_settings.range = 12
-    plan_settings.radius = 16
-    plan_settings.min_radius = 4
-    plan_settings.dynamic_domain = False
-    simp_settings.bez = True
-
-    # plan_settings.max_iterations = 1000
-    # plan_settings.rrtc.max_iterations = 1000000
-    # plan_settings.max_samples = 10000000
-    # plan_settings.rrtc.range = 10
-    # plan_settings.simplify.bez = True
-    # plan_settings.rrtc.radius = 20
-    # plan_settings.rrtc.min_radius = 5
-    # plan_settings.t_radius = 2
-    # plan_settings.min_t_radius = 2
-    # plan_settings.rrtc.dynamic_domain = True
-    # plan_settings.rrtc.alpha = 0.00001
-    # plan_settings.use_phs = False
-    # plan_settings.optimize = False
-    # plan_settings.simplify_intermediate = True
-    # plan_settings.max_runs = 1000
+    # plan_settings.max_iterations = 1000000
+    # plan_settings.max_samples = 1000000
+    # plan_settings.bez_resamples = 0
+    # plan_settings.range = 12
+    # plan_settings.radius = 16
+    # plan_settings.min_radius = 4
+    # plan_settings.dynamic_domain = False
     # simp_settings.bez = True
+
+    plan_settings.max_iterations = 100000000
+    plan_settings.rrtc.max_iterations = 1000000
+    plan_settings.max_samples = 10000000
+    plan_settings.rrtc.range = 2
+    plan_settings.simplify.bez = True
+    plan_settings.rrtc.radius = 4
+    plan_settings.rrtc.min_radius = 1
+    plan_settings.t_radius = 10
+    plan_settings.min_t_radius = 10
+    plan_settings.rrtc.dynamic_domain = True
+    plan_settings.rrtc.alpha = 0.00001
+    plan_settings.use_phs = False
+    plan_settings.optimize = True
+    plan_settings.simplify_intermediate = True
+    plan_settings.max_runs = 2
+    simp_settings.bez = True
 
     if not problem:
         problem = list(data['problems'].keys())[0]

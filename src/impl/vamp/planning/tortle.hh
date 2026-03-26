@@ -4,12 +4,12 @@
 #include <memory>
 
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/retort_nn.hh>
+#include <vamp/planning/tortle_nn.hh>
 #include <vamp/planning/phs.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/simplify.hh>
 #include <vamp/planning/validate.hh>
-#include <vamp/planning/retort_settings.hh>
+#include <vamp/planning/tortle_settings.hh>
 #include <vamp/planning/rrtctopp.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
@@ -18,7 +18,7 @@
 namespace vamp::planning
 {
     template <typename Robot, std::size_t rake, std::size_t resolution>
-    struct AOX_RETORT
+    struct AOX_TORTLE
     {
         using Configuration = typename Robot::Configuration;
         static constexpr auto dimension = Robot::dimension;
@@ -87,7 +87,7 @@ namespace vamp::planning
             return {*new_nearest_node, new_nearest_distance};
         }
 
-        AOX_RETORT(std::size_t max_samples)
+        AOX_TORTLE(std::size_t max_samples)
           : buffer(
                 std::unique_ptr<float, decltype(&free)>(
                     vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
@@ -104,7 +104,7 @@ namespace vamp::planning
             const Configuration &start,
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
-            const RETORTSettings &settings,
+            const TORTLESettings &settings,
             const float max_cost,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
@@ -409,19 +409,19 @@ namespace vamp::planning
     // ---------------------------------------------
 
     template <typename Robot, std::size_t rake, std::size_t resolution>
-    struct RETORT
+    struct TORTLE
     {
         using Configuration = typename Robot::Configuration;
         static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
-        using AOX_RETORT = typename vamp::planning::AOX_RETORT<Robot, rake, resolution>;
+        using AOX_TORTLE = typename vamp::planning::AOX_TORTLE<Robot, rake, resolution>;
         using RRTCTOPP = typename vamp::planning::RRTCTOPP<Robot, rake, resolution>;
 
         inline static auto solve(
             const Configuration &start,
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
-            const RETORTSettings &settings,
+            const TORTLESettings &settings,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
@@ -431,13 +431,13 @@ namespace vamp::planning
             const Configuration &start,
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
-            const RETORTSettings &settings_in,
+            const TORTLESettings &settings_in,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
             auto start_time = std::chrono::steady_clock::now();
 
             // Update the settings for internal searches
-            RETORTSettings settings = settings_in;  // make a mutable copy
+            TORTLESettings settings = settings_in;  // make a mutable copy
             const std::size_t &max_samples = settings.max_samples;
             const std::size_t &max_iterations = settings.max_iterations;
 
@@ -451,7 +451,7 @@ namespace vamp::planning
             std::size_t iters = 0;
             std::size_t runs = 0;
 
-            AOX_RETORT instance(max_samples);
+            AOX_TORTLE instance(max_samples);
 
             do
             {

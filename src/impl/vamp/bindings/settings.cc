@@ -3,7 +3,7 @@
 #include <vamp/planning/roadmap.hh>
 #include <vamp/planning/rrtc_settings.hh>
 #include <vamp/planning/aorrtc_settings.hh>
-#include <vamp/planning/retort_settings.hh>
+#include <vamp/planning/tortle_settings.hh>
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/planning/bezier.hh>
 #include <Eigen/Dense>
@@ -47,22 +47,22 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_cost_bound_resamples", &vp::AORRTCSettings::max_cost_bound_resamples)
         .def_rw("max_samples", &vp::AORRTCSettings::max_samples);
     
-    nb::class_<vp::RETORTSettings>(pymodule, "RETORTSettings")
+    nb::class_<vp::TORTLESettings>(pymodule, "TORTLESettings")
         .def(nb::init<>())
-        .def_rw("rrtc", &vp::RETORTSettings::rrtc)
-        .def_rw("simplify", &vp::RETORTSettings::simplify)
-        .def_rw("optimize", &vp::RETORTSettings::optimize)
-        .def_rw("cost_bound_resample", &vp::RETORTSettings::cost_bound_resample)
-        .def_rw("simplify_intermediate", &vp::RETORTSettings::simplify_intermediate)
-        .def_rw("use_phs", &vp::RETORTSettings::use_phs)
-        .def_rw("anytime", &vp::RETORTSettings::anytime)
-        .def_rw("max_iterations", &vp::RETORTSettings::max_iterations)
-        .def_rw("max_internal_iterations", &vp::RETORTSettings::max_internal_iterations)
-        .def_rw("max_cost_bound_resamples", &vp::RETORTSettings::max_cost_bound_resamples)
-        .def_rw("max_samples", &vp::RETORTSettings::max_samples)
-        .def_rw("max_runs", &vp::RETORTSettings::max_runs)
-        .def_rw("t_radius", &vp::RETORTSettings::t_radius)
-        .def_rw("min_t_radius", &vp::RETORTSettings::min_t_radius);
+        .def_rw("rrtc", &vp::TORTLESettings::rrtc)
+        .def_rw("simplify", &vp::TORTLESettings::simplify)
+        .def_rw("optimize", &vp::TORTLESettings::optimize)
+        .def_rw("cost_bound_resample", &vp::TORTLESettings::cost_bound_resample)
+        .def_rw("simplify_intermediate", &vp::TORTLESettings::simplify_intermediate)
+        .def_rw("use_phs", &vp::TORTLESettings::use_phs)
+        .def_rw("anytime", &vp::TORTLESettings::anytime)
+        .def_rw("max_iterations", &vp::TORTLESettings::max_iterations)
+        .def_rw("max_internal_iterations", &vp::TORTLESettings::max_internal_iterations)
+        .def_rw("max_cost_bound_resamples", &vp::TORTLESettings::max_cost_bound_resamples)
+        .def_rw("max_samples", &vp::TORTLESettings::max_samples)
+        .def_rw("max_runs", &vp::TORTLESettings::max_runs)
+        .def_rw("t_radius", &vp::TORTLESettings::t_radius)
+        .def_rw("min_t_radius", &vp::TORTLESettings::min_t_radius);
 
     // TODO: Redesign a neater form of RoadmapSettings/NeighborParams
     // TODO: Expose the other NeighborParams types

@@ -243,6 +243,7 @@ namespace vamp::planning
             reconstruct(waypts, k, r, BT);
         }
     }
+    // TODO: modify to handle the result.beziers to avoid recomputing beziers
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline static auto shortcut_bez_path(
         Path<Robot> &path,
@@ -583,6 +584,49 @@ namespace vamp::planning
                 vamp::FloatVector<Robot::dimension> vv(tmp.data());
                 result.path.emplace_back(vv);
             }
+        }
+       
+        result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
+        return result;
+    }
+
+    // take the entire results object to get the beziers
+    template <typename Robot, std::size_t rake, std::size_t resolution>
+    inline auto compute_bez_traj(
+        const PlanningResult<Robot> &planning_result,
+        const collision::Environment<FloatVector<rake>> &environment,
+        const SimplifySettings &settings,
+        const typename vamp::rng::RNG<Robot>::Ptr rng) -> PlanningResult<Robot>
+    {
+        auto start_time = std::chrono::steady_clock::now();
+
+        const auto robot_dim_q = Robot::dimension / 3;
+        // object to store result
+        // path param
+        PlanningResult<Robot> result;
+
+        std::vector<Bezier> beziers = planning_result.beziers;
+        std::cout << "number of beziers: " << beziers.size() << std::endl;
+        for (auto i = 0U; i < beziers.size(); i++) {
+            Bezier bez = beziers[i];
+            std::cout << "bez time: " << bez.time << std::endl;
+            std::vector<state> waypts = bez.generate_trajectory(bez.time * 1000);
+            //convert waypoints to floatvector
+            std::cout << "number of waypoints: " << waypts.size() << std::endl;
+            for (auto j = 0U; j < waypts.size(); j++) {
+                alignas(vamp::FloatVectorAlignment)
+                std::array<float, vamp::FloatVector<Robot::dimension>::num_scalars_rounded> tmp = {};
+                for (auto k = 0U; k < Robot::dimension; k++) {
+                    if (k >= robot_dim_q) {
+                        tmp[k] = 0;
+                    }
+                    else {
+                        tmp[k] = static_cast<float>(waypts[j](0, static_cast<int>(k)));
+                    }
+                }
+                vamp::FloatVector<Robot::dimension> vv(tmp.data());
+                result.path.emplace_back(vv);
+            }     
         }
        
         result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);

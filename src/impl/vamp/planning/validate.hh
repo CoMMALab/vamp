@@ -351,6 +351,7 @@ namespace vamp::planning
             }
         }
 
+        // time in seconds
         float T = out[Robot::topple_out_dim * Robot::dimension / 3];
 
         // final point
@@ -359,9 +360,81 @@ namespace vamp::planning
         }
 
         Bezier bez(anchors);
+        bez.time = T;
+
+        // collision check only on sub_bez
         bool bez_valid = validate_bez<Robot, rake, resolution>(start, T, bez, environment);
-        // bool dbez_valid = validate_dbez<Robot, rake, resolution>(bez, T);
-        // bool ddbez_valid = validate_ddbez<Robot, rake, resolution>(bez, T);
+
+        // return both sub_bez and bez_valid
         return bez_valid;
+    }
+
+    template <typename Robot, std::size_t rake, std::size_t resolution>
+    inline constexpr auto validate_sub_bez_motion(
+        const typename Robot::Configuration &start,
+        const typename Robot::Configuration &goal,
+        const collision::Environment<FloatVector<rake>> &environment,
+        const float bez_range) -> std::pair<bool, Bezier>
+    {
+        // std::cout << "inside validate bez motion" << std::endl;
+        // build input to MLP
+        std::array<float, Robot::dimension * 2> x;
+        auto start_arr = start.to_array();
+        int robot_dim_q = Robot::dimension / 3;
+
+        for (auto i = 0U; i < Robot::dimension; i++) {
+            x[i] = static_cast<float>(start_arr[i]);
+        }
+        auto goal_arr = goal.to_array();
+        for (auto i = 0U; i < Robot::dimension; i++) {
+            x[Robot::dimension + i] = static_cast<float>(goal_arr[i]);
+        }
+
+        // array to store inference output
+        std::array<float, Robot::topple_out_dim * Robot::dimension / 3 + 1> out;
+
+        // auto ts = std::chrono::steady_clock::now();
+        Robot::template topple_nn_forward(x, out);
+        // auto tf = std::chrono::steady_clock::now();
+        // std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
+        // std::cout << "NN inference: " << elapsed_ms.count() << std::endl;
+
+        // build the anchors
+        row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
+
+        // initial point
+        for (auto i = 0U; i < robot_dim_q; i++) {
+            anchors(0, i) = static_cast<float>(start_arr[i]);
+        }
+
+        // intermediate points
+        for (auto i = 1U; i <= Robot::topple_out_dim; i++) {
+            for (auto j = 0U; j < robot_dim_q; j++) {
+                anchors(i, j) = out[(i - 1) * robot_dim_q + j];
+            }
+        }
+
+        // time in seconds
+        float T = out[Robot::topple_out_dim * Robot::dimension / 3];
+
+        // final point
+        for (auto i = 0U; i < robot_dim_q; i++) {
+            anchors(Robot::topple_out_dim + 1, i) = static_cast<float>(goal_arr[i]);
+        }
+
+        Bezier bez(anchors);
+        bez.time = T;
+        Bezier sub_bez;
+
+        if (bez_range < 1) {
+            sub_bez = bez.subdivide(bez, bez_range);
+        }
+        else {
+            sub_bez = bez;
+        }
+        // collision check only on sub_bez
+        bool bez_valid = validate_bez<Robot, rake, resolution>(start, sub_bez.time, sub_bez, environment);
+        // return both sub_bez and bez_valid
+        return {bez_valid, sub_bez};
     }
 }  // namespace vamp::planning

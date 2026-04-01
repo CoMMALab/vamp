@@ -4,6 +4,7 @@
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/nn.hh>
 #include <vamp/vector.hh>
+#include <vamp/planning/bezier.hh>
 
 namespace vamp::planning
 {
@@ -196,6 +197,7 @@ namespace vamp::planning
     struct PlanningResult
     {
         Path<Robot> path;
+        std::vector<Bezier> beziers;
         float cost{0.};
         std::size_t nanoseconds{0};
         std::size_t iterations{0};

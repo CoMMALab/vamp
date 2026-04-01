@@ -60,19 +60,25 @@ namespace vamp::planning
         FloatVector<dimension> array;
 
         // AOX distance function (MODIFY FOR TOPPLE?)
+        // inline static auto distance(const TDNATNode<Robot, dimension> &a, const TDNATNode<Robot, dimension> &b) -> float
+        // {
+        //     // Configuration space distance + time distance
+        //     float c_dist = a.array.distance(b.array);
+        //     return c_dist;
+        // }
+        // inline static auto distance(const TDNATNode<Robot, dimension> &a, const TDNATNode<Robot, dimension> &b) -> float
+        // {
+        //     // Configuration space distance + time distance
+        //     float c_dist = a.array.distance(b.array);
+        //     float t_dist = Robot::template get_nn_time(a.array, b.array);
+        //     return 0.2 * c_dist + 0.8 * t_dist;
+        // }
         inline static auto distance(const TDNATNode<Robot, dimension> &a, const TDNATNode<Robot, dimension> &b) -> float
         {
             // Configuration space distance + time distance
-            float c_dist = a.array.distance(b.array);
-            return c_dist;
-        }
-        inline static auto distance_w(const TDNATNode<Robot, dimension> &a, const TDNATNode<Robot, dimension> &b, const float w1, const float w2) -> float
-        {
-            // Configuration space distance + time distance
-            float c_dist = a.array.distance(b.array);
+            // float c_dist = a.array.distance(b.array);
             float t_dist = Robot::template get_nn_time(a.array, b.array);
-            // return w1 * c_dist + w2 * t_dist;
-            return c_dist * t_dist;
+            return t_dist;
         }
     };
 
@@ -280,14 +286,14 @@ namespace vamp::planning
         }
 
         /// Return the nearest neighbors within distance \c radius in sorted order
-        void nearestR(const _T &data, float radius, std::vector<_T> &nbh, float w1, float w2) const noexcept
+        void nearestR(const _T &data, float radius, std::vector<_T> &nbh) const noexcept
         {
             nbh.clear();
 
             if (size_)
             {
                 NearQueue nbhQueue;
-                nearestRInternal(data, radius, nbhQueue, w1, w2);
+                nearestRInternal(data, radius, nbhQueue);
                 postprocessNearest(nbhQueue, nbh);
             }
         }
@@ -349,14 +355,14 @@ namespace vamp::planning
         }
 
         /// \brief Return in nbhQueue the elements that are within distance radius of data.
-        void nearestRInternal(const _T &data, float radius, NearQueue &nbhQueue, float w1, float w2) const noexcept
+        void nearestRInternal(const _T &data, float radius, NearQueue &nbhQueue) const noexcept
         {
             const float dist = radius;  // note the difference with nearestKInternal
             NodeQueue nodeQueue;
             NodeDist nodeDist;
 
-            tree_->insertNeighborR(nbhQueue, radius, tree_->pivot_, _T::distance_w(data, tree_->pivot_, w1, w2));
-            tree_->nearestR(*this, data, radius, nbhQueue, nodeQueue, w1, w2);
+            tree_->insertNeighborR(nbhQueue, radius, tree_->pivot_, _T::distance(data, tree_->pivot_));
+            tree_->nearestR(*this, data, radius, nbhQueue, nodeQueue);
 
             while (not nodeQueue.empty())
             {
@@ -368,7 +374,7 @@ namespace vamp::planning
                     continue;
                 }
 
-                nodeDist.first->nearestR(*this, data, radius, nbhQueue, nodeQueue, w1, w2);
+                nodeDist.first->nearestR(*this, data, radius, nbhQueue, nodeQueue);
             }
         }
 
@@ -737,7 +743,7 @@ namespace vamp::planning
                 }
             }
 
-            void nearestR(const TDNAT &tdnat, const _T &data, float r, NearQueue &nbh, NodeQueue &nodeQueue, float w1, float w2)
+            void nearestR(const TDNAT &tdnat, const _T &data, float r, NearQueue &nbh, NodeQueue &nodeQueue)
                 const noexcept
             {
                 float dist = r;  // note difference with nearestK
@@ -746,7 +752,7 @@ namespace vamp::planning
                 {
                     if (not tdnat.isRemoved(d))
                     {
-                        insertNeighborR(nbh, r, d, _T::distance_w(data, d, w1, w2));
+                        insertNeighborR(nbh, r, d, _T::distance(data, d));
                     }
                 }
 
@@ -769,7 +775,7 @@ namespace vamp::planning
                         if (permutation[i] >= 0)
                         {
                             const auto &child = children_[permutation[i]];
-                            distToPivot[permutation[i]] = _T::distance_w(data, child->pivot_, w1, w2);
+                            distToPivot[permutation[i]] = _T::distance(data, child->pivot_);
                             insertNeighborR(nbh, r, child->pivot_, distToPivot[permutation[i]]);
 
                             for (auto j = 0U; j < sz; ++j)

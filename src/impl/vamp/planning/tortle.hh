@@ -14,6 +14,7 @@
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
 #include <vamp/vector.hh>
+#include <vamp/planning/bezier.hh>
 
 namespace vamp::planning
 {
@@ -31,7 +32,7 @@ namespace vamp::planning
         std::vector<std::size_t> parents;
         // add buffer to store times and dists
         std::vector<float> radii;
-        std::vector<float> times;
+        // std::vector<float> times;
         std::vector<float> costs;
 
         inline auto buffer_index(std::size_t index) -> float *
@@ -46,7 +47,7 @@ namespace vamp::planning
             c.to_array(buffer_index(index));
 
             radii[index] = std::numeric_limits<float>::max();
-            times[index] = std::numeric_limits<float>::max();
+            // times[index] = std::numeric_limits<float>::max();
             parents[index] = parent_index;
             costs[index] = cost;
 
@@ -61,7 +62,7 @@ namespace vamp::planning
         //* ------------------ ------ -------------------
         // Only need to check nodes that are closer than the root of the tree, since connecting to the
         // root will always be valid
-        inline auto find_nearest(NN *nn, const NNNode &root, const Configuration &c, float cost, bool reverse, float w1, float w2)
+        inline auto find_nearest(NN *nn, const NNNode &root, const Configuration &c, float cost, bool reverse)
             -> std::pair<NNNode, float>
         {
             std::vector<NNNode> near_list;
@@ -70,10 +71,10 @@ namespace vamp::planning
             near_list.reserve(nn->size());
 
             auto temp_node = NNNode{0, cost, c};
-            nn->nearestR(temp_node, NNNode::distance_w(temp_node, root, w1, w2), near_list, w1, w2);
+            nn->nearestR(temp_node, NNNode::distance(temp_node, root), near_list);
 
             const auto *new_nearest_node = &near_list[0];
-            float new_nearest_distance = reverse ? NNNode::distance_w(temp_node, *new_nearest_node, w1, w2) : NNNode::distance_w(*new_nearest_node, temp_node, w1, w2);
+            float new_nearest_distance = reverse ? NNNode::distance(temp_node, *new_nearest_node) : NNNode::distance(*new_nearest_node, temp_node); // change back to nn_time if distance is not nntime already
 
             for (auto idx = 1U; new_nearest_node->cost > 0                                //
                                 and cost < new_nearest_node->cost + new_nearest_distance  //
@@ -81,10 +82,32 @@ namespace vamp::planning
                  ++idx)
             {
                 new_nearest_node = &near_list[idx];
-                new_nearest_distance = reverse ? NNNode::distance_w(temp_node, *new_nearest_node, w1, w2) : NNNode::distance_w(*new_nearest_node, temp_node, w1, w2);
+                new_nearest_distance = reverse ? NNNode::distance(temp_node, *new_nearest_node) : NNNode::distance(*new_nearest_node, temp_node);
             }
 
             return {*new_nearest_node, new_nearest_distance};
+        }
+
+        inline auto find_nearest_k(NN *nn, const NNNode &root, const Configuration &c, float cost, bool reverse, int k)
+            -> std::vector<std::pair<NNNode, float>>
+        {
+            std::vector<NNNode> near_list;
+            std::vector<std::pair<NNNode, float>> near_list_with_costs;
+
+            // Almost always just pulls in the entire graph, but good to be principled.
+            near_list.reserve(nn->size());
+
+            auto temp_node = NNNode{0, cost, c};
+            nn->nearestR(temp_node, NNNode::distance(temp_node, root), near_list);
+
+            for (auto idx = 1U; idx < std::min(k, static_cast<int>(near_list.size())); ++idx)
+            {
+                const auto *temp_near_node = &near_list[idx];
+                float distance = reverse ? NNNode::distance(temp_node, *temp_near_node) : NNNode::distance(*temp_near_node, temp_node);
+                near_list_with_costs.push_back({*temp_near_node, distance});
+            }
+
+            return near_list_with_costs;
         }
 
         AOX_TORTLE(std::size_t max_samples)
@@ -96,7 +119,7 @@ namespace vamp::planning
         {
             parents.resize(max_samples);
             radii.resize(max_samples);
-            times.resize(max_samples);
+            // times.resize(max_samples);
             costs.resize(max_samples);
         }
 
@@ -114,6 +137,9 @@ namespace vamp::planning
 
             NN start_tree;
             NN goal_tree;
+
+            // map indices to beziers
+            std::map<std::size_t, Bezier> bezier_map;
 
             std::size_t iter = 0;
             std::size_t free_index = start_index + 1;
@@ -160,7 +186,7 @@ namespace vamp::planning
                 const auto &root_vert = tree_a_is_start ? start_vert : goal_vert;
                 const auto &target_vert = tree_a_is_start ? goal_vert : start_vert;
 
-                // PROBABLY REPLACE WITH NN INFERENCE
+                // computue cost sample bounds
                 const float g_hat = not tree_a_is_start ? Robot::template get_nn_time(temp, root_vert.array) : Robot::template get_nn_time(root_vert.array, temp);
                 const float h_hat = not tree_a_is_start ? Robot::template get_nn_time(temp, target_vert.array) : Robot::template get_nn_time(target_vert.array, temp);
                 const float f_hat = g_hat + h_hat;
@@ -176,39 +202,34 @@ namespace vamp::planning
 
                 // Find nearest with asymmetric cost function
                 // MODIFY FIND NEAREST
-                auto [nearest_node, nearest_distance] = find_nearest(tree_a, root_vert, temp, c_rand, not tree_a_is_start, 0, 1);
-                if (rrtc_settings.dynamic_domain and 
-                    times[nearest_node.index] < nearest_distance and 
-                    radii[nearest_node.index] < (temp - nearest_node.array).l2_norm())
-                {
-                    continue;
-                }
+                auto [nearest_node, nearest_distance] = find_nearest(tree_a, root_vert, temp, c_rand, not tree_a_is_start);
 
                 const auto nearest_vector = temp - nearest_node.array;
-                bool reach = nearest_distance < rrtc_settings.range;
-                auto extension_vector =
-                    (reach) ? nearest_vector : nearest_vector * (rrtc_settings.range / nearest_distance);
-                auto new_node = nearest_node.array + extension_vector;
-                
-                
-                bool valid_extension = false;
-                valid_extension = not tree_a_is_start ? 
-                        validate_bez_motion<Robot, rake, resolution>(new_node,
+                auto new_node = temp;
+                                
+                // bool, Bezier
+                auto [valid_extension, sub_bez] = tree_a_is_start ? 
+                                        validate_sub_bez_motion<Robot, rake, resolution>(
                                                                     nearest_node.array,
-                                                                    environment) : 
-                        validate_bez_motion<Robot, rake, resolution>(nearest_node.array,
                                                                     new_node,
-                                                                    environment);
-                // valid_extension = validate_motion<Robot, rake, resolution>(nearest_node.array, new_node, environment);
-            
+                                                                    environment,
+                                                                    settings.bez_range) :
+                                        validate_sub_bez_motion<Robot, rake, resolution>(
+                                                                    new_node,
+                                                                    nearest_node.array,
+                                                                    environment,
+                                                                    settings.bez_range);
+
                 if (valid_extension)
                 {
+                    // store end of sub bez
                     const auto new_configuration = new_node;
 
                     // Calculate and store actual node cost
                     // REPLACE WITH NN INFERENCE
                     auto new_cost = tree_a_is_start ? nearest_node.cost + Robot::template get_nn_time(nearest_node.array, new_configuration) :
                                                      nearest_node.cost + Robot::template get_nn_time(new_configuration, nearest_node.array);
+                    // float new_cost = nearest_node.cost + sub_bez.time;
 
                     // If resampling costs to try and find a better parent...
                     if (settings.cost_bound_resample)
@@ -223,9 +244,21 @@ namespace vamp::planning
                             const float c_rand = (rng->dist.uniform_01() * c_range) + g_hat;
 
                             auto [new_nearest_node, new_nearest_distance] =
-                                find_nearest(tree_a, root_vert, new_configuration, c_rand, not tree_a_is_start, 0, 1);
+                                find_nearest(tree_a, root_vert, new_configuration, c_rand, not tree_a_is_start);
 
 
+                            // Validate edge to newly found parent
+                            auto [valid_resample, sub_bez_resample] = tree_a_is_start ? 
+                                        validate_sub_bez_motion<Robot, rake, resolution>(
+                                            new_nearest_node.array,
+                                            new_configuration,
+                                            environment,
+                                            settings.bez_range) : 
+                                        validate_sub_bez_motion<Robot, rake, resolution>(
+                                            new_configuration,
+                                            new_nearest_node.array,
+                                            environment,
+                                            settings.bez_range);
                             
                             // If we have connected:
                             //      to the same parent
@@ -237,29 +270,14 @@ namespace vamp::planning
                             {
                                 break;
                             }
-                            // Validate edge to newly found parent
-                            else if (not tree_a_is_start ? 
-                                        validate_bez_motion<Robot, rake, resolution>(
-                                            new_configuration,
-                                            new_nearest_node.array,
-                                            environment) : 
-                                        validate_bez_motion<Robot, rake, resolution>(
-                                            new_nearest_node.array,
-                                            new_configuration,
-                                            environment
-                                        )
-                                    )
+                            else if (valid_resample)
                             {
                                 // Congratulations to the new parent
                                 nearest_node = new_nearest_node;
-                                new_cost = new_nearest_node.cost + new_nearest_distance;
+                                new_cost = new_nearest_node.cost + sub_bez_resample.time;
+                                // Store the new bezier
+                                sub_bez = sub_bez_resample;
                             }
-                            // else if (validate_motion<Robot, rake, resolution>(nearest_node.array, new_node, environment))
-                            // {
-                            //     // Congratulations to the new parent
-                            //     nearest_node = new_nearest_node;
-                            //     new_cost = new_nearest_node.cost + new_nearest_distance;
-                            // }
                             // The edge is invalid, we have failed a connection. Stop resampling!
                             else
                             {
@@ -268,103 +286,129 @@ namespace vamp::planning
                         }
                     }
 
-                    add_to_tree(tree_a, new_configuration, free_index, nearest_node.index, new_cost);
+                    // Need to add the end of the sub bezier to the tree, not the original new node
+                    // compute higher order terms of new node
+                    Bezier dsub_bez = sub_bez.derivative();
+                    Bezier ddsub_bez = dsub_bez.derivative();
+
+                    auto new_q = sub_bez.anchors.row(sub_bez.anchors.rows() - 1);
+                    auto new_dq = dsub_bez.anchors.row(dsub_bez.anchors.rows() - 1);
+                    auto new_ddq = ddsub_bez.anchors.row(ddsub_bez.anchors.rows() - 1);
+                    
+                    // convert to Robot configuration in phase space
+                    std::array<float, Robot::dimension> new_configuration_array;
+                    
+                    for (auto i = 0U; i < Robot::dimension; i++)
+                    {
+                        if (i < Robot::dimension / 3)
+                        {
+                            new_configuration_array[i] = new_q(i);
+                        }
+                        else if (i < 2 * Robot::dimension / 3)
+                        {
+                            new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
+                        }
+                        else
+                        {
+                            new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
+                        }
+                    }
+                    Configuration new_configuration_bez(new_configuration_array);
+                    add_to_tree(tree_a, new_configuration_bez, free_index, nearest_node.index, new_cost);
+                    bezier_map[free_index] = sub_bez;
                     free_index++;
 
-                    if (rrtc_settings.dynamic_domain and
-                        radii[nearest_node.index] != std::numeric_limits<float>::max())
-                    {
-                        radii[nearest_node.index] *= (1 + rrtc_settings.alpha);
-                    }
-
-                    if (rrtc_settings.dynamic_domain and
-                        times[nearest_node.index] != std::numeric_limits<float>::max())
-                    {
-                        times[nearest_node.index] *= (1 + rrtc_settings.alpha);
-                    }
-
-                    // Extend to goal tree
-
-                    // Because we are extending to the other tree, we need to change our upper cost bound
-                    // We need to find a connection that improves upon our current best solution cost
-                    // The cost from the root of the other tree to our new vertex, + our new vertex's cost
-                    // through the current tree, must be lesser than our maximum path cost
-                    // Therefore, our maximum allowable cost for a connection through the other tree is
-                    // max_cost - vertex_cost
-                    const auto [other_nearest_node, other_nearest_distance] =
-                        find_nearest(tree_b, target_vert, new_configuration, max_cost - new_cost, not tree_a_is_start, 0, 1);
-                    const auto other_nearest_vector = other_nearest_node.array - new_configuration;
-
-                    // Just to be safe, make sure we've improved upon our best solution
-                    if (new_cost + other_nearest_distance + other_nearest_node.cost >= max_cost)
-                    {
+                    // Connect trees:
+                    // Attempt direct connections from new node to other tree, similar to rrt+
+                    std::vector<std::pair<NNNode, float>> near_nodes = find_nearest_k(tree_b, target_vert, new_configuration_bez, max_cost - new_cost, tree_a_is_start, settings.k_nearest);
+                    if (near_nodes.size() == 0) {
                         continue;
                     }
+                    // find the minimum feasible connection
+                    bool valid_found = false;
+                    auto best_connection = near_nodes[0];
 
-                    // Extend incrementally towards other tree
-                    const std::size_t n_extensions = std::ceil(other_nearest_distance / rrtc_settings.range);
-                    const float increment_length = other_nearest_distance / static_cast<float>(n_extensions);
-                    auto increment = other_nearest_vector * (1.0F / static_cast<float>(n_extensions));
+                    Bezier best_bez;
 
-                    std::size_t i_extension = 0;
-                    auto prior = new_configuration;
+                    for (int i = 0; i < near_nodes.size(); i++) {
+                        auto [other_nearest_node, other_nearest_distance] = near_nodes[i];
+                        if (new_cost + other_nearest_distance + other_nearest_node.cost >= max_cost)
+                        {
+                            continue;
+                        }
 
-                    valid_extension = false;
-                    valid_extension = not tree_a_is_start ? 
-                        validate_bez_motion<Robot, rake, resolution>(prior + increment,
-                                                                    prior,
-                                                                    environment) : 
-                        validate_bez_motion<Robot, rake, resolution>(prior,
-                                                                    prior + increment,
-                                                                    environment);
-                    // valid_extension = validate_motion<Robot, rake, resolution>(nearest_node.array, new_node, environment);
-
-                    for (; i_extension < n_extensions and
-                           valid_extension and
-                           free_index < rrtc_settings.max_samples;
-                         ++i_extension)
-                    {
-                        auto next = prior + increment;
-                        add_to_tree(
-                            tree_a,
-                            next,
-                            free_index,
-                            free_index - 1,
-                            increment_length + costs[free_index - 1]);
-
-                        free_index++;
-                        prior = next;
-
-                        valid_extension = false;
-                        valid_extension = not tree_a_is_start ? 
-                            validate_bez_motion<Robot, rake, resolution>(prior + increment,
-                                                                    prior,
-                                                                    environment) : 
-                            validate_bez_motion<Robot, rake, resolution>(prior,
-                                                                    prior + increment,
-                                                                    environment);
-                        // valid_extension = validate_motion<Robot, rake, resolution>(nearest_node.array, new_node, environment);
+                        auto [valid_connection, sub_bez_connection] = tree_a_is_start ? 
+                                        validate_sub_bez_motion<Robot, rake, resolution>(
+                                            new_configuration_bez,
+                                            other_nearest_node.array,
+                                            environment,
+                                            1) : 
+                                        validate_sub_bez_motion<Robot, rake, resolution>(
+                                            other_nearest_node.array,
+                                            new_configuration_bez,
+                                            environment,
+                                            1);
+                        if (valid_connection)
+                        {
+                            valid_found = true;
+                            best_connection = {other_nearest_node, other_nearest_distance};
+                            best_bez = sub_bez_connection;
+                        }
                     }
-
-                    if (i_extension == n_extensions)  // connected
+                    // solution found, construct path
+                    if (valid_found)
                     {
+                        Bezier dbest_bez = best_bez.derivative();
+                        Bezier ddbest_bez = dbest_bez.derivative();
+
+                        auto new_q = best_bez.anchors.row(best_bez.anchors.rows() - 1);
+                        auto new_dq = dbest_bez.anchors.row(dbest_bez.anchors.rows() - 1);
+                        auto new_ddq = ddbest_bez.anchors.row(ddbest_bez.anchors.rows() - 1);
+                        
+                        // convert to Robot configuration in phase space
+                        std::array<float, Robot::dimension> new_configuration_array;
+                        
+                        for (auto i = 0U; i < Robot::dimension; i++)
+                        {
+                            if (i < Robot::dimension / 3)
+                            {
+                                new_configuration_array[i] = new_q(i);
+                            }
+                            else if (i < 2 * Robot::dimension / 3)
+                            {
+                                new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
+                            }
+                            else
+                            {
+                                new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
+                            }
+                        }
+                        Configuration new_configuration_connect(new_configuration_array);
+                        add_to_tree(tree_a, new_configuration_connect, free_index, free_index - 1, new_cost + best_bez.time);
+                        bezier_map[free_index] = best_bez;
+                        free_index++;
+
                         auto current = free_index - 1;
                         result.path.emplace_back(buffer_index(current));
+                        result.beziers.emplace_back(bezier_map[current]);
                         while (parents[current] != current)
                         {
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
+                            result.beziers.emplace_back(bezier_map[parent]);
                             result.cost += Robot::template get_nn_time(result.path[result.path.size() - 2], result.path[result.path.size() - 1]);
                             current = parent;
                         }
 
                         std::reverse(result.path.begin(), result.path.end());
-                        current = other_nearest_node.index;
+                        std::reverse(result.beziers.begin(), result.beziers.end());
+                        current = best_connection.first.index;
 
                         while (parents[current] != current)
                         {
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
+                            result.beziers.emplace_back(bezier_map[parent]);
                             result.cost += Robot::template get_nn_time(result.path[result.path.size() - 1], result.path[result.path.size() - 2]);
                             current = parent;
                         }
@@ -372,33 +416,10 @@ namespace vamp::planning
                         if (not tree_a_is_start)
                         {
                             std::reverse(result.path.begin(), result.path.end());
+                            std::reverse(result.beziers.begin(), result.beziers.end());
                         }
 
                         break;
-                    }
-                }
-                else if (rrtc_settings.dynamic_domain)
-                {
-                    if (radii[nearest_node.index] == std::numeric_limits<float>::max())
-                    {
-                        radii[nearest_node.index] = rrtc_settings.radius;
-                    }
-                    else
-                    {
-                        radii[nearest_node.index] = std::max(
-                            radii[nearest_node.index] * (1.F - rrtc_settings.alpha),
-                            rrtc_settings.min_radius);
-                    }
-
-                    if (times[nearest_node.index] == std::numeric_limits<float>::max())
-                    {
-                        times[nearest_node.index] = settings.t_radius;
-                    }
-                    else
-                    {
-                        times[nearest_node.index] = std::max(
-                            times[nearest_node.index] * (1.F - rrtc_settings.alpha),
-                            settings.min_t_radius);
                     }
                 }
             }
@@ -485,7 +506,7 @@ namespace vamp::planning
             // We have a new best solution
             PlanningResult<Robot> final_result;
             final_result.path = result.path;
-            best_path_cost = result.path.time();
+            best_path_cost = result.path.time(); // path no longer stores the time, use beziers
 
             float best_possible_cost = std::numeric_limits<float>::max();
             for (const auto &goal : goals)

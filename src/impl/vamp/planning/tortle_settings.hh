@@ -13,8 +13,10 @@ namespace vamp::planning
         bool optimize = true;
         bool cost_bound_resample = true;
         bool simplify_intermediate = true;
-        bool use_phs = true;
+        bool use_phs = false;
         bool anytime = false;
+        float bez_range = 0.2;
+        int k_nearest = 10;
 
         std::size_t max_iterations = 100000;
         std::size_t max_internal_iterations = 100000;

@@ -13,10 +13,10 @@ import time
 
 def topple(
     robot: str = "pandatopp",                  # Robot to plan for
-    planner: str = "tortle",                 # Planner name to use
+    planner: str = "rrtctopp",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
     problem: str = "box",                     # Problem name
-    index: int = 66,                        # Problem index
+    index: int = 64,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -39,30 +39,29 @@ def topple(
         planner,
         **kwargs,
         )
-    # plan_settings.max_iterations = 1000000
-    # plan_settings.max_samples = 1000000
-    # plan_settings.bez_resamples = 0
-    # plan_settings.range = 12
-    # plan_settings.radius = 16
+    # plan_settings.max_iterations = 10000000
+    # plan_settings.max_samples = 10000000
+    # plan_settings.bez_resamples = 50
+    # plan_settings.range = 4
+    # plan_settings.radius = 8
     # plan_settings.min_radius = 4
     # plan_settings.dynamic_domain = False
     # simp_settings.bez = True
 
-    plan_settings.max_iterations = 100000000
-    plan_settings.rrtc.max_iterations = 1000000
-    plan_settings.max_samples = 10000000
-    plan_settings.rrtc.range = 2
+    plan_settings.max_iterations = 1000000
+    plan_settings.rrtc.max_iterations = 100000
+    plan_settings.max_samples = 1000000
+    plan_settings.rrtc.range = 8
     plan_settings.simplify.bez = True
-    plan_settings.rrtc.radius = 4
-    plan_settings.rrtc.min_radius = 1
-    plan_settings.t_radius = 10
-    plan_settings.min_t_radius = 10
-    plan_settings.rrtc.dynamic_domain = True
+    plan_settings.rrtc.radius = 16
+    plan_settings.rrtc.min_radius = 0.5
+    plan_settings.rrtc.dynamic_domain = False
     plan_settings.rrtc.alpha = 0.00001
     plan_settings.use_phs = False
-    plan_settings.optimize = True
-    plan_settings.simplify_intermediate = True
+    plan_settings.optimize = False
+    plan_settings.simplify_intermediate = False
     plan_settings.max_runs = 2
+    cost_bound_resample = False
     simp_settings.bez = True
 
     if not problem:
@@ -130,7 +129,9 @@ CAPT Construction Time: {build_time * 1e-6:5.3f}ms
 
     if valid and solved:
         print("Solved problem!")
-        simplify = vamp_module.simplify(result.path, env, simp_settings, sampler)
+        # exit()
+        # simplify = vamp_module.simplify(result.path, env, simp_settings, sampler)
+        simplify = result
 
         stats = vamp.results_to_dict(result, simplify)
         print(
@@ -147,9 +148,9 @@ Path Length:
 Simplified: {stats['simplified_path_cost']:5.3f}"""
             )
 
-        plan = simplify.path
-        # plan = result.path
-        plan = vamp_module.compute_traj(plan, env, simp_settings, sampler).path.numpy()
+        # plan = simplify.path
+        plan = result.path.numpy()
+        # plan = vamp_module.compute_bez_traj(result, env, simp_settings, sampler).path.numpy()
         print(plan.shape)
         
 
@@ -211,7 +212,7 @@ n Graph States: {result.size}
 
     # sim.animate(simplify.path)
     print(plan.shape)
-    sim.animate(plan[np.arange(0, len(plan), 15)])
+    sim.animate(plan[np.arange(0, len(plan), 1)])
 
 
 def toppra(

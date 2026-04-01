@@ -23,7 +23,6 @@
 #include <vamp/planning/rrtc.hh>
 #include <vamp/planning/aorrtc.hh>
 #include <vamp/planning/rrtctopp.hh>
-#include <vamp/planning/aorrtctopp.hh>
 #include <vamp/planning/tortle.hh>
 #include <vamp/vector.hh>
 
@@ -238,10 +237,6 @@ namespace vamp::binding
             vamp::planning::RRTCTOPP<Robot, rake, Robot::resolution>,
             vamp::planning::RRTCSettings>;
 
-        using AORRTCTOPP = PlannerHelper<
-            vamp::planning::AORRTCTOPP<Robot, rake, Robot::resolution>,
-            vamp::planning::AORRTCSettings>;
-
         using TORTLE = PlannerHelper<
             vamp::planning::TORTLE<Robot, rake, Robot::resolution>,
             vamp::planning::TORTLESettings>;
@@ -299,6 +294,16 @@ namespace vamp::binding
         {
             return vamp::planning::compute_traj<Robot, rake, Robot::resolution>(
                 path, EnvironmentVector(environment), settings, rng);
+        }
+
+        inline static auto compute_bez_traj(
+            const PlanningResult &planning_result,
+            const EnvironmentInput &environment,
+            const vamp::planning::SimplifySettings &settings,
+            typename RNG::Ptr rng) -> PlanningResult
+        {
+            return vamp::planning::compute_bez_traj<Robot, rake, Robot::resolution>(
+                planning_result, EnvironmentVector(environment), settings, rng);
         }
 
         inline static auto eefk(const Type &start) -> Eigen::Matrix4f
@@ -557,6 +562,14 @@ namespace vamp::binding
             "settings"_a,
             "rng"_a,
             "Compute the topple traj.");
+        submodule.def(
+            "compute_bez_traj",
+            HPN::compute_bez_traj,
+            "planning_result"_a,
+            "environment"_a,
+            "settings"_a,
+            "rng"_a,
+            "Compute the topple traj.");
 
 #define MF(name, func, desc, ...)                                                                            \
     submodule.def(name, HPN::func, ##__VA_ARGS__, desc);                                                     \
@@ -611,7 +624,6 @@ namespace vamp::binding
         PLANNER("fcit", FCIT, "FCIT");
         PLANNER("aorrtc", AORRTC, "AORRTC");
         PLANNER("rrtctopp", RRTCTOPP, "RRTCTOPP");
-        PLANNER("aorrtctopp", AORRTCTOPP, "AORRTCTOPP");
         PLANNER("tortle", TORTLE, "TORTLE");
 
         if constexpr (has_set_lows_v<Robot>)

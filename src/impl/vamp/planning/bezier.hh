@@ -31,6 +31,9 @@ namespace vamp::planning {
             row_matrix anchors;
             int degree;
             std::array<int, 10> combs;
+            float time;
+
+            Bezier() = default;
 
             Bezier(row_matrix anchors) noexcept {
                 this->anchors = anchors;
@@ -76,6 +79,36 @@ namespace vamp::planning {
                 }
                 Bezier dB(Q);
                 return dB;
+            }
+
+            // implements de casteljaus alg 
+            Bezier subdivide(Bezier bez, float t) {
+                // let C[i][j] be control point i on the jth iteration for the new curve
+                // std::cout << "in subdivide" << std::endl;
+                std::vector<std::vector<state>> C;
+                for (int i = 0; i <= bez.degree; i++) {
+                    C.push_back(std::vector<state>(bez.degree + 1));
+                }
+                // fill initial layer j = 0
+                for (int i = 0; i <= bez.degree; i++) {
+                    C[i][0] = state(bez.anchors.row(i));
+                }
+                // fill remaining layers j = 1, 2, ...
+                for (int j = 1; j <= bez.degree; j++) {
+                    for (int i = 0; i <= bez.degree - j; i++) {
+                        C[i][j] = state(C[i][j - 1] * (1 - t) + C[i + 1][j - 1] * t);
+                    }
+                }
+
+                // we want C[0][j]
+                row_matrix new_anchors(bez.anchors.rows(), bez.anchors.cols());
+                for (int j = 0; j <= bez.degree; j++) {
+                    new_anchors.row(j) = C[0][j];
+                }
+                Bezier sub_bez(new_anchors);
+                sub_bez.time = bez.time * t;
+                // std::cout << "end subdivide" << std::endl;
+                return sub_bez;
             }
     };
 }

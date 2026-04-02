@@ -259,72 +259,136 @@ namespace vamp::planning
                     // through the current tree, must be lesser than our maximum path cost
                     // Therefore, our maximum allowable cost for a connection through the other tree is
                     // max_cost - vertex_cost
-                    const auto [other_nearest_node, other_nearest_distance] =
-                        find_nearest(tree_b, target_vert, new_configuration, max_cost - new_cost);
-                    const auto other_nearest_vector = other_nearest_node.array - new_configuration;
 
-                    // Just to be safe, make sure we've improved upon our best solution
-                    if (new_cost + other_nearest_distance + other_nearest_node.cost >= max_cost)
+                    if (!settings.random_connect)
                     {
-                        continue;
-                    }
+                        const auto [other_nearest_node, other_nearest_distance] =
+                            find_nearest(tree_b, target_vert, new_configuration, max_cost - new_cost);
+                        const auto other_nearest_vector = other_nearest_node.array - new_configuration;
 
-                    // Extend incrementally towards other tree
-                    const std::size_t n_extensions = std::ceil(other_nearest_distance / rrtc_settings.range);
-                    const float increment_length = other_nearest_distance / static_cast<float>(n_extensions);
-                    const auto increment = other_nearest_vector * (1.0F / static_cast<float>(n_extensions));
-
-                    std::size_t i_extension = 0;
-                    auto prior = new_configuration;
-                    for (; i_extension < n_extensions and
-                           validate_vector<Robot, rake, resolution>(
-                               prior, increment, increment_length, environment) and
-                           free_index < rrtc_settings.max_samples;
-                         ++i_extension)
-                    {
-                        const auto next = prior + increment;
-                        add_to_tree(
-                            tree_a,
-                            next,
-                            free_index,
-                            free_index - 1,
-                            increment_length + costs[free_index - 1]);
-
-                        free_index++;
-                        prior = next;
-                    }
-
-                    if (i_extension == n_extensions)  // connected
-                    {
-                        auto current = free_index - 1;
-                        result.path.emplace_back(buffer_index(current));
-                        while (parents[current] != current)
+                        // Just to be safe, make sure we've improved upon our best solution
+                        if (new_cost + other_nearest_distance + other_nearest_node.cost >= max_cost)
                         {
-                            auto parent = parents[current];
-                            result.path.emplace_back(buffer_index(parent));
-                            result.cost += result.path[result.path.size() - 1].distance(
-                                result.path[result.path.size() - 2]);
-                            current = parent;
+                            continue;
                         }
 
-                        std::reverse(result.path.begin(), result.path.end());
-                        current = other_nearest_node.index;
+                        // Extend incrementally towards other tree
+                        const std::size_t n_extensions =
+                            std::ceil(other_nearest_distance / rrtc_settings.range);
+                        const float increment_length =
+                            other_nearest_distance / static_cast<float>(n_extensions);
+                        const auto increment =
+                            other_nearest_vector * (1.0F / static_cast<float>(n_extensions));
 
-                        while (parents[current] != current)
+                        std::size_t i_extension = 0;
+                        auto prior = new_configuration;
+                        for (; i_extension < n_extensions and
+                               validate_vector<Robot, rake, resolution>(
+                                   prior, increment, increment_length, environment) and
+                               free_index < rrtc_settings.max_samples;
+                             ++i_extension)
                         {
-                            auto parent = parents[current];
-                            result.path.emplace_back(buffer_index(parent));
-                            result.cost += result.path[result.path.size() - 1].distance(
-                                result.path[result.path.size() - 2]);
-                            current = parent;
+                            const auto next = prior + increment;
+                            add_to_tree(
+                                tree_a,
+                                next,
+                                free_index,
+                                free_index - 1,
+                                increment_length + costs[free_index - 1]);
+
+                            free_index++;
+                            prior = next;
                         }
 
-                        if (not tree_a_is_start)
+                        if (i_extension == n_extensions)  // connected
                         {
+                            auto current = free_index - 1;
+                            result.path.emplace_back(buffer_index(current));
+                            while (parents[current] != current)
+                            {
+                                auto parent = parents[current];
+                                result.path.emplace_back(buffer_index(parent));
+                                result.cost += result.path[result.path.size() - 1].distance(
+                                    result.path[result.path.size() - 2]);
+                                current = parent;
+                            }
+
                             std::reverse(result.path.begin(), result.path.end());
-                        }
+                            current = other_nearest_node.index;
 
-                        break;
+                            while (parents[current] != current)
+                            {
+                                auto parent = parents[current];
+                                result.path.emplace_back(buffer_index(parent));
+                                result.cost += result.path[result.path.size() - 1].distance(
+                                    result.path[result.path.size() - 2]);
+                                current = parent;
+                            }
+
+                            if (not tree_a_is_start)
+                            {
+                                std::reverse(result.path.begin(), result.path.end());
+                            }
+
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // TEST: Try every node in the other tree and example their cost. Do not terminate
+                        // tho. TEMP: Check connection to every node in goal tree Get data list from goal tree
+                        std::vector<NNNode> tree_b_data;
+                        tree_b->list(tree_b_data);
+                        for (const auto &data : tree_b_data)
+                        {
+                            float rand_nearest_distance = new_configuration.distance(data.array);
+                            // Just to be safe, make sure we've improved upon our best solution
+                            if (new_cost + rand_nearest_distance + data.cost >= max_cost)
+                            {
+                                continue;
+                            }
+                            // const auto goal_configuration = data.as_vector();
+                            const auto goal_configuration = data.array;
+                            if (validate_motion<Robot, rake, resolution>(
+                                    new_configuration, goal_configuration, environment))
+                            {
+                                // Path on tree_a side
+                                auto current = free_index - 1;
+                                result.path.emplace_back(buffer_index(current));
+                                while (parents[current] != current)
+                                {
+                                    auto parent = parents[current];
+                                    result.path.emplace_back(buffer_index(parent));
+                                    result.cost += result.path[result.path.size() - 1].distance(
+                                        result.path[result.path.size() - 2]);
+                                    current = parent;
+                                }
+                                std::reverse(result.path.begin(), result.path.end());
+
+                                // Path on tree_b side
+                                current = data.index;
+
+                                while (parents[current] != current)
+                                {
+                                    auto parent = parents[current];
+                                    result.path.emplace_back(buffer_index(parent));
+                                    result.cost += result.path[result.path.size() - 1].distance(
+                                        result.path[result.path.size() - 2]);
+                                    current = parent;
+                                }
+
+                                if (not tree_a_is_start)
+                                {
+                                    std::reverse(result.path.begin(), result.path.end());
+                                }
+
+                                break;
+                            }
+                        }
+                        if (not result.path.empty())
+                        {
+                            break;
+                        }
                     }
                 }
                 else if (rrtc_settings.dynamic_domain)
@@ -394,6 +458,7 @@ namespace vamp::planning
             PlanningResult<Robot> result;
             float best_path_cost = std::numeric_limits<float>::max();
             std::size_t iters = 0;
+            std::size_t solus = 0;
 
             do
             {
@@ -421,6 +486,19 @@ namespace vamp::planning
             PlanningResult<Robot> final_result;
             final_result.path = result.path;
             best_path_cost = result.path.cost();
+            // TEMP: Record iteration stats
+            try
+            {
+                final_result.iteration_stats.emplace(
+                    solus,
+                    std::make_pair(
+                        std::make_pair(iters, vamp::utils::get_elapsed_nanoseconds(start_time)),
+                        result.path.cost()));
+            }
+            catch (const std::exception &e)
+            {
+                std::cerr << e.what() << '\n';
+            }
 
             float best_possible_cost = std::numeric_limits<float>::max();
             for (const auto &goal : goals)
@@ -487,6 +565,22 @@ namespace vamp::planning
                         // Update best solution
                         final_result.path = result.path;
                         best_path_cost = result.path.cost();
+
+                        // TEMP: Record iteration stats
+                        solus++;
+                        try
+                        {
+                            final_result.iteration_stats.emplace(
+                                solus,
+                                std::make_pair(
+                                    std::make_pair(iters, vamp::utils::get_elapsed_nanoseconds(start_time)),
+                                    final_result.path.cost()));
+                        }
+                        catch (const std::exception &e)
+                        {
+                            std::cerr << e.what() << '\n';
+                        }
+                        // result.iteration_stats[solus] = {iters, result.path.cost()};
 
                         phs_rng->phs.set_transverse_diameter(best_path_cost);
                     }

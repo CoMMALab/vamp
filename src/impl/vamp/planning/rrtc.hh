@@ -168,9 +168,77 @@ namespace vamp::planning
                     //     }
                     // }
 
-                    // WIP/TEMP: attemp to connect to nearest or random nodes
+                    // WIP/TEMP: attempt to connect to nearest or random nodes
                     // Extend to goal tree
-                    
+                    // Change: Do a iteration of RRTC anyway 
+                    const auto other_nearest =
+                        tree_b->nearest(NNFloatArray<dimension>{new_configuration_index});
+                    if (not other_nearest)
+                    {
+                        continue;
+                    }
+
+                        const auto &[other_nearest_node, other_nearest_distance] = *other_nearest;
+                        const auto other_nearest_configuration = other_nearest_node.as_vector();
+                        auto other_nearest_vector = other_nearest_configuration - new_configuration;
+
+                        const std::size_t n_extensions = std::ceil(other_nearest_distance / settings.range);
+                        const float increment_length = other_nearest_distance / static_cast<float>(n_extensions);
+                        auto increment = other_nearest_vector * (1.0F / static_cast<float>(n_extensions));
+
+                        std::size_t i_extension = 0;
+                        auto prior = new_configuration;
+                        for (; i_extension < n_extensions and
+                               validate_vector<Robot, rake, resolution>(
+                                   prior, increment, increment_length, environment) and
+                               free_index < settings.max_samples;
+                             ++i_extension)
+                        {
+                            auto next = prior + increment;
+                            float *next_index = buffer_index(free_index);
+                            next.to_array(next_index);
+                            tree_a->insert(NNNode<dimension>{free_index, {next_index}});
+                            parents[free_index] = free_index - 1;
+                            radii[free_index] = std::numeric_limits<float>::max();
+
+                            free_index++;
+
+                            prior = next;
+                        }
+
+                    if (i_extension == n_extensions)  // connected
+                    {
+                        auto current = free_index - 1;
+                        result.path.emplace_back(buffer_index(current));
+                        while (parents[current] != current)
+                        {
+                            auto parent = parents[current];
+                            result.path.emplace_back(buffer_index(parent));
+                            result.cost += result.path[result.path.size() - 1].distance(
+                                result.path[result.path.size() - 2]);
+                            current = parent;
+                        }
+
+                        std::reverse(result.path.begin(), result.path.end());
+                        current = other_nearest_node.index;
+
+                        while (parents[current] != current)
+                        {
+                            auto parent = parents[current];
+                            result.path.emplace_back(buffer_index(parent));
+                            result.cost += result.path[result.path.size() - 1].distance(
+                                result.path[result.path.size() - 2]);
+                            current = parent;
+                        }
+
+                        if (not tree_a_is_start)
+                        {
+                            std::reverse(result.path.begin(), result.path.end());
+                        }
+
+                        break;
+                    }
+                    // Then attempt random connections if enabled and not connected to nearest
                     if (settings.random_connect && !(iter % settings.random_connect_interval))
                     {
                         auto tree_b_data = tree_b->list();
@@ -240,76 +308,6 @@ namespace vamp::planning
                         }
                         if (not result.path.empty())
                         {
-                            break;
-                        }
-                    }
-                    else // nearest
-                    {
-                        const auto other_nearest =
-                            tree_b->nearest(NNFloatArray<dimension>{new_configuration_index});
-                        if (not other_nearest)
-                        {
-                            continue;
-                        }
-
-                            const auto &[other_nearest_node, other_nearest_distance] = *other_nearest;
-                            const auto other_nearest_configuration = other_nearest_node.as_vector();
-                            auto other_nearest_vector = other_nearest_configuration - new_configuration;
-
-                            const std::size_t n_extensions = std::ceil(other_nearest_distance / settings.range);
-                            const float increment_length = other_nearest_distance / static_cast<float>(n_extensions);
-                            auto increment = other_nearest_vector * (1.0F / static_cast<float>(n_extensions));
-
-                            std::size_t i_extension = 0;
-                            auto prior = new_configuration;
-                            for (; i_extension < n_extensions and
-                                   validate_vector<Robot, rake, resolution>(
-                                       prior, increment, increment_length, environment) and
-                                   free_index < settings.max_samples;
-                                 ++i_extension)
-                            {
-                                auto next = prior + increment;
-                                float *next_index = buffer_index(free_index);
-                                next.to_array(next_index);
-                                tree_a->insert(NNNode<dimension>{free_index, {next_index}});
-                                parents[free_index] = free_index - 1;
-                                radii[free_index] = std::numeric_limits<float>::max();
-
-                                free_index++;
-
-                                prior = next;
-                            }
-
-                        if (i_extension == n_extensions)  // connected
-                        {
-                            auto current = free_index - 1;
-                            result.path.emplace_back(buffer_index(current));
-                            while (parents[current] != current)
-                            {
-                                auto parent = parents[current];
-                                result.path.emplace_back(buffer_index(parent));
-                                result.cost += result.path[result.path.size() - 1].distance(
-                                    result.path[result.path.size() - 2]);
-                                current = parent;
-                            }
-
-                            std::reverse(result.path.begin(), result.path.end());
-                            current = other_nearest_node.index;
-
-                            while (parents[current] != current)
-                            {
-                                auto parent = parents[current];
-                                result.path.emplace_back(buffer_index(parent));
-                                result.cost += result.path[result.path.size() - 1].distance(
-                                    result.path[result.path.size() - 2]);
-                                current = parent;
-                            }
-
-                            if (not tree_a_is_start)
-                            {
-                                std::reverse(result.path.begin(), result.path.end());
-                            }
-
                             break;
                         }
                     }

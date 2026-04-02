@@ -540,7 +540,8 @@ namespace vamp::binding
                 &HPN::PlanningResult::iterations,
                 "Number of planner iterations used to find the path.")
             .def_ro("size", &HPN::PlanningResult::size, "Size of the internal planner datastructures.")
-            .def_ro("stats", &HPN::PlanningResult::stats, "");
+            .def_ro("stats", &HPN::PlanningResult::stats, "")
+            .def_ro("iteration_stats", &HPN::PlanningResult::iteration_stats, "");
 
         nb::class_<typename HPN::Roadmap>(submodule, "Roadmap", "Undirected graph in configuration space.")
             .def(nb::init<>(), "Empty constructor.")

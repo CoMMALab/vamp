@@ -179,6 +179,7 @@ namespace vamp::planning
         std::size_t iterations{0};
         std::vector<std::size_t> size;
         std::map<std::string, std::size_t> stats;
+        std::map<std::size_t, std::pair<std::pair<std::size_t, std::size_t>, float>> iteration_stats;
     };
 
     template <typename Robot>

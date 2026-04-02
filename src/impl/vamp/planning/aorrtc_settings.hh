@@ -15,6 +15,7 @@ namespace vamp::planning
         bool simplify_intermediate = true;
         bool use_phs = true;
         bool anytime = false;
+        bool random_connect = false;
 
         std::size_t max_iterations = 100000;
         std::size_t max_internal_iterations = 100000;

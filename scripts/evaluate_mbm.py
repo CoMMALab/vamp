@@ -101,7 +101,14 @@ def main(
             sampler.reset()
             sampler.skip(skip_rng_iterations)
             for _ in range(trials):
+                # plan_settings.balance = True
+                # plan_settings.tree_ratio = 1
+                # result = planner_func(data['start'], data['goals'], env, plan_settings, sampler)
+                # print(result.size)
+                # plan_settings.balance = True
+                # plan_settings.tree_ratio = -0.0001
                 result = planner_func(data['start'], data['goals'], env, plan_settings, sampler)
+                # print(result.size)
                 if not result.solved:
                     failures.append(i)
                     break
@@ -114,6 +121,8 @@ def main(
                         trial_result["first_connection"] = result.stats["first_connection"]
                     else:
                         trial_result["first_connection"] = result.iterations
+                if planner == "aorrtc":
+                    trial_result["iteration_stats"] = result.iteration_stats
                 if pointcloud:
                     trial_result.update(pointcloud_results)
 
@@ -127,6 +136,10 @@ def main(
 
         if problem_results:
             df_prob = pd.DataFrame.from_dict(problem_results)
+            col_iter = None
+            df_iter = pd.DataFrame(columns=["sol_id", "iter_num", "iter_time", "cost", "problem", "problem_index"])
+            if "iteration_stats" in df_prob:
+                col_iter = df_prob.pop("iteration_stats")
 
             # Process for saving
             df_prob["planning_time"] = df_prob["planning_time"].dt.microseconds
@@ -141,14 +154,58 @@ def main(
 
             if planner == "rrtc":
                 df_prob["difference_connection"] = df_prob["planning_iterations"] - df_prob["first_connection"]
+                print()
 
             df_prob["total_time"] = df_prob["total_time"].dt.microseconds
 
-            # save_path = f"log/{robot}/{name}_{planner}_results.csv"
-            save_path = f"log/exp/{robot}_exp4/{name}_{planner}_rand{plan_settings.random_connect}_conn{plan_settings.random_connect_attempts}_intv{plan_settings.random_connect_interval}_results.csv"
-            Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-            df_prob.to_csv(save_path, index = False)
-            print(f"Saved results for {name} to {save_path}")
+            if planner == "rrtc":
+                save_path = f"log/exp/{robot}_exp4/{name}_{planner}_rand{plan_settings.random_connect}_conn{plan_settings.random_connect_attempts}_intv{plan_settings.random_connect_interval}_results.csv"
+                Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+                df_prob.to_csv(save_path, index = False)
+                print(f"Saved results for {name} to {save_path}")
+            if planner == "aorrtc":
+                # Data Processing 
+                iter_rows = []
+                for df_id, iter_stats in col_iter.items():
+                    if not isinstance(iter_stats, dict):
+                        continue
+                    prob_problem = None
+                    prob_problem_index = None
+                    if df_id in df_prob.index:
+                        prob_problem = df_prob.at[df_id, "problem"]
+                        prob_problem_index = df_prob.at[df_id, "problem_index"]
+                    for sol_id, iter_values in iter_stats.items():
+                        iter_num = None
+                        iter_time = None
+                        cost = None
+                        if isinstance(iter_values, (tuple, list)) and len(iter_values) >= 2:
+                            iter_num = iter_values[0][0]
+                            iter_time = iter_values[0][1]
+                            cost = iter_values[1]
+                        else:
+                            iter_time = iter_values
+                            
+                        iter_rows.append({
+                            "sol_id": sol_id,
+                            "iter_num": iter_num,
+                            "iter_time": iter_time,
+                            "cost": cost,
+                            "problem": prob_problem,
+                            "problem_index": prob_problem_index,
+                        })
+                df_iter = pd.DataFrame.from_records(
+                    iter_rows,
+                    columns=["sol_id", "iter_num", "iter_time", "cost", "problem", "problem_index"],
+                )
+                df_iter["iter_time"] = df_iter["iter_time"] / 1e3  # Convert nanoseconds to microseconds
+                save_path = f"log/exp/{planner}/{robot}_exp1/{name}_{planner}_rand{plan_settings.random_connect}_results.csv"
+                Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+                df_prob.to_csv(save_path, index = False)
+                print(f"Saved results for {name} to {save_path}")
+                save_path_iter = f"log/exp/{planner}/{robot}_exp1/{name}_{planner}_rand{plan_settings.random_connect}_iteration_stats.csv"
+                Path(save_path_iter).parent.mkdir(parents=True, exist_ok=True)
+                df_iter.to_csv(save_path_iter, index = False)
+                print(f"Saved iteration stats for {name} to {save_path_iter}")
 
         failed_problems += len(failures)
 
@@ -187,9 +244,13 @@ def main(
         "total_time",
         "planning_iterations",
         "avg_time_per_iteration",
-        "difference_connection",
+        # "difference_connection",
         ]].describe(percentiles = [0.25, 0.5, 0.75, 0.95])
     time_stats.drop(index = ["count"], inplace = True)
+    
+    # If RRTC, also print stats on difference between first connection and final solution
+    if planner == "rrtc":
+        time_stats["difference_connection"] = df["difference_connection"].describe(percentiles = [0.25, 0.5, 0.75, 0.95]).drop(index = ["count"])
 
     cost_stats = df[[
         "initial_path_cost",
@@ -206,20 +267,35 @@ def main(
         pointcloud_stats.drop(index = ["count"], inplace = True)
 
     print()
-    print(
-        tabulate(
-            time_stats,
-            headers = [
-                'Planning Time (μs)',
-                'Simplification Time (μs)',
-                'Total Time (μs)',
-                'Planning Iters.',
-                'Time per Iter. (μs)',
-                'Diff Con',
-                ],
-            tablefmt = 'github'
+    if planner == "rrtc":
+        print(
+            tabulate(
+                time_stats,
+                headers = [
+                    'Planning Time (μs)',
+                    'Simplification Time (μs)',
+                    'Total Time (μs)',
+                    'Planning Iters.',
+                    'Time per Iter. (μs)',
+                    'Diff Con',
+                    ],
+                tablefmt = 'github'
+                )
             )
-        )
+    else:
+        print(
+            tabulate(
+                time_stats,
+                headers = [
+                    'Planning Time (μs)',
+                    'Simplification Time (μs)',
+                    'Total Time (μs)',
+                    'Planning Iters.',
+                    'Time per Iter. (μs)',
+                    ],
+                tablefmt = 'github'
+                )
+            )
 
     print(
         tabulate(

@@ -6,9 +6,66 @@ from pathlib import Path
 import pandas as pd
 from typing import Union, List
 
+
 from fire import Fire
 import vamp
 from vamp import pointcloud as vpc
+
+
+LOCAL_LOG_DIR = Path(__file__).resolve().parent.parent / "local" / "log"
+
+
+def output_dir_for(planner: str, robot: str, exp_id: str | None) -> Path:
+    resolved_exp_id = exp_id if exp_id else "default"
+    return LOCAL_LOG_DIR / "exp" / planner / f"{robot}_exp_{resolved_exp_id}"
+
+
+def results_suffix(plan_settings) -> str:
+    suffix = f"rand{plan_settings.random_connect}"
+    if hasattr(plan_settings, "random_connect_attempts"):
+        suffix += f"_conn{plan_settings.random_connect_attempts}"
+    if hasattr(plan_settings, "random_connect_interval"):
+        suffix += f"_intv{plan_settings.random_connect_interval}"
+    return suffix
+
+
+def build_iteration_stats_df(df: pd.DataFrame) -> pd.DataFrame:
+    iter_rows = []
+    for df_id, iter_stats in df["iteration_stats"].items():
+        if not isinstance(iter_stats, dict):
+            continue
+        prob_problem = None
+        prob_problem_index = None
+        if df_id in df.index:
+            prob_problem = df.at[df_id, "problem"]
+            prob_problem_index = df.at[df_id, "problem_index"]
+        for sol_id, iter_values in iter_stats.items():
+            iter_num = None
+            iter_time = None
+            cost = None
+            if isinstance(iter_values, (tuple, list)) and len(iter_values) >= 2:
+                iter_num = iter_values[0][0]
+                iter_time = iter_values[0][1]
+                cost = iter_values[1]
+            else:
+                iter_time = iter_values
+
+            iter_rows.append({
+                "sol_id": sol_id,
+                "iter_num": iter_num,
+                "iter_time": iter_time,
+                "cost": cost,
+                "problem": prob_problem,
+                "problem_index": prob_problem_index,
+            })
+
+    df_iter = pd.DataFrame.from_records(
+        iter_rows,
+        columns=["sol_id", "iter_num", "iter_time", "cost", "problem", "problem_index"],
+    )
+    if not df_iter.empty:
+        df_iter["iter_time"] = df_iter["iter_time"] / 1e3
+    return df_iter
 
 
 def main(
@@ -24,6 +81,7 @@ def main(
     samples_per_object: int = 10000,       # If pointcloud, samples per object to use
     filter_radius: float = 0.02,           # Filter radius for pointcloud filtering
     filter_cull: bool = True,              # Cull pointcloud around robot by maximum distance
+    exp_id: str = "default",              # Experiment identifier used for output paths
     **kwargs,
     ):
 
@@ -51,6 +109,7 @@ def main(
      simp_settings) = vamp.configure_robot_and_planner_with_kwargs(robot, planner, **kwargs)
 
     sampler = getattr(vamp_module, sampler)()
+    output_dir = output_dir_for(planner, robot, exp_id)
 
     total_problems = 0
     valid_problems = 0
@@ -62,7 +121,6 @@ def main(
         if name not in problem:
             continue
 
-        problem_results = []
         failures = []
         invalids = []
         print(f"Evaluating {robot} on {name}: ")
@@ -132,82 +190,9 @@ def main(
 
 
                 results.append(trial_result)
-                problem_results.append(trial_result)
-
-        if problem_results:
-            df_prob = pd.DataFrame.from_dict(problem_results)
-            col_iter = None
-            df_iter = pd.DataFrame(columns=["sol_id", "iter_num", "iter_time", "cost", "problem", "problem_index"])
-            if "iteration_stats" in df_prob:
-                col_iter = df_prob.pop("iteration_stats")
-
-            # Process for saving
-            df_prob["planning_time"] = df_prob["planning_time"].dt.microseconds
-            df_prob["simplification_time"] = df_prob["simplification_time"].dt.microseconds
-            df_prob["avg_time_per_iteration"] = df_prob["planning_iterations"] / df_prob["planning_time"]
-
-            if pointcloud:
-                df_prob["total_build_and_plan_time"] = df_prob["total_time"] + df_prob["filter_time"] + df_prob["capt_build_time"]
-                df_prob["filter_time"] = df_prob["filter_time"].dt.microseconds / 1e3
-                df_prob["capt_build_time"] = df_prob["capt_build_time"].dt.microseconds / 1e3
-                df_prob["total_build_and_plan_time"] = df_prob["total_build_and_plan_time"].dt.microseconds / 1e3
-
-            if planner == "rrtc":
-                df_prob["difference_connection"] = df_prob["planning_iterations"] - df_prob["first_connection"]
-                print()
-
-            df_prob["total_time"] = df_prob["total_time"].dt.microseconds
-
-            if planner == "rrtc":
-                save_path = f"log/exp/{robot}_exp4/{name}_{planner}_rand{plan_settings.random_connect}_conn{plan_settings.random_connect_attempts}_intv{plan_settings.random_connect_interval}_results.csv"
-                Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-                df_prob.to_csv(save_path, index = False)
-                print(f"Saved results for {name} to {save_path}")
-            if planner == "aorrtc":
-                # Data Processing 
-                iter_rows = []
-                for df_id, iter_stats in col_iter.items():
-                    if not isinstance(iter_stats, dict):
-                        continue
-                    prob_problem = None
-                    prob_problem_index = None
-                    if df_id in df_prob.index:
-                        prob_problem = df_prob.at[df_id, "problem"]
-                        prob_problem_index = df_prob.at[df_id, "problem_index"]
-                    for sol_id, iter_values in iter_stats.items():
-                        iter_num = None
-                        iter_time = None
-                        cost = None
-                        if isinstance(iter_values, (tuple, list)) and len(iter_values) >= 2:
-                            iter_num = iter_values[0][0]
-                            iter_time = iter_values[0][1]
-                            cost = iter_values[1]
-                        else:
-                            iter_time = iter_values
-                            
-                        iter_rows.append({
-                            "sol_id": sol_id,
-                            "iter_num": iter_num,
-                            "iter_time": iter_time,
-                            "cost": cost,
-                            "problem": prob_problem,
-                            "problem_index": prob_problem_index,
-                        })
-                df_iter = pd.DataFrame.from_records(
-                    iter_rows,
-                    columns=["sol_id", "iter_num", "iter_time", "cost", "problem", "problem_index"],
-                )
-                df_iter["iter_time"] = df_iter["iter_time"] / 1e3  # Convert nanoseconds to microseconds
-                save_path = f"log/exp/{planner}/{robot}_exp1/{name}_{planner}_rand{plan_settings.random_connect}_results.csv"
-                Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-                df_prob.to_csv(save_path, index = False)
-                print(f"Saved results for {name} to {save_path}")
-                save_path_iter = f"log/exp/{planner}/{robot}_exp1/{name}_{planner}_rand{plan_settings.random_connect}_iteration_stats.csv"
-                Path(save_path_iter).parent.mkdir(parents=True, exist_ok=True)
-                df_iter.to_csv(save_path_iter, index = False)
-                print(f"Saved iteration stats for {name} to {save_path_iter}")
 
         failed_problems += len(failures)
+
 
         if print_failures:
             if invalids:
@@ -218,7 +203,19 @@ def main(
 
     tock = time.perf_counter()
 
+    if not results:
+        raise RuntimeError("No successful results were produced; nothing to save.")
+
     df = pd.DataFrame.from_dict(results)
+    save_suffix = results_suffix(plan_settings)
+    save_path = output_dir / f"results_{save_suffix}.csv"
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+
+    df_iter = pd.DataFrame(columns=["sol_id", "iter_num", "iter_time", "cost", "problem", "problem_index"])
+    if planner == "aorrtc" and "iteration_stats" in df.columns:
+        df_iter = build_iteration_stats_df(df)
+        df = df.drop(columns=["iteration_stats"])
+
 
     # Convert to microseconds
     df["planning_time"] = df["planning_time"].dt.microseconds
@@ -236,6 +233,15 @@ def main(
         df["difference_connection"] = df["planning_iterations"] - df["first_connection"] 
 
     df["total_time"] = df["total_time"].dt.microseconds
+
+    df.to_csv(save_path, index = False)
+    print(f"Saved results to {save_path}")
+
+    if planner == "aorrtc":
+        save_path_iter = output_dir / f"iteration_stats_{save_suffix}.csv"
+        save_path_iter.parent.mkdir(parents=True, exist_ok=True)
+        df_iter.to_csv(save_path_iter, index = False)
+        print(f"Saved iteration stats to {save_path_iter}")
 
     # Get summary statistics
     time_stats = df[[

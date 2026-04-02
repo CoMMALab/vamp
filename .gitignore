@@ -1,6 +1,5 @@
 build/
-dev/
-log/
+/local/
 .cache/
 .vscode/
 compile_commands.json

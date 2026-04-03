@@ -22,11 +22,17 @@ def output_dir_for(planner: str, robot: str, exp_id: str | None) -> Path:
 
 def results_suffix(plan_settings) -> str:
     suffix = f"rand{plan_settings.random_connect}"
+    if hasattr(plan_settings, "anytime"):
+        suffix += f"_any{plan_settings.anytime}"
     if hasattr(plan_settings, "random_connect_attempts"):
         suffix += f"_conn{plan_settings.random_connect_attempts}"
     if hasattr(plan_settings, "random_connect_interval"):
         suffix += f"_intv{plan_settings.random_connect_interval}"
     return suffix
+
+
+def plan_setting_flag(plan_settings, name: str, default: bool = False) -> bool:
+    return bool(getattr(plan_settings, name, default))
 
 
 def build_iteration_stats_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -207,6 +213,13 @@ def main(
         raise RuntimeError("No successful results were produced; nothing to save.")
 
     df = pd.DataFrame.from_dict(results)
+    random_connect_enabled = plan_setting_flag(plan_settings, "random_connect")
+    anytime_enabled = plan_setting_flag(plan_settings, "anytime")
+    df["random_connect"] = random_connect_enabled
+    df["anytime"] = anytime_enabled
+    df["planner"] = planner
+    df["robot"] = robot
+
     save_suffix = results_suffix(plan_settings)
     save_path = output_dir / f"results_{save_suffix}.csv"
     save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -214,6 +227,10 @@ def main(
     df_iter = pd.DataFrame(columns=["sol_id", "iter_num", "iter_time", "cost", "problem", "problem_index"])
     if planner == "aorrtc" and "iteration_stats" in df.columns:
         df_iter = build_iteration_stats_df(df)
+        df_iter["random_connect"] = random_connect_enabled
+        df_iter["anytime"] = anytime_enabled
+        df_iter["planner"] = planner
+        df_iter["robot"] = robot
         df = df.drop(columns=["iteration_stats"])
 
 

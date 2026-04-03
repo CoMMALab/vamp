@@ -2,6 +2,7 @@ build/
 /local/
 .cache/
 .vscode/
+.codex
 compile_commands.json
 *.out.*
 *.swp

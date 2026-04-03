@@ -288,6 +288,9 @@ namespace vamp::planning
                                 
                                 // Path on tree_b side
                                 current = random_node.index;
+                                result.path.emplace_back(buffer_index(current));
+                                result.cost += result.path[result.path.size() - 1].distance(
+                                    result.path[result.path.size() - 2]);
 
                                 while (parents[current] != current)
                                 {

@@ -10,7 +10,7 @@ namespace vamp::robots
 {
     struct G1Unitree
     {
-        static constexpr char *name = "g1_unitree";
+        static constexpr char *name = "g1unitree";
         static constexpr std::size_t dimension = 35;
         static constexpr std::size_t n_spheres = 133;
         static constexpr float min_radius = 0.012152000330388546;

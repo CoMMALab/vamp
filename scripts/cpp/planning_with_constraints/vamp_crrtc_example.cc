@@ -288,10 +288,6 @@ auto main(int, char **) -> int
                             // std::cout << "\n\n-----------------Starting to cbirrt------------ " <<
                             // std::endl;
                             std::cout << range << ", " << dyndom << " " << pm << " " << descent_rate << " ";
-                            vamp::planning::constraint::invalid_distance_counter_outside = 0;
-                            vamp::planning::constraint::invalid_distance_counter_inside = 0;
-                            vamp::planning::constraint::collision_counter = 0;
-                            vamp::planning::constraint::unable_to_project_counter = 0;
 
                             auto result = vamp::planning::
                                 CRRTC<Robot, rake, Robot::resolution, decltype(tsr_constraint)>::solve(

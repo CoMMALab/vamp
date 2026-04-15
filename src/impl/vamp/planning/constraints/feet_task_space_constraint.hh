@@ -343,9 +343,8 @@ namespace vamp::planning::constraint
             return d;
         }
 
-        vamp::FloatVector<rake, 1> projectStep(
+        ConfigurationBlock projectStep(
             const ConfigurationBlock &q,
-            ConfigurationBlock &q_new,
             ProjMethod projection_method = ProjMethod::InnerLM,
             float alpha = 1.0F)
         {
@@ -355,30 +354,22 @@ namespace vamp::planning::constraint
             if (projection_method == ProjMethod::InnerLM)
             {
                 Robot::template solve_2_eef_tsr_error_lm_inner<rake>(short_jac_proj_inp, grad);
-                // grad = grad.zero_out_nans();
-                // std::cout << "Grad for TSR constraint: "  ;
-                // for (auto i = 0U; i < Robot::dimension; i++)
-                //         std::cout << q[{i, 0}] << " -- " <<grad[{i, 0}] << " ";
-                // std::cout << std::endl;
-
-                // Robot::template solve_tsr_error_lm_inner<rake>(jac_proj_inp, grad);
             }
             else if (projection_method == ProjMethod::OuterLM)
             {
                 Robot::template solve_2_eef_tsr_error_lm_outer<rake>(short_jac_proj_inp, grad);
-                // Robot::template solve_tsr_error_lm_outer<rake>(jac_proj_inp, grad);
             }
             else if (projection_method == ProjMethod::GradDesc)
             {
                 Robot::template solve_2_eef_tsr_error_gradient_descent<rake>(short_jac_proj_inp, grad);
-                // Robot::template solve_tsr_error_gradient_descent<rake>(jac_proj_inp, grad);
             }
             else
             {
                 throw std::runtime_error("Invalid projection method");
             }
+            ConfigurationBlock q_new;
             integrateJointConfiguration<Robot, rake>(q, q_new, grad, alpha);
-            return dist;
+            return q_new;
         }
     };
 }  // namespace vamp::planning::constraint

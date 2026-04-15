@@ -7,8 +7,8 @@ option(VAMP_FORCE_CLANG "Force the use of Clang." OFF)
 option(VAMP_BUILD_PYTHON_BINDINGS "Build VAMP Python bindings" ON)
 option(VAMP_INSTALL_CPP_LIBRARY "Install VAMP C++ library (disable for Python wheel builds)" ON)
 
-option(VAMP_BUILD_CPP_DEMO "Build VAMP C++ Demo Scripts" ON)
-option(VAMP_BUILD_OMPL_DEMO "Build VAMP C++ OMPL Integration Demo Scripts" ON)
+option(VAMP_BUILD_CPP_DEMO "Build VAMP C++ Demo Scripts" OFF)
+option(VAMP_BUILD_OMPL_DEMO "Build VAMP C++ OMPL Integration Demo Scripts" OFF)
 option(VAMP_OMPL_PATH "Search Path for OMPL Installation - Only Needed for Demo Script" "")
 add_compile_options(-w)
 
@@ -143,14 +143,15 @@ if(VAMP_BUILD_CPP_DEMO)
   add_executable(vamp_rrtc_example scripts/cpp/rrtc_example.cc)
   target_link_libraries(vamp_rrtc_example PRIVATE vamp_cpp)
 
-  add_executable(vamp_crrtc_example scripts/cpp/vamp_crrtc_example.cc)
+  find_package(nlohmann_json REQUIRED)
+  add_executable(vamp_crrtc_example scripts/cpp/planning_with_constraints/vamp_crrtc_example.cc)
   target_link_libraries(vamp_crrtc_example PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
 
   add_executable(vamp_crrtc_spheres scripts/cpp/planning_with_constraints/vamp_crrtc_spheres.cc)
   target_link_libraries(vamp_crrtc_spheres PRIVATE vamp_cpp)
 
 
-  add_executable(vamp_bimanual_example_iiwa scripts/cpp/vamp_bimanual_example_iiwa.cc)
+  add_executable(vamp_bimanual_example_iiwa scripts/cpp/planning_with_constraints/vamp_bimanual_example_iiwa.cc)
   target_link_libraries(vamp_bimanual_example_iiwa PRIVATE vamp_cpp)
 
   add_executable(vamp_com_constraint_example scripts/cpp/planning_with_constraints/vamp_com_constraint_example.cc)

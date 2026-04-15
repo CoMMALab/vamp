@@ -210,15 +210,12 @@ namespace vamp::planning::constraint
             return d;
         }
 
-        vamp::FloatVector<rake, 1> projectStep(
+        ConfigurationBlock projectStep(
             const ConfigurationBlock &q,
-            ConfigurationBlock &q_new,
             ProjMethod projection_method = ProjMethod::InnerLM,
-            bool update_q = true,
             float alpha = 1.0F)
         {
             auto dist = distanceToConstraint(q);
-            // std::cout << "Bimanual constraint distance: " << dist << std::endl;
             typename Robot::template ConfigurationBlock<rake> grad;
 
             if (projection_method == ProjMethod::InnerLM)
@@ -238,8 +235,9 @@ namespace vamp::planning::constraint
                 std::cout << "Invalid projection method: " << projection_method << std::endl;
                 throw std::runtime_error("Invalid projection method");
             }
+            ConfigurationBlock q_new;
             integrateJointConfiguration<Robot, rake>(q, q_new, grad, alpha);
-            return dist;
+            return q_new;
         }
     };
 }  // namespace vamp::planning::constraint

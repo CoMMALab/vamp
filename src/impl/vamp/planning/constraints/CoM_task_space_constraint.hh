@@ -201,38 +201,16 @@ namespace vamp::planning::constraint
         vamp::FloatVector<rake, 1> distanceToConstraint(const ConfigurationBlock &q) const
         {
             Robot::template compute_com<rake>(q, com_jac_polygons);
-            // com_jac_polygons.com must be offset by the first floating joint
-            // for(auto i=0U; i < 3; i++){
-            //     com_jac_polygons.CoM[i] = com_jac_polygons.CoM[i] - q[i];
-            // }
-
             Robot::template com_constraint_error<rake>(com_jac_polygons, num_polygons, jac_proj_inp);
-            // std::cout << "COM  : ";
-            // for(auto i=0U; i < 3; i++){
-            //     std::cout << std::setprecision(5) << com_jac_polygons.CoM[{i, 0}] << " ";
-            // }
 
-            // std::cout << "COM Error : ";
-            // for(auto i=0U; i < 2; i++){
-            //     std::cout << std::setprecision(5) << jac_proj_inp.err[{i, 0}] << " ";
-            // }
-            // std::cout << std::endl;
-            // std::cout << "Error Jac : ";
-            // for(auto i=0U; i < 2 * Robot::dimension; i++){
-            //     if (i%Robot::dimension == 0)
-            //         std::cout << std::endl;
-            //     std::cout << std::setprecision(5) << jac_proj_inp.J[{i, 0}] << " ";
-            // }
-            // std::cout << std::endl;
-
+            // deviation from constraint is just x-y error
             auto d = jac_proj_inp.err[0] * jac_proj_inp.err[0] + jac_proj_inp.err[1] * jac_proj_inp.err[1];
 
             return d;
         }
 
-        vamp::FloatVector<rake, 1> projectStep(
+        ConfigurationBlock projectStep(
             const ConfigurationBlock &q,
-            ConfigurationBlock &q_new,
             ProjMethod projection_method = ProjMethod::InnerLM,
             float alpha = 1.0F)
         {
@@ -243,11 +221,6 @@ namespace vamp::planning::constraint
             if (projection_method == ProjMethod::InnerLM)
             {
                 Robot::template solve_com_function_lm_inner<rake>(jac_proj_inp, grad);
-                // grad = grad.zero_out_nans();
-                // std::cout << "Grad for COM constraint: "  ;
-                // for (auto i = 0U; i < Robot::dimension; i++)
-                //         std::cout << q[{i, 0}] << " -- " <<grad[{i, 0}] << " ";
-                // std::cout << std::endl;
             }
             else if (projection_method == ProjMethod::OuterLM)
             {
@@ -261,8 +234,9 @@ namespace vamp::planning::constraint
             {
                 throw std::invalid_argument("Invalid projection method");
             }
+            ConfigurationBlock q_new;
             integrateJointConfiguration<Robot, rake>(q, q_new, grad, alpha);
-            return dist;
+            return q_new;
         }
     };
 }  // namespace vamp::planning::constraint

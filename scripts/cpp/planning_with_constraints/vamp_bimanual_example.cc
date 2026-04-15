@@ -170,10 +170,6 @@ auto main(int, char **) -> int
                                 // std::cout << "\n\n-----------------Starting to cbirrt------------ " <<
                                 // std::endl;
 
-                                vamp::planning::constraint::invalid_distance_counter_outside = 0;
-                                vamp::planning::constraint::invalid_distance_counter_inside = 0;
-                                vamp::planning::constraint::collision_counter = 0;
-                                vamp::planning::constraint::unable_to_project_counter = 0;
 
                                 std::cout << range << ", " << dyndom << " " << pm << " " << descent_rate
                                           << " ";
@@ -214,10 +210,6 @@ auto main(int, char **) -> int
                                         std::cout << std::fixed << std::setprecision(3);
                                         std::ofstream outfile("trajectory.txt");
 
-                                        vamp::planning::constraint::invalid_distance_counter_outside = 0;
-                                        vamp::planning::constraint::invalid_distance_counter_inside = 0;
-                                        vamp::planning::constraint::collision_counter = 0;
-                                        vamp::planning::constraint::unable_to_project_counter = 0;
 
                                         // Simplify path with default settings
                                         vamp::planning::SimplifySettings simplify_settings;
@@ -230,14 +222,6 @@ auto main(int, char **) -> int
                                                 result.path, env_v, task_constraint, simplify_settings, rng);
                                         std::cout << "Simplify took " << result.nanoseconds / 1e6 << " ms"
                                                   << std::endl;
-                                        // std::cout << "Invalid distance counter outside: " <<
-                                        // vamp::planning::constraint::invalid_distance_counter_outside <<
-                                        // std::endl; std::cout << "Invalid distance counter inside: " <<
-                                        // vamp::planning::constraint::invalid_distance_counter_inside <<
-                                        // std::endl; std::cout << "Collision counter: " <<
-                                        // vamp::planning::constraint::collision_counter << std::endl;
-                                        // std::cout << "Unable to project counter: " <<
-                                        // vamp::planning::constraint::unable_to_project_counter << std::endl;
 
                                         for (const auto &config : simplify_result.path)
                                         {

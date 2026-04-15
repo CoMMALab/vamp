@@ -43,20 +43,38 @@ namespace vamp::planning::constraint
             std::apply([&](const auto &...c) { (c.print_robot_tsr_error(q), ...); }, constraints_);
         }
 
-        vamp::FloatVector<rake, 1> projectStep(
+        ConfigurationBlock projectStep(
             const ConfigurationBlock &q,
-            ConfigurationBlock &q_new,
             ProjMethod projection_method = ProjMethod::InnerLM,
             float alpha = 1.0f)
         {
-            ConfigurationBlock q_in = q;
+            ConfigurationBlock q_in;
+            ConfigurationBlock q_new;
 
-            std::apply(
-                [&](auto &...c)
-                { ((c.projectStep(q_in, q_new, projection_method, alpha), q_in = q_new), ...); },
-                constraints_);
+            for(size_t dim = 0U; dim < Robot::dimension; dim++) {
+                q_in[dim] = q[dim];
+                q_new[dim] = q[dim];
+            }
 
-            return distanceToConstraint(q_new);
+            // Lambda to process a single constraint
+            auto applyConstraint = [&](auto& c) {
+                // asm volatile("" ::: "memory");
+                q_new = c.projectStep(q_in, projection_method, alpha);
+                // Update q_in to the latest projected configuration
+                for(size_t dim = 0U; dim < Robot::dimension; dim++) {
+                    q_in[dim] = q_new[dim];
+                }
+            };
+
+            // Apply the lambda to all constraints in order
+            std::apply([&](auto&... cs) {
+                // Left-to-right evaluation guaranteed
+                (applyConstraint(cs), ...);
+            }, constraints_);
+
+            // Return distance to constraints as before
+            return q_new;
+
         }
 
         bool projectConfiguration(
@@ -83,16 +101,16 @@ namespace vamp::planning::constraint
             auto dist = distanceToConstraint(q);
 
             size_t project_iter = 0;
-            q_new = q;
-            q_old = q;
+            for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
+                q_old[rdim] = q[rdim];
+            }
 
             // std::cout << q << std::endl;
 
             while ((project_iter < num_projection_iterations) and (not dist.test_all_less_equal(0.0001F)))
             {
-                dist = projectStep(q_old, q_new, projection_method, descend_rate);
-                // std::cout << "Iteration " << project_iter << " Distance: " << dist << std::endl;
-                // std::cout << q_old << q_new << std::endl;
+                q_new = projectStep(q_old, projection_method, descend_rate);
+                dist = distanceToConstraint(q_new);
                 auto q_dist_from_prev = (q_new[0] - q_old[0]) * (q_new[0] - q_old[0]);
                 auto q_dist_from_start = (q_new[0] - q[0]) * (q_new[0] - q[0]);
 
@@ -113,8 +131,7 @@ namespace vamp::planning::constraint
                 if (q_dist_from_prev.test_any_greater(4 * max_q_dist * max_q_dist))  // from triangle
                                                                                      // inequality
                 {
-                    // std::cout << "Too large step " << q_dist_from_prev << std::endl;
-                    // std::cout << q_old << std::endl;
+                    // std::cout << "Too large step " << q_dist_from_prev << q_old << std::endl;
                     break;
                 }
                 q_old = q_new;
@@ -160,14 +177,17 @@ namespace vamp::planning::constraint
             auto dist = distanceToConstraint(q);
 
             size_t project_iter = 0;
-            q_new = q;
-            q_old = q;
+            for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
+                q_old[rdim] = q[rdim];
+            }
 
             // std::cout << q << std::endl;
 
             while ((project_iter < num_projection_iterations) and (not dist.test_any_less_equal(0.0001F)))
             {
-                dist = projectStep(q_old, q_new, projection_method, descend_rate);
+                q_new = projectStep(q_old, projection_method, descend_rate);
+                dist = distanceToConstraint(q_new);
+
                 // std::cout << "Iteration " << project_iter << " Distance: " << dist << std::endl;
                 // std::cout << q_old << q_new << std::endl;
                 auto q_dist_from_prev = (q_new[0] - q_old[0]) * (q_new[0] - q_old[0]);

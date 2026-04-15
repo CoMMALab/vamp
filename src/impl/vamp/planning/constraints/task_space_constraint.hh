@@ -235,9 +235,8 @@ namespace vamp::planning::constraint
             return d;
         }
 
-        vamp::FloatVector<rake, 1> projectStep(
+        ConfigurationBlock projectStep(
             const ConfigurationBlock &q,
-            ConfigurationBlock &q_new,
             ProjMethod projection_method = ProjMethod::InnerLM,
             float alpha = 1.0F)
         {
@@ -260,8 +259,9 @@ namespace vamp::planning::constraint
             {
                 throw std::runtime_error("Invalid projection method");
             }
+            ConfigurationBlock q_new;
             integrateJointConfiguration<Robot, rake>(q, q_new, grad, alpha);
-            return dist;
+            return q_new;
         }
     };
 

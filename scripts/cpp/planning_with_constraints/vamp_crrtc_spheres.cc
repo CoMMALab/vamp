@@ -216,6 +216,11 @@ auto main(int, char **) -> int
                                     succ_attempts.push_back(a);
                                     std::sort(succ_attempts.begin(), succ_attempts.end());
                                 }
+                                else
+                                    std::cout << "No path found with settings: " << range << ", " << dyndom << " " << pm << " "
+                                              << descent_rate << " " << num_projection_iterations << " "
+                                              << std_dev_scaling_factor << " " << insert_all_to_tree
+                                              << std::endl;
                             }
                         }
                     }

@@ -43,38 +43,35 @@ namespace vamp::planning::constraint
             std::apply([&](const auto &...c) { (c.print_robot_tsr_error(q), ...); }, constraints_);
         }
 
-        ConfigurationBlock projectStep(
+        auto projectStep(
             const ConfigurationBlock &q,
             ProjMethod projection_method = ProjMethod::InnerLM,
             float alpha = 1.0f)
         {
-            ConfigurationBlock q_in;
-            ConfigurationBlock q_new;
-
-            for(size_t dim = 0U; dim < Robot::dimension; dim++) {
-                q_in[dim] = q[dim];
-                q_new[dim] = q[dim];
+            ConfigurationBlock q_in, q_new;
+            for (size_t i = 0; i < Robot::dimension; i++)
+            {
+                q_in[i] = q[i];
+                q_new[i] = q[i];
             }
+            
+            
 
-            // Lambda to process a single constraint
-            auto applyConstraint = [&](auto& c) {
-                // asm volatile("" ::: "memory");
-                q_new = c.projectStep(q_in, projection_method, alpha);
-                // Update q_in to the latest projected configuration
-                for(size_t dim = 0U; dim < Robot::dimension; dim++) {
-                    q_in[dim] = q_new[dim];
-                }
-            };
+            std::apply(
+                [&](auto &...c)
+                {
+                    auto applyConstraint = [&](auto &constraint) {
+                        q_new = constraint.projectStep(q_in, projection_method, alpha);
+                        for (size_t rdim = 0U; rdim < Robot::dimension; rdim++)
+                        {
+                            q_in[rdim] = q_new[rdim];
+                        }
+                    };
+                    (applyConstraint(c), ...);
+                },
+                constraints_);
 
-            // Apply the lambda to all constraints in order
-            std::apply([&](auto&... cs) {
-                // Left-to-right evaluation guaranteed
-                (applyConstraint(cs), ...);
-            }, constraints_);
-
-            // Return distance to constraints as before
             return q_new;
-
         }
 
         bool projectConfiguration(
@@ -103,14 +100,15 @@ namespace vamp::planning::constraint
             size_t project_iter = 0;
             for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
                 q_old[rdim] = q[rdim];
+                q_new[rdim] = q[rdim];
             }
-
-            // std::cout << q << std::endl;
 
             while ((project_iter < num_projection_iterations) and (not dist.test_all_less_equal(0.0001F)))
             {
                 q_new = projectStep(q_old, projection_method, descend_rate);
                 dist = distanceToConstraint(q_new);
+                // std::cout << "Iteration " << project_iter << " Distance: " << dist << std::endl;
+                // std::cout << q_old << q_new << std::endl;
                 auto q_dist_from_prev = (q_new[0] - q_old[0]) * (q_new[0] - q_old[0]);
                 auto q_dist_from_start = (q_new[0] - q[0]) * (q_new[0] - q[0]);
 
@@ -131,10 +129,14 @@ namespace vamp::planning::constraint
                 if (q_dist_from_prev.test_any_greater(4 * max_q_dist * max_q_dist))  // from triangle
                                                                                      // inequality
                 {
-                    // std::cout << "Too large step " << q_dist_from_prev << q_old << std::endl;
+                    // std::cout << "Too large step " << q_dist_from_prev << std::endl;
+                    // std::cout << q_old << std::endl;
                     break;
                 }
-                q_old = q_new;
+
+                for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
+                    q_old[rdim] = q_new[rdim];
+                }
                 project_iter += 1;
             }
             if (dist.test_all_less_equal(0.0001F))
@@ -177,8 +179,11 @@ namespace vamp::planning::constraint
             auto dist = distanceToConstraint(q);
 
             size_t project_iter = 0;
+            // q_new = q;
+            // q_old = q;
             for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
                 q_old[rdim] = q[rdim];
+                q_new[rdim] = q[rdim];
             }
 
             // std::cout << q << std::endl;
@@ -187,7 +192,6 @@ namespace vamp::planning::constraint
             {
                 q_new = projectStep(q_old, projection_method, descend_rate);
                 dist = distanceToConstraint(q_new);
-
                 // std::cout << "Iteration " << project_iter << " Distance: " << dist << std::endl;
                 // std::cout << q_old << q_new << std::endl;
                 auto q_dist_from_prev = (q_new[0] - q_old[0]) * (q_new[0] - q_old[0]);
@@ -216,7 +220,9 @@ namespace vamp::planning::constraint
                     // std::cout << q_old << std::endl;
                     break;
                 }
-                q_old = q_new;
+                for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
+                    q_old[rdim] = q_new[rdim];
+                }
                 project_iter += 1;
             }
             if (dist.test_any_less_equal(0.0001F))

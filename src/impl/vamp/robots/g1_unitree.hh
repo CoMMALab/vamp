@@ -18,6 +18,7 @@ namespace vamp::robots
         static constexpr std::size_t resolution = 32;
         static constexpr std::size_t n_eef = 4;
         static constexpr std::size_t num_bounding_spheres = 31;
+        static constexpr std::size_t num_closed_link_chains = 0;
 
         static constexpr std::array<std::string_view, dimension> joint_names = {
             "world_to_x",

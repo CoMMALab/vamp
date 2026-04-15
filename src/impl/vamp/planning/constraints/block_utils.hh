@@ -28,7 +28,8 @@ namespace vamp::planning::constraint
             q_new[i] = q[i] - gradient[i] * alpha;
         }
         Robot::descale_configuration_block(q_new);
-        q_new = q_new.clamp(0.F, 1.F);
+        for (auto i = 0U; i < Robot::dimension; i++)
+            q_new[i] = q_new[i].clamp(0.F, 1.F);
         Robot::scale_configuration_block(q_new);
     }
 

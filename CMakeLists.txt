@@ -140,49 +140,29 @@ endif()
 
 # C++ demos
 if(VAMP_BUILD_CPP_DEMO)
-  # add_executable(vamp_rrtc_example scripts/cpp/rrtc_example.cc)
-  # target_link_libraries(vamp_rrtc_example PRIVATE vamp_cpp)
+  add_executable(vamp_rrtc_example scripts/cpp/rrtc_example.cc)
+  target_link_libraries(vamp_rrtc_example PRIVATE vamp_cpp)
 
-#   add_executable(task_space_constraints_examples scripts/cpp/task_space_constraints_examples.cc)
-#   target_link_libraries(task_space_constraints_examples PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
-# find_package(nlohmann_json REQUIRED)
-
-#   add_executable(vamp_crrtc_example scripts/cpp/vamp_crrtc_example.cc)
-#   target_link_libraries(vamp_crrtc_example PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
+  add_executable(vamp_crrtc_example scripts/cpp/vamp_crrtc_example.cc)
+  target_link_libraries(vamp_crrtc_example PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
 
   add_executable(vamp_crrtc_spheres scripts/cpp/planning_with_constraints/vamp_crrtc_spheres.cc)
   target_link_libraries(vamp_crrtc_spheres PRIVATE vamp_cpp)
 
-# add_executable(vamp_crrtc_transport_mug scripts/cpp/vamp_crrtc_transport_mug.cc)
-# target_link_libraries(vamp_crrtc_transport_mug PRIVATE vamp_cpp)
 
-  # add_executable(vamp_bimanual_constraint scripts/cpp/bimanual_constraint.cc)
-  # target_link_libraries(vamp_bimanual_constraint PRIVATE vamp_cpp)
-
-#   add_executable(com_constraint scripts/cpp/com_constraint.cc)
-#   target_link_libraries(com_constraint PRIVATE vamp_cpp)
-
-#   add_executable(vamp_bimanual_planner_example scripts/cpp/vamp_bimanual_example.cc)
-#   target_link_libraries(vamp_bimanual_planner_example PRIVATE vamp_cpp)
-
-# add_executable(vamp_bimanual_example_iiwa scripts/cpp/vamp_bimanual_example_iiwa.cc)
-# target_link_libraries(vamp_bimanual_example_iiwa PRIVATE vamp_cpp)
+  add_executable(vamp_bimanual_example_iiwa scripts/cpp/vamp_bimanual_example_iiwa.cc)
+  target_link_libraries(vamp_bimanual_example_iiwa PRIVATE vamp_cpp)
 
   add_executable(vamp_com_constraint_example scripts/cpp/planning_with_constraints/vamp_com_constraint_example.cc)
   target_link_libraries(vamp_com_constraint_example PRIVATE vamp_cpp)
 
   # Disable strict warnings for demos to maintain compatibility
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    # target_compile_options(vamp_rrtc_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-    target_compile_options(task_space_constraints_examples PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-    # target_compile_options(vamp_crrtc_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-    # target_compile_options(vamp_crrtc_spheres PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-    target_compile_options(com_constraint PRIVATE -Wno-c++11-narrowing -Wno-sign-compare -fno-finite-math-only)
-    # target_compile_options(vamp_bimanual_constraint PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-    target_compile_options(vamp_bimanual_planner_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-  target_compile_options(vamp_bimanual_example_iiwa PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+    target_compile_options(vamp_rrtc_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+    target_compile_options(vamp_crrtc_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+    target_compile_options(vamp_bimanual_example_iiwa PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
     target_compile_options(vamp_com_constraint_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare -fno-finite-math-only)
-    target_compile_options(vamp_crrtc_transport_mug PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+    target_compile_options(vamp_crrtc_spheres PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
   endif()
 endif()
 

@@ -14,13 +14,11 @@ problems.pkl
 *.pyo
 *.pyd
 *.el
-.idea/
 venv/
 /resources/panda/*.json
 /resources/panda/*.pkl
 src/vamp/_core/*.pyi
 /.mypy_cache/
-_deps/
 CMakeFiles/
 CPM_modules/
 CMakeCache.txt

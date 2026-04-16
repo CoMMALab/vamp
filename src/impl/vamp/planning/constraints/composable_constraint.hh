@@ -138,7 +138,7 @@ namespace vamp::planning::constraint
             bool success = false;
             auto dist = distanceToConstraint(q);
 
-            size_t project_iter = 0;
+            int project_iter = 0;
             q_new = q;
             q_old = q;
 
@@ -220,7 +220,7 @@ namespace vamp::planning::constraint
             int success_position = -1;
             auto dist = distanceToConstraint(q);
 
-            size_t project_iter = 0;
+            int project_iter = 0;
             q_new = q;
             q_old = q;
             auto deviation_threshold =

@@ -16912,7 +16912,6 @@ namespace vamp::robots
         template <std::size_t rake, typename InputVector>
         inline static auto solve_tsr_error_gradient_descent(const InputVector &x, ConfigurationBlock<rake> &y)
         {
-            std::array<FloatVector<rake, 1>, 0> v;
 
             y[0] =
                 x[35] * x[47] + x[28] * x[46] + x[21] * x[45] + x[14] * x[44] + x[7] * x[43] + x[0] * x[42];

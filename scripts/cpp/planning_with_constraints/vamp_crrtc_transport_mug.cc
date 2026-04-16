@@ -144,7 +144,7 @@ auto main(int, char **) -> int
         vamp::planning::SimplifySettings simplify_settings;
         auto simplify_result = vamp::planning::constraint::
             simplify_with_constraints<Robot, rake, Robot::resolution, decltype(tsr_constraint)>(
-                result.path, env_v, task_constraint, simplify_settings, rng);
+                result.path, env_v, task_constraint, simplify_settings);
 
         std::cout << "\nPrinting Result!! " << result.path.size() << std::endl;
         // Output configurations of simplified path

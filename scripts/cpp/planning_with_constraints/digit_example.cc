@@ -253,11 +253,7 @@ auto main(int, char **) -> int
                                             decltype(com_constraint),
                                             decltype(closed_link_constraint),
                                             decltype(bimanual_task_constraint)>(
-                                            result.path,
-                                            env_v,
-                                            transport_task_constraint,
-                                            simplify_settings,
-                                            rng);
+                                            result.path, env_v, transport_task_constraint, simplify_settings);
                                     std::cout << "Simplify took " << result.nanoseconds / 1e6 << " ms"
                                               << std::endl;
 

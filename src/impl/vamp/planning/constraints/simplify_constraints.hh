@@ -265,7 +265,6 @@ namespace vamp::planning::constraint
         const collision::Environment<FloatVector<rake>> &environment,
         vamp::planning::constraint::ComposableConstraints<Robot, rake, Constraints...> &constraint,
         const SimplifySettings &settings,
-        const typename vamp::rng::RNG<Robot>::Ptr rng,
         ProjMethod projection_method = ProjMethod::InnerLM,
         float projection_descent_rate = 1.0F,
         int num_projection_iterations = 25,

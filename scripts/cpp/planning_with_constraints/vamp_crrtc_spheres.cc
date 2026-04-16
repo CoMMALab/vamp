@@ -123,7 +123,8 @@ auto main(int, char **) -> int
                                 std::ofstream outfile_sph("/src/spheres.txt");
                                 for (const auto &sphere : problem)
                                 {
-                                    outfile_sph << sphere[0] << "," << sphere[1] << "," << sphere[2] << "," << radius << "\n";
+                                    outfile_sph << sphere[0] << "," << sphere[1] << "," << sphere[2] << ","
+                                                << radius << "\n";
                                     environment.spheres.emplace_back(
                                         vamp::collision::factory::sphere::array(sphere, radius));
                                 }
@@ -193,7 +194,6 @@ auto main(int, char **) -> int
                                             env_v,
                                             task_constraint,
                                             simplify_settings,
-                                            rng,
                                             pm,
                                             descent_rate,
                                             num_projection_iterations,
@@ -219,10 +219,12 @@ auto main(int, char **) -> int
                                     std::sort(succ_attempts.begin(), succ_attempts.end());
                                 }
                                 else
-                                    std::cout << "No path found with settings: " << range << ", " << dyndom << " " << pm << " "
-                                              << descent_rate << " " << num_projection_iterations << " "
-                                              << std_dev_scaling_factor << " " << insert_all_to_tree
-                                              << std::endl;
+                                {
+                                    std::cout << "No path found with settings: " << range << ", " << dyndom
+                                              << " " << pm << " " << descent_rate << " "
+                                              << num_projection_iterations << " " << std_dev_scaling_factor
+                                              << " " << insert_all_to_tree << std::endl;
+                                }
                             }
                         }
                     }

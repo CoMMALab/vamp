@@ -269,7 +269,6 @@ auto main(int, char **) -> int
                                             env_v,
                                             task_constraint,
                                             simplify_settings,
-                                            rng,
                                             pm,
                                             descent_rate,
                                             num_projection_iterations,

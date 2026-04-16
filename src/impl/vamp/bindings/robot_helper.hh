@@ -427,11 +427,10 @@ namespace vamp::binding
                 const Path &path,
                 const EnvironmentInput &environment,
                 CC &constraint,
-                const vamp::planning::SimplifySettings &settings,
-                typename RNG::Ptr rng) -> vamp::planning::PlanningResult<Robot>
+                const vamp::planning::SimplifySettings &settings) -> vamp::planning::PlanningResult<Robot>
             {
                 return vamp::planning::constraint::simplify_with_constraints<Robot, rake, Robot::resolution>(
-                    path, EnvironmentVector(environment), constraint, settings, rng);
+                    path, EnvironmentVector(environment), constraint, settings);
             }
         };
 
@@ -894,14 +893,7 @@ namespace vamp::binding
         }
 
 #define CONSTRAINEDSIMPLIFIER(name, func, desc, ...)                                                         \
-    MF(name,                                                                                                 \
-       func::simplify_with_constraints,                                                                      \
-       desc,                                                                                                 \
-       "path"_a,                                                                                             \
-       "environment"_a,                                                                                      \
-       "constraint"_a,                                                                                       \
-       "settings"_a,                                                                                         \
-       "rng"_a);
+    MF(name, func::simplify_with_constraints, desc, "path"_a, "environment"_a, "constraint"_a, "settings"_a);
 
         // CONSTRAINEDSIMPLIFIER("crrtc", CRRTC_TSR, "CRRTConnectTSR");
         // CONSTRAINEDSIMPLIFIER("crrtc", CRRTC_TSR_COM, "CRRTConnectTSRCOM");

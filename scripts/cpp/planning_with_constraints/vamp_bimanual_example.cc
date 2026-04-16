@@ -102,8 +102,9 @@ auto main(int, char **) -> int
                                 //     radius));
                                 // }
                                 // outfile_sph.close();
-                                std::ifstream infile("resources/environments/cuboids/"
-                                                     "shelf_panda.txt");
+                                std::ifstream infile(
+                                    "resources/environments/cuboids/"
+                                    "shelf_panda.txt");
                                 if (!infile.is_open())
                                 {
                                     std::cerr << "Failed to open file!" << std::endl;
@@ -125,8 +126,9 @@ auto main(int, char **) -> int
                                     };
                                     // std::cout << x << ", " << y << ", " << z << ", " << dx << ", " << dy <<
                                     // ", " << dz << std::endl;
-                                    environment.cuboids.emplace_back(vamp::collision::factory::cuboid::array(
-                                        {x, y, z}, {0.0, 0.0, 0.0}, {dx / 2, dy / 2, dz / 2}));
+                                    environment.cuboids.emplace_back(
+                                        vamp::collision::factory::cuboid::array(
+                                            {x, y, z}, {0.0, 0.0, 0.0}, {dx / 2, dy / 2, dz / 2}));
                                 }
                                 infile.close();
 
@@ -170,7 +172,6 @@ auto main(int, char **) -> int
                                 // std::cout << "\n\n-----------------Starting to cbirrt------------ " <<
                                 // std::endl;
 
-
                                 std::cout << range << ", " << dyndom << " " << pm << " " << descent_rate
                                           << " ";
                                 auto result = vamp::planning::CRRTC<
@@ -210,7 +211,6 @@ auto main(int, char **) -> int
                                         std::cout << std::fixed << std::setprecision(3);
                                         std::ofstream outfile("trajectory.txt");
 
-
                                         // Simplify path with default settings
                                         vamp::planning::SimplifySettings simplify_settings;
                                         auto simplify_result =
@@ -219,7 +219,7 @@ auto main(int, char **) -> int
                                                 rake,
                                                 Robot::resolution,
                                                 decltype(bimanual_task_constraint)>(
-                                                result.path, env_v, task_constraint, simplify_settings, rng);
+                                                result.path, env_v, task_constraint, simplify_settings);
                                         std::cout << "Simplify took " << result.nanoseconds / 1e6 << " ms"
                                                   << std::endl;
 

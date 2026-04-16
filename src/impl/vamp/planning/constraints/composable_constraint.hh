@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <utility>
 
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
@@ -27,9 +28,48 @@ namespace vamp::planning::constraint
     public:
         using ConstraintPack = std::tuple<Constraints...>;
         static constexpr std::size_t total_size = (Constraints::size + ...);
+        static constexpr float projection_tolerance = 0.000001F;
+
+    private:
+        template <std::size_t... Is>
+        static auto squaredDistanceImpl(
+            const ConfigurationBlock &lhs,
+            const ConfigurationBlock &rhs,
+            std::index_sequence<Is...>)
+        {
+            auto distance = (lhs[0] - rhs[0]) * (lhs[0] - rhs[0]);
+            ((distance = distance + (lhs[Is + 1] - rhs[Is + 1]) * (lhs[Is + 1] - rhs[Is + 1])), ...);
+            return distance;
+        }
+
+        static auto squaredDistance(const ConfigurationBlock &lhs, const ConfigurationBlock &rhs)
+        {
+            if constexpr (Robot::dimension == 1)
+            {
+                return (lhs[0] - rhs[0]) * (lhs[0] - rhs[0]);
+            }
+            else
+            {
+                return squaredDistanceImpl(lhs, rhs, std::make_index_sequence<Robot::dimension - 1>{});
+            }
+        }
+
+    public:
 
         explicit ComposableConstraints(Constraints... cs) : constraints_(std::move(cs)...)
         {
+        }
+
+        template <typename Dist>
+        static bool isConverged(const Dist &dist)
+        {
+            return dist.test_all_less_equal(projection_tolerance);
+        }
+
+        template <typename Dist>
+        static bool hasAnyConverged(const Dist &dist)
+        {
+            return dist.test_any_less_equal(projection_tolerance);
         }
 
         vamp::FloatVector<rake, 1> distanceToConstraint(const ConfigurationBlock &q) const
@@ -43,12 +83,13 @@ namespace vamp::planning::constraint
             std::apply([&](const auto &...c) { (c.print_robot_tsr_error(q), ...); }, constraints_);
         }
 
-        auto projectStep(
+        void projectStepInPlace(
             const ConfigurationBlock &q,
+            ConfigurationBlock &q_new,
             ProjMethod projection_method = ProjMethod::InnerLM,
             float alpha = 1.0f)
         {
-            ConfigurationBlock q_in, q_new;
+            ConfigurationBlock q_in;
             // for (size_t i = 0; i < Robot::dimension; i++)
             // {
             //     q_in[i] = q[i];
@@ -58,10 +99,8 @@ namespace vamp::planning::constraint
 
             if constexpr (sizeof...(Constraints) == 0)
             {
-                return q_new;
+                return;
             }
-            
-            
 
             std::apply(
                 [&](auto &...c)
@@ -73,7 +112,15 @@ namespace vamp::planning::constraint
                     (applyConstraint(c), ...);
                 },
                 constraints_);
+        }
 
+        auto projectStep(
+            const ConfigurationBlock &q,
+            ProjMethod projection_method = ProjMethod::InnerLM,
+            float alpha = 1.0f)
+        {
+            ConfigurationBlock q_new;
+            projectStepInPlace(q, q_new, projection_method, alpha);
             return q_new;
         }
 
@@ -110,23 +157,17 @@ namespace vamp::planning::constraint
             //     q_new[rdim] = q[rdim];
             // }
 
-            while ((project_iter < num_projection_iterations) and (not dist.test_all_less_equal(0.000001F)))
+            while ((project_iter < num_projection_iterations) and (not isConverged(dist)))
             {
-                q_new = projectStep(q_old, projection_method, descend_rate);
+                projectStepInPlace(q_old, q_new, projection_method, descend_rate);
                 dist = distanceToConstraint(q_new);
                 // std::cout << "Iteration " << project_iter << " Distance: " << dist << std::endl;
                 // std::cout << q_old << q_new << std::endl;
-                auto q_dist_from_prev = (q_new[0] - q_old[0]) * (q_new[0] - q_old[0]);
+                auto q_dist_from_prev = squaredDistance(q_new, q_old);
                 // auto q_dist_from_start = (q_new[0] - q[0]) * (q_new[0] - q[0]);
 
-                for (auto i = 1U; i < Robot::dimension; i++)
-                {
-                    q_dist_from_prev = q_dist_from_prev + (q_new[i] - q_old[i]) * (q_new[i] - q_old[i]);
-                    // q_dist_from_start = q_dist_from_start + (q_new[i] - q[i]) * (q_new[i] - q[i]);
-                }
-
                 // std::cout << q_dist_from_prev << " " << dist << std::endl;
-                if (q_dist_from_prev.test_all_less_equal(0.000001F))  // if i make no forward progress
+                if (isConverged(q_dist_from_prev))  // if i make no forward progress
                 {
                     // std::cout << "Minimal progress " << dist << q_dist_from_prev << std::endl << q <<
                     // std::endl;
@@ -134,7 +175,7 @@ namespace vamp::planning::constraint
                 }
 
                 if (q_dist_from_prev.test_any_greater(deviation_threshold))  // from triangle
-                                                                                     // inequality
+                                                                             // inequality
                 {
                     // std::cout << "Too large step " << q_dist_from_prev << std::endl;
                     // std::cout << q_old << std::endl;
@@ -147,7 +188,7 @@ namespace vamp::planning::constraint
                 q_old = q_new;
                 project_iter += 1;
             }
-            if (dist.test_all_less_equal(0.000001F))
+            if (isConverged(dist))
             {
                 success = true;
             }
@@ -197,23 +238,17 @@ namespace vamp::planning::constraint
 
             // std::cout << q << std::endl;
 
-            while ((project_iter < num_projection_iterations) and (not dist.test_any_less_equal(0.000001F)))
+            while ((project_iter < num_projection_iterations) and (not hasAnyConverged(dist)))
             {
-                q_new = projectStep(q_old, projection_method, descend_rate);
+                projectStepInPlace(q_old, q_new, projection_method, descend_rate);
                 dist = distanceToConstraint(q_new);
                 // std::cout << "Iteration " << project_iter << " Distance: " << dist << std::endl;
                 // std::cout << q_old << q_new << std::endl;
-                auto q_dist_from_prev = (q_new[0] - q_old[0]) * (q_new[0] - q_old[0]);
+                auto q_dist_from_prev = squaredDistance(q_new, q_old);
                 // auto q_dist_from_start = (q_new[0] - q[0]) * (q_new[0] - q[0]);
 
-                for (auto i = 1U; i < Robot::dimension; i++)
-                {
-                    q_dist_from_prev = q_dist_from_prev + (q_new[i] - q_old[i]) * (q_new[i] - q_old[i]);
-                    // q_dist_from_start = q_dist_from_start + (q_new[i] - q[i]) * (q_new[i] - q[i]);
-                }
-
                 // std::cout << q_dist_from_prev << " " << dist << std::endl;
-                if (q_dist_from_prev.test_all_less_equal(0.000001F))  // if i make no forward progress in any
+                if (isConverged(q_dist_from_prev))  // if i make no forward progress in any
                                                                       // of them
                 {
                     // std::cout << "Minimal progress " << dist << q_dist_from_prev << std::endl << q <<
@@ -235,11 +270,11 @@ namespace vamp::planning::constraint
                 q_old = q_new;
                 project_iter += 1;
             }
-            if (dist.test_any_less_equal(0.000001F))
+            if (hasAnyConverged(dist))
             {
                 for (size_t i = 0; i < rake; i++)
                 {
-                    if (dist[{0, i}] <= 0.000001F)
+                    if (dist[{0, i}] <= projection_tolerance)
                     {
                         success_position = i;
                         break;

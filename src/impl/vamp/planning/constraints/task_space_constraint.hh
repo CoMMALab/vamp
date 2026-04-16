@@ -240,7 +240,7 @@ namespace vamp::planning::constraint
             ProjMethod projection_method = ProjMethod::InnerLM,
             float alpha = 1.0F)
         {
-            auto dist = distanceToConstraint(q);
+            (void)distanceToConstraint(q);
             typename Robot::template ConfigurationBlock<rake> grad;
 
             if (projection_method == ProjMethod::InnerLM)

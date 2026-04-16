@@ -18,14 +18,14 @@ namespace vamp::planning
     {
         using Configuration = typename Robot::Configuration;
         static constexpr auto dimension = Robot::dimension;
-        using RNG = typename vamp::rng::RNG<Robot::dimension>;
+        using RNG = typename vamp::rng::RNG<Robot>;
 
         inline static auto solve(
             const Configuration &start,
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const RRTCSettings &settings,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<dimension>
+            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
         }
@@ -35,15 +35,14 @@ namespace vamp::planning
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
             const RRTCSettings &settings,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<dimension>
+            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
-            PlanningResult<dimension> result;
+            PlanningResult<Robot> result;
 
             NN<dimension> start_tree;
             NN<dimension> goal_tree;
 
             constexpr const std::size_t start_index = 0;
-            constexpr const std::size_t goal_index = 1;
 
             auto buffer = std::unique_ptr<float, decltype(&free)>(
                 vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
@@ -109,8 +108,6 @@ namespace vamp::planning
                 }
 
                 auto temp = rng->next();
-                Robot::scale_configuration(temp);
-
                 typename Robot::ConfigurationBuffer temp_array;
                 temp.to_array(temp_array.data());
 

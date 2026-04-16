@@ -6,9 +6,11 @@
 
 namespace vamp::rng
 {
-    template <std::size_t dim>
-    struct Gaussian : public RNG<dim>, public Distribution
+    template <typename Robot>
+    struct Gaussian : public RNG<Robot>, public Distribution
     {
+        static constexpr auto dim = Robot::dimension;
+
         explicit Gaussian(FloatVector<dim> mean_in, FloatVector<dim> stddev_in) noexcept 
             : mean(mean_in), stddev(stddev_in)
         {

@@ -16,39 +16,6 @@
 
 namespace vamp::collision
 {
-    namespace
-    {
-        template <class T>
-        struct AlignedAllocator
-        {
-            using value_type = T;
-            inline static constexpr std::align_val_t alignment{32};
-
-            constexpr AlignedAllocator() noexcept = default;
-            constexpr AlignedAllocator(const AlignedAllocator &) noexcept = default;
-
-            template <typename U>
-            constexpr AlignedAllocator(const AlignedAllocator<U> &) noexcept
-            {
-            }
-
-            [[nodiscard]] value_type *allocate(std::size_t num_elements)
-            {
-                if (num_elements > std::numeric_limits<std::size_t>::max() / sizeof(value_type))
-                {
-                    throw std::bad_array_new_length();
-                }
-
-                const auto num_bytes = num_elements * sizeof(value_type);
-                return reinterpret_cast<value_type *>(::operator new[](num_bytes, alignment));
-            }
-
-            void deallocate(value_type *allocated_ptr, [[maybe_unused]] std::size_t num_allocated_bytes)
-            {
-                ::operator delete[](allocated_ptr, alignment);
-            }
-        };
-    }  // namespace
 
     // A 3D cell volume.
     struct Volume
@@ -402,7 +369,10 @@ namespace vamp::collision
         //  Returns `true` if in collision and `false` if not.
         [[nodiscard]] auto collides(const Point &center, float r) const noexcept -> bool
         {
-            if (aabb_top.distsq_to(center) > r * r)
+            // Pad query radii by radius of points.
+            r = r + r_point;
+            const float radius_sq = r * r;
+            if (aabb_top.distsq_to(center) > radius_sq)
             {
                 return false;
             }
@@ -416,8 +386,6 @@ namespace vamp::collision
 
             const std::size_t z = test_idx - tests.size();
 
-            r += r_point;
-            const float radius_sq = r * r;
             if (aabbs[z].distsq_to(center) > radius_sq)
             {
                 return false;
@@ -456,9 +424,11 @@ namespace vamp::collision
         // - `radii`: SIMD vector of the radii of each sphere.
         auto collides_simd(const std::array<FVectorT, 3> &centers, FVectorT radii) const noexcept -> bool
         {
+            // Padd radii by radius of points.
+            radii = radii + r_point;
             // Test against top AABB
             FVectorT inbounds =
-                centers[0] + radii >= aabb_top.lower[0] & (centers[0] - radii <= aabb_top.upper[0]);
+                (centers[0] + radii >= aabb_top.lower[0]) & (centers[0] - radii <= aabb_top.upper[0]);
 
             for (uint8_t k = 1; k < 3; k++)
             {
@@ -486,11 +456,6 @@ namespace vamp::collision
 
             const IVectorT zs = idxs - tests.size();
 
-            // Test whether points are in the AABBs
-            // NOTE: Now is when we need to add r_point, since these AABBs are really "point volume AABBs" -
-            // we can't just test if the query is in the AABB, but rather if it's in the AABB when fattened by
-            // the radius of the points the AABB contains
-            radii = radii + r_point;
             IVectorT zs6 = zs * 6;
             const float *const aabb_ptr = &aabbs.front().lower.front();
 
@@ -582,6 +547,37 @@ namespace vamp::collision
 
         // Destroy the affordance tree, freeing all owned memory.
         ~CAPT() = default;
+
+        template <class T>
+        struct AlignedAllocator
+        {
+            using value_type = T;
+            inline static constexpr std::align_val_t alignment{32};
+
+            constexpr AlignedAllocator() noexcept = default;
+            constexpr AlignedAllocator(const AlignedAllocator &) noexcept = default;
+
+            template <typename U>
+            constexpr AlignedAllocator(const AlignedAllocator<U> &) noexcept
+            {
+            }
+
+            [[nodiscard]] value_type *allocate(std::size_t num_elements)
+            {
+                if (num_elements > std::numeric_limits<std::size_t>::max() / sizeof(value_type))
+                {
+                    throw std::bad_array_new_length();
+                }
+
+                const auto num_bytes = num_elements * sizeof(value_type);
+                return reinterpret_cast<value_type *>(::operator new[](num_bytes, alignment));
+            }
+
+            void deallocate(value_type *allocated_ptr, [[maybe_unused]] std::size_t num_allocated_bytes)
+            {
+                ::operator delete[](allocated_ptr, alignment);
+            }
+        };
 
         // The test buffer for this tree.
         // Contains (2 ^ nlog2) - 1 points.

@@ -9,7 +9,9 @@ option(VAMP_BUILD_JAX "Build JAX Extensions." OFF)
 option(VAMP_USE_OPENMP "Use OpenMP." ON)
 option(XLA_DIR "JAX FFI Directory" "")
 
-option(VAMP_BUILD_PYTHON "Build Python module" ON)
+option(VAMP_BUILD_PYTHON_BINDINGS "Build VAMP Python bindings" ON)
+option(VAMP_INSTALL_CPP_LIBRARY "Install VAMP C++ library (disable for Python wheel builds)" ON)
+
 option(VAMP_BUILD_CPP_DEMO "Build VAMP C++ Demo Scripts" OFF)
 option(VAMP_BUILD_OMPL_DEMO "Build VAMP C++ OMPL Integration Demo Scripts" OFF)
 option(VAMP_OMPL_PATH "Search Path for OMPL Installation - Only Needed for Demo Script" "")
@@ -48,6 +50,9 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(macros)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 include(CompilerSettings)
 include(FetchInitCPM)
 
@@ -230,23 +235,125 @@ if(VAMP_BUILD_PYTHON)
       FILES "${STUB_PREFIX}${robot_name}.pyi"
       DESTINATION "${CMAKE_SOURCE_DIR}/src/vamp/_core"
     )
-    endforeach()
+  endforeach()
 endif()
 
+# Create VAMP C++ library
+add_library(vamp_cpp INTERFACE)
+
+# Set required C++ standard for the library
+target_compile_features(vamp_cpp INTERFACE cxx_std_17)
+
+target_include_directories(vamp_cpp
+    INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/impl>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/vamp>
+)
+
+target_link_libraries_system(vamp_cpp
+    INTERFACE
+  Eigen3::Eigen
+)
+
+# Link SIMDxorshift if available
+if(TARGET simdxorshift)
+  target_link_libraries(vamp_cpp INTERFACE simdxorshift)
+endif()
+
+# Set library properties
+set_target_properties(vamp_cpp PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+)
+
+# Create alias target for modern CMake usage
+add_library(vamp::vamp ALIAS vamp_cpp)
+
+# Python bindings are already configured above in the VAMP_BUILD_PYTHON block.
+# Avoid re-including cmake/Python.cmake here, which would create duplicate
+# nanobind targets such as _core_ext and vamp_*_stub.
+
+# Install C++ library components (conditional for Python wheel builds)
+if(VAMP_INSTALL_CPP_LIBRARY)
+  # Install C++ library headers and SIMD library (if available)
+  set(VAMP_INSTALL_TARGETS vamp_cpp)
+  if(TARGET simdxorshift)
+    list(APPEND VAMP_INSTALL_TARGETS simdxorshift)
+  endif()
+
+  install(TARGETS ${VAMP_INSTALL_TARGETS}
+      EXPORT vamp_cppTargets
+      LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  )
+
+  # Install headers
+  install(DIRECTORY src/impl/vamp/
+      DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vamp
+      FILES_MATCHING PATTERN "*.hh"
+  )
+
+  # Generate package configuration files
+  configure_package_config_file(
+      "${CMAKE_CURRENT_SOURCE_DIR}/cmake/vampConfig.cmake.in"
+      "${CMAKE_CURRENT_BINARY_DIR}/vampConfig.cmake"
+      INSTALL_DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/vamp
+  )
+
+  write_basic_package_version_file(
+      "${CMAKE_CURRENT_BINARY_DIR}/vampConfigVersion.cmake"
+      VERSION ${PROJECT_VERSION}
+      COMPATIBILITY SameMajorVersion
+  )
+
+  # Install package configuration files
+  install(FILES
+      "${CMAKE_CURRENT_BINARY_DIR}/vampConfig.cmake"
+      "${CMAKE_CURRENT_BINARY_DIR}/vampConfigVersion.cmake"
+      DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/vamp
+  )
+
+  # Export targets
+  install(EXPORT vamp_cppTargets
+      FILE vamp_cppTargets.cmake
+      NAMESPACE vamp::
+      DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/vamp
+  )
+endif()
+
+# C++ demos
 if(VAMP_BUILD_CPP_DEMO)
-  add_executable(vamp_rrtc_example scripts/cpp/rrtc_example.cc ${VAMP_SOURCES})
-  target_link_libraries(vamp_rrtc_example PRIVATE Eigen3::Eigen)
-  target_include_directories(vamp_rrtc_example SYSTEM PRIVATE ${VAMP_INCLUDES})
+  add_executable(vamp_rrtc_example scripts/cpp/rrtc_example.cc)
+  target_link_libraries(vamp_rrtc_example PRIVATE vamp_cpp)
+  
+  # Disable strict warnings for demos to maintain compatibility
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(vamp_rrtc_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+  endif()
 endif()
 
+# OMPL integration demo
 if(VAMP_BUILD_OMPL_DEMO)
   find_package(ompl QUIET PATHS ${VAMP_OMPL_PATH})
 
   if(ompl_FOUND)
-    add_executable(vamp_ompl_integration scripts/cpp/ompl_integration.cc ${VAMP_SOURCES})
-    target_link_libraries(vamp_ompl_integration PRIVATE ompl::ompl Eigen3::Eigen)
-    target_include_directories(vamp_ompl_integration SYSTEM PRIVATE ${VAMP_INCLUDES})
+    add_executable(vamp_ompl_integration scripts/cpp/ompl_integration.cc)
+    target_link_libraries(vamp_ompl_integration PRIVATE ompl::ompl vamp_cpp)
+    
+    # Disable strict warnings for demos to maintain compatibility
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      target_compile_options(vamp_ompl_integration PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+    endif()
   else()
     message(WARNING "OMPL not found! Cannot build OMPL demo.")
   endif()
 endif()
+
+# Print build configuration
+message(STATUS "VAMP build configuration:")
+message(STATUS "  - C++ library: ON")
+message(STATUS "  - Install C++ library: ${VAMP_INSTALL_CPP_LIBRARY}")
+message(STATUS "  - Python bindings: ${VAMP_BUILD_PYTHON_BINDINGS}")
+message(STATUS "  - C++ demos: ${VAMP_BUILD_CPP_DEMO}")
+message(STATUS "  - OMPL demos: ${VAMP_BUILD_OMPL_DEMO}")

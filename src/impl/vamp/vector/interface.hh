@@ -19,7 +19,7 @@ namespace vamp
     template <typename S>
     inline constexpr void print_vector(std::ostream &out, typename S::VectorT vec) noexcept
     {
-        for (auto i = 0; i < S::VectorWidth - 1; ++i)
+        for (auto i = 0ul; i < S::VectorWidth - 1; ++i)
         {
             out << S::extract(vec, i) << ", ";
         }
@@ -690,8 +690,9 @@ namespace vamp
             const MaskT &mask,
             const D &alternative) noexcept -> D
         {
-            return D(apply_indexed<S::template gather_select<void>>(
-                idxs.data, mask.template to<D>().data, alternative.data, base));
+            return D(
+                apply_indexed<S::template gather_select<void>>(
+                    idxs.data, mask.template to<D>().data, alternative.data, base));
         }
 
     protected:
@@ -925,6 +926,13 @@ namespace vamp
         {
         }
 
+        // TODO: Make sure we always want filling behavior here
+        template <typename DT = typename S::ScalarT, typename = std::enable_if_t<not std::is_same_v<DT, int>>>
+        explicit constexpr Vector(int scalar_data) noexcept
+          : Vector(Interface::fill(typename S::ScalarT(scalar_data)))
+        {
+        }
+
         [[nodiscard]] inline constexpr auto row(std::size_t idx) const noexcept -> RowT
         {
             return RowT(*reinterpret_cast<const std::array<typename S::VectorT, num_vectors_per_row> *>(
@@ -935,6 +943,13 @@ namespace vamp
         {
             return *reinterpret_cast<RowT *>(
                 reinterpret_cast<std::array<typename S::VectorT, num_vectors_per_row> *>(data.data() + idx));
+        }
+
+        [[nodiscard]] inline constexpr auto element(std::size_t idx) const noexcept -> typename S::ScalarT
+        {
+            std::size_t row_idx = idx / num_scalars_per_row;
+            std::size_t col_idx = idx % num_scalars_per_row;
+            return S::extract(data[row_idx], col_idx);
         }
 
         inline constexpr auto operator[](std::size_t idx) const noexcept -> RowT
@@ -1021,7 +1036,7 @@ namespace vamp
     {
         o << "[";
 
-        for (auto i = 0; i < v.data.size() - 1; ++i)
+        for (auto i = 0ul; i < v.data.size() - 1; ++i)
         {
             o << " [";
             print_vector<typename VectorIT::S>(o, v.data[i]);

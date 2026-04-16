@@ -67,7 +67,7 @@ namespace vamp
         template <unsigned int = 0>
         inline static constexpr auto cmp_not_equal(VectorT l, VectorT r) noexcept -> VectorT
         {
-            return vreinterpretq_s32_u32(vmvnq_s32(vceqq_s32(l, r)));
+            return vreinterpretq_s32_u32(vmvnq_u32(vceqq_s32(l, r)));
         }
 
         template <unsigned int = 0>
@@ -273,7 +273,7 @@ namespace vamp
         template <unsigned int = 0>
         inline static constexpr auto constant_int(unsigned int v) noexcept -> VectorT
         {
-            return vcvtq_s32_f32(vdupq_n_s32(v));
+            return vcvtq_f32_s32(vdupq_n_s32(v));
         }
 
         template <unsigned int = 0>
@@ -381,6 +381,12 @@ namespace vamp
         inline static constexpr auto cmp_greater_equal(VectorT l, VectorT r) noexcept -> VectorT
         {
             return vreinterpretq_f32_u32(vcgeq_f32(l, r));
+        }
+
+        template <unsigned int = 0>
+        inline static constexpr auto cmp_greater_than(VectorT l, VectorT r) noexcept -> VectorT
+        {
+            return vreinterpretq_f32_u32(vcgtq_f32(l, r));
         }
 
         template <unsigned int = 0>
@@ -574,7 +580,7 @@ namespace vamp
             // Update sign mask
             auto temp_mask = IntVector::and_(emm2, IntVector::constant(4));
             temp_mask = IntVector::cmp_not_equal(temp_mask, IntVector::zero_vector());
-            sign_mask_sin = vreinterpretq_u32_f32(veorq_u32(
+            sign_mask_sin = vreinterpretq_f32_u32(veorq_u32(
                 vreinterpretq_u32_f32(sign_mask_sin),
                 vreinterpretq_u32_f32(IntVector::template as<VectorT>(temp_mask))));
 
@@ -602,7 +608,7 @@ namespace vamp
 
             auto poly_mask_f = IntVector::template as<VectorT>(poly_mask);
             auto ys = blend(y2, y1, poly_mask_f);
-            return blend(ys, neg(ys), vreinterpretq_f32_u32(sign_mask_sin));
+            return blend(ys, neg(ys), sign_mask_sin);
         }
 
         // NOTE: Dummy parameter because otherwise we get constexpr errors with set1_ps...
@@ -616,11 +622,11 @@ namespace vamp
             auto invalid_mask = cmp_less_equal(x, zero_vector());
 
             // cut off denormalized values
-            x = max(x, constant_int(0x00800000));
+            x = max(x, vreinterpretq_f32_u32(vdupq_n_u32(0x00800000u)));
 
             auto emm0 = IntVector::shift_right(as<IntVector::VectorT>(x), 23);
 
-            x = and_(x, constant_int(~0x7f800000));
+            x = and_(x, vreinterpretq_f32_u32(vdupq_n_u32(~0x7f800000u)));
             x = or_(x, half);
 
             // keep only the fractional part

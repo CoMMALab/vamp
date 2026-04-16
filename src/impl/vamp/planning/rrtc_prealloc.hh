@@ -18,7 +18,7 @@ namespace vamp::planning
     {
         using Configuration = typename Robot::Configuration;
         static constexpr auto dimension = Robot::dimension;
-        using RNG = typename vamp::rng::RNG<Robot::dimension>;
+        using RNG = typename vamp::rng::RNG<Robot>;
 
         std::unique_ptr<float, void (*)(void *) noexcept> buffer;
         std::vector<std::size_t> parents;
@@ -45,9 +45,9 @@ namespace vamp::planning
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const RRTCSettings &settings,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<dimension>
+            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
-            PlanningResult<dimension> result;
+            PlanningResult<Robot> result;
 
             NN<dimension> start_tree;
             NN<dimension> goal_tree;

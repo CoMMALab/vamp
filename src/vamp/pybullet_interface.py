@@ -80,8 +80,9 @@ class PyBulletSimulator:
             self.link_map = {ji[12]: ji[0] for ji in jtu}
 
             if urdf:
-                srdffile = list(Path(urdf).parent.glob('*.srdf'))[0]
-                if srdffile:
+                srdffiles = list(Path(urdf).parent.glob('*.srdf'))
+                if srdffiles:
+                    srdffile = srdffiles[0]
                     with open(srdffile, 'r') as f:
                         srdf = xmltodict.parse(f.read())
 
@@ -310,8 +311,8 @@ class PyBulletSimulator:
         with DisableRendering(self.client), RedirectStream(sys.stdout), RedirectStream(sys.stderr):
             for i, edge_list in enumerate(roadmap.edges):
                 for edge in edge_list:
-                    a = fk_function(roadmap[i].to_list())[-1]
-                    b = fk_function(roadmap[edge].to_list())[-1]
+                    a = fk_function(roadmap[i])[-1]
+                    b = fk_function(roadmap[edge])[-1]
                     self.client.addUserDebugLine([a.x, a.y, a.z], [b.x, b.y, b.z])
 
     def draw_pointcloud(self, pc, lifetime: float = 0., pointsize: int = 3):
@@ -323,7 +324,6 @@ class PyBulletSimulator:
     def clear_pointcloud(self):
         with DisableRendering(self.client), RedirectStream(sys.stdout), RedirectStream(sys.stderr):
             self.client.removeAllUserDebugItems()
-
 
     def play_once(self, plan):
         if not len(plan):
@@ -348,7 +348,7 @@ class PyBulletSimulator:
 
             plan_idx = min(len(plan), plan_idx + 1)
             if plan_idx >= len(plan):
-                break;
+                break
 
             time.sleep(0.016)
 

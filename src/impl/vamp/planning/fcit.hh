@@ -67,14 +67,14 @@ namespace vamp::planning
     {
         using Configuration = typename Robot::Configuration;
         static constexpr auto dimension = Robot::dimension;
-        using RNG = typename vamp::rng::RNG<Robot::dimension>;
+        using RNG = typename vamp::rng::RNG<Robot>;
 
         inline static auto solve(
             const Configuration &start,
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
-            typename RNG::Ptr &rng) noexcept -> PlanningResult<dimension>
+            typename RNG::Ptr &rng) noexcept -> PlanningResult<Robot>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
         }
@@ -84,18 +84,20 @@ namespace vamp::planning
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
-            typename RNG::Ptr &rng) noexcept -> PlanningResult<dimension>
+            typename RNG::Ptr &rng) noexcept -> PlanningResult<Robot>
         {
             auto start_time = std::chrono::steady_clock::now();
 
-            PlanningResult<dimension> result;
+            PlanningResult<Robot> result;
             NN<dimension> roadmap;
 
             std::size_t iter = 0;
             typename Robot::template ConfigurationBlock<rake> temp_block;
-            auto states = std::unique_ptr<float>(
+            auto states = std::unique_ptr<float, decltype(&free)>(
                 vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
-                    settings.max_samples * Configuration::num_scalars_rounded));
+                    settings.max_samples * Configuration::num_scalars_rounded),
+                &free);
+
             // TODO: Is it better to just use arrays for these since we're reserving full capacity
             // anyway? Test it!
             std::vector<FCITRoadmapNode> nodes;
@@ -171,10 +173,11 @@ namespace vamp::planning
                         [](const auto &a, const auto &b) { return a.distance < b.distance; });
                     start_node.neighbor_iterator = start_node.neighbors.begin();
 
-                    open_set.emplace_back(QueueEdge{
-                        (*start_node.neighbor_iterator).index,
-                        start_index,
-                        (*start_node.neighbor_iterator).distance});
+                    open_set.emplace_back(
+                        QueueEdge{
+                            (*start_node.neighbor_iterator).index,
+                            start_index,
+                            (*start_node.neighbor_iterator).distance});
                     start_node.neighbor_iterator++;
 
                     while (not open_set.empty())
@@ -201,10 +204,11 @@ namespace vamp::planning
                             if ((*parent_node.neighbor_iterator).distance <
                                 node.g + goal.distance(state_index(node.index)))
                             {
-                                open_set.emplace_back(QueueEdge{
-                                    (*parent_node.neighbor_iterator).index,
-                                    current_p,
-                                    (*parent_node.neighbor_iterator).distance});
+                                open_set.emplace_back(
+                                    QueueEdge{
+                                        (*parent_node.neighbor_iterator).index,
+                                        current_p,
+                                        (*parent_node.neighbor_iterator).distance});
                                 parent_node.neighbor_iterator++;
                                 break;
                             }
@@ -299,10 +303,11 @@ namespace vamp::planning
                                 [](const auto &a, const auto &b) { return a.distance < b.distance; });
                             current_node.neighbor_iterator = current_node.neighbors.begin();
 
-                            open_set.emplace_back(QueueEdge{
-                                (*current_node.neighbor_iterator).index,
-                                current_index,
-                                (*current_node.neighbor_iterator).distance});
+                            open_set.emplace_back(
+                                QueueEdge{
+                                    (*current_node.neighbor_iterator).index,
+                                    current_index,
+                                    (*current_node.neighbor_iterator).distance});
                             current_node.neighbor_iterator++;
                         }
                     }
@@ -318,7 +323,6 @@ namespace vamp::planning
                      new_samples < settings.batch_size and nodes.size() < settings.max_samples;)
                 {
                     auto rng_temp = rng->next();
-                    Robot::scale_configuration(rng_temp);
 
                     // Check sample validity
                     for (auto i = 0U; i < dimension; ++i)
@@ -344,7 +348,7 @@ namespace vamp::planning
                 }
             }
 
-            utils::recover_path<Configuration>(parents, state_index, result.path);
+            utils::recover_path<Robot>(parents, state_index, result.path);
             result.cost = nodes[1].g;
             result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
             result.iterations = iter;

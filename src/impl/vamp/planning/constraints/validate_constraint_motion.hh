@@ -149,6 +149,18 @@ namespace vamp::planning::constraint
         {
             return false;
         }
+        if (distance > 100.F){
+            // For infinite distance, just check the last projected config
+            typename Robot::ConfigurationArray last_projected_initial_attempt;
+            for (auto j = 0U; j < Robot::dimension; j++)
+            {
+                last_projected_initial_attempt[j] = initial_projected_block[{j, 0}];
+            }
+            projected_vector.push_back(typename Robot::Configuration(last_projected_initial_attempt));
+            return end_projected_valid;
+
+        }
+
 
         auto adjusted_vector = end_config_projected - start;
         // First project just the final config

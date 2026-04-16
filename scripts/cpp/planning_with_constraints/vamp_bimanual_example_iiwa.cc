@@ -69,29 +69,16 @@ auto main(int, char **) -> int
 {
     vamp::planning::CRRTCSettings crrtc_settings;
 
-    float ranges[] = {0.5, 0.75, 1.0, 1.5, 2.0};
-    // float ranges[] = {1.0};
-    // float ranges[] = {0.5, 0.75};
-    // float ranges[] = {0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0};
-    // bool dd[] = {false};
+    float ranges[] = {1.0, 1.25};  //, 1.5, 2.0};
     bool dd[] = {false, true};
     vamp::planning::constraint::ProjMethod projection_method[] = {
         vamp::planning::constraint::ProjMethod::InnerLM, vamp::planning::constraint::ProjMethod::OuterLM};
-    // vamp::planning::constraint::ProjMethod projection_method[] =
-    // {vamp::planning::constraint::ProjMethod::InnerLM};
+    auto rng = std::make_shared<vamp::rng::Halton<Robot>>();
 
-    // auto start_eefk = Robot::eefk(start);
-    // auto start_rel = start_eefk[0].inverse() * start_eefk[1];
-    // Eigen::Quaternionf start_quat(start_rel.linear());
-    // std::cout << start_quat.coeffs().transpose() << " " << start_rel.translation().transpose() <<
-    // std::endl; auto goal_eefk = Robot::eefk(goal); auto goal_rel = goal_eefk[0].inverse() * goal_eefk[1];
-    // Eigen::Quaternionf goal_quat(goal_rel.linear());
-    // std::cout << goal_quat.coeffs().transpose() << " " << goal_rel.translation().transpose() << std::endl;
-
-    float descend_rates[] = {0.5, 0.75, 1.0};
+    float descend_rates[] = {0.5, 1.0};
     // float descend_rates[] = {1.0};
     // float descend_rates[] = {1.0};
-    int num_projection_iterations[] = {5, 10, 25, 50, 100};
+    int num_projection_iterations[] = {5, 10, 25};
     bool insert_all_to_tree[] = {false, true};
     float std_dev_scaling_factors[] = {0.01F, 0.1F, 0.2F};
     std::vector<Attempt> succ_attempts;
@@ -122,8 +109,9 @@ auto main(int, char **) -> int
                                 //     radius));
                                 // }
                                 // outfile_sph.close();
-                                std::ifstream infile("resources/environments/cuboids/"
-                                                     "shelf_drake.txt");
+                                std::ifstream infile(
+                                    "resources/environments/cuboids/"
+                                    "shelf_drake.txt");
                                 if (!infile.is_open())
                                 {
                                     std::cerr << "Failed to open file!" << std::endl;
@@ -145,8 +133,9 @@ auto main(int, char **) -> int
                                     }
                                     // std::cout << x << ", " << y << ", " << z << ", " << dx << ", " << dy <<
                                     // ", " << dz << std::endl;
-                                    environment.cuboids.emplace_back(vamp::collision::factory::cuboid::array(
-                                        {x, y, z}, {0.0, 0.0, 0.0}, {dx / 2, dy / 2, dz / 2}));
+                                    environment.cuboids.emplace_back(
+                                        vamp::collision::factory::cuboid::array(
+                                            {x, y, z}, {0.0, 0.0, 0.0}, {dx / 2, dy / 2, dz / 2}));
                                 }
                                 infile.close();
 
@@ -154,7 +143,7 @@ auto main(int, char **) -> int
 
                                 auto env_v = EnvironmentVector(environment);
                                 // Create RNG for planning
-                                auto rng = std::make_shared<vamp::rng::Halton<Robot>>();
+                                // auto rng = std::make_shared<vamp::rng::Halton<Robot>>();
 
                                 std::array<float, 6> lower_bound = {
                                     -0.001, -0.001, -0.001, -0.001, -0.001, -0.001};
@@ -185,15 +174,16 @@ auto main(int, char **) -> int
                                 // std::cout << "\n\n-----------------Starting to cbirrt------------ " <<
                                 // std::endl;
 
-
                                 // from resources/start_end_points/bimanual_iiwa.txt, read in start and goal
                                 // configurations
-                                std::ifstream infile_start_goal("resources/start_end_points/"
-                                                                "bimanual_iiwa.txt");
+                                std::ifstream infile_start_goal(
+                                    "resources/start_end_points/"
+                                    "bimanual_iiwa.txt");
                                 if (!infile_start_goal.is_open())
                                 {
-                                    infile_start_goal.open("resources/start_end_points/"
-                                                           "bimanual_iiwa.txt");
+                                    infile_start_goal.open(
+                                        "resources/start_end_points/"
+                                        "bimanual_iiwa.txt");
                                 }
                                 if (!infile_start_goal.is_open())
                                 {
@@ -248,8 +238,8 @@ auto main(int, char **) -> int
                                               << std::endl;
                                     return 1;
                                 }
-                                std::cout << "Planning between " << Robot::Configuration(start) << " and "
-                                          << Robot::Configuration(goal) << std::endl;
+                                // std::cout << "Planning between " << Robot::Configuration(start) << " and "
+                                //           << Robot::Configuration(goal) << std::endl;
 
                                 // std::cout << range << ", " << dyndom << " " << pm << " " << descent_rate <<
                                 // " ";
@@ -307,8 +297,6 @@ auto main(int, char **) -> int
                                     if ((succ_attempts.size() == 0) ||
                                         (succ_attempts.size() > 0 && a < succ_attempts[0]))
                                     {
-                                        std::cout << "\nPrinting Result!! " << result.path.size()
-                                                  << std::endl;
                                         // Output configurations of simplified path
                                         std::cout << std::fixed << std::setprecision(3);
                                         std::ofstream outfile("trajectory.txt");

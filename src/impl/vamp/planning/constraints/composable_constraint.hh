@@ -49,10 +49,16 @@ namespace vamp::planning::constraint
             float alpha = 1.0f)
         {
             ConfigurationBlock q_in, q_new;
-            for (size_t i = 0; i < Robot::dimension; i++)
+            // for (size_t i = 0; i < Robot::dimension; i++)
+            // {
+            //     q_in[i] = q[i];
+            // }
+            q_in = q;
+            q_new = q;
+
+            if constexpr (sizeof...(Constraints) == 0)
             {
-                q_in[i] = q[i];
-                q_new[i] = q[i];
+                return q_new;
             }
             
             
@@ -62,10 +68,7 @@ namespace vamp::planning::constraint
                 {
                     auto applyConstraint = [&](auto &constraint) {
                         q_new = constraint.projectStep(q_in, projection_method, alpha);
-                        for (size_t rdim = 0U; rdim < Robot::dimension; rdim++)
-                        {
-                            q_in[rdim] = q_new[rdim];
-                        }
+                        q_in = q_new;
                     };
                     (applyConstraint(c), ...);
                 },
@@ -98,24 +101,28 @@ namespace vamp::planning::constraint
             auto dist = distanceToConstraint(q);
 
             size_t project_iter = 0;
-            for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
-                q_old[rdim] = q[rdim];
-                q_new[rdim] = q[rdim];
-            }
+            q_new = q;
+            q_old = q;
 
-            while ((project_iter < num_projection_iterations) and (not dist.test_all_less_equal(0.0001F)))
+            auto deviation_threshold = 4 * max_q_dist * max_q_dist;
+            // for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
+            //     q_old[rdim] = q[rdim];
+            //     q_new[rdim] = q[rdim];
+            // }
+
+            while ((project_iter < num_projection_iterations) and (not dist.test_all_less_equal(0.000001F)))
             {
                 q_new = projectStep(q_old, projection_method, descend_rate);
                 dist = distanceToConstraint(q_new);
                 // std::cout << "Iteration " << project_iter << " Distance: " << dist << std::endl;
                 // std::cout << q_old << q_new << std::endl;
                 auto q_dist_from_prev = (q_new[0] - q_old[0]) * (q_new[0] - q_old[0]);
-                auto q_dist_from_start = (q_new[0] - q[0]) * (q_new[0] - q[0]);
+                // auto q_dist_from_start = (q_new[0] - q[0]) * (q_new[0] - q[0]);
 
                 for (auto i = 1U; i < Robot::dimension; i++)
                 {
                     q_dist_from_prev = q_dist_from_prev + (q_new[i] - q_old[i]) * (q_new[i] - q_old[i]);
-                    q_dist_from_start = q_dist_from_start + (q_new[i] - q[i]) * (q_new[i] - q[i]);
+                    // q_dist_from_start = q_dist_from_start + (q_new[i] - q[i]) * (q_new[i] - q[i]);
                 }
 
                 // std::cout << q_dist_from_prev << " " << dist << std::endl;
@@ -126,7 +133,7 @@ namespace vamp::planning::constraint
                     break;
                 }
 
-                if (q_dist_from_prev.test_any_greater(4 * max_q_dist * max_q_dist))  // from triangle
+                if (q_dist_from_prev.test_any_greater(deviation_threshold))  // from triangle
                                                                                      // inequality
                 {
                     // std::cout << "Too large step " << q_dist_from_prev << std::endl;
@@ -134,12 +141,13 @@ namespace vamp::planning::constraint
                     break;
                 }
 
-                for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
-                    q_old[rdim] = q_new[rdim];
-                }
+                // for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
+                //     q_old[rdim] = q_new[rdim];
+                // }
+                q_old = q_new;
                 project_iter += 1;
             }
-            if (dist.test_all_less_equal(0.0001F))
+            if (dist.test_all_less_equal(0.000001F))
             {
                 success = true;
             }
@@ -179,28 +187,29 @@ namespace vamp::planning::constraint
             auto dist = distanceToConstraint(q);
 
             size_t project_iter = 0;
-            // q_new = q;
-            // q_old = q;
-            for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
-                q_old[rdim] = q[rdim];
-                q_new[rdim] = q[rdim];
-            }
+            q_new = q;
+            q_old = q;
+            auto deviation_threshold = 4 * max_q_dist * max_q_dist + 1e-6F;  // add a small epsilon to avoid numerical issues
+            // for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
+            //     q_old[rdim] = q[rdim];
+            //     q_new[rdim] = q[rdim];
+            // }
 
             // std::cout << q << std::endl;
 
-            while ((project_iter < num_projection_iterations) and (not dist.test_any_less_equal(0.0001F)))
+            while ((project_iter < num_projection_iterations) and (not dist.test_any_less_equal(0.000001F)))
             {
                 q_new = projectStep(q_old, projection_method, descend_rate);
                 dist = distanceToConstraint(q_new);
                 // std::cout << "Iteration " << project_iter << " Distance: " << dist << std::endl;
                 // std::cout << q_old << q_new << std::endl;
                 auto q_dist_from_prev = (q_new[0] - q_old[0]) * (q_new[0] - q_old[0]);
-                auto q_dist_from_start = (q_new[0] - q[0]) * (q_new[0] - q[0]);
+                // auto q_dist_from_start = (q_new[0] - q[0]) * (q_new[0] - q[0]);
 
                 for (auto i = 1U; i < Robot::dimension; i++)
                 {
                     q_dist_from_prev = q_dist_from_prev + (q_new[i] - q_old[i]) * (q_new[i] - q_old[i]);
-                    q_dist_from_start = q_dist_from_start + (q_new[i] - q[i]) * (q_new[i] - q[i]);
+                    // q_dist_from_start = q_dist_from_start + (q_new[i] - q[i]) * (q_new[i] - q[i]);
                 }
 
                 // std::cout << q_dist_from_prev << " " << dist << std::endl;
@@ -213,23 +222,24 @@ namespace vamp::planning::constraint
                 }
 
                 if (q_dist_from_prev.test_all_greater_equal(
-                        4 * max_q_dist * max_q_dist + 1e-6F))  // from triangle
+                        deviation_threshold))  // from triangle
                                                                // inequality
                 {
                     // std::cout << "Too large step " << q_dist_from_prev << std::endl;
                     // std::cout << q_old << std::endl;
                     break;
                 }
-                for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
-                    q_old[rdim] = q_new[rdim];
-                }
+                // for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
+                //     q_old[rdim] = q_new[rdim];
+                // }
+                q_old = q_new;
                 project_iter += 1;
             }
-            if (dist.test_any_less_equal(0.0001F))
+            if (dist.test_any_less_equal(0.000001F))
             {
                 for (size_t i = 0; i < rake; i++)
                 {
-                    if (dist[{0, i}] <= 0.0001F)
+                    if (dist[{0, i}] <= 0.000001F)
                     {
                         success_position = i;
                         break;

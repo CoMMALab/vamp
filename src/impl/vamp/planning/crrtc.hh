@@ -267,8 +267,8 @@ namespace vamp::planning
                                         crrtc_settings.constraint_settings.projection_method),
                                     crrtc_settings.constraint_settings.descend_rate,
                                     crrtc_settings.constraint_settings.num_projection_iterations,
-                                    crrtc_settings.constraint_settings.std_dev_scaling_factor
-                                    // settings.insert_all_to_tree
+                                    crrtc_settings.constraint_settings.std_dev_scaling_factor,
+                                    crrtc_settings.constraint_settings.insert_all_to_tree
                                     ))
                         {
                             break;

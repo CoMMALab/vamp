@@ -143,6 +143,34 @@ namespace vamp::planning::constraint
             return d * 0.0;  // NOTE: Chatgpt pointed it out, maybe get rid of the * 0.0
         }
 
+        void projectStepInPlace(
+            ConfigurationBlock &q,
+            ProjMethod projection_method = ProjMethod::InnerLM,
+            float alpha = 1.0F)
+        {
+            distanceToConstraint(q);
+            ConfigurationBlock grad;
+
+            if (projection_method == ProjMethod::InnerLM)
+            {
+                Robot::template solve_self_collision_error_lm_inner<rake>(jac_proj_inp, grad);
+                // grad = grad.zero_out_nans();
+                // std::cout << "Grad for selfcoll constraint: "  ;
+                // for (auto i = 0U; i < Robot::dimension; i++)
+                //         std::cout << q[{i, 0}] << " -- " <<grad[{i, 0}] << " ";
+                // std::cout << std::endl;
+            }
+            if (projection_method == ProjMethod::OuterLM)
+            {
+                Robot::template solve_self_collision_error_lm_outer<rake>(jac_proj_inp, grad);
+            }
+            if (projection_method == ProjMethod::GradDesc)
+            {
+                Robot::template solve_self_collision_error_gradient_descent<rake>(jac_proj_inp, grad);
+            }
+            integrateJointConfiguration<Robot, rake>(q, q, grad, alpha);
+        }
+
         vamp::FloatVector<rake, 1> projectStep(
             const ConfigurationBlock &q,
             ConfigurationBlock &q_new,
@@ -153,26 +181,8 @@ namespace vamp::planning::constraint
             auto dist = print_robot_tsr_error(q);
             if (update_q)
             {
-                ConfigurationBlock grad;
-
-                if (projection_method == ProjMethod::InnerLM)
-                {
-                    Robot::template solve_self_collision_error_lm_inner<rake>(jac_proj_inp, grad);
-                    // grad = grad.zero_out_nans();
-                    // std::cout << "Grad for selfcoll constraint: "  ;
-                    // for (auto i = 0U; i < Robot::dimension; i++)
-                    //         std::cout << q[{i, 0}] << " -- " <<grad[{i, 0}] << " ";
-                    // std::cout << std::endl;
-                }
-                if (projection_method == ProjMethod::OuterLM)
-                {
-                    Robot::template solve_self_collision_error_lm_outer<rake>(jac_proj_inp, grad);
-                }
-                if (projection_method == ProjMethod::GradDesc)
-                {
-                    Robot::template solve_self_collision_error_gradient_descent<rake>(jac_proj_inp, grad);
-                }
-                integrateJointConfiguration<Robot, rake>(q, q_new, grad, alpha);
+                q_new = q;
+                projectStepInPlace(q_new, projection_method, alpha);
             }
             return dist;
         }

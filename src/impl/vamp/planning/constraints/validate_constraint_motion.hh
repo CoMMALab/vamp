@@ -315,6 +315,7 @@ namespace vamp::planning::constraint
         ProjMethod projection_method = ProjMethod::InnerLM,
         float projection_descent_rate = 1.0F,
         int num_projection_iterations = 25,
+        float std_dev_scaling_factor = 0.1F,
         bool insert_all_to_tree = false,
         bool infinite_distance = false) -> bool
     {
@@ -327,6 +328,9 @@ namespace vamp::planning::constraint
             constraint,
             environment,
             projection_method,
-            projection_descent_rate);
+            projection_descent_rate,
+            num_projection_iterations,
+            std_dev_scaling_factor,
+            insert_all_to_tree);
     }
 }  // namespace vamp::planning::constraint

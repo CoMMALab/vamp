@@ -273,7 +273,6 @@ auto main(int, char **) -> int
                                             pm,
                                             descent_rate,
                                             num_projection_iterations,
-                                            std_dev_scaling_factor,
                                             insert_all_to_tree);
                                     // std::cout << "Simplify took " << result.nanoseconds / 1e6 << " ms" <<
                                     // std::endl;

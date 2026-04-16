@@ -120,11 +120,14 @@ auto main(int, char **) -> int
 
                                 // Build sphere cage environment
                                 EnvironmentInput environment;
+                                std::ofstream outfile_sph("/src/spheres.txt");
                                 for (const auto &sphere : problem)
                                 {
+                                    outfile_sph << sphere[0] << "," << sphere[1] << "," << sphere[2] << "," << radius << "\n";
                                     environment.spheres.emplace_back(
                                         vamp::collision::factory::sphere::array(sphere, radius));
                                 }
+                                outfile_sph.close();
 
                                 environment.sort();
                                 auto env_v = EnvironmentVector(environment);
@@ -132,10 +135,10 @@ auto main(int, char **) -> int
                                 auto rng = std::make_shared<vamp::rng::Halton<Robot>>();
 
                                 std::array<float, 6 * Robot::n_eef> tsr_lower_bound = {
-                                    -0.01, -10.01, -0.01, -0.01, -0.01, -0.01};
+                                    -0.001, -10.01, -0.001, -0.01, -0.01, -0.01};
 
                                 std::array<float, 6 * Robot::n_eef> tsr_upper_bound = {
-                                    0.01, 10.01, 0.01, 0.01, 0.01, 0.01};
+                                    0.001, 10.01, 0.001, 0.01, 0.01, 0.01};
 
                                 std::array<std::array<float, 7>, Robot::n_eef> eef_transforms = {
                                     {0, 1, 0, 0, 0.3486, 0.647752, 0.2399}};
@@ -194,7 +197,6 @@ auto main(int, char **) -> int
                                             pm,
                                             descent_rate,
                                             num_projection_iterations,
-                                            std_dev_scaling_factor,
                                             insert_all_to_tree);
 
                                     Attempt a{

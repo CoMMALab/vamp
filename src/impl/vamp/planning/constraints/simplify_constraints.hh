@@ -11,6 +11,7 @@
 #include <vamp/planning/constraints/task_space_constraint.hh>
 #include <vamp/planning/constraints/composable_constraint.hh>
 #include <vamp/planning/constraints/validate_constraint_motion.hh>
+#include <fstream>
 
 namespace vamp::planning::constraint
 {
@@ -23,7 +24,6 @@ namespace vamp::planning::constraint
         ProjMethod projection_method = ProjMethod::InnerLM,
         float projection_descent_rate = 1.0F,
         int num_projection_iterations = 25,
-        float std_dev_scaling_factor = 0.1F,
         bool insert_all_to_tree = false) -> bool
     {
         if (path.size() < 3)
@@ -58,7 +58,7 @@ namespace vamp::planning::constraint
                             projection_method,
                             projection_descent_rate,
                             num_projection_iterations,
-                            std_dev_scaling_factor,
+                            0.001F,
                             insert_all_to_tree) &&
                         ((path[index - 1] - midpoint).squared_l2_norm() >
                          (projected_vector.back() - path[index - 1]).squared_l2_norm()))
@@ -74,7 +74,7 @@ namespace vamp::planning::constraint
                                 projection_method,
                                 projection_descent_rate,
                                 num_projection_iterations,
-                                std_dev_scaling_factor,
+                                0.001F,
                                 insert_all_to_tree) &&
                             ((path[index + 1] - midpoint).squared_l2_norm() >
                              (projected_vector.back() - path[index + 1]).squared_l2_norm()))
@@ -168,7 +168,6 @@ namespace vamp::planning::constraint
         ProjMethod projection_method = ProjMethod::InnerLM,
         float projection_descent_rate = 1.0F,
         int num_projection_iterations = 25,
-        float std_dev_scaling_factor = 0.1F,
         bool insert_all_to_tree = false) -> bool
     {
         if (path.size() < 3)
@@ -193,7 +192,7 @@ namespace vamp::planning::constraint
                         projection_method,
                         projection_descent_rate,
                         num_projection_iterations,
-                        std_dev_scaling_factor,
+                        0.001F,
                         insert_all_to_tree))
                 {
                     if ((projected_vector.back() - path[j]).squared_l2_norm() < 1e-6)
@@ -270,7 +269,6 @@ namespace vamp::planning::constraint
         ProjMethod projection_method = ProjMethod::InnerLM,
         float projection_descent_rate = 1.0F,
         int num_projection_iterations = 25,
-        float std_dev_scaling_factor = 0.1F,
         bool insert_all_to_tree = false) -> PlanningResult<Robot>
     {
         auto start_time = std::chrono::steady_clock::now();
@@ -284,7 +282,6 @@ namespace vamp::planning::constraint
                               projection_method,
                               projection_descent_rate,
                               num_projection_iterations,
-                              std_dev_scaling_factor,
                               insert_all_to_tree]()
         {
             return smooth_bspline<Robot, rake, resolution>(
@@ -295,7 +292,6 @@ namespace vamp::planning::constraint
                 projection_method,
                 projection_descent_rate,
                 num_projection_iterations,
-                std_dev_scaling_factor,
                 insert_all_to_tree);
         };
         // const auto reduce = [&result, &environment, settings, rng]()
@@ -310,7 +306,6 @@ namespace vamp::planning::constraint
                                projection_method,
                                projection_descent_rate,
                                num_projection_iterations,
-                               std_dev_scaling_factor,
                                insert_all_to_tree]()
         {
             return shortcut_path<Robot, rake, resolution>(
@@ -321,7 +316,6 @@ namespace vamp::planning::constraint
                 projection_method,
                 projection_descent_rate,
                 num_projection_iterations,
-                std_dev_scaling_factor,
                 insert_all_to_tree);
         };
         // const auto perturb = [&result, &environment, settings, rng]()
@@ -345,8 +339,8 @@ namespace vamp::planning::constraint
                                                          projection_method,
                                                          projection_descent_rate,
                                                          num_projection_iterations,
-                                                         std_dev_scaling_factor,
-                                                         insert_all_to_tree)))
+                                                         0.0001F,
+                                                         true)))
         {
             // if the last projected configuration is not the same as the original end configuration
             if ((projected_vector.back() - path.back()).squared_l2_norm() < 1e-6)

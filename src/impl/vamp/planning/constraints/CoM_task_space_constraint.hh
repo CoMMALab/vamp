@@ -209,12 +209,12 @@ namespace vamp::planning::constraint
             return d;
         }
 
-        ConfigurationBlock projectStep(
-            const ConfigurationBlock &q,
+        void projectStepInPlace(
+            ConfigurationBlock &q,
             ProjMethod projection_method = ProjMethod::InnerLM,
             float alpha = 1.0F)
         {
-            auto dist = distanceToConstraint(q);
+            distanceToConstraint(q);
             // std::cout << "COM constraint distance: " << dist << std::endl;
             typename Robot::template ConfigurationBlock<rake> grad;
 
@@ -234,8 +234,16 @@ namespace vamp::planning::constraint
             {
                 throw std::invalid_argument("Invalid projection method");
             }
-            ConfigurationBlock q_new;
-            integrateJointConfiguration<Robot, rake>(q, q_new, grad, alpha);
+            integrateJointConfiguration<Robot, rake>(q, q, grad, alpha);
+        }
+
+        ConfigurationBlock projectStep(
+            const ConfigurationBlock &q,
+            ProjMethod projection_method = ProjMethod::InnerLM,
+            float alpha = 1.0F)
+        {
+            ConfigurationBlock q_new = q;
+            projectStepInPlace(q_new, projection_method, alpha);
             return q_new;
         }
     };

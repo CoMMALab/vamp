@@ -89,12 +89,6 @@ namespace vamp::planning::constraint
             ProjMethod projection_method = ProjMethod::InnerLM,
             float alpha = 1.0f)
         {
-            ConfigurationBlock q_in;
-            // for (size_t i = 0; i < Robot::dimension; i++)
-            // {
-            //     q_in[i] = q[i];
-            // }
-            q_in = q;
             q_new = q;
 
             if constexpr (sizeof...(Constraints) == 0)
@@ -106,8 +100,7 @@ namespace vamp::planning::constraint
                 [&](auto &...c)
                 {
                     auto applyConstraint = [&](auto &constraint) {
-                        q_new = constraint.projectStep(q_in, projection_method, alpha);
-                        q_in = q_new;
+                        constraint.projectStepInPlace(q_new, projection_method, alpha);
                     };
                     (applyConstraint(c), ...);
                 },

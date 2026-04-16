@@ -268,12 +268,7 @@ namespace vamp::planning
                                     crrtc_settings.constraint_settings.descend_rate,
                                     crrtc_settings.constraint_settings.num_projection_iterations,
                                     crrtc_settings.constraint_settings.std_dev_scaling_factor,
-                                    crrtc_settings.constraint_settings.insert_all_to_tree
-                                    ))
-                        {
-                            break;
-                        }
-                        if (free_index >= crrtc_settings.rrtc_settings.max_samples)
+                                    crrtc_settings.constraint_settings.insert_all_to_tree))
                         {
                             break;
                         }

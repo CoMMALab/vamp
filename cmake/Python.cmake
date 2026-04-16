@@ -16,23 +16,23 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
 
   if(NOT VAMP_ROBOT_MODULES)
     list(APPEND VAMP_ROBOT_MODULES
-      sphere
       ur5
       panda
       fetch
       baxter
       g1_unitree
       digit
+      bimanual_panda
     )
 
     list(APPEND VAMP_ROBOT_STRUCTS
-      Sphere
       UR5
       Panda
       Fetch
       Baxter
       G1Unitree
       Digit
+      BimanualPanda
     )
   endif()
 

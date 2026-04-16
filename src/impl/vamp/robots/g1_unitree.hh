@@ -10,7 +10,7 @@ namespace vamp::robots
 {
     struct G1Unitree
     {
-        static constexpr char *name = "g1unitree";
+        static constexpr char *name = "g1_unitree";
         static constexpr std::size_t dimension = 35;
         static constexpr std::size_t n_spheres = 133;
         static constexpr float min_radius = 0.012152000330388546;
@@ -3160,329 +3160,437 @@ namespace vamp::robots
             output.first.emplace_back(
                 sphere_environment_get_collisions<decltype(x[0])>(environment, y[96], y[97], y[98], y[99]));
 
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[100], y[101], y[102], y[103]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[104], y[105], y[106], y[107]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[108], y[109], y[110], y[111]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[112], y[113], y[114], y[115]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[116], y[117], y[118], y[119]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[120], y[121], y[122], y[123]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[124], y[125], y[126], y[127]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[128], y[129], y[130], y[131]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[132], y[133], y[134], y[135]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[136], y[137], y[138], y[139]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[140], y[141], y[142], y[143]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[144], y[145], y[146], y[147]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[148], y[149], y[150], y[151]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[152], y[153], y[154], y[155]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[156], y[157], y[158], y[159]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[160], y[161], y[162], y[163]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[164], y[165], y[166], y[167]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[168], y[169], y[170], y[171]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[172], y[173], y[174], y[175]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[176], y[177], y[178], y[179]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[180], y[181], y[182], y[183]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[184], y[185], y[186], y[187]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[188], y[189], y[190], y[191]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[192], y[193], y[194], y[195]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[196], y[197], y[198], y[199]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[200], y[201], y[202], y[203]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[204], y[205], y[206], y[207]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[208], y[209], y[210], y[211]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[212], y[213], y[214], y[215]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[216], y[217], y[218], y[219]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[220], y[221], y[222], y[223]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[224], y[225], y[226], y[227]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[228], y[229], y[230], y[231]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[232], y[233], y[234], y[235]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[236], y[237], y[238], y[239]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[240], y[241], y[242], y[243]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[244], y[245], y[246], y[247]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[248], y[249], y[250], y[251]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[252], y[253], y[254], y[255]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[256], y[257], y[258], y[259]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[260], y[261], y[262], y[263]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[264], y[265], y[266], y[267]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[268], y[269], y[270], y[271]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[272], y[273], y[274], y[275]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[276], y[277], y[278], y[279]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[280], y[281], y[282], y[283]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[284], y[285], y[286], y[287]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[288], y[289], y[290], y[291]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[292], y[293], y[294], y[295]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[296], y[297], y[298], y[299]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[300], y[301], y[302], y[303]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[304], y[305], y[306], y[307]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[308], y[309], y[310], y[311]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[312], y[313], y[314], y[315]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[316], y[317], y[318], y[319]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[320], y[321], y[322], y[323]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[324], y[325], y[326], y[327]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[328], y[329], y[330], y[331]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[332], y[333], y[334], y[335]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[336], y[337], y[338], y[339]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[340], y[341], y[342], y[343]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[344], y[345], y[346], y[347]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[348], y[349], y[350], y[351]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[352], y[353], y[354], y[355]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[356], y[357], y[358], y[359]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[360], y[361], y[362], y[363]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[364], y[365], y[366], y[367]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[368], y[369], y[370], y[371]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[372], y[373], y[374], y[375]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[376], y[377], y[378], y[379]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[380], y[381], y[382], y[383]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[384], y[385], y[386], y[387]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[388], y[389], y[390], y[391]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[392], y[393], y[394], y[395]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[396], y[397], y[398], y[399]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[400], y[401], y[402], y[403]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[404], y[405], y[406], y[407]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[408], y[409], y[410], y[411]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[412], y[413], y[414], y[415]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[416], y[417], y[418], y[419]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[420], y[421], y[422], y[423]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[424], y[425], y[426], y[427]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[428], y[429], y[430], y[431]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[432], y[433], y[434], y[435]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[436], y[437], y[438], y[439]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[440], y[441], y[442], y[443]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[444], y[445], y[446], y[447]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[448], y[449], y[450], y[451]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[452], y[453], y[454], y[455]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[456], y[457], y[458], y[459]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[460], y[461], y[462], y[463]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[464], y[465], y[466], y[467]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[468], y[469], y[470], y[471]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[472], y[473], y[474], y[475]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[476], y[477], y[478], y[479]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[480], y[481], y[482], y[483]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[484], y[485], y[486], y[487]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[488], y[489], y[490], y[491]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[492], y[493], y[494], y[495]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[496], y[497], y[498], y[499]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[500], y[501], y[502], y[503]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[504], y[505], y[506], y[507]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[508], y[509], y[510], y[511]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[512], y[513], y[514], y[515]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[516], y[517], y[518], y[519]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[520], y[521], y[522], y[523]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[524], y[525], y[526], y[527]));
-
-            output.first.emplace_back(sphere_environment_get_collisions<decltype(x[0])>(
-                environment, y[528], y[529], y[530], y[531]));
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[100], y[101], y[102], y[103]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[104], y[105], y[106], y[107]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[108], y[109], y[110], y[111]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[112], y[113], y[114], y[115]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[116], y[117], y[118], y[119]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[120], y[121], y[122], y[123]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[124], y[125], y[126], y[127]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[128], y[129], y[130], y[131]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[132], y[133], y[134], y[135]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[136], y[137], y[138], y[139]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[140], y[141], y[142], y[143]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[144], y[145], y[146], y[147]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[148], y[149], y[150], y[151]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[152], y[153], y[154], y[155]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[156], y[157], y[158], y[159]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[160], y[161], y[162], y[163]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[164], y[165], y[166], y[167]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[168], y[169], y[170], y[171]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[172], y[173], y[174], y[175]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[176], y[177], y[178], y[179]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[180], y[181], y[182], y[183]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[184], y[185], y[186], y[187]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[188], y[189], y[190], y[191]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[192], y[193], y[194], y[195]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[196], y[197], y[198], y[199]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[200], y[201], y[202], y[203]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[204], y[205], y[206], y[207]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[208], y[209], y[210], y[211]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[212], y[213], y[214], y[215]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[216], y[217], y[218], y[219]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[220], y[221], y[222], y[223]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[224], y[225], y[226], y[227]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[228], y[229], y[230], y[231]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[232], y[233], y[234], y[235]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[236], y[237], y[238], y[239]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[240], y[241], y[242], y[243]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[244], y[245], y[246], y[247]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[248], y[249], y[250], y[251]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[252], y[253], y[254], y[255]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[256], y[257], y[258], y[259]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[260], y[261], y[262], y[263]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[264], y[265], y[266], y[267]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[268], y[269], y[270], y[271]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[272], y[273], y[274], y[275]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[276], y[277], y[278], y[279]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[280], y[281], y[282], y[283]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[284], y[285], y[286], y[287]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[288], y[289], y[290], y[291]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[292], y[293], y[294], y[295]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[296], y[297], y[298], y[299]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[300], y[301], y[302], y[303]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[304], y[305], y[306], y[307]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[308], y[309], y[310], y[311]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[312], y[313], y[314], y[315]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[316], y[317], y[318], y[319]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[320], y[321], y[322], y[323]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[324], y[325], y[326], y[327]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[328], y[329], y[330], y[331]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[332], y[333], y[334], y[335]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[336], y[337], y[338], y[339]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[340], y[341], y[342], y[343]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[344], y[345], y[346], y[347]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[348], y[349], y[350], y[351]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[352], y[353], y[354], y[355]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[356], y[357], y[358], y[359]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[360], y[361], y[362], y[363]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[364], y[365], y[366], y[367]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[368], y[369], y[370], y[371]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[372], y[373], y[374], y[375]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[376], y[377], y[378], y[379]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[380], y[381], y[382], y[383]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[384], y[385], y[386], y[387]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[388], y[389], y[390], y[391]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[392], y[393], y[394], y[395]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[396], y[397], y[398], y[399]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[400], y[401], y[402], y[403]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[404], y[405], y[406], y[407]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[408], y[409], y[410], y[411]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[412], y[413], y[414], y[415]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[416], y[417], y[418], y[419]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[420], y[421], y[422], y[423]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[424], y[425], y[426], y[427]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[428], y[429], y[430], y[431]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[432], y[433], y[434], y[435]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[436], y[437], y[438], y[439]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[440], y[441], y[442], y[443]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[444], y[445], y[446], y[447]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[448], y[449], y[450], y[451]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[452], y[453], y[454], y[455]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[456], y[457], y[458], y[459]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[460], y[461], y[462], y[463]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[464], y[465], y[466], y[467]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[468], y[469], y[470], y[471]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[472], y[473], y[474], y[475]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[476], y[477], y[478], y[479]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[480], y[481], y[482], y[483]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[484], y[485], y[486], y[487]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[488], y[489], y[490], y[491]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[492], y[493], y[494], y[495]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[496], y[497], y[498], y[499]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[500], y[501], y[502], y[503]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[504], y[505], y[506], y[507]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[508], y[509], y[510], y[511]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[512], y[513], y[514], y[515]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[516], y[517], y[518], y[519]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[520], y[521], y[522], y[523]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[524], y[525], y[526], y[527]));
+
+            output.first.emplace_back(
+                sphere_environment_get_collisions<decltype(x[0])>(
+                    environment, y[528], y[529], y[530], y[531]));
 
             if (sphere_sphere_self_collision<decltype(x[0])>(
                     y[0], y[1], y[2], y[3], y[36], y[37], y[38], y[39]))

@@ -55,7 +55,6 @@ namespace vamp::planning::constraint
         }
 
     public:
-
         explicit ComposableConstraints(Constraints... cs) : constraints_(std::move(cs)...)
         {
         }
@@ -99,9 +98,8 @@ namespace vamp::planning::constraint
             std::apply(
                 [&](auto &...c)
                 {
-                    auto applyConstraint = [&](auto &constraint) {
-                        constraint.projectStepInPlace(q_new, projection_method, alpha);
-                    };
+                    auto applyConstraint = [&](auto &constraint)
+                    { constraint.projectStepInPlace(q_new, projection_method, alpha); };
                     (applyConstraint(c), ...);
                 },
                 constraints_);
@@ -157,6 +155,7 @@ namespace vamp::planning::constraint
                 // std::cout << "Iteration " << project_iter << " Distance: " << dist << std::endl;
                 // std::cout << q_old << q_new << std::endl;
                 auto q_dist_from_prev = squaredDistance(q_new, q_old);
+                auto q_dist_from_start = squaredDistance(q_new, q);
                 // auto q_dist_from_start = (q_new[0] - q[0]) * (q_new[0] - q[0]);
 
                 // std::cout << q_dist_from_prev << " " << dist << std::endl;
@@ -167,8 +166,9 @@ namespace vamp::planning::constraint
                     break;
                 }
 
-                if (q_dist_from_prev.test_any_greater(deviation_threshold))  // from triangle
-                                                                             // inequality
+                if (q_dist_from_prev.test_any_greater(deviation_threshold) or
+                    q_dist_from_start.test_any_greater(deviation_threshold))  // from triangle
+                                                                              // inequality
                 {
                     // std::cout << "Too large step " << q_dist_from_prev << std::endl;
                     // std::cout << q_old << std::endl;
@@ -223,7 +223,8 @@ namespace vamp::planning::constraint
             size_t project_iter = 0;
             q_new = q;
             q_old = q;
-            auto deviation_threshold = 4 * max_q_dist * max_q_dist + 1e-6F;  // add a small epsilon to avoid numerical issues
+            auto deviation_threshold =
+                4 * max_q_dist * max_q_dist + 1e-6F;  // add a small epsilon to avoid numerical issues
             // for(size_t rdim = 0U; rdim < Robot::dimension; rdim++) {
             //     q_old[rdim] = q[rdim];
             //     q_new[rdim] = q[rdim];
@@ -238,20 +239,21 @@ namespace vamp::planning::constraint
                 // std::cout << "Iteration " << project_iter << " Distance: " << dist << std::endl;
                 // std::cout << q_old << q_new << std::endl;
                 auto q_dist_from_prev = squaredDistance(q_new, q_old);
+                auto q_dist_from_start = squaredDistance(q_new, q);
                 // auto q_dist_from_start = (q_new[0] - q[0]) * (q_new[0] - q[0]);
 
                 // std::cout << q_dist_from_prev << " " << dist << std::endl;
                 if (isConverged(q_dist_from_prev))  // if i make no forward progress in any
-                                                                      // of them
+                                                    // of them
                 {
                     // std::cout << "Minimal progress " << dist << q_dist_from_prev << std::endl << q <<
                     // std::endl;
                     break;
                 }
 
-                if (q_dist_from_prev.test_all_greater_equal(
-                        deviation_threshold))  // from triangle
-                                                               // inequality
+                if (q_dist_from_prev.test_all_greater_equal(deviation_threshold) or
+                    q_dist_from_start.test_all_greater_equal(deviation_threshold))  // from triangle
+                                                                                    // inequality
                 {
                     // std::cout << "Too large step " << q_dist_from_prev << std::endl;
                     // std::cout << q_old << std::endl;

@@ -416,7 +416,9 @@ namespace vamp::binding
             }
         };
 
-        static constexpr const std::size_t num_com_polygons = 4;
+        static constexpr const std::size_t num_com_polygons =
+            4;  // We assume a 4-sided polygon for the CoM constraint for now, but this can be changed if
+                // needed.
 
         template <typename CC>
         struct ConstrainedSimplifyHelper
@@ -451,9 +453,6 @@ namespace vamp::binding
             vamp::planning::CRRTC<Robot, rake, Robot::resolution, TSR_Constraint, COM_Constraint>,
             vamp::planning::CRRTCSettings,
             Composable_TSR_COM>;
-        // using CRRTC_COM =
-        //     ConstrainedPlannerHelper<vamp::planning::CRRTC<Robot, rake, Robot::resolution, Composable_COM>,
-        //     vamp::planning::RRTCSettings, Composable_COM>;
 
         using Composable_Bimanual =
             vamp::planning::constraint::ComposableConstraints<Robot, rake, Bimanual_Constraint>;

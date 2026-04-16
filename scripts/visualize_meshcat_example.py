@@ -128,7 +128,7 @@ def main(
 
     # display in meshcat
     viz_instance = viz.MeshcatViz()
-    viz_instance.init_viz("resources/fr3/fr3_spherized.urdf", "resources/fr3/meshes/")
+    viz_instance.init_viz("resources/panda/panda_spherized.urdf", "resources/panda/meshes/")
     viz_instance.clear_all_waypoints()
 
     viz_instance.add_cuboids(env_cuboids, colors=env_colors)

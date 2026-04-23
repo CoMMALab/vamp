@@ -107,6 +107,7 @@ namespace vamp::planning {
                 }
                 Bezier sub_bez(new_anchors);
                 sub_bez.time = bez.time * t;
+                // std::cout << sub_bez.time << std::endl;
                 // std::cout << "end subdivide" << std::endl;
                 return sub_bez;
             }

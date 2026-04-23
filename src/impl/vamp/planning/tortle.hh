@@ -316,9 +316,12 @@ namespace vamp::planning
                     Configuration new_configuration_bez(new_configuration_array);
                     add_to_tree(tree_a, new_configuration_bez, free_index, nearest_node.index, new_cost);
                     bezier_map[free_index] = sub_bez;
+                    std::cout << free_index << std::endl;
                     free_index++;
 
-                    // Connect trees:
+                    std::cout << "Added node" << std::endl;
+
+                    // Connect trees: TODO: Likely a bug here
                     // Attempt direct connections from new node to other tree, similar to rrt+
                     std::vector<std::pair<NNNode, float>> near_nodes = find_nearest_k(tree_b, target_vert, new_configuration_bez, max_cost - new_cost, tree_a_is_start, settings.k_nearest);
                     if (near_nodes.size() == 0) {
@@ -353,59 +356,47 @@ namespace vamp::planning
                             valid_found = true;
                             best_connection = {other_nearest_node, other_nearest_distance};
                             best_bez = sub_bez_connection;
+                            // break;
                         }
                     }
                     // solution found, construct path
                     if (valid_found)
                     {
-                        Bezier dbest_bez = best_bez.derivative();
-                        Bezier ddbest_bez = dbest_bez.derivative();
+                        std::cout << "Valid connection found" << std::endl;
+                        std::cout << free_index << std::endl;
 
-                        auto new_q = best_bez.anchors.row(best_bez.anchors.rows() - 1);
-                        auto new_dq = dbest_bez.anchors.row(dbest_bez.anchors.rows() - 1);
-                        auto new_ddq = ddbest_bez.anchors.row(ddbest_bez.anchors.rows() - 1);
-                        
-                        // convert to Robot configuration in phase space
-                        std::array<float, Robot::dimension> new_configuration_array;
-                        
-                        for (auto i = 0U; i < Robot::dimension; i++)
-                        {
-                            if (i < Robot::dimension / 3)
-                            {
-                                new_configuration_array[i] = new_q(i);
-                            }
-                            else if (i < 2 * Robot::dimension / 3)
-                            {
-                                new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
-                            }
-                            else
-                            {
-                                new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
-                            }
-                        }
-                        Configuration new_configuration_connect(new_configuration_array);
-                        add_to_tree(tree_a, new_configuration_connect, free_index, free_index - 1, new_cost + best_bez.time);
+                        add_to_tree(tree_a, best_connection.first.array, free_index, free_index - 1, new_cost + best_bez.time);
+                        std::cout << best_connection.first.index << std::endl;
                         bezier_map[free_index] = best_bez;
-                        free_index++;
+                        // std::cout << "Time: " << best_bez.time << std::endl;
 
-                        auto current = free_index - 1;
+                        // for (auto &kv : bezier_map) {
+                        //     std::cout << "Index: " << kv.first << std::endl;
+                        //     std::cout << "Bez time: " << kv.second.time << std::endl;
+                        // }
+
+                        // std::cout << bezier_map.size() << std::endl;
+                        auto current = free_index;
                         result.path.emplace_back(buffer_index(current));
                         result.beziers.emplace_back(bezier_map[current]);
-                        while (parents[current] != current)
+
+                        while (parents[current] != current and parents[current] != parents[parents[current]])
                         {
+                            std::cout << "Current: " << current << std::endl;
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
                             result.beziers.emplace_back(bezier_map[parent]);
                             result.cost += Robot::template get_nn_time(result.path[result.path.size() - 2], result.path[result.path.size() - 1]);
                             current = parent;
                         }
-
+                        
                         std::reverse(result.path.begin(), result.path.end());
-                        std::reverse(result.beziers.begin(), result.beziers.end());
+                        // std::reverse(result.beziers.begin(), result.beziers.end());
                         current = best_connection.first.index;
 
-                        while (parents[current] != current)
+                        while (parents[current] != current and parents[current] != parents[parents[current]])
                         {
+                            std::cout << "Current: " << current << std::endl;
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
                             result.beziers.emplace_back(bezier_map[parent]);
@@ -417,6 +408,10 @@ namespace vamp::planning
                         {
                             std::reverse(result.path.begin(), result.path.end());
                             std::reverse(result.beziers.begin(), result.beziers.end());
+                        }
+
+                        for (int i = 0; i < result.beziers.size(); i++) {
+                            std::cout << "Result bez time: " << result.beziers[i].time << std::endl;
                         }
 
                         break;

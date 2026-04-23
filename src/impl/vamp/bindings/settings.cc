@@ -62,7 +62,9 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_samples", &vp::TORTLESettings::max_samples)
         .def_rw("max_runs", &vp::TORTLESettings::max_runs)
         .def_rw("t_radius", &vp::TORTLESettings::t_radius)
-        .def_rw("min_t_radius", &vp::TORTLESettings::min_t_radius);
+        .def_rw("min_t_radius", &vp::TORTLESettings::min_t_radius)
+        .def_rw("bez_range", &vp::TORTLESettings::bez_range)
+        .def_rw("k_nearest", &vp::TORTLESettings::k_nearest);
 
     // TODO: Redesign a neater form of RoadmapSettings/NeighborParams
     // TODO: Expose the other NeighborParams types

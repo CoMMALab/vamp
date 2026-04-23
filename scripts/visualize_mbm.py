@@ -13,9 +13,9 @@ import time
 
 def topple(
     robot: str = "pandatopp",                  # Robot to plan for
-    planner: str = "rrtctopp",                 # Planner name to use
+    planner: str = "tortle",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "box",                     # Problem name
+    problem: str = "table_pick",                     # Problem name
     index: int = 64,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
@@ -60,9 +60,11 @@ def topple(
     plan_settings.use_phs = False
     plan_settings.optimize = False
     plan_settings.simplify_intermediate = False
-    plan_settings.max_runs = 2
+    plan_settings.max_runs = 1
     cost_bound_resample = False
     simp_settings.bez = True
+    plan_settings.bez_range = 0.5
+    plan_settings.rrtc.tree_ratio = 1
 
     if not problem:
         problem = list(data['problems'].keys())[0]
@@ -121,7 +123,7 @@ CAPT Construction Time: {build_time * 1e-6:5.3f}ms
         ts = time.perf_counter()
         result = planner_func(start, goals, env, plan_settings, sampler)
         tf = time.perf_counter()
-        print(tf - ts)
+        # print(tf - ts)
         solved = result.solved
     else:
         print("Problem is invalid!")
@@ -150,7 +152,7 @@ Simplified: {stats['simplified_path_cost']:5.3f}"""
 
         # plan = simplify.path
         plan = result.path.numpy()
-        # plan = vamp_module.compute_bez_traj(result, env, simp_settings, sampler).path.numpy()
+        plan = vamp_module.compute_bez_traj(result, env, simp_settings, sampler).path.numpy()
         print(plan.shape)
         
 

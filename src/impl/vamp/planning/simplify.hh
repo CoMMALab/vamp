@@ -590,7 +590,7 @@ namespace vamp::planning
         return result;
     }
 
-    // take the entire results object to get the beziers
+    // take the entire results object to get the beziers TODO: segfaulting
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline auto compute_bez_traj(
         const PlanningResult<Robot> &planning_result,
@@ -609,7 +609,7 @@ namespace vamp::planning
         std::cout << "number of beziers: " << beziers.size() << std::endl;
         for (auto i = 0U; i < beziers.size(); i++) {
             Bezier bez = beziers[i];
-            std::cout << "bez time: " << bez.time << std::endl;
+            // std::cout << "bez time: " << bez.time << std::endl;
             std::vector<state> waypts = bez.generate_trajectory(bez.time * 1000);
             //convert waypoints to floatvector
             std::cout << "number of waypoints: " << waypts.size() << std::endl;

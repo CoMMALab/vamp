@@ -1,0 +1,1007 @@
+<?xml version="1.0"?>
+<robot name="DualPanda">
+    <link name="robot_base">
+        <collision name="DualPanda">
+            <origin rpy="-3.141593 3.141593 -3.141593" xyz="-0.000000 -0.000000 -0.000000" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_robot_base_coll_1.dae" />
+            </geometry>
+        </collision>
+    </link>
+    <joint type="prismatic" name="Panda_rightArm_joint">
+        <axis xyz="0 0 1" />
+        <limit effort="50.0" velocity="1.0" lower="0.0" upper="0.0" />
+        <parent link="robot_base" />
+        <child link="Panda_rightArm" />
+        <origin rpy="2.984763 -1.570796 0.000000" xyz="-0.808951 -0.075000 0.800000" />
+    </joint>
+    <link name="Panda_rightArm">
+        <collision name="Panda_rightArm">
+            <origin rpy="1.570796 4.555559 1.570796" xyz="-0.800000 -0.200428 0.787309" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_rightArm_link0_visual">
+            <origin rpy="1.570796 4.555559 1.570796" xyz="-0.800000 -0.200428 0.787309" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link0_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link0_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_rightArm_joint1">
+        <axis xyz="0 0 1" />
+        <limit effort="87.0" velocity="2.1749999523163" lower="-2.8973000049591" upper="2.8973000049591" />
+        <parent link="Panda_rightArm" />
+        <child link="Panda_rightArm_link1_respondable" />
+        <origin rpy="-1.570795 1.727627 -1.570794" xyz="0.283215 -0.083515 1.607680" />
+    </joint>
+    <link name="Panda_rightArm_link1_respondable">
+        <collision name="Panda_rightArm_link1_respondable">
+            <origin rpy="3.141591 3.141592 -0.000001" xyz="0.792042 -0.243609 -1.083215" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link1_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_rightArm_link1_visual">
+            <origin rpy="3.141591 3.141592 -0.000001" xyz="0.792042 -0.243609 -1.083215" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link1_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link1_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_rightArm_joint2">
+        <axis xyz="0 0 1" />
+        <limit effort="87.0" velocity="2.1749999523163" lower="-1.7627999782562" upper="1.7627999782562" />
+        <parent link="Panda_rightArm_link1_respondable" />
+        <child link="Panda_rightArm_link2_respondable" />
+        <origin rpy="1.570796 3.141464 3.141591" xyz="0.000010 0.000001 -0.000035" />
+    </joint>
+    <link name="Panda_rightArm_link2_respondable">
+        <collision name="Panda_rightArm_link2_respondable">
+            <origin rpy="1.570795 3.141592 -0.000129" xyz="0.792171 1.083078 -0.243608" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link2_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_rightArm_link2_visual">
+            <origin rpy="1.570795 3.141592 -0.000129" xyz="0.792171 1.083078 -0.243608" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link2_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link2_visual_material">
+                <color rgba="0.980000 0.980000 1.000000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_rightArm_joint3">
+        <axis xyz="0 0 1" />
+        <limit effort="87.0" velocity="2.1749999523163" lower="-2.8973000049591" upper="2.8973000049591" />
+        <parent link="Panda_rightArm_link2_respondable" />
+        <child link="Panda_rightArm_link3_respondable" />
+        <origin rpy="-1.570818 3.141592 -3.141506" xyz="0.000060 -0.315903 0.000007" />
+    </joint>
+    <link name="Panda_rightArm_link3_respondable">
+        <collision name="Panda_rightArm_link3_respondable">
+            <origin rpy="3.141569 3.141377 0.000002" xyz="0.792233 -0.243584 -1.398918" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link3_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_rightArm_link3_visual">
+            <origin rpy="3.141569 3.141377 0.000002" xyz="0.792233 -0.243584 -1.398918" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link3_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link3_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_link3_visual">
+            <origin rpy="3.141569 3.141377 0.000002" xyz="0.792233 -0.243584 -1.398918" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link3_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link3_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_rightArm_joint4">
+        <axis xyz="0 0 1" />
+        <limit effort="87.0" velocity="2.1749999523163" lower="-3.0020000934601" upper="0.0" />
+        <parent link="Panda_rightArm_link3_respondable" />
+        <child link="Panda_rightArm_link4_respondable" />
+        <origin rpy="-1.570806 3.141423 3.141593" xyz="0.082529 0.000006 -0.000079" />
+    </joint>
+    <link name="Panda_rightArm_link4_respondable">
+        <collision name="Panda_rightArm_link4_respondable">
+            <origin rpy="-1.570829 3.141594 0.000385" xyz="0.709941 -1.398721 0.243577" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link4_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_rightArm_link4_visual">
+            <origin rpy="-1.570829 3.141594 0.000385" xyz="0.709941 -1.398721 0.243577" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link4_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link4_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_link4_visual">
+            <origin rpy="-1.570829 3.141594 0.000385" xyz="0.709941 -1.398721 0.243577" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link4_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link4_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_rightArm_joint5">
+        <axis xyz="0 0 1" />
+        <limit effort="12.0" velocity="2.6099998950958" lower="-2.8973000049591" upper="2.8973000049591" />
+        <parent link="Panda_rightArm_link4_respondable" />
+        <child link="Panda_rightArm_link5_respondable" />
+        <origin rpy="1.570815 3.141597 3.141581" xyz="-0.081999 0.383522 -0.000216" />
+    </joint>
+    <link name="Panda_rightArm_link5_respondable">
+        <collision name="Panda_rightArm_link5_respondable">
+            <origin rpy="3.141579 3.141196 0.000006" xyz="0.791961 -0.243823 -1.782229" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link5_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <collision name="Panda_rightArm_link5_respondable">
+            <origin rpy="3.141579 3.141196 0.000006" xyz="0.791961 -0.243823 -1.782229" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link5_respondable_coll_2.dae" />
+            </geometry>
+        </collision>
+        <collision name="Panda_rightArm_link5_respondable">
+            <origin rpy="3.141579 3.141196 0.000006" xyz="0.791961 -0.243823 -1.782229" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link5_respondable_coll_3.dae" />
+            </geometry>
+        </collision>
+        <collision name="Panda_rightArm_link5_respondable">
+            <origin rpy="3.141579 3.141196 0.000006" xyz="0.791961 -0.243823 -1.782229" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link5_respondable_coll_4.dae" />
+            </geometry>
+        </collision>
+        <collision name="Panda_rightArm_link5_respondable">
+            <origin rpy="3.141579 3.141196 0.000006" xyz="0.791961 -0.243823 -1.782229" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link5_respondable_coll_5.dae" />
+            </geometry>
+        </collision>
+        <collision name="Panda_rightArm_link5_respondable">
+            <origin rpy="3.141579 3.141196 0.000006" xyz="0.791961 -0.243823 -1.782229" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link5_respondable_coll_6.dae" />
+            </geometry>
+        </collision>
+        <collision name="Panda_rightArm_link5_respondable">
+            <origin rpy="3.141579 3.141196 0.000006" xyz="0.791961 -0.243823 -1.782229" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link5_respondable_coll_7.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_rightArm_link5_visual">
+            <origin rpy="3.141579 3.141196 0.000006" xyz="0.791961 -0.243823 -1.782229" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link5_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link5_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_link5_visual">
+            <origin rpy="3.141579 3.141196 0.000006" xyz="0.791961 -0.243823 -1.782229" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link5_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link5_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_rightArm_joint6">
+        <axis xyz="0 0 1" />
+        <limit effort="12.0" velocity="2.6099998950958" lower="-0.017500000074506" upper="3.752499980852" />
+        <parent link="Panda_rightArm_link5_respondable" />
+        <child link="Panda_rightArm_link6_respondable" />
+        <origin rpy="-1.570822 3.141434 3.141592" xyz="0.000068 -0.000002 -0.000025" />
+    </joint>
+    <link name="Panda_rightArm_link6_respondable">
+        <collision name="Panda_rightArm_link6_respondable">
+            <origin rpy="-1.570837 3.141599 0.000556" xyz="0.792177 -1.782084 0.243774" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link6_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_rightArm_link6_visual">
+            <origin rpy="-1.570837 3.141599 0.000556" xyz="0.792177 -1.782084 0.243774" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link6_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link6_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_link6_visual">
+            <origin rpy="-1.570837 3.141599 0.000556" xyz="0.792177 -1.782084 0.243774" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link6_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link6_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_link6_visual">
+            <origin rpy="-1.570837 3.141599 0.000556" xyz="0.792177 -1.782084 0.243774" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link6_visual_vis_3.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link6_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_link6_visual">
+            <origin rpy="-1.570837 3.141599 0.000556" xyz="0.792177 -1.782084 0.243774" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link6_visual_vis_4.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link6_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_link6_visual">
+            <origin rpy="-1.570837 3.141599 0.000556" xyz="0.792177 -1.782084 0.243774" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link6_visual_vis_5.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link6_visual_material">
+                <color rgba="0.300000 0.300000 0.300000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_link6_visual">
+            <origin rpy="-1.570837 3.141599 0.000556" xyz="0.792177 -1.782084 0.243774" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link6_visual_vis_6.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link6_visual_material">
+                <color rgba="0.740000 0.740000 0.740000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_rightArm_joint7">
+        <axis xyz="0 0 1" />
+        <limit effort="12.0" velocity="2.6099998950958" lower="-2.8973000049591" upper="2.8973000049591" />
+        <parent link="Panda_rightArm_link6_respondable" />
+        <child link="Panda_rightArm_link7_respondable" />
+        <origin rpy="-1.570788 3.141607 3.141566" xyz="0.087984 -0.000065 -0.000001" />
+    </joint>
+    <link name="Panda_rightArm_link7_respondable">
+        <collision name="Panda_rightArm_link7_respondable">
+            <origin rpy="-0.000032 3.142175 -0.000021" xyz="0.704244 0.243780 1.781998" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link7_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_rightArm_link7_visual">
+            <origin rpy="-0.000032 3.142175 -0.000021" xyz="0.704244 0.243780 1.781998" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link7_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link7_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_link7_visual">
+            <origin rpy="-0.000032 3.142175 -0.000021" xyz="0.704244 0.243780 1.781998" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link7_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link7_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_link7_visual">
+            <origin rpy="-0.000032 3.142175 -0.000021" xyz="0.704244 0.243780 1.781998" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link7_visual_vis_3.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link7_visual_material">
+                <color rgba="0.700000 0.700000 0.700000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_link7_visual">
+            <origin rpy="-0.000032 3.142175 -0.000021" xyz="0.704244 0.243780 1.781998" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link7_visual_vis_4.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link7_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_link7_visual">
+            <origin rpy="-0.000032 3.142175 -0.000021" xyz="0.704244 0.243780 1.781998" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link7_visual_vis_5.dae" />
+            </geometry>
+            <material name="Panda_rightArm_link7_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="fixed" name="Panda_rightArm_attachment">
+        <axis xyz="0 0 1" />
+        <parent link="Panda_rightArm_link7_respondable" />
+        <child link="Panda_rightArm_gripper" />
+        <origin rpy="3.141563 3.141578 -1.570797" xyz="-0.000004 0.000002 0.107056" />
+    </joint>
+    <link name="Panda_rightArm_gripper">
+        <collision name="Panda_rightArm_gripper">
+            <origin rpy="-0.000047 3.142204 -1.570817" xyz="0.243754 -0.704298 1.674925" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_gripper_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_rightArm_gripper_visual">
+            <origin rpy="-0.000047 3.142204 -1.570817" xyz="0.243754 -0.704298 1.674925" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_gripper_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_rightArm_gripper_visual_material">
+                <color rgba="0.700000 0.700000 0.700000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_gripper_visual">
+            <origin rpy="-0.000047 3.142204 -1.570817" xyz="0.243754 -0.704298 1.674925" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_gripper_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_rightArm_gripper_visual_material">
+                <color rgba="0.100000 0.100000 0.100000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_gripper_visual">
+            <origin rpy="-0.000047 3.142204 -1.570817" xyz="0.243754 -0.704298 1.674925" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_gripper_visual_vis_3.dae" />
+            </geometry>
+            <material name="Panda_rightArm_gripper_visual_material">
+                <color rgba="0.100000 0.100000 0.100000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_gripper_visual">
+            <origin rpy="-0.000047 3.142204 -1.570817" xyz="0.243754 -0.704298 1.674925" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_gripper_visual_vis_4.dae" />
+            </geometry>
+            <material name="Panda_rightArm_gripper_visual_material">
+                <color rgba="0.700000 0.700000 0.700000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_gripper_visual">
+            <origin rpy="-0.000047 3.142204 -1.570817" xyz="0.243754 -0.704298 1.674925" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_gripper_visual_vis_5.dae" />
+            </geometry>
+            <material name="Panda_rightArm_gripper_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_tip">
+            <origin rpy="-3.141584 3.141543 -2.356196" xyz="0.001425 -0.001400 0.109968" />
+            <geometry>
+                <box size="0.010000 0.010000 0.010000" />
+            </geometry>
+            <material name="Panda_rightArm_tip_material">
+                <color rgba="1.000000 0.000000 0.000000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="prismatic" name="Panda_rightArm_gripper_joint1">
+        <axis xyz="0 0 1" />
+        <limit effort="20.0" velocity="0.20000000298023" lower="0.0" upper="0.03999999910593" />
+        <parent link="Panda_rightArm_gripper" />
+        <child link="Panda_rightArm_leftfinger_respondable" />
+        <origin rpy="1.570786 3.141641 0.785396" xyz="0.001258 -0.001259 0.056281" />
+    </joint>
+    <link name="Panda_rightArm_leftfinger_respondable">
+        <collision name="Panda_rightArm_leftfinger_respondable">
+            <origin rpy="1.570797 3.141591 3.141576" xyz="-0.000128 -0.032818 0.010514" />
+            <geometry>
+                <box size="0.020000 0.020000 0.040000" />
+            </geometry>
+        </collision>
+        <visual name="Panda_rightArm_leftfinger_visual">
+            <origin rpy="-1.570246 2.356213 0.000903" xyz="0.325730 -1.618635 0.668579" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_leftfinger_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_rightArm_leftfinger_visual_material">
+                <color rgba="0.700000 0.700000 0.700000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_leftfinger_visual">
+            <origin rpy="-1.570246 2.356213 0.000903" xyz="0.325730 -1.618635 0.668579" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_leftfinger_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_rightArm_leftfinger_visual_material">
+                <color rgba="0.100000 0.100000 0.100000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="fixed" name="Panda_rightArm_gripper_touchSensor1">
+        <axis xyz="0 0 1" />
+        <parent link="Panda_rightArm_leftfinger_respondable" />
+        <child link="Panda_rightArm_leftfinger_force_contact" />
+        <origin rpy="-0.000001 3.141596 1.570777" xyz="0.000668 -0.046504 0.003462" />
+    </joint>
+    <link name="Panda_rightArm_leftfinger_force_contact">
+        <collision name="Panda_rightArm_leftfinger_force_contact">
+            <origin rpy="-2.078811 4.712205 -2.633584" xyz="-0.001979 -0.000002 0.002998" />
+            <geometry>
+                <box size="0.001250 0.017280 0.017280" />
+            </geometry>
+        </collision>
+    </link>
+    <joint type="prismatic" name="Panda_rightArm_gripper_joint2">
+        <axis xyz="0 0 1" />
+        <limit effort="20.0" velocity="0.20000000298023" lower="0.0" upper="0.03999999910593" />
+        <parent link="Panda_rightArm_gripper" />
+        <child link="Panda_rightArm_rightfinger_respondable" />
+        <origin rpy="-1.570805 3.141641 0.785396" xyz="0.001258 -0.001259 0.056281" />
+    </joint>
+    <link name="Panda_rightArm_rightfinger_respondable">
+        <collision name="Panda_rightArm_rightfinger_respondable">
+            <origin rpy="-1.570790 3.141592 -3.141583" xyz="-0.000035 0.032754 0.010537" />
+            <geometry>
+                <box size="0.020000 0.020000 0.040000" />
+            </geometry>
+        </collision>
+        <visual name="Panda_rightArm_rightfinger_visual">
+            <origin rpy="1.571348 3.926972 -0.000904" xyz="0.325731 1.618634 -0.668580" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_rightfinger_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_rightArm_rightfinger_visual_material">
+                <color rgba="0.700000 0.700000 0.700000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_rightArm_rightfinger_visual">
+            <origin rpy="1.571348 3.926972 -0.000904" xyz="0.325731 1.618634 -0.668580" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_rightfinger_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_rightArm_rightfinger_visual_material">
+                <color rgba="0.100000 0.100000 0.100000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="fixed" name="Panda_rightArm_gripper_touchSensor0">
+        <axis xyz="0 0 1" />
+        <parent link="Panda_rightArm_rightfinger_respondable" />
+        <child link="Panda_rightArm_rightfinger_force_contact" />
+        <origin rpy="0.000000 3.141598 -1.570787" xyz="0.000702 0.046414 0.003536" />
+    </joint>
+    <link name="Panda_rightArm_rightfinger_force_contact">
+        <collision name="Panda_rightArm_rightfinger_force_contact">
+            <origin rpy="-1.523640 4.711592 3.094465" xyz="-0.001979 -0.000006 0.002997" />
+            <geometry>
+                <box size="0.001250 0.017280 0.017280" />
+            </geometry>
+        </collision>
+    </link>
+    <joint type="prismatic" name="Panda_leftArm_joint">
+        <axis xyz="0 0 1" />
+        <limit effort="50.0" velocity="1.0" lower="0.0" upper="0.0" />
+        <parent link="robot_base" />
+        <child link="Panda_leftArm" />
+        <origin rpy="2.984763 -1.570796 0.000000" xyz="-0.808951 -0.075000 0.800000" />
+    </joint>
+    <link name="Panda_leftArm">
+        <collision name="Panda_leftArm">
+            <origin rpy="1.570796 4.555559 1.570796" xyz="-0.800000 -0.200428 0.787309" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_leftArm_link0_visual">
+            <origin rpy="1.570796 4.555559 1.570796" xyz="-0.800000 -0.200428 0.787309" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link0_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link0_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_leftArm_joint1">
+        <axis xyz="0 0 1" />
+        <limit effort="87.0" velocity="2.1749999523163" lower="-2.8973000049591" upper="2.8973000049591" />
+        <parent link="Panda_leftArm" />
+        <child link="Panda_leftArm_link1_respondable" />
+        <origin rpy="1.570797 4.468291 1.570797" xyz="0.283215 -0.184474 0.544251" />
+    </joint>
+    <link name="Panda_leftArm_link1_respondable">
+        <collision name="Panda_leftArm_link1_respondable">
+            <origin rpy="3.141591 3.141593 3.054324" xyz="0.239709 -0.043264 -1.083215" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link1_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_leftArm_link1_visual">
+            <origin rpy="3.141591 3.141593 3.054324" xyz="0.239709 -0.043264 -1.083215" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link1_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link1_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_leftArm_joint2">
+        <axis xyz="0 0 1" />
+        <limit effort="87.0" velocity="2.1749999523163" lower="-1.7627999782562" upper="1.7627999782562" />
+        <parent link="Panda_leftArm_link1_respondable" />
+        <child link="Panda_leftArm_link2_respondable" />
+        <origin rpy="1.570774 3.141238 3.141592" xyz="0.000009 0.000002 -0.000084" />
+    </joint>
+    <link name="Panda_leftArm_link2_respondable">
+        <collision name="Panda_leftArm_link2_respondable">
+            <origin rpy="-1.570776 3.054325 3.141240" xyz="0.240083 1.083047 -0.043242" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link2_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_leftArm_link2_visual">
+            <origin rpy="-1.570776 3.054325 3.141240" xyz="0.240083 1.083047 -0.043242" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link2_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link2_visual_material">
+                <color rgba="0.980000 0.980000 1.000000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_leftArm_joint3">
+        <axis xyz="0 0 1" />
+        <limit effort="87.0" velocity="2.1749999523163" lower="-2.8973000049591" upper="2.8973000049591" />
+        <parent link="Panda_leftArm_link2_respondable" />
+        <child link="Panda_leftArm_link3_respondable" />
+        <origin rpy="-1.570775 3.141595 3.141519" xyz="0.000025 -0.315897 -0.000001" />
+    </joint>
+    <link name="Panda_leftArm_link3_respondable">
+        <collision name="Panda_leftArm_link3_respondable">
+            <origin rpy="-3.141569 3.141872 3.054323" xyz="0.239955 -0.043271 -1.398960" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link3_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_leftArm_link3_visual">
+            <origin rpy="-3.141569 3.141872 3.054323" xyz="0.239955 -0.043271 -1.398960" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link3_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link3_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_link3_visual">
+            <origin rpy="-3.141569 3.141872 3.054323" xyz="0.239955 -0.043271 -1.398960" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link3_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link3_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_leftArm_joint4">
+        <axis xyz="0 0 1" />
+        <limit effort="87.0" velocity="2.1749999523163" lower="-3.0020000934601" upper="0.0" />
+        <parent link="Panda_leftArm_link3_respondable" />
+        <child link="Panda_leftArm_link4_respondable" />
+        <origin rpy="-1.570839 3.140904 -3.141589" xyz="0.082586 -0.000002 -0.000226" />
+    </joint>
+    <link name="Panda_leftArm_link4_respondable">
+        <collision name="Panda_leftArm_link4_respondable">
+            <origin rpy="1.570838 3.228866 -3.140628" xyz="0.158332 -1.398628 0.043210" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link4_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_leftArm_link4_visual">
+            <origin rpy="1.570838 3.228866 -3.140628" xyz="0.158332 -1.398628 0.043210" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link4_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link4_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_link4_visual">
+            <origin rpy="1.570838 3.228866 -3.140628" xyz="0.158332 -1.398628 0.043210" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link4_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link4_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_leftArm_joint5">
+        <axis xyz="0 0 1" />
+        <limit effort="12.0" velocity="2.6099998950958" lower="-2.8973000049591" upper="2.8973000049591" />
+        <parent link="Panda_leftArm_link4_respondable" />
+        <child link="Panda_leftArm_link5_respondable" />
+        <origin rpy="1.570796 3.141583 -3.141570" xyz="-0.081994 0.383507 -0.000221" />
+    </joint>
+    <link name="Panda_leftArm_link5_respondable">
+        <collision name="Panda_leftArm_link5_respondable">
+            <origin rpy="-3.141469 3.142532 3.054309" xyz="0.240285 -0.043433 -1.782140" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link5_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <collision name="Panda_leftArm_link5_respondable">
+            <origin rpy="-3.141469 3.142532 3.054309" xyz="0.240285 -0.043433 -1.782140" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link5_respondable_coll_2.dae" />
+            </geometry>
+        </collision>
+        <collision name="Panda_leftArm_link5_respondable">
+            <origin rpy="-3.141469 3.142532 3.054309" xyz="0.240285 -0.043433 -1.782140" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link5_respondable_coll_3.dae" />
+            </geometry>
+        </collision>
+        <collision name="Panda_leftArm_link5_respondable">
+            <origin rpy="-3.141469 3.142532 3.054309" xyz="0.240285 -0.043433 -1.782140" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link5_respondable_coll_4.dae" />
+            </geometry>
+        </collision>
+        <collision name="Panda_leftArm_link5_respondable">
+            <origin rpy="-3.141469 3.142532 3.054309" xyz="0.240285 -0.043433 -1.782140" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link5_respondable_coll_5.dae" />
+            </geometry>
+        </collision>
+        <collision name="Panda_leftArm_link5_respondable">
+            <origin rpy="-3.141469 3.142532 3.054309" xyz="0.240285 -0.043433 -1.782140" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link5_respondable_coll_6.dae" />
+            </geometry>
+        </collision>
+        <collision name="Panda_leftArm_link5_respondable">
+            <origin rpy="-3.141469 3.142532 3.054309" xyz="0.240285 -0.043433 -1.782140" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link5_respondable_coll_7.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_leftArm_link5_visual">
+            <origin rpy="-3.141469 3.142532 3.054309" xyz="0.240285 -0.043433 -1.782140" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link5_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link5_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_link5_visual">
+            <origin rpy="-3.141469 3.142532 3.054309" xyz="0.240285 -0.043433 -1.782140" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link5_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link5_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_leftArm_joint6">
+        <axis xyz="0 0 1" />
+        <limit effort="12.0" velocity="2.6099998950958" lower="-0.017500000074506" upper="3.752499980852" />
+        <parent link="Panda_leftArm_link5_respondable" />
+        <child link="Panda_leftArm_link6_respondable" />
+        <origin rpy="-1.570787 3.141234 -3.141592" xyz="0.000138 -0.000009 -0.000055" />
+    </joint>
+    <link name="Panda_leftArm_link6_respondable">
+        <collision name="Panda_leftArm_link6_respondable">
+            <origin rpy="1.570829 3.228877 -3.140291" xyz="0.240785 -1.781998 0.043440" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link6_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_leftArm_link6_visual">
+            <origin rpy="1.570829 3.228877 -3.140291" xyz="0.240785 -1.781998 0.043440" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link6_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link6_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_link6_visual">
+            <origin rpy="1.570829 3.228877 -3.140291" xyz="0.240785 -1.781998 0.043440" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link6_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link6_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_link6_visual">
+            <origin rpy="1.570829 3.228877 -3.140291" xyz="0.240785 -1.781998 0.043440" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link6_visual_vis_3.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link6_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_link6_visual">
+            <origin rpy="1.570829 3.228877 -3.140291" xyz="0.240785 -1.781998 0.043440" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link6_visual_vis_4.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link6_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_link6_visual">
+            <origin rpy="1.570829 3.228877 -3.140291" xyz="0.240785 -1.781998 0.043440" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link6_visual_vis_5.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link6_visual_material">
+                <color rgba="0.300000 0.300000 0.300000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_link6_visual">
+            <origin rpy="1.570829 3.228877 -3.140291" xyz="0.240785 -1.781998 0.043440" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link6_visual_vis_6.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link6_visual_material">
+                <color rgba="0.740000 0.740000 0.740000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="revolute" name="Panda_leftArm_joint7">
+        <axis xyz="0 0 1" />
+        <limit effort="12.0" velocity="2.6099998950958" lower="-2.8973000049591" upper="2.8973000049591" />
+        <parent link="Panda_leftArm_link6_respondable" />
+        <child link="Panda_leftArm_link7_respondable" />
+        <origin rpy="-1.570786 3.141598 3.141582" xyz="0.087995 -0.000119 -0.000010" />
+    </joint>
+    <link name="Panda_leftArm_link7_respondable">
+        <collision name="Panda_leftArm_link7_respondable">
+            <origin rpy="0.000136 3.140284 -3.054314" xyz="0.152811 0.043469 1.781877" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link7_respondable_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_leftArm_link7_visual">
+            <origin rpy="0.000136 3.140284 -3.054314" xyz="0.152811 0.043469 1.781877" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link7_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link7_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_link7_visual">
+            <origin rpy="0.000136 3.140284 -3.054314" xyz="0.152811 0.043469 1.781877" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link7_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link7_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_link7_visual">
+            <origin rpy="0.000136 3.140284 -3.054314" xyz="0.152811 0.043469 1.781877" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link7_visual_vis_3.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link7_visual_material">
+                <color rgba="0.700000 0.700000 0.700000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_link7_visual">
+            <origin rpy="0.000136 3.140284 -3.054314" xyz="0.152811 0.043469 1.781877" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link7_visual_vis_4.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link7_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_link7_visual">
+            <origin rpy="0.000136 3.140284 -3.054314" xyz="0.152811 0.043469 1.781877" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link7_visual_vis_5.dae" />
+            </geometry>
+            <material name="Panda_leftArm_link7_visual_material">
+                <color rgba="0.400000 0.400000 0.400000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="fixed" name="Panda_leftArm_attachment">
+        <axis xyz="0 0 1" />
+        <parent link="Panda_leftArm_link7_respondable" />
+        <child link="Panda_leftArm_gripper" />
+        <origin rpy="3.141548 3.141545 -1.570796" xyz="-0.000015 0.000012 0.107098" />
+    </joint>
+    <link name="Panda_leftArm_gripper">
+        <collision name="Panda_leftArm_gripper">
+            <origin rpy="0.000188 3.140244 1.658074" xyz="0.043378 -0.152901 1.674774" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_gripper_coll_1.dae" />
+            </geometry>
+        </collision>
+        <visual name="Panda_leftArm_gripper_visual">
+            <origin rpy="0.000188 3.140244 1.658074" xyz="0.043378 -0.152901 1.674774" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_gripper_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_leftArm_gripper_visual_material">
+                <color rgba="0.700000 0.700000 0.700000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_gripper_visual">
+            <origin rpy="0.000188 3.140244 1.658074" xyz="0.043378 -0.152901 1.674774" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_gripper_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_leftArm_gripper_visual_material">
+                <color rgba="0.100000 0.100000 0.100000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_gripper_visual">
+            <origin rpy="0.000188 3.140244 1.658074" xyz="0.043378 -0.152901 1.674774" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_gripper_visual_vis_3.dae" />
+            </geometry>
+            <material name="Panda_leftArm_gripper_visual_material">
+                <color rgba="0.100000 0.100000 0.100000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_gripper_visual">
+            <origin rpy="0.000188 3.140244 1.658074" xyz="0.043378 -0.152901 1.674774" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_gripper_visual_vis_4.dae" />
+            </geometry>
+            <material name="Panda_leftArm_gripper_visual_material">
+                <color rgba="0.700000 0.700000 0.700000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_gripper_visual">
+            <origin rpy="0.000188 3.140244 1.658074" xyz="0.043378 -0.152901 1.674774" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_gripper_visual_vis_5.dae" />
+            </geometry>
+            <material name="Panda_leftArm_gripper_visual_material">
+                <color rgba="0.980000 0.980000 0.980000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_tip">
+            <origin rpy="-3.141590 3.141509 -2.356193" xyz="0.001434 -0.001393 0.110013" />
+            <geometry>
+                <box size="0.010000 0.010000 0.010000" />
+            </geometry>
+            <material name="Panda_leftArm_tip_material">
+                <color rgba="1.000000 0.000000 0.000000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="prismatic" name="Panda_leftArm_gripper_joint1">
+        <axis xyz="0 0 1" />
+        <limit effort="20.0" velocity="0.20000000298023" lower="0.0" upper="0.03999999910593" />
+        <parent link="Panda_leftArm_gripper" />
+        <child link="Panda_leftArm_leftfinger_respondable" />
+        <origin rpy="1.570793 3.141675 0.785400" xyz="0.001266 -0.001252 0.056326" />
+    </joint>
+    <link name="Panda_leftArm_leftfinger_respondable">
+        <collision name="Panda_leftArm_leftfinger_respondable">
+            <origin rpy="1.570793 3.141591 3.141565" xyz="-0.000132 -0.032825 0.010514" />
+            <geometry>
+                <box size="0.020000 0.020000 0.040000" />
+            </geometry>
+        </collision>
+        <visual name="Panda_leftArm_leftfinger_visual">
+            <origin rpy="1.569382 4.014266 -3.139416" xyz="0.077588 -1.618442 0.137004" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_leftfinger_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_leftArm_leftfinger_visual_material">
+                <color rgba="0.700000 0.700000 0.700000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_leftfinger_visual">
+            <origin rpy="1.569382 4.014266 -3.139416" xyz="0.077588 -1.618442 0.137004" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_leftfinger_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_leftArm_leftfinger_visual_material">
+                <color rgba="0.100000 0.100000 0.100000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="fixed" name="Panda_leftArm_gripper_touchSensor1">
+        <axis xyz="0 0 1" />
+        <parent link="Panda_leftArm_leftfinger_respondable" />
+        <child link="Panda_leftArm_leftfinger_force_contact" />
+        <origin rpy="-0.000001 3.141600 1.570766" xyz="0.000664 -0.046511 0.003462" />
+    </joint>
+    <link name="Panda_leftArm_leftfinger_force_contact">
+        <collision name="Panda_leftArm_leftfinger_force_contact">
+            <origin rpy="-1.717135 4.711058 -2.995274" xyz="-0.001970 -0.000002 0.002998" />
+            <geometry>
+                <box size="0.001250 0.017280 0.017280" />
+            </geometry>
+        </collision>
+    </link>
+    <joint type="prismatic" name="Panda_leftArm_gripper_joint2">
+        <axis xyz="0 0 1" />
+        <limit effort="20.0" velocity="0.20000000298023" lower="0.0" upper="0.03999999910593" />
+        <parent link="Panda_leftArm_gripper" />
+        <child link="Panda_leftArm_rightfinger_respondable" />
+        <origin rpy="-1.570799 3.141675 0.785400" xyz="0.001266 -0.001252 0.056326" />
+    </joint>
+    <link name="Panda_leftArm_rightfinger_respondable">
+        <collision name="Panda_leftArm_rightfinger_respondable">
+            <origin rpy="-1.570789 3.141590 -3.141568" xyz="-0.000038 0.032759 0.010537" />
+            <geometry>
+                <box size="0.020000 0.020000 0.040000" />
+            </geometry>
+        </collision>
+        <visual name="Panda_leftArm_rightfinger_visual">
+            <origin rpy="-1.572213 2.268920 3.139414" xyz="0.077588 1.618442 -0.137005" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_rightfinger_visual_vis_1.dae" />
+            </geometry>
+            <material name="Panda_leftArm_rightfinger_visual_material">
+                <color rgba="0.700000 0.700000 0.700000 1.0" />
+            </material>
+        </visual>
+        <visual name="Panda_leftArm_rightfinger_visual">
+            <origin rpy="-1.572213 2.268920 3.139414" xyz="0.077588 1.618442 -0.137005" />
+            <geometry>
+                <mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_rightfinger_visual_vis_2.dae" />
+            </geometry>
+            <material name="Panda_leftArm_rightfinger_visual_material">
+                <color rgba="0.100000 0.100000 0.100000 1.0" />
+            </material>
+        </visual>
+    </link>
+    <joint type="fixed" name="Panda_leftArm_gripper_touchSensor0">
+        <axis xyz="0 0 1" />
+        <parent link="Panda_leftArm_rightfinger_respondable" />
+        <child link="Panda_leftArm_rightfinger_force_contact" />
+        <origin rpy="0.000002 3.141600 -1.570773" xyz="0.000700 0.046420 0.003536" />
+    </joint>
+    <link name="Panda_leftArm_rightfinger_force_contact">
+        <collision name="Panda_leftArm_rightfinger_force_contact">
+            <origin rpy="-1.383477 4.711627 2.954364" xyz="-0.001972 -0.000009 0.002999" />
+            <geometry>
+                <box size="0.001250 0.017280 0.017280" />
+            </geometry>
+        </collision>
+    </link>
+</robot>

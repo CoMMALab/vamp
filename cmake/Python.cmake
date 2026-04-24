@@ -23,6 +23,7 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       g1_unitree
       digit
       bimanual_panda
+      dual_panda
     )
 
     list(APPEND VAMP_ROBOT_STRUCTS
@@ -33,6 +34,7 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       G1Unitree
       Digit
       BimanualPanda
+      DualPanda
     )
   endif()
 

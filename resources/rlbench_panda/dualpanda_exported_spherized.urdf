@@ -1,0 +1,1572 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="DualPanda" path="dualpanda_exported_dup.urdf">
+	<link name="robot_base"></link>
+	<link name="Panda_rightArm">
+		<collision>
+			<geometry>
+				<sphere radius="0.12225228548049927"></sphere>
+			</geometry>
+			<origin xyz="0.0040196264162659645 -0.09454789757728577 1.6518560647964478" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_rightArm_link0_visual">
+			<origin xyz="-0.800000 -0.200428 0.787309" rpy="1.570796 4.555559 1.570796"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link0_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link0_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_rightArm_link1_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.07980768382549286"></sphere>
+			</geometry>
+			<origin xyz="0.000958945311140269 -0.0503639280796051 -0.12582997977733612" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.08255234360694885"></sphere>
+			</geometry>
+			<origin xyz="-0.0044762324541807175 0.010724475607275963 -0.12575572729110718" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07441369444131851"></sphere>
+			</geometry>
+			<origin xyz="0.0027543597389012575 -0.0736713856458664 -0.017884528264403343" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07719624042510986"></sphere>
+			</geometry>
+			<origin xyz="0.00436320248991251 -0.020051565021276474 -0.021075010299682617" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_rightArm_link1_visual">
+			<origin xyz="0.792042 -0.243609 -1.083215" rpy="3.141591 3.141592 -0.000001"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link1_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link1_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_rightArm_link2_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.07992161065340042"></sphere>
+			</geometry>
+			<origin xyz="0.003428304335102439 -0.1378229707479477 -0.009172065183520317" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07937627285718918"></sphere>
+			</geometry>
+			<origin xyz="-0.0001344007469015196 -0.1301223784685135 0.046944040805101395" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07686024159193039"></sphere>
+			</geometry>
+			<origin xyz="-0.0026737346779555082 -0.01983991451561451 0.015496047213673592" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07539168000221252"></sphere>
+			</geometry>
+			<origin xyz="0.0013499244814738631 -0.019352948293089867 0.07309989631175995" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_rightArm_link2_visual">
+			<origin xyz="0.792171 1.083078 -0.243608" rpy="1.570795 3.141592 -0.000129"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link2_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link2_visual_material">
+				<color rgba="0.980000 0.980000 1.000000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_rightArm_link3_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.08468005061149597"></sphere>
+			</geometry>
+			<origin xyz="-0.0004353737167548388 0.024663656949996948 -0.07710659503936768" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.08315461874008179"></sphere>
+			</geometry>
+			<origin xyz="0.07135355472564697 0.026385826990008354 -0.07590260356664658" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.08279376477003098"></sphere>
+			</geometry>
+			<origin xyz="0.021814225241541862 0.03452008590102196 -0.0035005826503038406" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07334743440151215"></sphere>
+			</geometry>
+			<origin xyz="0.08689619600772858 0.03738666698336601 0.000912817195057869" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_rightArm_link3_visual">
+			<origin xyz="0.792233 -0.243584 -1.398918" rpy="3.141569 3.141377 0.000002"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link3_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link3_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_link3_visual">
+			<origin xyz="0.792233 -0.243584 -1.398918" rpy="3.141569 3.141377 0.000002"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link3_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link3_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_rightArm_link4_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.07867814600467682"></sphere>
+			</geometry>
+			<origin xyz="-0.0694383978843689 0.0704626515507698 -0.017821207642555237" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07400598376989365"></sphere>
+			</geometry>
+			<origin xyz="-0.07333938032388687 0.07915079593658447 0.025803957134485245" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07867814600467682"></sphere>
+			</geometry>
+			<origin xyz="-0.00045142770977690816 -0.002815380459651351 0.02216472290456295" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07400598376989365"></sphere>
+			</geometry>
+			<origin xyz="-0.014218627475202084 0.016352670267224312 0.060071274638175964" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_rightArm_link4_visual">
+			<origin xyz="0.709941 -1.398721 0.243577" rpy="-1.570829 3.141594 0.000385"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link4_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link4_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_link4_visual">
+			<origin xyz="0.709941 -1.398721 0.243577" rpy="-1.570829 3.141594 0.000385"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link4_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link4_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_rightArm_link5_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.083054319024086"></sphere>
+			</geometry>
+			<origin xyz="4.908123446512036e-05 0.013629558496177197 -0.2244359403848648" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.0759536623954773"></sphere>
+			</geometry>
+			<origin xyz="0.0017767822137102485 0.04636251926422119 -0.15048100054264069" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06558331102132797"></sphere>
+			</geometry>
+			<origin xyz="-0.0026763223577290773 0.0646442174911499 -0.04328102990984917" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05813946947455406"></sphere>
+			</geometry>
+			<origin xyz="0.004457217641174793 0.04838687554001808 0.002946358872577548" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05382196232676506"></sphere>
+			</geometry>
+			<origin xyz="-0.003937362693250179 0.09651930630207062 0.0015968233346939087" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.083054319024086"></sphere>
+			</geometry>
+			<origin xyz="4.908123446512036e-05 0.013629558496177197 -0.2244359403848648" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.0759536623954773"></sphere>
+			</geometry>
+			<origin xyz="0.0017767822137102485 0.04636251926422119 -0.15048100054264069" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06558331102132797"></sphere>
+			</geometry>
+			<origin xyz="-0.0026763223577290773 0.0646442174911499 -0.04328102990984917" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05813946947455406"></sphere>
+			</geometry>
+			<origin xyz="0.004457217641174793 0.04838687554001808 0.002946358872577548" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05382196232676506"></sphere>
+			</geometry>
+			<origin xyz="-0.003937362693250179 0.09651930630207062 0.0015968233346939087" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.083054319024086"></sphere>
+			</geometry>
+			<origin xyz="4.908123446512036e-05 0.013629558496177197 -0.2244359403848648" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.0759536623954773"></sphere>
+			</geometry>
+			<origin xyz="0.0017767822137102485 0.04636251926422119 -0.15048100054264069" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06558331102132797"></sphere>
+			</geometry>
+			<origin xyz="-0.0026763223577290773 0.0646442174911499 -0.04328102990984917" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05813946947455406"></sphere>
+			</geometry>
+			<origin xyz="0.004457217641174793 0.04838687554001808 0.002946358872577548" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05382196232676506"></sphere>
+			</geometry>
+			<origin xyz="-0.003937362693250179 0.09651930630207062 0.0015968233346939087" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.083054319024086"></sphere>
+			</geometry>
+			<origin xyz="4.908123446512036e-05 0.013629558496177197 -0.2244359403848648" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.0759536623954773"></sphere>
+			</geometry>
+			<origin xyz="0.0017767822137102485 0.04636251926422119 -0.15048100054264069" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06558331102132797"></sphere>
+			</geometry>
+			<origin xyz="-0.0026763223577290773 0.0646442174911499 -0.04328102990984917" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05813946947455406"></sphere>
+			</geometry>
+			<origin xyz="0.004457217641174793 0.04838687554001808 0.002946358872577548" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05382196232676506"></sphere>
+			</geometry>
+			<origin xyz="-0.003937362693250179 0.09651930630207062 0.0015968233346939087" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.083054319024086"></sphere>
+			</geometry>
+			<origin xyz="4.908123446512036e-05 0.013629558496177197 -0.2244359403848648" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.0759536623954773"></sphere>
+			</geometry>
+			<origin xyz="0.0017767822137102485 0.04636251926422119 -0.15048100054264069" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06558331102132797"></sphere>
+			</geometry>
+			<origin xyz="-0.0026763223577290773 0.0646442174911499 -0.04328102990984917" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05813946947455406"></sphere>
+			</geometry>
+			<origin xyz="0.004457217641174793 0.04838687554001808 0.002946358872577548" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05382196232676506"></sphere>
+			</geometry>
+			<origin xyz="-0.003937362693250179 0.09651930630207062 0.0015968233346939087" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.083054319024086"></sphere>
+			</geometry>
+			<origin xyz="4.908123446512036e-05 0.013629558496177197 -0.2244359403848648" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.0759536623954773"></sphere>
+			</geometry>
+			<origin xyz="0.0017767822137102485 0.04636251926422119 -0.15048100054264069" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06558331102132797"></sphere>
+			</geometry>
+			<origin xyz="-0.0026763223577290773 0.0646442174911499 -0.04328102990984917" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05813946947455406"></sphere>
+			</geometry>
+			<origin xyz="0.004457217641174793 0.04838687554001808 0.002946358872577548" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05382196232676506"></sphere>
+			</geometry>
+			<origin xyz="-0.003937362693250179 0.09651930630207062 0.0015968233346939087" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.083054319024086"></sphere>
+			</geometry>
+			<origin xyz="4.908123446512036e-05 0.013629558496177197 -0.2244359403848648" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.0759536623954773"></sphere>
+			</geometry>
+			<origin xyz="0.0017767822137102485 0.04636251926422119 -0.15048100054264069" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06558331102132797"></sphere>
+			</geometry>
+			<origin xyz="-0.0026763223577290773 0.0646442174911499 -0.04328102990984917" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05813946947455406"></sphere>
+			</geometry>
+			<origin xyz="0.004457217641174793 0.04838687554001808 0.002946358872577548" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05382196232676506"></sphere>
+			</geometry>
+			<origin xyz="-0.003937362693250179 0.09651930630207062 0.0015968233346939087" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_rightArm_link5_visual">
+			<origin xyz="0.791961 -0.243823 -1.782229" rpy="3.141579 3.141196 0.000006"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link5_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link5_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_link5_visual">
+			<origin xyz="0.791961 -0.243823 -1.782229" rpy="3.141579 3.141196 0.000006"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link5_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link5_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_rightArm_link6_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.06197823956608772"></sphere>
+			</geometry>
+			<origin xyz="0.011364774778485298 -0.018027210608124733 0.0088712302967906" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06126818433403969"></sphere>
+			</geometry>
+			<origin xyz="0.0026599683333188295 0.03060503676533699 0.007974939420819283" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05908208340406418"></sphere>
+			</geometry>
+			<origin xyz="0.0840199813246727 -0.021203475072979927 0.006576613988727331" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.057105906307697296"></sphere>
+			</geometry>
+			<origin xyz="0.08237908035516739 0.03461993485689163 0.007132154423743486" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_rightArm_link6_visual">
+			<origin xyz="0.792177 -1.782084 0.243774" rpy="-1.570837 3.141599 0.000556"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link6_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link6_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_link6_visual">
+			<origin xyz="0.792177 -1.782084 0.243774" rpy="-1.570837 3.141599 0.000556"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link6_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link6_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_link6_visual">
+			<origin xyz="0.792177 -1.782084 0.243774" rpy="-1.570837 3.141599 0.000556"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link6_visual_vis_3.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link6_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_link6_visual">
+			<origin xyz="0.792177 -1.782084 0.243774" rpy="-1.570837 3.141599 0.000556"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link6_visual_vis_4.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link6_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_link6_visual">
+			<origin xyz="0.792177 -1.782084 0.243774" rpy="-1.570837 3.141599 0.000556"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link6_visual_vis_5.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link6_visual_material">
+				<color rgba="0.300000 0.300000 0.300000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_link6_visual">
+			<origin xyz="0.792177 -1.782084 0.243774" rpy="-1.570837 3.141599 0.000556"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link6_visual_vis_6.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link6_visual_material">
+				<color rgba="0.740000 0.740000 0.740000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_rightArm_link7_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.03734961152076721"></sphere>
+			</geometry>
+			<origin xyz="-0.019107846543192863 -0.014658545143902302 0.06552813202142715" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.03679128736257553"></sphere>
+			</geometry>
+			<origin xyz="-0.019294779747724533 -0.014279363676905632 0.09285733103752136" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.04468527063727379"></sphere>
+			</geometry>
+			<origin xyz="0.03077680990099907 -0.01597791723906994 0.07419783622026443" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.043901633471250534"></sphere>
+			</geometry>
+			<origin xyz="-0.010650424286723137 0.037728000432252884 0.07550739496946335" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.040234826505184174"></sphere>
+			</geometry>
+			<origin xyz="0.039849475026130676 0.039667900651693344 0.08313529193401337" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_rightArm_link7_visual">
+			<origin xyz="0.704244 0.243780 1.781998" rpy="-0.000032 3.142175 -0.000021"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link7_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link7_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_link7_visual">
+			<origin xyz="0.704244 0.243780 1.781998" rpy="-0.000032 3.142175 -0.000021"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link7_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link7_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_link7_visual">
+			<origin xyz="0.704244 0.243780 1.781998" rpy="-0.000032 3.142175 -0.000021"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link7_visual_vis_3.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link7_visual_material">
+				<color rgba="0.700000 0.700000 0.700000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_link7_visual">
+			<origin xyz="0.704244 0.243780 1.781998" rpy="-0.000032 3.142175 -0.000021"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link7_visual_vis_4.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link7_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_link7_visual">
+			<origin xyz="0.704244 0.243780 1.781998" rpy="-0.000032 3.142175 -0.000021"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_link7_visual_vis_5.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_link7_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_rightArm_gripper">
+		<collision>
+			<geometry>
+				<sphere radius="0.05242146551609039"></sphere>
+			</geometry>
+			<origin xyz="3.4212305763503537e-05 -0.02646474540233612 0.01931746117770672" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.04285106435418129"></sphere>
+			</geometry>
+			<origin xyz="0.048260897397994995 -0.041002679616212845 0.0012812691275030375" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.04608459770679474"></sphere>
+			</geometry>
+			<origin xyz="0.048766907304525375 -0.037839554250240326 0.043271347880363464" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.04150127246975899"></sphere>
+			</geometry>
+			<origin xyz="-0.05210757255554199 0.041528306901454926 0.0021433404181152582" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.04193071275949478"></sphere>
+			</geometry>
+			<origin xyz="-0.051057081669569016 0.042102985084056854 0.04210769012570381" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05348671227693558"></sphere>
+			</geometry>
+			<origin xyz="0.0006163730286061764 0.02469353936612606 0.01757410727441311" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_rightArm_gripper_visual">
+			<origin xyz="0.243754 -0.704298 1.674925" rpy="-0.000047 3.142204 -1.570817"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_gripper_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_gripper_visual_material">
+				<color rgba="0.700000 0.700000 0.700000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_gripper_visual">
+			<origin xyz="0.243754 -0.704298 1.674925" rpy="-0.000047 3.142204 -1.570817"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_gripper_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_gripper_visual_material">
+				<color rgba="0.100000 0.100000 0.100000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_gripper_visual">
+			<origin xyz="0.243754 -0.704298 1.674925" rpy="-0.000047 3.142204 -1.570817"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_gripper_visual_vis_3.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_gripper_visual_material">
+				<color rgba="0.100000 0.100000 0.100000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_gripper_visual">
+			<origin xyz="0.243754 -0.704298 1.674925" rpy="-0.000047 3.142204 -1.570817"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_gripper_visual_vis_4.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_gripper_visual_material">
+				<color rgba="0.700000 0.700000 0.700000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_gripper_visual">
+			<origin xyz="0.243754 -0.704298 1.674925" rpy="-0.000047 3.142204 -1.570817"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_gripper_visual_vis_5.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_gripper_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_tip">
+			<origin xyz="0.001425 -0.001400 0.109968" rpy="-3.141584 3.141543 -2.356196"></origin>
+			<geometry>
+				<box size="0.010000 0.010000 0.010000"></box>
+			</geometry>
+			<material name="Panda_rightArm_tip_material">
+				<color rgba="1.000000 0.000000 0.000000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_rightArm_leftfinger_respondable">
+		<visual name="Panda_rightArm_leftfinger_visual">
+			<origin xyz="0.325730 -1.618635 0.668579" rpy="-1.570246 2.356213 0.000903"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_leftfinger_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_leftfinger_visual_material">
+				<color rgba="0.700000 0.700000 0.700000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_leftfinger_visual">
+			<origin xyz="0.325730 -1.618635 0.668579" rpy="-1.570246 2.356213 0.000903"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_leftfinger_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_leftfinger_visual_material">
+				<color rgba="0.100000 0.100000 0.100000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_rightArm_leftfinger_force_contact"></link>
+	<link name="Panda_rightArm_rightfinger_respondable">
+		<visual name="Panda_rightArm_rightfinger_visual">
+			<origin xyz="0.325731 1.618634 -0.668580" rpy="1.571348 3.926972 -0.000904"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_rightfinger_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_rightfinger_visual_material">
+				<color rgba="0.700000 0.700000 0.700000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_rightArm_rightfinger_visual">
+			<origin xyz="0.325731 1.618634 -0.668580" rpy="1.571348 3.926972 -0.000904"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_rightArm_rightfinger_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_rightArm_rightfinger_visual_material">
+				<color rgba="0.100000 0.100000 0.100000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_rightArm_rightfinger_force_contact"></link>
+	<link name="Panda_leftArm">
+		<collision>
+			<geometry>
+				<sphere radius="0.12229408323764801"></sphere>
+			</geometry>
+			<origin xyz="0.004039809573441744 -0.1694931536912918 0.5013697743415833" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_leftArm_link0_visual">
+			<origin xyz="-0.800000 -0.200428 0.787309" rpy="1.570796 4.555559 1.570796"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link0_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link0_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_leftArm_link1_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.07962509244680405"></sphere>
+			</geometry>
+			<origin xyz="-0.0024662811774760485 -0.04857179895043373 -0.12700097262859344" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.08299106359481812"></sphere>
+			</geometry>
+			<origin xyz="-0.004715918097645044 0.008676519617438316 -0.12471232563257217" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07411005347967148"></sphere>
+			</geometry>
+			<origin xyz="0.002093480434268713 -0.07252376526594162 -0.018062466755509377" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07629771530628204"></sphere>
+			</geometry>
+			<origin xyz="0.002511389786377549 -0.014358137734234333 -0.019338015466928482" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_leftArm_link1_visual">
+			<origin xyz="0.239709 -0.043264 -1.083215" rpy="3.141591 3.141593 3.054324"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link1_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link1_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_leftArm_link2_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.08050414174795151"></sphere>
+			</geometry>
+			<origin xyz="0.003595572430640459 -0.13517868518829346 -0.009400751441717148" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.08164424449205399"></sphere>
+			</geometry>
+			<origin xyz="-0.0016082464717328548 -0.12747567892074585 0.04827636852860451" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07713332772254944"></sphere>
+			</geometry>
+			<origin xyz="-0.002338075079023838 -0.01955016888678074 0.015436237677931786" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.0739554613828659"></sphere>
+			</geometry>
+			<origin xyz="0.0025133234448730946 -0.017308572307229042 0.0751829743385315" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_leftArm_link2_visual">
+			<origin xyz="0.240083 1.083047 -0.043242" rpy="-1.570776 3.054325 3.141240"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link2_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link2_visual_material">
+				<color rgba="0.980000 0.980000 1.000000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_leftArm_link3_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.08443398028612137"></sphere>
+			</geometry>
+			<origin xyz="-0.0013315484393388033 0.02440699189901352 -0.07715384662151337" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.08262016624212265"></sphere>
+			</geometry>
+			<origin xyz="0.07159792631864548 0.027447568252682686 -0.07490962743759155" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07899095863103867"></sphere>
+			</geometry>
+			<origin xyz="0.017997631803154945 0.033604200929403305 -0.0037994750309735537" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07319962978363037"></sphere>
+			</geometry>
+			<origin xyz="0.08421270549297333 0.03726036474108696 -0.0004982746322639287" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_leftArm_link3_visual">
+			<origin xyz="0.239955 -0.043271 -1.398960" rpy="-3.141569 3.141872 3.054323"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link3_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link3_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_link3_visual">
+			<origin xyz="0.239955 -0.043271 -1.398960" rpy="-3.141569 3.141872 3.054323"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link3_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link3_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_leftArm_link4_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.0812283456325531"></sphere>
+			</geometry>
+			<origin xyz="-0.06340233981609344 0.0041882251389324665 0.03503401577472687" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07249876856803894"></sphere>
+			</geometry>
+			<origin xyz="0.0019174483604729176 -0.0015571346739307046 0.03824103623628616" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.0748087465763092"></sphere>
+			</geometry>
+			<origin xyz="-0.08687447756528854 0.08770867437124252 0.01193581148982048" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.08493562042713165"></sphere>
+			</geometry>
+			<origin xyz="-0.01370253600180149 0.07747878134250641 0.029015913605690002" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_leftArm_link4_visual">
+			<origin xyz="0.158332 -1.398628 0.043210" rpy="1.570838 3.228866 -3.140628"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link4_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link4_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_link4_visual">
+			<origin xyz="0.158332 -1.398628 0.043210" rpy="1.570838 3.228866 -3.140628"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link4_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link4_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_leftArm_link5_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.08257761597633362"></sphere>
+			</geometry>
+			<origin xyz="-0.0015901615843176842 0.02505832351744175 -0.21795183420181274" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07528141885995865"></sphere>
+			</geometry>
+			<origin xyz="0.0015637082979083061 0.04580293968319893 -0.1509857177734375" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06319362670183182"></sphere>
+			</geometry>
+			<origin xyz="0.0021654826123267412 0.06697607040405273 -0.04567454755306244" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05786972492933273"></sphere>
+			</geometry>
+			<origin xyz="0.002181167481467128 0.04324657842516899 0.003451680066064" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05310262367129326"></sphere>
+			</geometry>
+			<origin xyz="-0.0028212815523147583 0.09553448110818863 0.0035606950987130404" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.08257761597633362"></sphere>
+			</geometry>
+			<origin xyz="-0.0015901615843176842 0.02505832351744175 -0.21795183420181274" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07528141885995865"></sphere>
+			</geometry>
+			<origin xyz="0.0015637082979083061 0.04580293968319893 -0.1509857177734375" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06319362670183182"></sphere>
+			</geometry>
+			<origin xyz="0.0021654826123267412 0.06697607040405273 -0.04567454755306244" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05786972492933273"></sphere>
+			</geometry>
+			<origin xyz="0.002181167481467128 0.04324657842516899 0.003451680066064" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05310262367129326"></sphere>
+			</geometry>
+			<origin xyz="-0.0028212815523147583 0.09553448110818863 0.0035606950987130404" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.08257761597633362"></sphere>
+			</geometry>
+			<origin xyz="-0.0015901615843176842 0.02505832351744175 -0.21795183420181274" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07528141885995865"></sphere>
+			</geometry>
+			<origin xyz="0.0015637082979083061 0.04580293968319893 -0.1509857177734375" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06319362670183182"></sphere>
+			</geometry>
+			<origin xyz="0.0021654826123267412 0.06697607040405273 -0.04567454755306244" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05786972492933273"></sphere>
+			</geometry>
+			<origin xyz="0.002181167481467128 0.04324657842516899 0.003451680066064" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05310262367129326"></sphere>
+			</geometry>
+			<origin xyz="-0.0028212815523147583 0.09553448110818863 0.0035606950987130404" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.08257761597633362"></sphere>
+			</geometry>
+			<origin xyz="-0.0015901615843176842 0.02505832351744175 -0.21795183420181274" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07528141885995865"></sphere>
+			</geometry>
+			<origin xyz="0.0015637082979083061 0.04580293968319893 -0.1509857177734375" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06319362670183182"></sphere>
+			</geometry>
+			<origin xyz="0.0021654826123267412 0.06697607040405273 -0.04567454755306244" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05786972492933273"></sphere>
+			</geometry>
+			<origin xyz="0.002181167481467128 0.04324657842516899 0.003451680066064" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05310262367129326"></sphere>
+			</geometry>
+			<origin xyz="-0.0028212815523147583 0.09553448110818863 0.0035606950987130404" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.08257761597633362"></sphere>
+			</geometry>
+			<origin xyz="-0.0015901615843176842 0.02505832351744175 -0.21795183420181274" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07528141885995865"></sphere>
+			</geometry>
+			<origin xyz="0.0015637082979083061 0.04580293968319893 -0.1509857177734375" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06319362670183182"></sphere>
+			</geometry>
+			<origin xyz="0.0021654826123267412 0.06697607040405273 -0.04567454755306244" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05786972492933273"></sphere>
+			</geometry>
+			<origin xyz="0.002181167481467128 0.04324657842516899 0.003451680066064" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05310262367129326"></sphere>
+			</geometry>
+			<origin xyz="-0.0028212815523147583 0.09553448110818863 0.0035606950987130404" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.08257761597633362"></sphere>
+			</geometry>
+			<origin xyz="-0.0015901615843176842 0.02505832351744175 -0.21795183420181274" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07528141885995865"></sphere>
+			</geometry>
+			<origin xyz="0.0015637082979083061 0.04580293968319893 -0.1509857177734375" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06319362670183182"></sphere>
+			</geometry>
+			<origin xyz="0.0021654826123267412 0.06697607040405273 -0.04567454755306244" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05786972492933273"></sphere>
+			</geometry>
+			<origin xyz="0.002181167481467128 0.04324657842516899 0.003451680066064" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05310262367129326"></sphere>
+			</geometry>
+			<origin xyz="-0.0028212815523147583 0.09553448110818863 0.0035606950987130404" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.08257761597633362"></sphere>
+			</geometry>
+			<origin xyz="-0.0015901615843176842 0.02505832351744175 -0.21795183420181274" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.07528141885995865"></sphere>
+			</geometry>
+			<origin xyz="0.0015637082979083061 0.04580293968319893 -0.1509857177734375" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06319362670183182"></sphere>
+			</geometry>
+			<origin xyz="0.0021654826123267412 0.06697607040405273 -0.04567454755306244" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05786972492933273"></sphere>
+			</geometry>
+			<origin xyz="0.002181167481467128 0.04324657842516899 0.003451680066064" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05310262367129326"></sphere>
+			</geometry>
+			<origin xyz="-0.0028212815523147583 0.09553448110818863 0.0035606950987130404" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_leftArm_link5_visual">
+			<origin xyz="0.240285 -0.043433 -1.782140" rpy="-3.141469 3.142532 3.054309"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link5_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link5_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_link5_visual">
+			<origin xyz="0.240285 -0.043433 -1.782140" rpy="-3.141469 3.142532 3.054309"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link5_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link5_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_leftArm_link6_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.06331079453229904"></sphere>
+			</geometry>
+			<origin xyz="0.012607422657310963 -0.0182828139513731 0.009625803679227829" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.06109975278377533"></sphere>
+			</geometry>
+			<origin xyz="0.007449094206094742 0.030294442549347878 0.01035335287451744" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05868280678987503"></sphere>
+			</geometry>
+			<origin xyz="0.08239485323429108 -0.021930556744337082 0.005907779559493065" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.05624520406126976"></sphere>
+			</geometry>
+			<origin xyz="0.0808737725019455 0.034856557846069336 0.005523091647773981" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_leftArm_link6_visual">
+			<origin xyz="0.240785 -1.781998 0.043440" rpy="1.570829 3.228877 -3.140291"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link6_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link6_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_link6_visual">
+			<origin xyz="0.240785 -1.781998 0.043440" rpy="1.570829 3.228877 -3.140291"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link6_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link6_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_link6_visual">
+			<origin xyz="0.240785 -1.781998 0.043440" rpy="1.570829 3.228877 -3.140291"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link6_visual_vis_3.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link6_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_link6_visual">
+			<origin xyz="0.240785 -1.781998 0.043440" rpy="1.570829 3.228877 -3.140291"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link6_visual_vis_4.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link6_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_link6_visual">
+			<origin xyz="0.240785 -1.781998 0.043440" rpy="1.570829 3.228877 -3.140291"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link6_visual_vis_5.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link6_visual_material">
+				<color rgba="0.300000 0.300000 0.300000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_link6_visual">
+			<origin xyz="0.240785 -1.781998 0.043440" rpy="1.570829 3.228877 -3.140291"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link6_visual_vis_6.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link6_visual_material">
+				<color rgba="0.740000 0.740000 0.740000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_leftArm_link7_respondable">
+		<collision>
+			<geometry>
+				<sphere radius="0.03685395047068596"></sphere>
+			</geometry>
+			<origin xyz="-0.01956951431930065 -0.015120245516300201 0.062312863767147064" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.03536423668265343"></sphere>
+			</geometry>
+			<origin xyz="-0.019728008657693863 -0.014265371486544609 0.09334249794483185" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.04241294413805008"></sphere>
+			</geometry>
+			<origin xyz="0.03140072897076607 -0.011761452071368694 0.07713741064071655" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.04235308617353439"></sphere>
+			</geometry>
+			<origin xyz="-0.005557121708989143 0.038097117096185684 0.07860872149467468" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.040537815541028976"></sphere>
+			</geometry>
+			<origin xyz="0.03914010897278786 0.03926340863108635 0.0830678716301918" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_leftArm_link7_visual">
+			<origin xyz="0.152811 0.043469 1.781877" rpy="0.000136 3.140284 -3.054314"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link7_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link7_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_link7_visual">
+			<origin xyz="0.152811 0.043469 1.781877" rpy="0.000136 3.140284 -3.054314"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link7_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link7_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_link7_visual">
+			<origin xyz="0.152811 0.043469 1.781877" rpy="0.000136 3.140284 -3.054314"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link7_visual_vis_3.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link7_visual_material">
+				<color rgba="0.700000 0.700000 0.700000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_link7_visual">
+			<origin xyz="0.152811 0.043469 1.781877" rpy="0.000136 3.140284 -3.054314"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link7_visual_vis_4.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link7_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_link7_visual">
+			<origin xyz="0.152811 0.043469 1.781877" rpy="0.000136 3.140284 -3.054314"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_link7_visual_vis_5.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_link7_visual_material">
+				<color rgba="0.400000 0.400000 0.400000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_leftArm_gripper">
+		<collision>
+			<geometry>
+				<sphere radius="0.05365239828824997"></sphere>
+			</geometry>
+			<origin xyz="0.001428856048732996 -0.02863362245261669 0.026398837566375732" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.04237578436732292"></sphere>
+			</geometry>
+			<origin xyz="0.05029035359621048 -0.04220055416226387 0.00364950904622674" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.04359332472085953"></sphere>
+			</geometry>
+			<origin xyz="0.051875561475753784 -0.045694004744291306 0.040510039776563644" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.04209719970822334"></sphere>
+			</geometry>
+			<origin xyz="-0.050351109355688095 0.04162818193435669 7.236373494379222e-05" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.04436652734875679"></sphere>
+			</geometry>
+			<origin xyz="-0.04972848296165466 0.04168214648962021 0.04212754964828491" rpy="0 0 0"></origin>
+		</collision>
+		<collision>
+			<geometry>
+				<sphere radius="0.054045386612415314"></sphere>
+			</geometry>
+			<origin xyz="-0.0007652047206647694 0.02350810542702675 0.016293630003929138" rpy="0 0 0"></origin>
+		</collision>
+		<visual name="Panda_leftArm_gripper_visual">
+			<origin xyz="0.043378 -0.152901 1.674774" rpy="0.000188 3.140244 1.658074"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_gripper_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_gripper_visual_material">
+				<color rgba="0.700000 0.700000 0.700000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_gripper_visual">
+			<origin xyz="0.043378 -0.152901 1.674774" rpy="0.000188 3.140244 1.658074"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_gripper_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_gripper_visual_material">
+				<color rgba="0.100000 0.100000 0.100000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_gripper_visual">
+			<origin xyz="0.043378 -0.152901 1.674774" rpy="0.000188 3.140244 1.658074"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_gripper_visual_vis_3.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_gripper_visual_material">
+				<color rgba="0.100000 0.100000 0.100000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_gripper_visual">
+			<origin xyz="0.043378 -0.152901 1.674774" rpy="0.000188 3.140244 1.658074"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_gripper_visual_vis_4.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_gripper_visual_material">
+				<color rgba="0.700000 0.700000 0.700000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_gripper_visual">
+			<origin xyz="0.043378 -0.152901 1.674774" rpy="0.000188 3.140244 1.658074"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_gripper_visual_vis_5.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_gripper_visual_material">
+				<color rgba="0.980000 0.980000 0.980000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_tip">
+			<origin xyz="0.001434 -0.001393 0.110013" rpy="-3.141590 3.141509 -2.356193"></origin>
+			<geometry>
+				<box size="0.010000 0.010000 0.010000"></box>
+			</geometry>
+			<material name="Panda_leftArm_tip_material">
+				<color rgba="1.000000 0.000000 0.000000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_leftArm_leftfinger_respondable">
+		<visual name="Panda_leftArm_leftfinger_visual">
+			<origin xyz="0.077588 -1.618442 0.137004" rpy="1.569382 4.014266 -3.139416"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_leftfinger_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_leftfinger_visual_material">
+				<color rgba="0.700000 0.700000 0.700000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_leftfinger_visual">
+			<origin xyz="0.077588 -1.618442 0.137004" rpy="1.569382 4.014266 -3.139416"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_leftfinger_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_leftfinger_visual_material">
+				<color rgba="0.100000 0.100000 0.100000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_leftArm_leftfinger_force_contact"></link>
+	<link name="Panda_leftArm_rightfinger_respondable">
+		<visual name="Panda_leftArm_rightfinger_visual">
+			<origin xyz="0.077588 1.618442 -0.137005" rpy="-1.572213 2.268920 3.139414"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_rightfinger_visual_vis_1.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_rightfinger_visual_material">
+				<color rgba="0.700000 0.700000 0.700000 1.0"></color>
+			</material>
+		</visual>
+		<visual name="Panda_leftArm_rightfinger_visual">
+			<origin xyz="0.077588 1.618442 -0.137005" rpy="-1.572213 2.268920 3.139414"></origin>
+			<geometry>
+				<mesh filename="package://rlbenchpanda_description/meshes/dualpanda_Panda_leftArm_rightfinger_visual_vis_2.dae"></mesh>
+			</geometry>
+			<material name="Panda_leftArm_rightfinger_visual_material">
+				<color rgba="0.100000 0.100000 0.100000 1.0"></color>
+			</material>
+		</visual>
+	</link>
+	<link name="Panda_leftArm_rightfinger_force_contact"></link>
+	<joint name="Panda_rightArm_joint" type="fixed">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="50.0" upper="0.0" lower="0.0" velocity="1.0"></limit>
+		<parent link="robot_base"></parent>
+		<child link="Panda_rightArm"></child>
+		<origin xyz="-0.808951 -0.075000 0.800000" rpy="2.984763 -1.570796 0.000000"></origin>
+	</joint>
+	<joint name="Panda_rightArm_joint1" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="87.0" upper="2.8973000049591" lower="-2.8973000049591" velocity="2.1749999523163"></limit>
+		<parent link="Panda_rightArm"></parent>
+		<child link="Panda_rightArm_link1_respondable"></child>
+		<origin xyz="0.283215 -0.083515 1.607680" rpy="-1.570795 1.727627 -1.570794"></origin>
+	</joint>
+	<joint name="Panda_rightArm_joint2" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="87.0" upper="1.7627999782562" lower="-1.7627999782562" velocity="2.1749999523163"></limit>
+		<parent link="Panda_rightArm_link1_respondable"></parent>
+		<child link="Panda_rightArm_link2_respondable"></child>
+		<origin xyz="0.000010 0.000001 -0.000035" rpy="1.570796 3.141464 3.141591"></origin>
+	</joint>
+	<joint name="Panda_rightArm_joint3" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="87.0" upper="2.8973000049591" lower="-2.8973000049591" velocity="2.1749999523163"></limit>
+		<parent link="Panda_rightArm_link2_respondable"></parent>
+		<child link="Panda_rightArm_link3_respondable"></child>
+		<origin xyz="0.000060 -0.315903 0.000007" rpy="-1.570818 3.141592 -3.141506"></origin>
+	</joint>
+	<joint name="Panda_rightArm_joint4" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="87.0" upper="0.0" lower="-3.0020000934601" velocity="2.1749999523163"></limit>
+		<parent link="Panda_rightArm_link3_respondable"></parent>
+		<child link="Panda_rightArm_link4_respondable"></child>
+		<origin xyz="0.082529 0.000006 -0.000079" rpy="-1.570806 3.141423 3.141593"></origin>
+	</joint>
+	<joint name="Panda_rightArm_joint5" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="12.0" upper="2.8973000049591" lower="-2.8973000049591" velocity="2.6099998950958"></limit>
+		<parent link="Panda_rightArm_link4_respondable"></parent>
+		<child link="Panda_rightArm_link5_respondable"></child>
+		<origin xyz="-0.081999 0.383522 -0.000216" rpy="1.570815 3.141597 3.141581"></origin>
+	</joint>
+	<joint name="Panda_rightArm_joint6" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="12.0" upper="3.752499980852" lower="-0.017500000074506" velocity="2.6099998950958"></limit>
+		<parent link="Panda_rightArm_link5_respondable"></parent>
+		<child link="Panda_rightArm_link6_respondable"></child>
+		<origin xyz="0.000068 -0.000002 -0.000025" rpy="-1.570822 3.141434 3.141592"></origin>
+	</joint>
+	<joint name="Panda_rightArm_joint7" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="12.0" upper="2.8973000049591" lower="-2.8973000049591" velocity="2.6099998950958"></limit>
+		<parent link="Panda_rightArm_link6_respondable"></parent>
+		<child link="Panda_rightArm_link7_respondable"></child>
+		<origin xyz="0.087984 -0.000065 -0.000001" rpy="-1.570788 3.141607 3.141566"></origin>
+	</joint>
+	<joint name="Panda_rightArm_attachment" type="fixed">
+		<axis xyz="0 0 1"></axis>
+		<parent link="Panda_rightArm_link7_respondable"></parent>
+		<child link="Panda_rightArm_gripper"></child>
+		<origin xyz="-0.000004 0.000002 0.107056" rpy="3.141563 3.141578 -1.570797"></origin>
+	</joint>
+	<joint name="Panda_rightArm_gripper_joint1" type="prismatic">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="20.0" upper="0.03999999910593" lower="0.0" velocity="0.20000000298023"></limit>
+		<parent link="Panda_rightArm_gripper"></parent>
+		<child link="Panda_rightArm_leftfinger_respondable"></child>
+		<origin xyz="0.001258 -0.001259 0.056281" rpy="1.570786 3.141641 0.785396"></origin>
+	</joint>
+	<joint name="Panda_rightArm_gripper_touchSensor1" type="fixed">
+		<axis xyz="0 0 1"></axis>
+		<parent link="Panda_rightArm_leftfinger_respondable"></parent>
+		<child link="Panda_rightArm_leftfinger_force_contact"></child>
+		<origin xyz="0.000668 -0.046504 0.003462" rpy="-0.000001 3.141596 1.570777"></origin>
+	</joint>
+	<joint name="Panda_rightArm_gripper_joint2" type="prismatic">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="20.0" upper="0.03999999910593" lower="0.0" velocity="0.20000000298023"></limit>
+		<parent link="Panda_rightArm_gripper"></parent>
+		<child link="Panda_rightArm_rightfinger_respondable"></child>
+		<origin xyz="0.001258 -0.001259 0.056281" rpy="-1.570805 3.141641 0.785396"></origin>
+	</joint>
+	<joint name="Panda_rightArm_gripper_touchSensor0" type="fixed">
+		<axis xyz="0 0 1"></axis>
+		<parent link="Panda_rightArm_rightfinger_respondable"></parent>
+		<child link="Panda_rightArm_rightfinger_force_contact"></child>
+		<origin xyz="0.000702 0.046414 0.003536" rpy="0.000000 3.141598 -1.570787"></origin>
+	</joint>
+	<joint name="Panda_leftArm_joint" type="fixed">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="50.0" upper="0.0" lower="0.0" velocity="1.0"></limit>
+		<parent link="robot_base"></parent>
+		<child link="Panda_leftArm"></child>
+		<origin xyz="-0.808951 -0.075000 0.800000" rpy="2.984763 -1.570796 0.000000"></origin>
+	</joint>
+	<joint name="Panda_leftArm_joint1" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="87.0" upper="2.8973000049591" lower="-2.8973000049591" velocity="2.1749999523163"></limit>
+		<parent link="Panda_leftArm"></parent>
+		<child link="Panda_leftArm_link1_respondable"></child>
+		<origin xyz="0.283215 -0.184474 0.544251" rpy="1.570797 4.468291 1.570797"></origin>
+	</joint>
+	<joint name="Panda_leftArm_joint2" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="87.0" upper="1.7627999782562" lower="-1.7627999782562" velocity="2.1749999523163"></limit>
+		<parent link="Panda_leftArm_link1_respondable"></parent>
+		<child link="Panda_leftArm_link2_respondable"></child>
+		<origin xyz="0.000009 0.000002 -0.000084" rpy="1.570774 3.141238 3.141592"></origin>
+	</joint>
+	<joint name="Panda_leftArm_joint3" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="87.0" upper="2.8973000049591" lower="-2.8973000049591" velocity="2.1749999523163"></limit>
+		<parent link="Panda_leftArm_link2_respondable"></parent>
+		<child link="Panda_leftArm_link3_respondable"></child>
+		<origin xyz="0.000025 -0.315897 -0.000001" rpy="-1.570775 3.141595 3.141519"></origin>
+	</joint>
+	<joint name="Panda_leftArm_joint4" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="87.0" upper="0.0" lower="-3.0020000934601" velocity="2.1749999523163"></limit>
+		<parent link="Panda_leftArm_link3_respondable"></parent>
+		<child link="Panda_leftArm_link4_respondable"></child>
+		<origin xyz="0.082586 -0.000002 -0.000226" rpy="-1.570839 3.140904 -3.141589"></origin>
+	</joint>
+	<joint name="Panda_leftArm_joint5" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="12.0" upper="2.8973000049591" lower="-2.8973000049591" velocity="2.6099998950958"></limit>
+		<parent link="Panda_leftArm_link4_respondable"></parent>
+		<child link="Panda_leftArm_link5_respondable"></child>
+		<origin xyz="-0.081994 0.383507 -0.000221" rpy="1.570796 3.141583 -3.141570"></origin>
+	</joint>
+	<joint name="Panda_leftArm_joint6" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="12.0" upper="3.752499980852" lower="-0.017500000074506" velocity="2.6099998950958"></limit>
+		<parent link="Panda_leftArm_link5_respondable"></parent>
+		<child link="Panda_leftArm_link6_respondable"></child>
+		<origin xyz="0.000138 -0.000009 -0.000055" rpy="-1.570787 3.141234 -3.141592"></origin>
+	</joint>
+	<joint name="Panda_leftArm_joint7" type="revolute">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="12.0" upper="2.8973000049591" lower="-2.8973000049591" velocity="2.6099998950958"></limit>
+		<parent link="Panda_leftArm_link6_respondable"></parent>
+		<child link="Panda_leftArm_link7_respondable"></child>
+		<origin xyz="0.087995 -0.000119 -0.000010" rpy="-1.570786 3.141598 3.141582"></origin>
+	</joint>
+	<joint name="Panda_leftArm_attachment" type="fixed">
+		<axis xyz="0 0 1"></axis>
+		<parent link="Panda_leftArm_link7_respondable"></parent>
+		<child link="Panda_leftArm_gripper"></child>
+		<origin xyz="-0.000015 0.000012 0.107098" rpy="3.141548 3.141545 -1.570796"></origin>
+	</joint>
+	<joint name="Panda_leftArm_gripper_joint1" type="prismatic">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="20.0" upper="0.03999999910593" lower="0.0" velocity="0.20000000298023"></limit>
+		<parent link="Panda_leftArm_gripper"></parent>
+		<child link="Panda_leftArm_leftfinger_respondable"></child>
+		<origin xyz="0.001266 -0.001252 0.056326" rpy="1.570793 3.141675 0.785400"></origin>
+	</joint>
+	<joint name="Panda_leftArm_gripper_touchSensor1" type="fixed">
+		<axis xyz="0 0 1"></axis>
+		<parent link="Panda_leftArm_leftfinger_respondable"></parent>
+		<child link="Panda_leftArm_leftfinger_force_contact"></child>
+		<origin xyz="0.000664 -0.046511 0.003462" rpy="-0.000001 3.141600 1.570766"></origin>
+	</joint>
+	<joint name="Panda_leftArm_gripper_joint2" type="prismatic">
+		<axis xyz="0 0 1"></axis>
+		<limit effort="20.0" upper="0.03999999910593" lower="0.0" velocity="0.20000000298023"></limit>
+		<parent link="Panda_leftArm_gripper"></parent>
+		<child link="Panda_leftArm_rightfinger_respondable"></child>
+		<origin xyz="0.001266 -0.001252 0.056326" rpy="-1.570799 3.141675 0.785400"></origin>
+	</joint>
+	<joint name="Panda_leftArm_gripper_touchSensor0" type="fixed">
+		<axis xyz="0 0 1"></axis>
+		<parent link="Panda_leftArm_rightfinger_respondable"></parent>
+		<child link="Panda_leftArm_rightfinger_force_contact"></child>
+		<origin xyz="0.000700 0.046420 0.003536" rpy="0.000002 3.141600 -1.570773"></origin>
+	</joint>
+</robot>

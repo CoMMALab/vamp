@@ -10,7 +10,7 @@ option(VAMP_INSTALL_CPP_LIBRARY "Install VAMP C++ library (disable for Python wh
 option(VAMP_BUILD_CPP_DEMO "Build VAMP C++ Demo Scripts" OFF)
 option(VAMP_BUILD_OMPL_DEMO "Build VAMP C++ OMPL Integration Demo Scripts" OFF)
 option(VAMP_OMPL_PATH "Search Path for OMPL Installation - Only Needed for Demo Script" "")
-add_compile_options(-Wno-unused-variable)
+add_compile_options(-Wno-unused-variable -Wno-unused-function -Wno-unused-parameter)
 
 if(VAMP_FORCE_CLANG)
     find_program(CLANG "clang")
@@ -147,18 +147,21 @@ if(VAMP_BUILD_CPP_DEMO)
   add_executable(vamp_crrtc_example scripts/cpp/planning_with_constraints/vamp_crrtc_example.cc)
   target_link_libraries(vamp_crrtc_example PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
 
-  add_executable(vamp_crrtc_spheres scripts/cpp/planning_with_constraints/vamp_crrtc_spheres.cc)
-  target_link_libraries(vamp_crrtc_spheres PRIVATE vamp_cpp)
+  add_executable(vamp_dual_panda scripts/cpp/planning_with_constraints/vamp_dual_panda.cc)
+  target_link_libraries(vamp_dual_panda PRIVATE vamp_cpp)
+
+  # add_executable(vamp_crrtc_spheres scripts/cpp/planning_with_constraints/vamp_crrtc_spheres.cc)
+  # target_link_libraries(vamp_crrtc_spheres PRIVATE vamp_cpp)
 
 
-  add_executable(vamp_bimanual_example_iiwa scripts/cpp/planning_with_constraints/vamp_bimanual_example_iiwa.cc)
-  target_link_libraries(vamp_bimanual_example_iiwa PRIVATE vamp_cpp)
+  # add_executable(vamp_bimanual_example_iiwa scripts/cpp/planning_with_constraints/vamp_bimanual_example_iiwa.cc)
+  # target_link_libraries(vamp_bimanual_example_iiwa PRIVATE vamp_cpp)
 
-  add_executable(vamp_com_constraint_example scripts/cpp/planning_with_constraints/vamp_com_constraint_example.cc)
-  target_link_libraries(vamp_com_constraint_example PRIVATE vamp_cpp)
+  # add_executable(vamp_com_constraint_example scripts/cpp/planning_with_constraints/vamp_com_constraint_example.cc)
+  # target_link_libraries(vamp_com_constraint_example PRIVATE vamp_cpp)
 
-  add_executable(digit_example scripts/cpp/planning_with_constraints/digit_example.cc)
-  target_link_libraries(digit_example PRIVATE vamp_cpp)
+  # add_executable(digit_example scripts/cpp/planning_with_constraints/digit_example.cc)
+  # target_link_libraries(digit_example PRIVATE vamp_cpp)
 
   # Disable strict warnings for demos to maintain compatibility
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")

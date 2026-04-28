@@ -20,6 +20,25 @@ def setup_viser_with_robot(robot_dir, robot_urdf_name):
     return server, robot
 
 
+def add_box(
+    server: viser.ViserServer,
+    position: Sequence[float],
+    half_extents: Sequence[float],
+    orientation: Sequence[float] = [1.0, 0.0, 0.0, 0.0],
+    color: Sequence[int] = [255, 0, 0],
+    prefix: str = "cuboid",
+    **kwargs,
+):
+    cuboid_handle = server.scene.add_box(
+        name=prefix,
+        position=tuple(position),
+        dimensions = np.array(half_extents) * 2,
+        wxyz=tuple(orientation),
+        color=tuple(color),
+        **kwargs
+    )
+    return cuboid_handle
+
 def add_point_cloud(
     server: viser.ViserServer,
     point_cloud: np.ndarray,

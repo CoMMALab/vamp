@@ -1,6 +1,6 @@
 import numpy as np
 import os
-from viser_utils import setup_viser_with_robot, add_spheres, add_trajectory
+from viser_utils import setup_viser_with_robot, add_spheres, add_trajectory, add_box
 from pathlib import Path
 from scipy.spatial.transform import Rotation as R
 import vamp
@@ -23,7 +23,7 @@ def project_config_to_pose(goal_poses, vamp_module, start_config):
         [0.0001] * 6 * len(goal_poses)
     )
     composable_constraint = vamp_module.Composable_TaskSpaceConstraint(constraint)
-    projected_config = composable_constraint.projectConfiguration(np.array(start_config), 0, 10.0, 0.5, 50, True)
+    projected_config = composable_constraint.projectConfiguration(np.array(start_config), 0, 10.0, 0.5, 50, False)
     return projected_config
 
 
@@ -46,8 +46,8 @@ def main(
     (vamp_module, planner_func, plan_settings, simp_settings) = (
         vamp.configure_robot_and_planner_with_kwargs("dual_panda", "crrtc", **kwargs)
     )
-    start = [1.153085, 1.0687546, -0.72878325, -1.7417533, -0.5460635, 1.5697869, -1.5375385, 0.03999999910593033, 0.03999999910593033, 1.2295971, 1.0459367, -0.718508, -1.7925525, -0.58791673, 1.6164308, -1.5082302, 0.03999999910593033, 0.03999999910593033]
-    goal = [2.4776876, 0.80449617, -2.2346807, -2.521999, -1.046068, 1.9215181, -2.0181684, 0.03999999910593033, 0.03999999910593033, 2.6297247, 0.20511132, -2.1690536, -2.1782806, -1.3524126, 1.5270882, -1.8656551, 0.03999999910593033, 0.03999999910593033]
+    goal = [1.153085, 1.0687546, -0.72878325, -1.7417533, -0.5460635, 1.5697869, -1.5375385, 0.03999999910593033, 0.03999999910593033, 1.2295971, 1.0459367, -0.718508, -1.7925525, -0.58791673, 1.6164308, -1.5082302, 0.03999999910593033, 0.03999999910593033]
+    start = [2.4776876, 0.80449617, -2.2346807, -2.521999, -1.046068, 1.9215181, -2.0181684, 0.03999999910593033, 0.03999999910593033, 2.6297247, 0.20511132, -2.1690536, -2.1782806, -1.3524126, 1.5270882, -1.8656551, 0.03999999910593033, 0.03999999910593033]
 
 
     plan_settings.rrtc_settings.balance = True
@@ -83,7 +83,6 @@ def main(
 
     robot_dir = Path(__file__).parents[1] / "resources" / "rlbench_panda"
     server, robot = setup_viser_with_robot(robot_dir, "dualpanda_exported_spherized.urdf")
-    robot.update_cfg(start)
 
     floor_grid = server.scene.add_grid(
         name="/floor_grid",
@@ -96,17 +95,12 @@ def main(
     )
 
 
-    leaf = server.scene.add_frame(
-        "/righteef",
-        wxyz=(0.00504418, 0.00504418,  0.7070877, 0.70708996),
-        position=(0.28567183, -0.35142893,  0.8594931),
 
-    )
-    leaf = server.scene.add_frame(
-        "/leftteef",
-        wxyz=(-0.70701665, -0.7070191 ,  0.01122052, 0.01120981),
-        position=(0.26074907,  0.14300023,  0.8614942),
 
+    tray_pose = np.array([0.9863,-0.0002,0.0001,0.1648,0.1239,-0.0713,0.8596])
+    tray_euler_angles = R.from_quat(tray_pose[:4], scalar_first=True).as_euler('xyz', degrees=False)
+    tray_vamp_cuboid = vamp.Cuboid(
+        [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.1 , 0.18 , 0.03]
     )
 
     no_bimanual_constraint = vamp_module.BimanualTaskSpaceConstraint(
@@ -147,18 +141,38 @@ def main(
     result.path.interpolate_to_resolution(vamp_module.resolution())
     planned_traj.extend(result.path.numpy())
     fk2 = vamp_module.eefk(waypoint_1_config)
+
+    print("FK2 is : ", fk2)
+
+    # print(waypoint_1_config, result.path.numpy()[-1])
+
     # compute relative transform between fk2[0] and fk2[1]
     relative_transform_1_2 = np.linalg.inv(fk2[0]) @ fk2[1]
 
 
+    # now attach the tray to the first eef with the relative transform between waypoint 1 and 2
+    # compute relative transform between fk2[0] and tray, i.e. the pose of the tree in the first eef's frame
+    tray_pose_matrix = np.eye(4)
+    tray_pose_matrix[:3, :3] = R.from_quat(tray_pose[:4], scalar_first=True).as_matrix()
+    tray_pose_matrix[:3, 3] = tray_pose[4:]
+
+    attached_obj_rel_pose = np.linalg.inv(fk2[0]) @ tray_pose_matrix
+    print("Attached object relative pose: ", attached_obj_rel_pose)
+    attachment = vamp.Attachment(attached_obj_rel_pose)
+    attachment.add_cuboid(tray_vamp_cuboid)
+    e.attach(attachment, 0)
+
+
+
+
     # relative_transform_se3 = [0.0] * 7
-    # # first 4 values are wxyz, compute from relative_transform
+    # first 4 values are wxyz, compute from relative_transform
     # relative_transform_se3[:4] = R.from_matrix(relative_transform[:3, :3]).as_quat().tolist()
-    # # last 3 values are translation, compute from relative_transform
+    # last 3 values are translation, compute from relative_transform
     # relative_transform_se3[4:] = relative_transform[:3, 3].tolist()
 
     relative_transform_se3 = se3_matrix_to_se3_vec(relative_transform_1_2)
-    print("Relative transform between waypoint 1 and 2: ", relative_transform_se3)
+    # print("Relative transform between waypoint 1 and 2: ", relative_transform_se3)
 
 
     bimanual_constraint = vamp_module.BimanualTaskSpaceConstraint(
@@ -170,7 +184,7 @@ def main(
 
     t5 = time.time()
     # now compute for waypoint 2 from waypoint_1
-    waypoint_2_config = project_config_to_pose(waypoint_2, vamp_module, goal)
+    waypoint_2_config = project_config_to_pose(waypoint_2, vamp_module, waypoint_1_config)
     t6 = time.time()
     print(f"Time taken to project waypoint 2 config: {(t6 - t5) * 1000:.3f} milliseconds")
 
@@ -190,17 +204,66 @@ def main(
 
 
     print(f"Time taken for planning: {(time.time() - t1) * 1000:.3f} milliseconds")
+    # print(fk2[0])
+    # robot.update_cfg(start)
+
+    leaf = server.scene.add_frame(
+        "/righteef",
+        wxyz=R.from_matrix(fk2[0][:3, :3]).as_quat(scalar_first=True),
+        position=fk2[0][:3, 3]
+
+    )
+    leaf = server.scene.add_frame(
+        "/leftteef",
+        wxyz=R.from_matrix(fk2[1][:3, :3]).as_quat(scalar_first=True),
+        position=fk2[1][:3, 3]
+    )
+
+
+    attachment.set_ee_pose(fk2[0])
+    # attachment.set_ee_pose(np.eye(4))
+
+    # add spheres for visualization
+    # for sphere_idx, sphere in enumerate(attachment.posed_spheres):
+    #     add_spheres(server, [[sphere.x, sphere.y, sphere.z]], [sphere.r], colors=[[0, 255, 0]], prefix="attachment_sphere_" + str(sphere_idx))
+
+    spheres_centers_for_viz = np.array([sphere.position for sphere in attachment.posed_spheres])
+    spheres_radii_for_viz = np.array([sphere.r for sphere in attachment.posed_spheres])
+
+    attachment_sph_groups = add_spheres(
+        server, spheres_centers_for_viz, spheres_radii_for_viz, colors=[[0, 255, 0]] * len(attachment.posed_spheres), prefix="attachment"
+    )
+
+    cuboid_handle = add_box(
+        server,
+        position=tray_pose[4:],
+        half_extents=[0.1, 0.18, 0.03],
+        orientation=tray_pose[:4],
+        color=[0, 255, 0],
+        prefix="tray_cuboid",
+        opacity=0.5
+    )
 
 
     result_path = np.linspace(start, goal, num=100)
+    
+    def correct_q_for_urdf(q):
+        return np.concatenate([q[9:], q[:9]])
+    
+
+    def get_sphere_position_from_config(q):
+        fk = vamp_module.eefk(q)
+        attachment.set_ee_pose(fk[0])
+        sphere_positions = np.array([sphere.position for sphere in attachment.posed_spheres])
+        return sphere_positions
 
     add_trajectory(
-        server, planned_traj, robot, [], [[]]
+        server, np.array([correct_q_for_urdf(q) for q in planned_traj]), robot, attachment_sph_groups, [get_sphere_position_from_config(q) for q in planned_traj]
     )
 
-    add_trajectory(
-        server, result_path, robot, [], [[]]
-    )
+    # add_trajectory(
+    #     server, result_path, robot, [], [[]]
+    # )
 
     # times = []
     # for _ in range(20):

@@ -19,10 +19,6 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       ur5
       panda
       fetch
-      baxter
-      g1_unitree
-      digit
-      bimanual_panda
       dual_panda
     )
 
@@ -30,10 +26,6 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       UR5
       Panda
       Fetch
-      Baxter
-      G1Unitree
-      Digit
-      BimanualPanda
       DualPanda
     )
   endif()

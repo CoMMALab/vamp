@@ -87254,69 +87254,6 @@ namespace vamp::robots
                 }
             }
 
-            // Attachment vs. Panda_leftArm_link7_respondable
-            if (attachment_sphere_collision<decltype(x[0])>(environment, y[564], y[565], y[566], y[567]))
-            {
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[224], y[225], y[226], y[227]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[228], y[229], y[230], y[231]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[232], y[233], y[234], y[235]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[236], y[237], y[238], y[239]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[240], y[241], y[242], y[243]))
-                {
-                    return false;
-                }
-            }
-
-            // Attachment vs. Panda_leftArm_gripper
-            if (attachment_sphere_collision<decltype(x[0])>(environment, y[568], y[569], y[570], y[571]))
-            {
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[244], y[245], y[246], y[247]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[248], y[249], y[250], y[251]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[252], y[253], y[254], y[255]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[256], y[257], y[258], y[259]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[260], y[261], y[262], y[263]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[264], y[265], y[266], y[267]))
-                {
-                    return false;
-                }
-            }
-
             // Attachment vs. Panda_rightArm
             if (attachment_sphere_collision<decltype(x[0])>(environment, y[572], y[573], y[574], y[575]))
             {
@@ -87620,69 +87557,6 @@ namespace vamp::robots
                 }
 
                 if (attachment_sphere_collision<decltype(x[0])>(environment, y[488], y[489], y[490], y[491]))
-                {
-                    return false;
-                }
-            }
-
-            // Attachment vs. Panda_rightArm_link7_respondable
-            if (attachment_sphere_collision<decltype(x[0])>(environment, y[600], y[601], y[602], y[603]))
-            {
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[492], y[493], y[494], y[495]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[496], y[497], y[498], y[499]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[500], y[501], y[502], y[503]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[504], y[505], y[506], y[507]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[508], y[509], y[510], y[511]))
-                {
-                    return false;
-                }
-            }
-
-            // Attachment vs. Panda_rightArm_gripper
-            if (attachment_sphere_collision<decltype(x[0])>(environment, y[604], y[605], y[606], y[607]))
-            {
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[512], y[513], y[514], y[515]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[516], y[517], y[518], y[519]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[520], y[521], y[522], y[523]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[524], y[525], y[526], y[527]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[528], y[529], y[530], y[531]))
-                {
-                    return false;
-                }
-
-                if (attachment_sphere_collision<decltype(x[0])>(environment, y[532], y[533], y[534], y[535]))
                 {
                     return false;
                 }

@@ -147,8 +147,8 @@ if(VAMP_BUILD_CPP_DEMO)
   add_executable(vamp_crrtc_example scripts/cpp/planning_with_constraints/vamp_crrtc_example.cc)
   target_link_libraries(vamp_crrtc_example PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
 
-  add_executable(vamp_dual_panda scripts/cpp/planning_with_constraints/vamp_dual_panda.cc)
-  target_link_libraries(vamp_dual_panda PRIVATE vamp_cpp)
+  # add_executable(vamp_dual_panda scripts/cpp/planning_with_constraints/vamp_dual_panda.cc)
+  # target_link_libraries(vamp_dual_panda PRIVATE vamp_cpp)
 
   # add_executable(vamp_crrtc_spheres scripts/cpp/planning_with_constraints/vamp_crrtc_spheres.cc)
   # target_link_libraries(vamp_crrtc_spheres PRIVATE vamp_cpp)

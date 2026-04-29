@@ -520,6 +520,7 @@ namespace vamp::binding
                 [](const typename HPN::PlanningResult &p) { return p.path.size() >= 2; },
                 "Returns true if solution found.")
             .def_ro("path", &HPN::PlanningResult::path, "The solution path, if the path is found.")
+            .def_ro("beziers", &HPN::PlanningResult::beziers, "The solution path, if the path is found.")
             .def_ro("nanoseconds", &HPN::PlanningResult::nanoseconds, "Nanoseconds taken to find the path.")
             .def_ro(
                 "iterations",

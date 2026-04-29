@@ -69,25 +69,18 @@ for sphere in spheres:
     sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z])
 
 result = planner_func(np.array(pos1), np.array(pos2), env, plan_settings, rng)
-
 if result.solved:
     print("solved")
 else:
     print("failed")
     exit()
 
-result = vamp_module.simplify(result.path, env, simp_settings, rng)
-traj = vamp_module.compute_traj(result.path, env, simp_settings, rng)
-
+traj = vamp_module.compute_bez_traj(result, env, simp_settings, rng)
 path = traj.path.numpy()
-q_path = traj.path.numpy()[:, 0:7]
-for i in range(7):
-    plt.plot(q_path[:, i])
-    plt.legend([f"joint {j}" for j in range(7)])
-plt.show()
 
-# sim.animate(result.path.numpy())
+sim.animate(result.path.numpy())
 
 anchors = np.ones((6, 7))
-bez = vamp.Bezier(anchors)
-print(bez.combs)
+bez = result.beziers
+# sub_bez = bez.subdivide(0.2)
+# print(bez.combs)

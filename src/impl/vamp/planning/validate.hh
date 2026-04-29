@@ -427,7 +427,7 @@ namespace vamp::planning
         Bezier sub_bez;
 
         if (bez_range < 1) {
-            sub_bez = bez.subdivide(bez, bez_range);
+            sub_bez = bez.subdivide(bez_range);
         }
         else {
             sub_bez = bez;

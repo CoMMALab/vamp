@@ -294,17 +294,17 @@ namespace vamp::planning
                         if (i < Robot::dimension / 3)
                         {
                             new_configuration_array[i] = new_q(i);
-                            // std::cout << new_configuration_array[i] << " ";
+                            std::cout << new_configuration_array[i] << " ";
                         }
                         else if (i < 2 * Robot::dimension / 3)
                         {
                             new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
-                            // std::cout << new_configuration_array[i] << " ";
+                            std::cout << new_configuration_array[i] << " ";
                         }
                         else
                         {
                             new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
-                            // std::cout << new_configuration_array[i] << " ";
+                            std::cout << new_configuration_array[i] << " ";
                         }
                     }
                     // std::cout << std::endl;
@@ -355,14 +355,10 @@ namespace vamp::planning
                     // solution found, construct path
                     if (valid_found)
                     {
-                        std::cout << "Connection Bezier: " << std::endl;
-                        std::cout << best_bez.anchors << std::endl;
-                        add_to_tree(tree_a, best_connection.first.array, free_index, free_index - 1, new_cost + best_bez.time);
                         bezier_map[{free_index - 1, free_index}] = best_bez;
-
-                        auto current = free_index;
+                        auto current = free_index - 1;
                         result.path.emplace_back(buffer_index(current));
-                        // result.beziers.push_back(bezier_map[{current - 1, current}]);
+                        result.beziers.push_back(bezier_map[{current, current + 1}]);
                         while (parents[current] != current)
                         {
                             auto parent = parents[current];
@@ -372,7 +368,6 @@ namespace vamp::planning
                             current = parent;
                         }
 
-                        
                         std::reverse(result.path.begin(), result.path.end());
                         std::reverse(result.beziers.begin(), result.beziers.end());
                         current = best_connection.first.index;
@@ -386,17 +381,12 @@ namespace vamp::planning
                             current = parent;
                         }
 
-
                         if (not tree_a_is_start)
                         {
                             std::reverse(result.path.begin(), result.path.end());
                             std::reverse(result.beziers.begin(), result.beziers.end());
                         }
 
-                        // for (int i = 0; i < result.beziers.size(); i++) {
-                        //     std::cout << "Bezier " << i << ": " << std::endl;
-                        //     std::cout << result.beziers[i].anchors << std::endl;
-                        // }
                         break;
                     }
                 }

@@ -15,8 +15,8 @@ def topple(
     robot: str = "pandatopp",                  # Robot to plan for
     planner: str = "topple",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "table_pick",                     # Problem name
-    index: int = 64,                        # Problem index
+    problem: str = "box",                     # Problem name
+    index: int = 67,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -63,7 +63,8 @@ def topple(
     plan_settings.max_runs = 1
     plan_settings.cost_bound_resample = False
     simp_settings.bez = True
-    plan_settings.bez_range = 0.5
+    # 0.001 seems kinda good??
+    plan_settings.bez_range = 0.01
     plan_settings.rrtc.tree_ratio = 1
 
     if not problem:
@@ -115,9 +116,11 @@ CAPT Construction Time: {build_time * 1e-6:5.3f}ms
 
     for i in range(14):
         start.append(0)
+    print(f"start: {start}")
     for goal in goals:
         for j in range(14):
             goal.append(0)
+        print(f"goal: {goal}")
 
     if valid:
         ts = time.perf_counter()
@@ -151,7 +154,7 @@ Simplified: {stats['simplified_path_cost']:5.3f}"""
             )
 
         # plan = simplify.path
-        plan = result.path.numpy()
+        # plan = result.path.numpy()
         plan = vamp_module.compute_bez_traj(result, env, simp_settings, sampler).path.numpy()
         print(plan.shape)
         
@@ -221,7 +224,7 @@ def toppra(
     robot: str = "panda",                  # Robot to plan for
     planner: str = "rrtc",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "cage",                     # Problem name
+    problem: str = "table_pick",                     # Problem name
     index: int = 45,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations

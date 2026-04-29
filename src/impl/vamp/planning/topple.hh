@@ -187,8 +187,8 @@ namespace vamp::planning
                 const auto &target_vert = tree_a_is_start ? goal_vert : start_vert;
 
                 // computue cost sample bounds
-                const float g_hat = not tree_a_is_start ? Robot::template get_nn_time(temp, root_vert.array) : Robot::template get_nn_time(root_vert.array, temp);
-                const float h_hat = not tree_a_is_start ? Robot::template get_nn_time(temp, target_vert.array) : Robot::template get_nn_time(target_vert.array, temp);
+                const float g_hat = Robot::template get_nn_time(temp, root_vert.array);
+                const float h_hat = Robot::template get_nn_time(temp, target_vert.array);
                 const float f_hat = g_hat + h_hat;
 
                 // The range between the minimum possible cost and maximum allowable cost
@@ -208,17 +208,15 @@ namespace vamp::planning
                 auto new_node = temp;
                                 
                 // bool, Bezier
-                auto [valid_extension, sub_bez] = tree_a_is_start ? 
-                                        validate_sub_bez_motion<Robot, rake, resolution>(
-                                                                    nearest_node.array,
-                                                                    new_node,
-                                                                    environment,
-                                                                    settings.bez_range) :
-                                        validate_sub_bez_motion<Robot, rake, resolution>(
-                                                                    new_node,
-                                                                    nearest_node.array,
-                                                                    environment,
-                                                                    settings.bez_range);
+                auto [valid_extension, sub_bez] = validate_sub_bez_motion<Robot, rake, resolution>(
+                    nearest_node.array,
+                    new_node,
+                    environment,
+                    settings.bez_range);
+
+                if (not tree_a_is_start) {
+                    sub_bez.reverse();
+                }
 
                 if (valid_extension)
                 {
@@ -227,9 +225,7 @@ namespace vamp::planning
 
                     // Calculate and store actual node cost
                     // REPLACE WITH NN INFERENCE
-                    auto new_cost = tree_a_is_start ? nearest_node.cost + Robot::template get_nn_time(nearest_node.array, new_configuration) :
-                                                     nearest_node.cost + Robot::template get_nn_time(new_configuration, nearest_node.array);
-                    // float new_cost = nearest_node.cost + sub_bez.time;
+                    auto new_cost = nearest_node.cost + Robot::template get_nn_time(nearest_node.array, new_configuration);
 
                     // If resampling costs to try and find a better parent...
                     if (settings.cost_bound_resample)
@@ -248,15 +244,10 @@ namespace vamp::planning
 
 
                             // Validate edge to newly found parent
-                            auto [valid_resample, sub_bez_resample] = tree_a_is_start ? 
+                            auto [valid_resample, sub_bez_resample] =  
                                         validate_sub_bez_motion<Robot, rake, resolution>(
                                             new_nearest_node.array,
                                             new_configuration,
-                                            environment,
-                                            settings.bez_range) : 
-                                        validate_sub_bez_motion<Robot, rake, resolution>(
-                                            new_configuration,
-                                            new_nearest_node.array,
                                             environment,
                                             settings.bez_range);
                             
@@ -303,32 +294,32 @@ namespace vamp::planning
                         if (i < Robot::dimension / 3)
                         {
                             new_configuration_array[i] = new_q(i);
-                            std::cout << new_configuration_array[i] << " ";
+                            // std::cout << new_configuration_array[i] << " ";
                         }
                         else if (i < 2 * Robot::dimension / 3)
                         {
                             new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
-                            std::cout << new_configuration_array[i] << " ";
+                            // std::cout << new_configuration_array[i] << " ";
                         }
                         else
                         {
                             new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
-                            std::cout << new_configuration_array[i] << " ";
+                            // std::cout << new_configuration_array[i] << " ";
                         }
                     }
-                    std::cout << std::endl;
+                    // std::cout << std::endl;
                     Configuration new_configuration_bez(new_configuration_array);
                     add_to_tree(tree_a, new_configuration_bez, free_index, nearest_node.index, new_cost);
                     bezier_map[{nearest_node.index, free_index}] = sub_bez;
                     free_index++;
 
-
                     // Connect trees: TODO: Likely a bug here
                     // Attempt direct connections from new node to other tree, similar to rrt+
-                    std::vector<std::pair<NNNode, float>> near_nodes = find_nearest_k(tree_b, target_vert, new_configuration_bez, max_cost - new_cost, tree_a_is_start, settings.k_nearest);
+                    std::vector<std::pair<NNNode, float>> near_nodes = find_nearest_k(tree_b, target_vert, new_configuration_bez, max_cost - new_cost, not tree_a_is_start, settings.k_nearest);
                     if (near_nodes.size() == 0) {
                         continue;
                     }
+
                     // find the minimum feasible connection
                     bool valid_found = false;
                     auto best_connection = near_nodes[0];
@@ -342,44 +333,45 @@ namespace vamp::planning
                             continue;
                         }
 
-                        auto [valid_connection, sub_bez_connection] = tree_a_is_start ? 
-                                        validate_sub_bez_motion<Robot, rake, resolution>(
-                                            new_configuration_bez,
-                                            other_nearest_node.array,
-                                            environment,
-                                            1) : 
-                                        validate_sub_bez_motion<Robot, rake, resolution>(
-                                            other_nearest_node.array,
-                                            new_configuration_bez,
-                                            environment,
-                                            1);
+                        auto [valid_connection, sub_bez_connection] = validate_sub_bez_motion<Robot, rake, resolution>(
+                            new_configuration_bez, 
+                            other_nearest_node.array,
+                            environment,
+                            1);
+
                         if (valid_connection)
                         {
                             valid_found = true;
                             best_connection = {other_nearest_node, other_nearest_distance};
                             best_bez = sub_bez_connection;
-                            // break;
+                            if (not tree_a_is_start)
+                            {
+                                // need to flip bezier if connecting from goal tree to start tree
+                                best_bez.reverse();
+                            }
+                            break;
                         }
                     }
                     // solution found, construct path
                     if (valid_found)
                     {
+                        std::cout << "Connection Bezier: " << std::endl;
+                        std::cout << best_bez.anchors << std::endl;
                         add_to_tree(tree_a, best_connection.first.array, free_index, free_index - 1, new_cost + best_bez.time);
-                        std::cout << best_connection.first.index << std::endl;
                         bezier_map[{free_index - 1, free_index}] = best_bez;
 
-                        // std::cout << bezier_map.size() << std::endl;
-                        auto current = free_index - 1;
+                        auto current = free_index;
                         result.path.emplace_back(buffer_index(current));
-                        result.beziers.emplace_back(bezier_map[{current, current + 1}]);
+                        // result.beziers.push_back(bezier_map[{current - 1, current}]);
                         while (parents[current] != current)
                         {
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.beziers.emplace_back(bezier_map[{parent, current}]);
+                            result.beziers.push_back(bezier_map[{parent, current}]);
                             result.cost += Robot::template get_nn_time(result.path[result.path.size() - 2], result.path[result.path.size() - 1]);
                             current = parent;
                         }
+
                         
                         std::reverse(result.path.begin(), result.path.end());
                         std::reverse(result.beziers.begin(), result.beziers.end());
@@ -389,10 +381,11 @@ namespace vamp::planning
                         {
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.beziers.emplace_back(bezier_map[{parent, current}]);
+                            result.beziers.push_back(bezier_map[{parent, current}]);
                             result.cost += Robot::template get_nn_time(result.path[result.path.size() - 1], result.path[result.path.size() - 2]);
                             current = parent;
                         }
+
 
                         if (not tree_a_is_start)
                         {
@@ -400,14 +393,15 @@ namespace vamp::planning
                             std::reverse(result.beziers.begin(), result.beziers.end());
                         }
 
-                        for (int i = 0; i < result.beziers.size(); i++) {
-                            std::cout << "Result bez time: " << result.beziers[i].time << std::endl;
-                        }
+                        // for (int i = 0; i < result.beziers.size(); i++) {
+                        //     std::cout << "Bezier " << i << ": " << std::endl;
+                        //     std::cout << result.beziers[i].anchors << std::endl;
+                        // }
                         break;
                     }
                 }
             }
-
+            std::cout << "DONE" << std::endl;
             result.iterations = iter;
             return result;
         }

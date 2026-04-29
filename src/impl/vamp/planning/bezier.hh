@@ -108,9 +108,16 @@ namespace vamp::planning {
                 }
                 Bezier sub_bez(new_anchors);
                 sub_bez.time = bez.time * t;
-                // std::cout << sub_bez.time << std::endl;
-                // std::cout << "end subdivide" << std::endl;
                 return sub_bez;
+            }
+
+            void reverse() {
+                // reverse the order of the anchors
+                row_matrix new_anchors(this->anchors.rows(), this->anchors.cols());
+                for (int i = 0; i <= this->degree; i++) {
+                    new_anchors.row(i) = this->anchors.row(this->degree - i);
+                }
+                this->anchors = new_anchors;
             }
     };
 }

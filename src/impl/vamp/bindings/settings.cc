@@ -149,6 +149,7 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("anchors", &vp::Bezier::anchors)
         .def_rw("degree", &vp::Bezier::degree)
         .def_rw("combs", &vp::Bezier::combs)
+        .def_rw("time", &vp::Bezier::time)
         .def("evaluate", &vp::Bezier::evaluate)
         .def("generate_trajectory", &vp::Bezier::generate_trajectory)
         .def("subdivide", &vp::Bezier::subdivide);

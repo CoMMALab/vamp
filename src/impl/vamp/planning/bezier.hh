@@ -44,14 +44,15 @@ namespace vamp::planning {
                 }
             }
 
-            std::vector<state> generate_trajectory(int T) {
+            std::vector<state> generate_trajectory() {
                 std::vector<state> traj;
-                for (int t = 0; t <= T; t++) {
+                int time_ms = (int) (this->time * 1000);
+                for (int t = 0; t <= time_ms; t++) {
                     state P(1, this->anchors.rows());
                     for (int i = 0; i <= this->degree; i++) {
                         P(0, i) = ((this->combs[i] * 
-                        (pow(1.0 - t * 1.0 / T, this->degree - i)) * 
-                        (pow(1.0 * t / T, i))));
+                        (pow(1.0 - t * 1.0 / time_ms, this->degree - i)) * 
+                        (pow(1.0 * t / time_ms, i))));
                     }
                     state s = P * this->anchors;
                     traj.push_back(s);

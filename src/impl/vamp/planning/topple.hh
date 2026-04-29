@@ -294,17 +294,19 @@ namespace vamp::planning
                         if (i < Robot::dimension / 3)
                         {
                             new_configuration_array[i] = new_q(i);
-                            std::cout << new_configuration_array[i] << " ";
+                            // std::cout << new_configuration_array[i] << " ";
                         }
                         else if (i < 2 * Robot::dimension / 3)
                         {
                             new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
-                            std::cout << new_configuration_array[i] << " ";
+                            // new_configuration_array[i] = 0;
+                            // std::cout << new_configuration_array[i] << " ";
                         }
                         else
                         {
                             new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
-                            std::cout << new_configuration_array[i] << " ";
+                            // new_configuration_array[i] = 0;
+                            // std::cout << new_configuration_array[i] << " ";
                         }
                     }
                     // std::cout << std::endl;

@@ -15,7 +15,7 @@ def topple(
     robot: str = "pandatopp",                  # Robot to plan for
     planner: str = "topple",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "box",                     # Problem name
+    problem: str = "cage",                     # Problem name
     index: int = 67,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
@@ -51,12 +51,7 @@ def topple(
     plan_settings.max_iterations = 1000000
     plan_settings.rrtc.max_iterations = 100000
     plan_settings.max_samples = 1000000
-    plan_settings.rrtc.range = 8
     plan_settings.simplify.bez = True
-    plan_settings.rrtc.radius = 16
-    plan_settings.rrtc.min_radius = 0.5
-    plan_settings.rrtc.dynamic_domain = False
-    plan_settings.rrtc.alpha = 0.00001
     plan_settings.use_phs = False
     plan_settings.optimize = False
     plan_settings.simplify_intermediate = False
@@ -65,7 +60,6 @@ def topple(
     simp_settings.bez = True
     # 0.001 seems kinda good??
     plan_settings.bez_range = 0.01
-    plan_settings.rrtc.tree_ratio = 1
 
     if not problem:
         problem = list(data['problems'].keys())[0]

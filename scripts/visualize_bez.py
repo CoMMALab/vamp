@@ -14,17 +14,28 @@ for i in range(14):
     planner_func,
     plan_settings,
     simp_settings,
-) = vamp.configure_robot_and_planner_with_kwargs("pandatopp", "rrtctopp")
+) = vamp.configure_robot_and_planner_with_kwargs("pandatopp", "topple")
 
 rng = vamp_module.xorshift()
 
-plan_settings.max_iterations = 100000
+plan_settings.max_iterations = 1000000
+plan_settings.rrtc.max_iterations = 100000
 plan_settings.max_samples = 1000000
-plan_settings.range = 4
+plan_settings.rrtc.range = 8
+plan_settings.simplify.bez = True
+plan_settings.rrtc.radius = 16
+plan_settings.rrtc.min_radius = 0.5
+plan_settings.rrtc.dynamic_domain = False
+plan_settings.rrtc.alpha = 0.00001
+plan_settings.use_phs = False
+plan_settings.optimize = False
+plan_settings.simplify_intermediate = False
+plan_settings.max_runs = 1
+plan_settings.cost_bound_resample = False
 simp_settings.bez = True
-plan_settings.radius = 8
-plan_settings.min_radius = 0.5
-plan_settings.balance = False
+# 0.001 seems kinda good??
+plan_settings.bez_range = 0.01
+plan_settings.rrtc.tree_ratio = 1
 
 # xyz, rpy, lwh
 cuboids_data = [
@@ -78,9 +89,19 @@ else:
 traj = vamp_module.compute_bez_traj(result, env, simp_settings, rng)
 path = traj.path.numpy()
 
-sim.animate(result.path.numpy())
+# sim.animate(traj.path.numpy()[np.arange(0, len(traj.path.numpy()), 10)])
 
 anchors = np.ones((6, 7))
-bez = result.beziers
-# sub_bez = bez.subdivide(0.2)
+bez = result.beziers[0]
+sub_bez = bez.subdivide(0.5)
+
+traj1 = np.array(bez.generate_trajectory())
+traj2 = np.array(sub_bez.generate_trajectory())
+ax = plt.figure().add_subplot(projection='3d')
+ax.plot(traj1[:, 0], traj1[:, 1], traj1[:, 2], label="bez")
+ax.plot(traj2[:, 0], traj2[:, 1], traj2[:, 2], label="sub_bez")
+ax.scatter(bez.anchors[:, 0], bez.anchors[:, 1], bez.anchors[:, 2], label="bez anchors")
+ax.scatter(sub_bez.anchors[:, 0], sub_bez.anchors[:, 1], sub_bez.anchors[:, 2], label="sub_bez anchors")
+plt.legend()
+plt.show()
 # print(bez.combs)

@@ -564,7 +564,7 @@ namespace vamp::planning
 
             Bezier bez(anchors);
 
-            std::vector<state> waypts = bez.generate_trajectory(T);
+            std::vector<state> waypts = bez.generate_trajectory();
             // convert waypoints to floatvector
             for (auto j = 0U; j < waypts.size(); j++) {
                 alignas(vamp::FloatVectorAlignment)
@@ -610,9 +610,9 @@ namespace vamp::planning
         for (auto i = 0U; i < beziers.size(); i++) {
             Bezier bez = beziers[i];
             // std::cout << "bez time: " << bez.time << std::endl;
-            std::vector<state> waypts = bez.generate_trajectory(bez.time * 1000);
+            std::vector<state> waypts = bez.generate_trajectory();
             //convert waypoints to floatvector
-            std::cout << "number of waypoints: " << waypts.size() << std::endl;
+            // std::cout << "number of waypoints: " << waypts.size() << std::endl;
             for (auto j = 0U; j < waypts.size(); j++) {
                 alignas(vamp::FloatVectorAlignment)
                 std::array<float, vamp::FloatVector<Robot::dimension>::num_scalars_rounded> tmp = {};

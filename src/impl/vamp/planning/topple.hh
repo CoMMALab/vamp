@@ -4,12 +4,12 @@
 #include <memory>
 
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/tortle_nn.hh>
+#include <vamp/planning/topple_nn.hh>
 #include <vamp/planning/phs.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/simplify.hh>
 #include <vamp/planning/validate.hh>
-#include <vamp/planning/tortle_settings.hh>
+#include <vamp/planning/topple_settings.hh>
 #include <vamp/planning/rrtctopp.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
@@ -19,7 +19,7 @@
 namespace vamp::planning
 {
     template <typename Robot, std::size_t rake, std::size_t resolution>
-    struct AOX_TORTLE
+    struct AOX_TOPPLE
     {
         using Configuration = typename Robot::Configuration;
         static constexpr auto dimension = Robot::dimension;
@@ -110,7 +110,7 @@ namespace vamp::planning
             return near_list_with_costs;
         }
 
-        AOX_TORTLE(std::size_t max_samples)
+        AOX_TOPPLE(std::size_t max_samples)
           : buffer(
                 std::unique_ptr<float, decltype(&free)>(
                     vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
@@ -127,7 +127,7 @@ namespace vamp::planning
             const Configuration &start,
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
-            const TORTLESettings &settings,
+            const TOPPLESettings &settings,
             const float max_cost,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
@@ -139,7 +139,7 @@ namespace vamp::planning
             NN goal_tree;
 
             // map indices to beziers
-            std::map<std::size_t, Bezier> bezier_map;
+            std::map<std::pair<std::size_t, std::size_t>, Bezier> bezier_map;
 
             std::size_t iter = 0;
             std::size_t free_index = start_index + 1;
@@ -303,23 +303,25 @@ namespace vamp::planning
                         if (i < Robot::dimension / 3)
                         {
                             new_configuration_array[i] = new_q(i);
+                            std::cout << new_configuration_array[i] << " ";
                         }
                         else if (i < 2 * Robot::dimension / 3)
                         {
                             new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
+                            std::cout << new_configuration_array[i] << " ";
                         }
                         else
                         {
                             new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
+                            std::cout << new_configuration_array[i] << " ";
                         }
                     }
+                    std::cout << std::endl;
                     Configuration new_configuration_bez(new_configuration_array);
                     add_to_tree(tree_a, new_configuration_bez, free_index, nearest_node.index, new_cost);
-                    bezier_map[free_index] = sub_bez;
-                    std::cout << free_index << std::endl;
+                    bezier_map[{nearest_node.index, free_index}] = sub_bez;
                     free_index++;
 
-                    std::cout << "Added node" << std::endl;
 
                     // Connect trees: TODO: Likely a bug here
                     // Attempt direct connections from new node to other tree, similar to rrt+
@@ -362,44 +364,32 @@ namespace vamp::planning
                     // solution found, construct path
                     if (valid_found)
                     {
-                        std::cout << "Valid connection found" << std::endl;
-                        std::cout << free_index << std::endl;
-
                         add_to_tree(tree_a, best_connection.first.array, free_index, free_index - 1, new_cost + best_bez.time);
                         std::cout << best_connection.first.index << std::endl;
-                        bezier_map[free_index] = best_bez;
-                        // std::cout << "Time: " << best_bez.time << std::endl;
-
-                        // for (auto &kv : bezier_map) {
-                        //     std::cout << "Index: " << kv.first << std::endl;
-                        //     std::cout << "Bez time: " << kv.second.time << std::endl;
-                        // }
+                        bezier_map[{free_index - 1, free_index}] = best_bez;
 
                         // std::cout << bezier_map.size() << std::endl;
-                        auto current = free_index;
+                        auto current = free_index - 1;
                         result.path.emplace_back(buffer_index(current));
-                        result.beziers.emplace_back(bezier_map[current]);
-
-                        while (parents[current] != current and parents[current] != parents[parents[current]])
+                        result.beziers.emplace_back(bezier_map[{current, current + 1}]);
+                        while (parents[current] != current)
                         {
-                            std::cout << "Current: " << current << std::endl;
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.beziers.emplace_back(bezier_map[parent]);
+                            result.beziers.emplace_back(bezier_map[{parent, current}]);
                             result.cost += Robot::template get_nn_time(result.path[result.path.size() - 2], result.path[result.path.size() - 1]);
                             current = parent;
                         }
                         
                         std::reverse(result.path.begin(), result.path.end());
-                        // std::reverse(result.beziers.begin(), result.beziers.end());
+                        std::reverse(result.beziers.begin(), result.beziers.end());
                         current = best_connection.first.index;
 
-                        while (parents[current] != current and parents[current] != parents[parents[current]])
+                        while (parents[current] != current)
                         {
-                            std::cout << "Current: " << current << std::endl;
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.beziers.emplace_back(bezier_map[parent]);
+                            result.beziers.emplace_back(bezier_map[{parent, current}]);
                             result.cost += Robot::template get_nn_time(result.path[result.path.size() - 1], result.path[result.path.size() - 2]);
                             current = parent;
                         }
@@ -413,7 +403,6 @@ namespace vamp::planning
                         for (int i = 0; i < result.beziers.size(); i++) {
                             std::cout << "Result bez time: " << result.beziers[i].time << std::endl;
                         }
-
                         break;
                     }
                 }
@@ -431,19 +420,19 @@ namespace vamp::planning
     // ---------------------------------------------
 
     template <typename Robot, std::size_t rake, std::size_t resolution>
-    struct TORTLE
+    struct TOPPLE
     {
         using Configuration = typename Robot::Configuration;
         static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
-        using AOX_TORTLE = typename vamp::planning::AOX_TORTLE<Robot, rake, resolution>;
+        using AOX_TOPPLE = typename vamp::planning::AOX_TOPPLE<Robot, rake, resolution>;
         using RRTCTOPP = typename vamp::planning::RRTCTOPP<Robot, rake, resolution>;
 
         inline static auto solve(
             const Configuration &start,
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
-            const TORTLESettings &settings,
+            const TOPPLESettings &settings,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
@@ -453,13 +442,13 @@ namespace vamp::planning
             const Configuration &start,
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
-            const TORTLESettings &settings_in,
+            const TOPPLESettings &settings_in,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
             auto start_time = std::chrono::steady_clock::now();
 
             // Update the settings for internal searches
-            TORTLESettings settings = settings_in;  // make a mutable copy
+            TOPPLESettings settings = settings_in;  // make a mutable copy
             const std::size_t &max_samples = settings.max_samples;
             const std::size_t &max_iterations = settings.max_iterations;
 
@@ -473,7 +462,7 @@ namespace vamp::planning
             std::size_t iters = 0;
             std::size_t runs = 0;
 
-            AOX_TORTLE instance(max_samples);
+            AOX_TOPPLE instance(max_samples);
 
             do
             {

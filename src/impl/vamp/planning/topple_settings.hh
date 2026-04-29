@@ -5,7 +5,7 @@
 
 namespace vamp::planning
 {
-    struct TORTLESettings
+    struct TOPPLESettings
     {
         RRTCSettings rrtc;
         SimplifySettings simplify;

@@ -3,7 +3,7 @@
 #include <vamp/planning/roadmap.hh>
 #include <vamp/planning/rrtc_settings.hh>
 #include <vamp/planning/aorrtc_settings.hh>
-#include <vamp/planning/tortle_settings.hh>
+#include <vamp/planning/topple_settings.hh>
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/planning/bezier.hh>
 #include <Eigen/Dense>
@@ -47,24 +47,24 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_cost_bound_resamples", &vp::AORRTCSettings::max_cost_bound_resamples)
         .def_rw("max_samples", &vp::AORRTCSettings::max_samples);
     
-    nb::class_<vp::TORTLESettings>(pymodule, "TORTLESettings")
+    nb::class_<vp::TOPPLESettings>(pymodule, "TOPPLESettings")
         .def(nb::init<>())
-        .def_rw("rrtc", &vp::TORTLESettings::rrtc)
-        .def_rw("simplify", &vp::TORTLESettings::simplify)
-        .def_rw("optimize", &vp::TORTLESettings::optimize)
-        .def_rw("cost_bound_resample", &vp::TORTLESettings::cost_bound_resample)
-        .def_rw("simplify_intermediate", &vp::TORTLESettings::simplify_intermediate)
-        .def_rw("use_phs", &vp::TORTLESettings::use_phs)
-        .def_rw("anytime", &vp::TORTLESettings::anytime)
-        .def_rw("max_iterations", &vp::TORTLESettings::max_iterations)
-        .def_rw("max_internal_iterations", &vp::TORTLESettings::max_internal_iterations)
-        .def_rw("max_cost_bound_resamples", &vp::TORTLESettings::max_cost_bound_resamples)
-        .def_rw("max_samples", &vp::TORTLESettings::max_samples)
-        .def_rw("max_runs", &vp::TORTLESettings::max_runs)
-        .def_rw("t_radius", &vp::TORTLESettings::t_radius)
-        .def_rw("min_t_radius", &vp::TORTLESettings::min_t_radius)
-        .def_rw("bez_range", &vp::TORTLESettings::bez_range)
-        .def_rw("k_nearest", &vp::TORTLESettings::k_nearest);
+        .def_rw("rrtc", &vp::TOPPLESettings::rrtc)
+        .def_rw("simplify", &vp::TOPPLESettings::simplify)
+        .def_rw("optimize", &vp::TOPPLESettings::optimize)
+        .def_rw("cost_bound_resample", &vp::TOPPLESettings::cost_bound_resample)
+        .def_rw("simplify_intermediate", &vp::TOPPLESettings::simplify_intermediate)
+        .def_rw("use_phs", &vp::TOPPLESettings::use_phs)
+        .def_rw("anytime", &vp::TOPPLESettings::anytime)
+        .def_rw("max_iterations", &vp::TOPPLESettings::max_iterations)
+        .def_rw("max_internal_iterations", &vp::TOPPLESettings::max_internal_iterations)
+        .def_rw("max_cost_bound_resamples", &vp::TOPPLESettings::max_cost_bound_resamples)
+        .def_rw("max_samples", &vp::TOPPLESettings::max_samples)
+        .def_rw("max_runs", &vp::TOPPLESettings::max_runs)
+        .def_rw("t_radius", &vp::TOPPLESettings::t_radius)
+        .def_rw("min_t_radius", &vp::TOPPLESettings::min_t_radius)
+        .def_rw("bez_range", &vp::TOPPLESettings::bez_range)
+        .def_rw("k_nearest", &vp::TOPPLESettings::k_nearest);
 
     // TODO: Redesign a neater form of RoadmapSettings/NeighborParams
     // TODO: Expose the other NeighborParams types

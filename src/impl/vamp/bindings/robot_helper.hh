@@ -23,7 +23,7 @@
 #include <vamp/planning/rrtc.hh>
 #include <vamp/planning/aorrtc.hh>
 #include <vamp/planning/rrtctopp.hh>
-#include <vamp/planning/tortle.hh>
+#include <vamp/planning/topple.hh>
 #include <vamp/vector.hh>
 
 #include <nanobind/nanobind.h>
@@ -237,9 +237,9 @@ namespace vamp::binding
             vamp::planning::RRTCTOPP<Robot, rake, Robot::resolution>,
             vamp::planning::RRTCSettings>;
 
-        using TORTLE = PlannerHelper<
-            vamp::planning::TORTLE<Robot, rake, Robot::resolution>,
-            vamp::planning::TORTLESettings>;
+        using TOPPLE = PlannerHelper<
+            vamp::planning::TOPPLE<Robot, rake, Robot::resolution>,
+            vamp::planning::TOPPLESettings>;
 
         inline static auto fk(const Type &c_in) -> std::vector<vamp::collision::Sphere<float>>
         {
@@ -624,7 +624,7 @@ namespace vamp::binding
         PLANNER("fcit", FCIT, "FCIT");
         PLANNER("aorrtc", AORRTC, "AORRTC");
         PLANNER("rrtctopp", RRTCTOPP, "RRTCTOPP");
-        PLANNER("tortle", TORTLE, "TORTLE");
+        PLANNER("topple", TOPPLE, "TOPPLE");
 
         if constexpr (has_set_lows_v<Robot>)
         {

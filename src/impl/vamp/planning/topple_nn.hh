@@ -76,9 +76,9 @@ namespace vamp::planning
         inline static auto distance(const TDNATNode<Robot, dimension> &a, const TDNATNode<Robot, dimension> &b) -> float
         {
             // Configuration space distance + time distance
-            // float c_dist = a.array.distance(b.array);
-            float t_dist = Robot::template get_nn_time(a.array, b.array);
-            return t_dist;
+            float c_dist = a.array.distance(b.array);
+            // float t_dist = Robot::template get_nn_time(a.array, b.array);
+            return c_dist;
         }
     };
 

@@ -13,7 +13,7 @@ import time
 
 def topple(
     robot: str = "pandatopp",                  # Robot to plan for
-    planner: str = "tortle",                 # Planner name to use
+    planner: str = "topple",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
     problem: str = "table_pick",                     # Problem name
     index: int = 64,                        # Problem index
@@ -61,7 +61,7 @@ def topple(
     plan_settings.optimize = False
     plan_settings.simplify_intermediate = False
     plan_settings.max_runs = 1
-    cost_bound_resample = False
+    plan_settings.cost_bound_resample = False
     simp_settings.bez = True
     plan_settings.bez_range = 0.5
     plan_settings.rrtc.tree_ratio = 1
@@ -214,7 +214,7 @@ n Graph States: {result.size}
 
     # sim.animate(simplify.path)
     print(plan.shape)
-    sim.animate(plan[np.arange(0, len(plan), 1)])
+    sim.animate(plan[np.arange(0, len(plan), 10)])
 
 
 def toppra(

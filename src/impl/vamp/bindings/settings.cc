@@ -62,7 +62,9 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_samples", &vp::TOPPLESettings::max_samples)
         .def_rw("max_runs", &vp::TOPPLESettings::max_runs)
         .def_rw("bez_range", &vp::TOPPLESettings::bez_range)
-        .def_rw("k_nearest", &vp::TOPPLESettings::k_nearest);
+        .def_rw("k_nearest", &vp::TOPPLESettings::k_nearest)
+        .def_rw("alpha", &vp::TOPPLESettings::alpha)
+        .def_rw("dynamic_extension", &vp::TOPPLESettings::dynamic_extension);
 
     // TODO: Redesign a neater form of RoadmapSettings/NeighborParams
     // TODO: Expose the other NeighborParams types

@@ -17,6 +17,8 @@ namespace vamp::planning
         bool anytime = false;
         float bez_range = 0.2;
         int k_nearest = 10;
+        float alpha = 0.0001;
+        bool dynamic_extension = true;
 
         std::size_t max_iterations = 100000;
         std::size_t max_internal_iterations = 100000;

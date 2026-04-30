@@ -33,8 +33,8 @@ plan_settings.simplify_intermediate = False
 plan_settings.max_runs = 1
 plan_settings.cost_bound_resample = False
 simp_settings.bez = True
-# 0.001 seems kinda good??
-plan_settings.bez_range = 0.01
+# cant be too small or it tweaks, maybe can dynamically adjust???
+plan_settings.bez_range = 0.1
 plan_settings.rrtc.tree_ratio = 1
 
 # xyz, rpy, lwh

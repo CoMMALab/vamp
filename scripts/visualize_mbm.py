@@ -16,7 +16,7 @@ def topple(
     planner: str = "topple",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
     problem: str = "bookshelf_small",                     # Problem name
-    index: int = 68,                        # Problem index
+    index: int = 1,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -48,18 +48,19 @@ def topple(
     # plan_settings.dynamic_domain = False
     # simp_settings.bez = True
 
-    plan_settings.max_iterations = 1000000
+    plan_settings.max_iterations = 10000000
     plan_settings.rrtc.max_iterations = 100000
-    plan_settings.max_samples = 1000000
+    plan_settings.max_samples = 10000000
     plan_settings.simplify.bez = True
     plan_settings.use_phs = False
     plan_settings.optimize = False
     plan_settings.simplify_intermediate = False
     plan_settings.max_runs = 1
     plan_settings.cost_bound_resample = False
-    # 0.001 seems kinda good??
-    plan_settings.bez_range = 0.01
-    plan_settings.k_nearest = 10
+    plan_settings.bez_range = 0.5
+    plan_settings.k_nearest = 16
+    plan_settings.alpha = 0.5
+    plan_settings.dynamic_extension = True
 
     if not problem:
         problem = list(data['problems'].keys())[0]
@@ -184,12 +185,12 @@ n Graph States: {result.size}
     print(len(beziers))
     print(len(result.path))
     trajs = []
-    # why????????
     for i in range(0, len(beziers)):
         trajs += beziers[i].generate_trajectory()
     
     trajs = np.array(trajs)
-    # sim.animate(trajs[8][np.arange(0, len(trajs[8]), 10)])
+    np.save("topple_trials/traj.npy", trajs)
+    print(trajs[0])
 
     # sim.animate(simplify.path)
     print(trajs.shape)

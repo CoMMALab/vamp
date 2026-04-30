@@ -376,12 +376,13 @@ namespace vamp::planning
         const collision::Environment<FloatVector<rake>> &environment,
         const float bez_range) -> std::pair<bool, Bezier>
     {
-        // std::cout << "inside validate bez motion" << std::endl;
-        // build input to MLP
+        // std::cout << "???" << std::endl;
         std::array<float, Robot::dimension * 2> x;
+        // std::cout << "CONVERT START TO ARRAY" << std::endl;
         auto start_arr = start.to_array();
         int robot_dim_q = Robot::dimension / 3;
 
+        // std::cout << "CREATE INPUT TO NN" << std::endl;
         for (auto i = 0U; i < Robot::dimension; i++) {
             x[i] = static_cast<float>(start_arr[i]);
         }
@@ -394,6 +395,7 @@ namespace vamp::planning
         std::array<float, Robot::topple_out_dim * Robot::dimension / 3 + 1> out;
 
         // auto ts = std::chrono::steady_clock::now();
+        // std::cout << "NN FORWARD" << std::endl;
         Robot::template topple_nn_forward(x, out);
         // auto tf = std::chrono::steady_clock::now();
         // std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
@@ -426,12 +428,14 @@ namespace vamp::planning
         bez.time = T;
         Bezier sub_bez;
 
+        // std::cout << "SUBDIVIDING" << std::endl;
         if (bez_range < 1) {
             sub_bez = bez.subdivide(bez_range);
         }
         else {
             sub_bez = bez;
         }
+        // std::cout << "VALIDATING" << std::endl;
         // collision check only on sub_bez
         bool bez_valid = validate_bez<Robot, rake, resolution>(start, sub_bez.time, sub_bez, environment);
         // return both sub_bez and bez_valid

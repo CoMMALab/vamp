@@ -181,14 +181,14 @@ namespace vamp::planning
                     goal_verts.begin(),
                     goal_verts.end(),
                     [&temp](const auto &a, const auto &b)
-                    { return Robot::template get_nn_time(temp, a.array) < Robot::template get_nn_time(temp, b.array); });
+                    { return temp.distance(a.array) < temp.distance(b.array); });
 
                 const auto &root_vert = tree_a_is_start ? start_vert : goal_vert;
                 const auto &target_vert = tree_a_is_start ? goal_vert : start_vert;
 
                 // computue cost sample bounds
-                const float g_hat = Robot::template get_nn_time(temp, root_vert.array);
-                const float h_hat = Robot::template get_nn_time(temp, target_vert.array);
+                const float g_hat = temp.distance(root_vert.array);
+                const float h_hat = temp.distance(target_vert.array);
                 const float f_hat = g_hat + h_hat;
 
                 // The range between the minimum possible cost and maximum allowable cost
@@ -225,7 +225,7 @@ namespace vamp::planning
 
                     // Calculate and store actual node cost
                     // REPLACE WITH NN INFERENCE
-                    auto new_cost = nearest_node.cost + Robot::template get_nn_time(nearest_node.array, new_configuration);
+                    auto new_cost = nearest_node.cost + new_configuration.distance(nearest_node.array);
 
                     // If resampling costs to try and find a better parent...
                     if (settings.cost_bound_resample)
@@ -357,12 +357,15 @@ namespace vamp::planning
                     // solution found, construct path
                     if (valid_found)
                     {
+                        auto connect_node = best_connection.first.array;
+                        add_to_tree(tree_a, connect_node, free_index, free_index - 1, new_cost + best_bez.time);
                         bezier_map[{free_index - 1, free_index}] = best_bez;
-                        auto current = free_index - 1;
+                        auto current = free_index;
                         result.path.emplace_back(buffer_index(current));
-                        result.beziers.push_back(bezier_map[{current, current + 1}]);
+                        // result.beziers.push_back(bezier_map[{current - 1, current}]);
                         while (parents[current] != current)
                         {
+                            std::cout << "CURRENT: " << current << std::endl;
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
                             result.beziers.push_back(bezier_map[{parent, current}]);
@@ -376,9 +379,10 @@ namespace vamp::planning
 
                         while (parents[current] != current)
                         {
+                            // std::cout << "CURRENT: " << current << std::endl;
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.beziers.push_back(bezier_map[{parent, current}]);
+                            // result.beziers.push_back(bezier_map[{parent, current}]);
                             result.cost += Robot::template get_nn_time(result.path[result.path.size() - 1], result.path[result.path.size() - 2]);
                             current = parent;
                         }
@@ -453,7 +457,6 @@ namespace vamp::planning
             do
             {
                 // Find an initial solution
-                // result = RRTCTOPP::solve(start, goals, environment, rrtc_settings, rng);
                 result = instance.solve(start, goals, environment, settings, best_path_cost, rng);
                 iters += result.iterations;
             } while (result.path.empty() and iters < settings.max_iterations);

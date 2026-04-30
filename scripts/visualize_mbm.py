@@ -15,8 +15,8 @@ def topple(
     robot: str = "pandatopp",                  # Robot to plan for
     planner: str = "topple",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "cage",                     # Problem name
-    index: int = 67,                        # Problem index
+    problem: str = "bookshelf_small",                     # Problem name
+    index: int = 68,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -57,9 +57,9 @@ def topple(
     plan_settings.simplify_intermediate = False
     plan_settings.max_runs = 1
     plan_settings.cost_bound_resample = False
-    simp_settings.bez = True
     # 0.001 seems kinda good??
     plan_settings.bez_range = 0.01
+    plan_settings.k_nearest = 10
 
     if not problem:
         problem = list(data['problems'].keys())[0]
@@ -180,38 +180,21 @@ n Graph States: {result.size}
     if pointcloud:
         sim.draw_pointcloud(filtered_pc)
 
-    # if not valid:
-    #     for state in [start, *goals]:
-    # for state in plan:
-    #     # if not vamp_module.validate(state, env):
-    #     # state = state[0:7]
-    #     # print(f"Displaying colliding spheres for first invalid state: {state}")
-    #     debug = vamp_module.debug(state, env)
-    #     # invalid = set([x[0] for x in filter(lambda x: x[1], enumerate(debug[0]))])
-
-    #     # for (a, b) in debug[1]:
-    #     #     invalid.add(a)
-    #     #     invalid.add(b)
-
-    #     # spheres = vamp_module.fk(state)
-    #     # for i in range(len(spheres)):
-    #     #     sphere = spheres[i]
-    #     #     if i in invalid:
-    #     #         sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 0., 0., 1.])
-    #     #     else:
-    #     #         sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 1., 1., 1.])
-    #     for i, colliding in enumerate(debug[0]):  
-    #         if colliding:  
-    #             spheres = vamp_module.fk(state)  
-    #             s = spheres[i]  
-    #             for i in range(len(spheres)):
-    #                 sphere = spheres[i]
-    #                 sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z], color = [1., 0., 0., 1.])
-
+    beziers = result.beziers
+    print(len(beziers))
+    print(len(result.path))
+    trajs = []
+    # why????????
+    for i in range(0, len(beziers)):
+        trajs += beziers[i].generate_trajectory()
+    
+    trajs = np.array(trajs)
+    # sim.animate(trajs[8][np.arange(0, len(trajs[8]), 10)])
 
     # sim.animate(simplify.path)
-    print(plan.shape)
-    sim.animate(plan[np.arange(0, len(plan), 10)])
+    print(trajs.shape)
+    sim.animate(trajs[np.arange(0, len(trajs), 8)])
+    # sim.animate(result.path.numpy())
 
 
 def toppra(
@@ -370,7 +353,7 @@ n Graph States: {result.size}
 
     # sim.animate(simplify.path)
     print(plan.shape)
-    sim.animate(plan[np.arange(0, len(plan), 15)])
+    sim.animate(plan[np.arange(0, len(plan), 10)])
 
 if __name__ == "__main__":
     Fire(topple)

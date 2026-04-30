@@ -89,11 +89,10 @@ else:
 traj = vamp_module.compute_bez_traj(result, env, simp_settings, rng)
 path = traj.path.numpy()
 
-# sim.animate(traj.path.numpy()[np.arange(0, len(traj.path.numpy()), 10)])
+sim.animate(traj.path.numpy()[np.arange(0, len(traj.path.numpy()), 10)])
 
-anchors = np.ones((6, 7))
-bez = result.beziers[0]
-sub_bez = bez.subdivide(0.5)
+bez = result.beziers[1]
+sub_bez = bez.subdivide(0.1)
 
 traj1 = np.array(bez.generate_trajectory())
 traj2 = np.array(sub_bez.generate_trajectory())

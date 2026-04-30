@@ -61,8 +61,6 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_cost_bound_resamples", &vp::TOPPLESettings::max_cost_bound_resamples)
         .def_rw("max_samples", &vp::TOPPLESettings::max_samples)
         .def_rw("max_runs", &vp::TOPPLESettings::max_runs)
-        .def_rw("t_radius", &vp::TOPPLESettings::t_radius)
-        .def_rw("min_t_radius", &vp::TOPPLESettings::min_t_radius)
         .def_rw("bez_range", &vp::TOPPLESettings::bez_range)
         .def_rw("k_nearest", &vp::TOPPLESettings::k_nearest);
 

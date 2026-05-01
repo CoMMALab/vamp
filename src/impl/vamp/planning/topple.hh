@@ -135,6 +135,10 @@ namespace vamp::planning
             const float max_cost,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
+            // profiling variables
+            int total_samples = 0;
+            int valid_extensions = 0;
+            
             static constexpr std::size_t start_index = 0;
             const RRTCSettings &rrtc_settings = settings.rrtc;
             PlanningResult<Robot> result;
@@ -181,6 +185,7 @@ namespace vamp::planning
 
                 // std::cout << "SAMPLE" << std::endl;
                 const auto temp = rng->next();
+                total_samples++;
 
                 NNNode goal_vert = *std::min_element(
                     goal_verts.begin(),
@@ -228,6 +233,7 @@ namespace vamp::planning
 
                 if (valid_extension)
                 {
+                    valid_extensions++;
                     // store end of sub bez
                     const auto new_configuration = new_node;
 
@@ -331,7 +337,7 @@ namespace vamp::planning
                     if (settings.dynamic_extension)
                     {
                         // std::cout << "VALID EXTENSION" << std::endl;
-                        extension[nearest_node.index] *= (1 + settings.alpha);
+                        extension[nearest_node.index] /= settings.alpha;
                         extension[nearest_node.index] = std::min(extension[nearest_node.index], 1.0f);
                         // std::cout << "EXTENSION UPDATED: "<< extension[nearest_node.index] << std::endl;
                     }
@@ -419,15 +425,6 @@ namespace vamp::planning
                             std::reverse(result.path.begin(), result.path.end());
                             std::reverse(result.beziers.begin(), result.beziers.end());
                         }
-                        // print bezier path
-                        for (const auto &bez : result.beziers)
-                        {
-                            std::cout << "BEZIER: " << std::endl;
-                            for (int i = 0; i < bez.anchors.rows(); i++)
-                            {
-                                std::cout << bez.anchors.row(i) << std::endl;
-                            }
-                        }
 
                         break;
                     }
@@ -437,13 +434,16 @@ namespace vamp::planning
                     if (settings.dynamic_extension)
                     {
                         // std::cout << "INVALID EXTENSION" << std::endl;
-                        extension[nearest_node.index] *= (1 - settings.alpha);
-                        extension[nearest_node.index] = std::max(extension[nearest_node.index], 0.01f);
+                        extension[nearest_node.index] *= settings.alpha;
+                        extension[nearest_node.index] = std::max(extension[nearest_node.index], 0.005f);
                         // std::cout << "EXTENSION UPDATED: " << extension[nearest_node.index] << std::endl;
                     }
                 }
             }
             std::cout << "DONE" << std::endl;
+            std::cout << "TOTAL SAMPLES: " << total_samples << std::endl;
+            std::cout << "VALID EXTENSIONS: " << valid_extensions << std::endl;
+            std::cout << "VALID RATIO: " << 1.0 * valid_extensions / total_samples << std::endl;
             result.iterations = iter;
             
             // Print profiler report

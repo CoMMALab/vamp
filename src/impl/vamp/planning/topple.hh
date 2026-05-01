@@ -219,10 +219,6 @@ namespace vamp::planning
                     extension[nearest_node.index]);
                 // std::cout << "VALIDATED" << std::endl;
 
-                if (not tree_a_is_start) {
-                    sub_bez.reverse();
-                }
-
                 if (valid_extension)
                 {
                     // store end of sub bez
@@ -287,6 +283,7 @@ namespace vamp::planning
                     Bezier dsub_bez = sub_bez.derivative();
                     Bezier ddsub_bez = dsub_bez.derivative();
 
+                    // check this when reversed
                     auto new_q = sub_bez.anchors.row(sub_bez.anchors.rows() - 1);
                     auto new_dq = dsub_bez.anchors.row(dsub_bez.anchors.rows() - 1);
                     auto new_ddq = ddsub_bez.anchors.row(ddsub_bez.anchors.rows() - 1);
@@ -312,6 +309,9 @@ namespace vamp::planning
                     // std::cout << std::endl;
                     Configuration new_configuration_bez(new_configuration_array);
                     add_to_tree(tree_a, new_configuration_bez, free_index, nearest_node.index, new_cost, settings.bez_range);
+                    if (not tree_a_is_start) {
+                        sub_bez.reverse();
+                    }
                     bezier_map[{nearest_node.index, free_index}] = sub_bez;
                     free_index++;
                     // std::cout << "FREE INDEX: " << free_index << std::endl;
@@ -374,7 +374,7 @@ namespace vamp::planning
                         bezier_map[{free_index - 1, free_index}] = best_bez;
                         auto current = free_index;
                         result.path.emplace_back(buffer_index(current));
-                        result.beziers.push_back(bezier_map[{current - 1, current}]);
+                        // result.beziers.push_back(bezier_map[{current - 1, current}]);
                         while (parents[current] != current)
                         {
                             auto parent = parents[current];
@@ -387,6 +387,7 @@ namespace vamp::planning
                         std::reverse(result.path.begin(), result.path.end());
                         std::reverse(result.beziers.begin(), result.beziers.end());
                         current = best_connection.first.index;
+                        // current = parents[current];
 
                         while (parents[current] != current)
                         {
@@ -403,6 +404,16 @@ namespace vamp::planning
                             std::reverse(result.path.begin(), result.path.end());
                             std::reverse(result.beziers.begin(), result.beziers.end());
                         }
+                        // print bezier path
+                        for (const auto &bez : result.beziers)
+                        {
+                            std::cout << "BEZIER: " << std::endl;
+                            for (int i = 0; i < bez.anchors.rows(); i++)
+                            {
+                                std::cout << bez.anchors.row(i) << std::endl;
+                            }
+                        }
+
                         break;
                     }
                 }

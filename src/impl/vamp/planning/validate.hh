@@ -79,6 +79,15 @@ namespace vamp::planning
         return validate_vector<Robot, rake, resolution>(start, vector, vector.l2_norm(), environment);
     }
 
+    // template <std::size_t rake, std::size_t dim>
+    // inline static auto assignBlock(std::array<float, dim> src, vamp::FloatVector<rake, dim> &dest)
+    // {
+    //     for (size_t i = 0; i < dim; i++)
+    //     {
+    //         dest[i] = src[i];
+    //     }
+    // }
+
     // topple addons
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline constexpr auto validate_bez(
@@ -93,17 +102,15 @@ namespace vamp::planning
         auto percents_arr = percents.to_array();
         int robot_dim_q = Robot::dimension / 3;
 
-        std::array<vamp::FloatT, Robot::dimension * rake> config_block_arr;
-        // Collect the i-th dimension values for all rake configurations  
-        std::array<float, rake> dim_values;
-        for (auto i = 0U; i < rake; i++)
-        {  
-            const auto &state = bez.evaluate(static_cast<float>(percents_arr[i]));
-            for(auto j = 0U; j < robot_dim_q; j++) {
-                config_block_arr[i + j * rake] = state[j];
-            }
+        vamp::FloatVector<rake, 7 * (Robot::topple_out_dim + 2) * (size_t)(Robot::dimension / 3)> bez_anchors_vec;
+        for(size_t i = 0; i < (Robot::topple_out_dim + 2) * robot_dim_q; ++i)
+        {
+            bez_anchors_vec[i] = bez.anchors(i / robot_dim_q, i % robot_dim_q);
         }
-        typename Robot::template ConfigurationBlock<rake> block(config_block_arr);
+        typename Robot::template ConfigurationBlock<rake> block;
+        Robot::bezier(bez_anchors_vec, percents, block);
+
+
 
         const std::size_t n = std::max(resolution * T / rake, 1.0F);
         // std::cout << n << std::endl;
@@ -121,23 +128,8 @@ namespace vamp::planning
         const auto backstep = percents.broadcast(0) / n;
         for (auto i = 1U; i < n; i++)
         {
-            // evaluate states in rake
-            auto times = (percents - i * backstep).to_array();
-
-            for (auto j = 0U; j < robot_dim_q; j++)  
-            {  
-                // Collect the i-th dimension values for all rake configurations  
-                std::array<float, rake> dim_values;  
-                for (auto k = 0U; k < rake; k++)  
-                {  
-                    const auto &state = bez.evaluate(static_cast<float>(times[k]));  
-                    dim_values[k] = state[j];
-                }  
-                // Broadcast these values across SIMD lanes  
-                block[j] = FloatVector<rake>(dim_values);  
-            }
-            // std::cout << block << std::endl;
-
+            typename Robot::template ConfigurationBlock<rake> block;
+            Robot::bezier(bez_anchors_vec, percents - i * backstep, block);
             bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                      Robot::template fkcc<rake>(environment, block);
             if (not valid)

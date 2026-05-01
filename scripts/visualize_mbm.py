@@ -16,7 +16,7 @@ def topple(
     planner: str = "topple",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
     problem: str = "bookshelf_small",                     # Problem name
-    index: int = 1,                        # Problem index
+    index: int = 66,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -39,14 +39,6 @@ def topple(
         planner,
         **kwargs,
         )
-    # plan_settings.max_iterations = 10000000
-    # plan_settings.max_samples = 10000000
-    # plan_settings.bez_resamples = 50
-    # plan_settings.range = 4
-    # plan_settings.radius = 8
-    # plan_settings.min_radius = 4
-    # plan_settings.dynamic_domain = False
-    # simp_settings.bez = True
 
     plan_settings.max_iterations = 10000000
     plan_settings.rrtc.max_iterations = 100000
@@ -57,8 +49,8 @@ def topple(
     plan_settings.simplify_intermediate = False
     plan_settings.max_runs = 1
     plan_settings.cost_bound_resample = False
-    plan_settings.bez_range = 0.5
-    plan_settings.k_nearest = 16
+    plan_settings.bez_range = 0.01
+    plan_settings.k_nearest = 1024
     plan_settings.alpha = 0.5
     plan_settings.dynamic_extension = True
 

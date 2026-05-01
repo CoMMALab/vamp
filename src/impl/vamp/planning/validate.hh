@@ -90,33 +90,24 @@ namespace vamp::planning
     {
         const auto percents = FloatVector<rake>(Percents<rake>::percents);
 
-        typename Robot::template ConfigurationBlock<rake> block;
-
         auto percents_arr = percents.to_array();
         int robot_dim_q = Robot::dimension / 3;
 
         auto bez_validate_outer_start = std::chrono::steady_clock::now();
 
-        for (auto j = 0U; j < robot_dim_q; j++)  
+        std::array<vamp::FloatT, Robot::dimension * rake> config_block_arr;
+        for (auto i = 0U; i < rake; i++)
         {  
-            // Collect the i-th dimension values for all rake configurations  
-            std::array<float, rake> dim_values;
-            auto bez_eval_rake_start = std::chrono::steady_clock::now();
-            for (auto k = 0U; k < rake; k++)  
-            {  
-                auto bez_eval_innermost_start = std::chrono::steady_clock::now();
-                const auto &state = bez.evaluate(static_cast<float>(percents_arr[k]));  
-                auto bez_eval_innermost_time = std::chrono::duration_cast<std::chrono::microseconds>(
-                    std::chrono::steady_clock::now() - bez_eval_innermost_start).count();
-                vamp::profiling::get_profiler()["bez_eval_innermost"].push_back(bez_eval_innermost_time);
-                dim_values[k] = state[j];
-            }  
-            auto bez_eval_rake_time = std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() - bez_eval_rake_start).count();
-            vamp::profiling::get_profiler()["bez_eval_rake"].push_back(bez_eval_rake_time);
-            // Broadcast these values across SIMD lanes  
-            block[j] = FloatVector<rake>(dim_values);  
+            auto bez_eval_innermost_start = std::chrono::steady_clock::now();
+            const auto &state = bez.evaluate(static_cast<float>(percents_arr[i]));
+            for(auto j = 0U; j < robot_dim_q; j++) {
+                config_block_arr[i + j * rake] = state[j];
+            }
+            auto bez_eval_innermost_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - bez_eval_innermost_start).count();
+            vamp::profiling::get_profiler()["bez_eval_innermost"].push_back(bez_eval_innermost_time);
         }
+        typename Robot::template ConfigurationBlock<rake> block(config_block_arr);
 
         auto bez_validate_outer_time = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - bez_validate_outer_start).count();
@@ -141,22 +132,36 @@ namespace vamp::planning
             // evaluate states in rake
             auto times = (percents - i * backstep).to_array();
 
-            for (auto j = 0U; j < robot_dim_q; j++)  
-            {  
-                // Collect the i-th dimension values for all rake configurations  
-                std::array<float, rake> dim_values;  
-                for (auto k = 0U; k < rake; k++)  
-                {  
-                    const auto &state = bez.evaluate(static_cast<float>(times[k]));  
-                    dim_values[k] = state[j];
-                }  
-                // Broadcast these values across SIMD lanes  
-                block[j] = FloatVector<rake>(dim_values);  
-            }
+            // for (auto j = 0U; j < robot_dim_q; j++)  
+            // {  
+            //     // Collect the i-th dimension values for all rake configurations  
+            //     std::array<float, rake> dim_values;  
+            //     for (auto k = 0U; k < rake; k++)  
+            //     {  
+            //         const auto &state = bez.evaluate(static_cast<float>(times[k]));  
+            //         dim_values[k] = state[j];
+            //     }  
+            //     // Broadcast these values across SIMD lanes  
+            //     block[j] = FloatVector<rake>(dim_values);  
+            // }
             // std::cout << block << std::endl;
 
-            bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
-                                                     Robot::template fkcc<rake>(environment, block);
+            std::array<vamp::FloatT, Robot::dimension * rake> inner_config_block_arr;
+            for (auto i = 0U; i < rake; i++)
+            {  
+                auto bez_eval_innermost_start = std::chrono::steady_clock::now();
+                const auto &state = bez.evaluate(static_cast<float>(times[i]));
+                for(auto j = 0U; j < robot_dim_q; j++) {
+                    inner_config_block_arr[i + j * rake] = state[j];
+                }
+                auto bez_eval_innermost_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - bez_eval_innermost_start).count();
+                vamp::profiling::get_profiler()["bez_eval_innermost"].push_back(bez_eval_innermost_time);
+            }
+            typename Robot::template ConfigurationBlock<rake> inner_block(inner_config_block_arr);
+
+            bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, inner_block) :
+                                                     Robot::template fkcc<rake>(environment, inner_block);
             if (not valid)
             {
                 return false;

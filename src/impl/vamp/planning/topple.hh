@@ -16,6 +16,7 @@
 #include <vamp/utils.hh>
 #include <vamp/vector.hh>
 #include <vamp/planning/bezier.hh>
+#include <vamp/profiler_utils.hh>
 
 namespace vamp::planning
 {
@@ -164,6 +165,8 @@ namespace vamp::planning
             // Search loop
             while (iter++ < rrtc_settings.max_iterations and free_index < rrtc_settings.max_samples)
             {
+                auto loop_start = std::chrono::steady_clock::now();
+                
                 // std::cout << "ITERATION: " << iter << std::endl;
                 float asize = tree_a->size();
                 float bsize = tree_b->size();
@@ -212,11 +215,15 @@ namespace vamp::planning
                 // bool, Bezier
                 // std::cout << "VALIDATE" << std::endl;
                 // std::cout << nearest_node.index << std::endl;
+                auto validate_start = std::chrono::steady_clock::now();
                 auto [valid_extension, sub_bez] = validate_sub_bez_motion<Robot, rake, resolution>(
                     nearest_node.array,
                     new_node,
                     environment,
                     extension[nearest_node.index]);
+                auto validate_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - validate_start).count();
+                vamp::profiling::get_profiler()["validate_motion"].push_back(validate_time);
                 // std::cout << "VALIDATED" << std::endl;
 
                 if (valid_extension)
@@ -280,8 +287,12 @@ namespace vamp::planning
 
                     // Need to add the end of the sub bezier to the tree, not the original new node
                     // compute higher order terms of new node
+                    auto derivative_start = std::chrono::steady_clock::now();
                     Bezier dsub_bez = sub_bez.derivative();
                     Bezier ddsub_bez = dsub_bez.derivative();
+                    auto derivative_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - derivative_start).count();
+                    vamp::profiling::get_profiler()["bezier_derivative"].push_back(derivative_time);
 
                     // check this when reversed
                     auto new_q = sub_bez.anchors.row(sub_bez.anchors.rows() - 1);
@@ -346,11 +357,15 @@ namespace vamp::planning
                             continue;
                         }
 
+                        auto connection_start = std::chrono::steady_clock::now();
                         auto [valid_connection, sub_bez_connection] = validate_sub_bez_motion<Robot, rake, resolution>(
                             new_configuration_bez, 
                             other_nearest_node.array,
                             environment,
                             1);
+                        auto connection_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now() - connection_start).count();
+                        vamp::profiling::get_profiler()["validate_connection"].push_back(connection_time);
 
                         if (valid_connection)
                         {
@@ -430,6 +445,10 @@ namespace vamp::planning
             }
             std::cout << "DONE" << std::endl;
             result.iterations = iter;
+            
+            // Print profiler report
+            vamp::profiling::get_profiler().printReport();
+            
             return result;
         }
     };

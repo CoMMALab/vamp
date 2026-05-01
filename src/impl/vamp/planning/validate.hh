@@ -6,6 +6,7 @@
 #include <vamp/vector.hh>
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/bezier.hh>
+#include <vamp/profiler_utils.hh>
 #include <chrono>
 #include <iostream>
 
@@ -94,18 +95,32 @@ namespace vamp::planning
         auto percents_arr = percents.to_array();
         int robot_dim_q = Robot::dimension / 3;
 
+        auto bez_validate_outer_start = std::chrono::steady_clock::now();
+
         for (auto j = 0U; j < robot_dim_q; j++)  
         {  
             // Collect the i-th dimension values for all rake configurations  
-            std::array<float, rake> dim_values;  
+            std::array<float, rake> dim_values;
+            auto bez_eval_rake_start = std::chrono::steady_clock::now();
             for (auto k = 0U; k < rake; k++)  
             {  
+                auto bez_eval_innermost_start = std::chrono::steady_clock::now();
                 const auto &state = bez.evaluate(static_cast<float>(percents_arr[k]));  
+                auto bez_eval_innermost_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - bez_eval_innermost_start).count();
+                vamp::profiling::get_profiler()["bez_eval_innermost"].push_back(bez_eval_innermost_time);
                 dim_values[k] = state[j];
             }  
+            auto bez_eval_rake_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - bez_eval_rake_start).count();
+            vamp::profiling::get_profiler()["bez_eval_rake"].push_back(bez_eval_rake_time);
             // Broadcast these values across SIMD lanes  
             block[j] = FloatVector<rake>(dim_values);  
         }
+
+        auto bez_validate_outer_time = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - bez_validate_outer_start).count();
+        vamp::profiling::get_profiler()["bez_validation_outer"].push_back(bez_validate_outer_time);
 
         const std::size_t n = resolution * T * rake;
         // std::cout << n << std::endl;
@@ -330,11 +345,12 @@ namespace vamp::planning
         // array to store inference output
         std::array<float, Robot::topple_out_dim * Robot::dimension / 3 + 1> out;
 
-        // auto ts = std::chrono::steady_clock::now();
+        // Profile NN inference
+        auto nn_start = std::chrono::steady_clock::now();
         Robot::template topple_nn_forward(x, out);
-        // auto tf = std::chrono::steady_clock::now();
-        // std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
-        // std::cout << "NN inference: " << elapsed_ms.count() << std::endl;
+        auto nn_time = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - nn_start).count();
+        vamp::profiling::get_profiler()["nn_inference"].push_back(nn_time);
 
         // build the anchors
         row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
@@ -394,12 +410,12 @@ namespace vamp::planning
         // array to store inference output
         std::array<float, Robot::topple_out_dim * Robot::dimension / 3 + 1> out;
 
-        // auto ts = std::chrono::steady_clock::now();
-        // std::cout << "NN FORWARD" << std::endl;
+        // Profile NN inference
+        auto nn_start = std::chrono::steady_clock::now();
         Robot::template topple_nn_forward(x, out);
-        // auto tf = std::chrono::steady_clock::now();
-        // std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
-        // std::cout << "NN inference: " << elapsed_ms.count() << std::endl;
+        auto nn_time = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - nn_start).count();
+        vamp::profiling::get_profiler()["nn_inference"].push_back(nn_time);
 
         // build the anchors
         row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
@@ -437,7 +453,12 @@ namespace vamp::planning
         }
         // std::cout << "VALIDATING" << std::endl;
         // collision check only on sub_bez
+
+        auto bez_validate_start = std::chrono::steady_clock::now();
         bool bez_valid = validate_bez<Robot, rake, resolution>(start, sub_bez.time, sub_bez, environment);
+        auto bez_validate_time = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - bez_validate_start).count();
+        vamp::profiling::get_profiler()["bez_validation"].push_back(bez_validate_time);
         // return both sub_bez and bez_valid
         return {bez_valid, sub_bez};
     }

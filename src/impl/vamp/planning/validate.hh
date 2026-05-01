@@ -105,7 +105,7 @@ namespace vamp::planning
         }
         typename Robot::template ConfigurationBlock<rake> block(config_block_arr);
 
-        const std::size_t n = resolution * T * rake;
+        const std::size_t n = std::max(resolution * T / rake, 1.0F);
         // std::cout << n << std::endl;
 
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
@@ -426,6 +426,7 @@ namespace vamp::planning
         bez.time = T;
         Bezier sub_bez;
 
+        // ts = std::chrono::steady_clock::now();
         // std::cout << "SUBDIVIDING" << std::endl;
         if (bez_range < 1) {
             sub_bez = bez.subdivide(bez_range);
@@ -433,9 +434,16 @@ namespace vamp::planning
         else {
             sub_bez = bez;
         }
+        // tf = std::chrono::steady_clock::now();
+        // elapsed_ms = tf - ts;
+        // std::cout << "Subdivision: " << elapsed_ms.count() << std::endl;
         // std::cout << "VALIDATING" << std::endl;
         // collision check only on sub_bez
+        // ts = std::chrono::steady_clock::now();
         bool bez_valid = validate_bez<Robot, rake, resolution>(start, sub_bez.time, sub_bez, environment);
+        // tf = std::chrono::steady_clock::now();
+        // elapsed_ms = tf - ts;
+        // std::cout << "Validate: " << elapsed_ms.count() << std::endl;
         // return both sub_bez and bez_valid
         return {bez_valid, sub_bez};
     }

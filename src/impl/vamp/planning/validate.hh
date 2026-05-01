@@ -89,23 +89,21 @@ namespace vamp::planning
     {
         const auto percents = FloatVector<rake>(Percents<rake>::percents);
 
-        typename Robot::template ConfigurationBlock<rake> block;
 
         auto percents_arr = percents.to_array();
         int robot_dim_q = Robot::dimension / 3;
 
-        for (auto j = 0U; j < robot_dim_q; j++)  
+        std::array<vamp::FloatT, Robot::dimension * rake> config_block_arr;
+        // Collect the i-th dimension values for all rake configurations  
+        std::array<float, rake> dim_values;
+        for (auto i = 0U; i < rake; i++)
         {  
-            // Collect the i-th dimension values for all rake configurations  
-            std::array<float, rake> dim_values;  
-            for (auto k = 0U; k < rake; k++)  
-            {  
-                const auto &state = bez.evaluate(static_cast<float>(percents_arr[k]));  
-                dim_values[k] = state[j];
-            }  
-            // Broadcast these values across SIMD lanes  
-            block[j] = FloatVector<rake>(dim_values);  
+            const auto &state = bez.evaluate(static_cast<float>(percents_arr[i]));
+            for(auto j = 0U; j < robot_dim_q; j++) {
+                config_block_arr[i + j * rake] = state[j];
+            }
         }
+        typename Robot::template ConfigurationBlock<rake> block(config_block_arr);
 
         const std::size_t n = resolution * T * rake;
         // std::cout << n << std::endl;

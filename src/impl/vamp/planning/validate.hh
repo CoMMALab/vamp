@@ -80,6 +80,15 @@ namespace vamp::planning
         return validate_vector<Robot, rake, resolution>(start, vector, vector.l2_norm(), environment);
     }
 
+    // template <std::size_t rake, std::size_t dim>
+    // inline static auto assignBlock(std::array<float, dim> src, vamp::FloatVector<rake, dim> &dest)
+    // {
+    //     for (size_t i = 0; i < dim; i++)
+    //     {
+    //         dest[i] = src[i];
+    //     }
+    // }
+
     // topple addons
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline constexpr auto validate_bez(
@@ -89,25 +98,24 @@ namespace vamp::planning
         const collision::Environment<FloatVector<rake>> &environment) -> bool
     {
         const auto percents = FloatVector<rake>(Percents<rake>::percents);
-
-        auto percents_arr = percents.to_array();
+        typename Robot::template ConfigurationBlock<rake> block;
         int robot_dim_q = Robot::dimension / 3;
+        
+        auto bezier_copy_time_start = std::chrono::steady_clock::now();
+        vamp::FloatVector<rake, 7 * (Robot::topple_out_dim + 2) * (size_t)(Robot::dimension / 3)> bez_anchors_vec;
+        for(size_t i = 0; i < (Robot::topple_out_dim + 2) * robot_dim_q; ++i)
+        {
+            bez_anchors_vec[i] = bez.anchors(i / robot_dim_q, i % robot_dim_q);
+        }
+
+        auto bezier_copy_time = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - bezier_copy_time_start).count();
+        vamp::profiling::get_profiler()["bez_copy"].push_back(bezier_copy_time);
 
         auto bez_validate_outer_start = std::chrono::steady_clock::now();
+        Robot::bezier(bez_anchors_vec, percents, block);
 
-        std::array<vamp::FloatT, Robot::dimension * rake> config_block_arr;
-        for (auto i = 0U; i < rake; i++)
-        {  
-            auto bez_eval_innermost_start = std::chrono::steady_clock::now();
-            const auto &state = bez.evaluate(static_cast<float>(percents_arr[i]));
-            for(auto j = 0U; j < robot_dim_q; j++) {
-                config_block_arr[i + j * rake] = state[j];
-            }
-            auto bez_eval_innermost_time = std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() - bez_eval_innermost_start).count();
-            vamp::profiling::get_profiler()["bez_eval_innermost"].push_back(bez_eval_innermost_time);
-        }
-        typename Robot::template ConfigurationBlock<rake> block(config_block_arr);
+
 
         auto bez_validate_outer_time = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - bez_validate_outer_start).count();
@@ -125,48 +133,29 @@ namespace vamp::planning
             return valid;
         }
 
+        auto bez_validate_inner_loop_start = std::chrono::steady_clock::now();
+
         // slide the rake back along bez (i.e. compute new timesteps to rake)
         const auto backstep = percents.broadcast(0) / n;
         for (auto i = 1U; i < n; i++)
         {
-            // evaluate states in rake
-            auto times = (percents - i * backstep).to_array();
+            auto bez_vec_call_start = std::chrono::steady_clock::now();
+            Robot::bezier(bez_anchors_vec, percents - i * backstep, block);
+            vamp::profiling::get_profiler()["bez_validation_outer"].push_back(bez_vec_call_start);
 
-            // for (auto j = 0U; j < robot_dim_q; j++)  
-            // {  
-            //     // Collect the i-th dimension values for all rake configurations  
-            //     std::array<float, rake> dim_values;  
-            //     for (auto k = 0U; k < rake; k++)  
-            //     {  
-            //         const auto &state = bez.evaluate(static_cast<float>(times[k]));  
-            //         dim_values[k] = state[j];
-            //     }  
-            //     // Broadcast these values across SIMD lanes  
-            //     block[j] = FloatVector<rake>(dim_values);  
-            // }
-            // std::cout << block << std::endl;
-
-            std::array<vamp::FloatT, Robot::dimension * rake> inner_config_block_arr;
-            for (auto i = 0U; i < rake; i++)
-            {  
-                auto bez_eval_innermost_start = std::chrono::steady_clock::now();
-                const auto &state = bez.evaluate(static_cast<float>(times[i]));
-                for(auto j = 0U; j < robot_dim_q; j++) {
-                    inner_config_block_arr[i + j * rake] = state[j];
-                }
-                auto bez_eval_innermost_time = std::chrono::duration_cast<std::chrono::microseconds>(
-                    std::chrono::steady_clock::now() - bez_eval_innermost_start).count();
-                vamp::profiling::get_profiler()["bez_eval_innermost"].push_back(bez_eval_innermost_time);
-            }
-            typename Robot::template ConfigurationBlock<rake> inner_block(inner_config_block_arr);
-
-            bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, inner_block) :
-                                                     Robot::template fkcc<rake>(environment, inner_block);
+            bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
+                                                     Robot::template fkcc<rake>(environment, block);
             if (not valid)
             {
+                auto bez_validate_inner_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - bez_validate_inner_loop_start).count();
+                vamp::profiling::get_profiler()["bez_validation_inner"].push_back(bez_validate_inner_time);
                 return false;
             }
         }
+        auto bez_validate_inner_time = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - bez_validate_inner_loop_start).count();
+        vamp::profiling::get_profiler()["bez_validation_inner"].push_back(bez_validate_inner_time);
         // auto tf = std::chrono::steady_clock::now();
         // std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
         // std::cout << "CC time: " << elapsed_ms.count() << std::endl;

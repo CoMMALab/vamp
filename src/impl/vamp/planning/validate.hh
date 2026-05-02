@@ -102,7 +102,7 @@ namespace vamp::planning
         int robot_dim_q = Robot::dimension / 3;
         
         auto bezier_copy_time_start = std::chrono::steady_clock::now();
-        vamp::FloatVector<rake, 7 * (Robot::topple_out_dim + 2) * (size_t)(Robot::dimension / 3)> bez_anchors_vec;
+        vamp::FloatVector<rake, (Robot::topple_out_dim + 2) * (size_t)(Robot::dimension / 3)> bez_anchors_vec;
         for(size_t i = 0; i < (Robot::topple_out_dim + 2) * robot_dim_q; ++i)
         {
             bez_anchors_vec[i] = bez.anchors(i / robot_dim_q, i % robot_dim_q);
@@ -122,7 +122,6 @@ namespace vamp::planning
         vamp::profiling::get_profiler()["bezier_call_function"].push_back(bez_validate_outer_time);
 
         const std::size_t n = std::max(resolution * T / rake, 1.0F);
-        // std::cout << n << std::endl;
 
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                  Robot::template fkcc<rake>(environment, block);
@@ -158,9 +157,6 @@ namespace vamp::planning
         auto bez_validate_inner_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - bez_validate_inner_loop_start).count();
         vamp::profiling::get_profiler()["internal_rake_back_val_time"].push_back(bez_validate_inner_time);
-        // auto tf = std::chrono::steady_clock::now();
-        // std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
-        // std::cout << "CC time: " << elapsed_ms.count() << std::endl;
         return true;
     }
 

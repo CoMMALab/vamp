@@ -66,10 +66,10 @@ namespace vamp::profiling
 
                 std::cout << std::left << std::setw(35) << name << " | "
                          << "count: " << std::setw(6) << stats.count
-                         << " avg: " << std::fixed << std::setprecision(6) << std::setw(12) << stats.avg << " us"
-                         << " median: " << std::setw(12) << stats.median << " us"
-                         << " min: " << std::setw(12) << stats.min_val << " us"
-                         << " max: " << std::setw(12) << stats.max_val << " us\n";
+                         << " avg: " << std::fixed << std::setprecision(6) << std::setw(12) << stats.avg << " ns"
+                         << " median: " << std::setw(12) << stats.median << " ns"
+                         << " min: " << std::setw(12) << stats.min_val << " ns"
+                         << " max: " << std::setw(12) << stats.max_val << " ns\n";
             }
 
             std::cout << "================================\n\n";

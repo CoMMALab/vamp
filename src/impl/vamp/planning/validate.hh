@@ -108,18 +108,18 @@ namespace vamp::planning
             bez_anchors_vec[i] = bez.anchors(i / robot_dim_q, i % robot_dim_q);
         }
 
-        auto bezier_copy_time = std::chrono::duration_cast<std::chrono::microseconds>(
+        auto bezier_copy_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - bezier_copy_time_start).count();
-        vamp::profiling::get_profiler()["bez_copy"].push_back(bezier_copy_time);
+        vamp::profiling::get_profiler()["bezier_copy_to_simd"].push_back(bezier_copy_time);
 
         auto bez_validate_outer_start = std::chrono::steady_clock::now();
         Robot::bezier(bez_anchors_vec, percents, block);
 
 
 
-        auto bez_validate_outer_time = std::chrono::duration_cast<std::chrono::microseconds>(
+        auto bez_validate_outer_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - bez_validate_outer_start).count();
-        vamp::profiling::get_profiler()["bez_validation_outer"].push_back(bez_validate_outer_time);
+        vamp::profiling::get_profiler()["bezier_call_function"].push_back(bez_validate_outer_time);
 
         const std::size_t n = std::max(resolution * T / rake, 1.0F);
         // std::cout << n << std::endl;
@@ -141,21 +141,23 @@ namespace vamp::planning
         {
             auto bez_vec_call_start = std::chrono::steady_clock::now();
             Robot::bezier(bez_anchors_vec, percents - i * backstep, block);
-            vamp::profiling::get_profiler()["bez_validation_outer"].push_back(bez_vec_call_start);
+            auto bez_vec_call_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - bez_vec_call_start).count();
+            vamp::profiling::get_profiler()["bezier_call_function"].push_back(bez_vec_call_time);
 
             bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                      Robot::template fkcc<rake>(environment, block);
             if (not valid)
             {
-                auto bez_validate_inner_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                auto bez_validate_inner_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
                     std::chrono::steady_clock::now() - bez_validate_inner_loop_start).count();
-                vamp::profiling::get_profiler()["bez_validation_inner"].push_back(bez_validate_inner_time);
+                vamp::profiling::get_profiler()["internal_rake_back_val_time"].push_back(bez_validate_inner_time);
                 return false;
             }
         }
-        auto bez_validate_inner_time = std::chrono::duration_cast<std::chrono::microseconds>(
+        auto bez_validate_inner_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - bez_validate_inner_loop_start).count();
-        vamp::profiling::get_profiler()["bez_validation_inner"].push_back(bez_validate_inner_time);
+        vamp::profiling::get_profiler()["internal_rake_back_val_time"].push_back(bez_validate_inner_time);
         // auto tf = std::chrono::steady_clock::now();
         // std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
         // std::cout << "CC time: " << elapsed_ms.count() << std::endl;
@@ -342,7 +344,7 @@ namespace vamp::planning
         // Profile NN inference
         auto nn_start = std::chrono::steady_clock::now();
         Robot::template topple_nn_forward(x, out);
-        auto nn_time = std::chrono::duration_cast<std::chrono::microseconds>(
+        auto nn_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - nn_start).count();
         vamp::profiling::get_profiler()["nn_inference"].push_back(nn_time);
 
@@ -407,7 +409,7 @@ namespace vamp::planning
         // Profile NN inference
         auto nn_start = std::chrono::steady_clock::now();
         Robot::template topple_nn_forward(x, out);
-        auto nn_time = std::chrono::duration_cast<std::chrono::microseconds>(
+        auto nn_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - nn_start).count();
         vamp::profiling::get_profiler()["nn_inference"].push_back(nn_time);
 
@@ -454,7 +456,7 @@ namespace vamp::planning
 
         auto bez_validate_start = std::chrono::steady_clock::now();
         bool bez_valid = validate_bez<Robot, rake, resolution>(start, sub_bez.time, sub_bez, environment);
-        auto bez_validate_time = std::chrono::duration_cast<std::chrono::microseconds>(
+        auto bez_validate_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - bez_validate_start).count();
         vamp::profiling::get_profiler()["bez_validation"].push_back(bez_validate_time);
         // return both sub_bez and bez_valid

@@ -97,9 +97,6 @@ namespace vamp::planning
         const collision::Environment<FloatVector<rake>> &environment) -> bool
     {
         const auto percents = FloatVector<rake>(Percents<rake>::percents);
-
-
-        auto percents_arr = percents.to_array();
         int robot_dim_q = Robot::dimension / 3;
 
         vamp::FloatVector<rake, 7 * (Robot::topple_out_dim + 2) * (size_t)(Robot::dimension / 3)> bez_anchors_vec;
@@ -107,13 +104,10 @@ namespace vamp::planning
         {
             bez_anchors_vec[i] = bez.anchors(i / robot_dim_q, i % robot_dim_q);
         }
+
         typename Robot::template ConfigurationBlock<rake> block;
         Robot::bezier(bez_anchors_vec, percents, block);
-
-
-
         const std::size_t n = std::max(resolution * T / rake, 1.0F);
-        // std::cout << n << std::endl;
 
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                  Robot::template fkcc<rake>(environment, block);
@@ -128,7 +122,6 @@ namespace vamp::planning
         const auto backstep = percents.broadcast(0) / n;
         for (auto i = 1U; i < n; i++)
         {
-            typename Robot::template ConfigurationBlock<rake> block;
             Robot::bezier(bez_anchors_vec, percents - i * backstep, block);
             bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                      Robot::template fkcc<rake>(environment, block);
@@ -137,9 +130,6 @@ namespace vamp::planning
                 return false;
             }
         }
-        // auto tf = std::chrono::steady_clock::now();
-        // std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
-        // std::cout << "CC time: " << elapsed_ms.count() << std::endl;
         return true;
     }
 

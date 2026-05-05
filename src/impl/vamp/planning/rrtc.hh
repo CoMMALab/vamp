@@ -241,7 +241,9 @@ namespace vamp::planning
             result.iterations = iter;
             result.size.emplace_back(start_tree.size());
             result.size.emplace_back(goal_tree.size());
+            vamp::profiling::get_profiler().printReport();
             return result;
+
         }
     };
 }  // namespace vamp::planning

@@ -44,8 +44,12 @@ namespace vamp::planning
 
         const std::size_t n = std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
 
+        auto coll_check_time_start = std::chrono::steady_clock::now();
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                  Robot::template fkcc<rake>(environment, block);
+        auto coll_check_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - coll_check_time_start).count();
+        vamp::profiling::get_profiler()["collision_check_vector"].push_back(coll_check_time);
         if (not valid or n == 1)
         {
             return valid;
@@ -58,9 +62,12 @@ namespace vamp::planning
             {
                 block[j] = block[j] - backstep.broadcast(j);
             }
-
+            auto coll_check_inside = std::chrono::steady_clock::now();
             bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                      Robot::template fkcc<rake>(environment, block);
+            auto coll_check_inside_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - coll_check_inside).count();
+            vamp::profiling::get_profiler()["collision_check_inside_vector"].push_back(coll_check_inside_time);
             if (not valid)
             {
                 return false;
@@ -123,8 +130,12 @@ namespace vamp::planning
 
         const std::size_t n = std::max(resolution * T / rake, 1.0F);
 
+        auto coll_check_time_start = std::chrono::steady_clock::now();
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                  Robot::template fkcc<rake>(environment, block);
+        auto coll_check_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - coll_check_time_start).count();
+        vamp::profiling::get_profiler()["collision_check_bezier"].push_back(coll_check_time);
                                                 
         // std::cout << valid << std::endl;
         if (not valid or n == 1)
@@ -142,10 +153,14 @@ namespace vamp::planning
             Robot::bezier(bez_anchors_vec, percents - i * backstep, block);
             auto bez_vec_call_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now() - bez_vec_call_start).count();
-            vamp::profiling::get_profiler()["bezier_call_function"].push_back(bez_vec_call_time);
+            vamp::profiling::get_profiler()["bezier_call_function_inside"].push_back(bez_vec_call_time);
 
+            auto coll_check_inside = std::chrono::steady_clock::now();
             bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                      Robot::template fkcc<rake>(environment, block);
+            auto coll_check_inside_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - coll_check_inside).count();
+            vamp::profiling::get_profiler()["collision_check_inside_bezier"].push_back(coll_check_inside_time);
             if (not valid)
             {
                 auto bez_validate_inner_time = std::chrono::duration_cast<std::chrono::nanoseconds>(

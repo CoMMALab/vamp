@@ -135,6 +135,8 @@ namespace vamp::planning
             const float max_cost,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
+
+            auto topple_start_time = std::chrono::steady_clock::now();
             // profiling variables
             int total_samples = 0;
             int valid_extensions = 0;
@@ -439,12 +441,22 @@ namespace vamp::planning
                         // std::cout << "EXTENSION UPDATED: " << extension[nearest_node.index] << std::endl;
                     }
                 }
+
+                auto loop_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - loop_start).count();
+                vamp::profiling::get_profiler()["iteration_time"].push_back(loop_time);
+
             }
             std::cout << "DONE" << std::endl;
             std::cout << "TOTAL SAMPLES: " << total_samples << std::endl;
             std::cout << "VALID EXTENSIONS: " << valid_extensions << std::endl;
             std::cout << "VALID RATIO: " << 1.0 * valid_extensions / total_samples << std::endl;
             result.iterations = iter;
+
+            auto total_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - topple_start_time).count();
+
+            std::cout << "Planning time (ns): " << total_time << std::endl;
             
             // Print profiler report
             vamp::profiling::get_profiler().printReport();

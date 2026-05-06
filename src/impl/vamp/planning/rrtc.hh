@@ -97,6 +97,7 @@ namespace vamp::planning
 
             while (iter++ < settings.max_iterations and free_index < settings.max_samples)
             {
+                auto loop_start = std::chrono::steady_clock::now();
                 float asize = tree_a->size();
                 float bsize = tree_b->size();
                 float ratio = std::abs(asize - bsize) / asize;
@@ -235,6 +236,10 @@ namespace vamp::planning
                             std::max(radii[nearest_node.index] * (1.F - settings.alpha), settings.min_radius);
                     }
                 }
+                auto loop_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - loop_start).count();
+                vamp::profiling::get_profiler()["iteration_time"].push_back(loop_time);
+
             }
 
             result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);

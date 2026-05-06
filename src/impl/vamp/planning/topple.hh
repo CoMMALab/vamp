@@ -4,14 +4,12 @@
 #include <memory>
 
 #include <vamp/collision/environment.hh>
-// #include <vamp/planning/topple_nn.hh>
 #include <vamp/planning/aox_nn.hh>
 #include <vamp/planning/phs.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/simplify.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/topple_settings.hh>
-#include <vamp/planning/rrtctopp.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
 #include <vamp/vector.hh>
@@ -214,9 +212,6 @@ namespace vamp::planning
                 const auto nearest_vector = temp - nearest_node.array;
                 auto new_node = temp;
                                 
-                // bool, Bezier
-                // std::cout << "VALIDATE" << std::endl;
-                // std::cout << nearest_node.index << std::endl;
                 auto [valid_extension, sub_bez] = validate_sub_bez_motion<Robot, rake, resolution>(
                     nearest_node.array,
                     new_node,
@@ -320,67 +315,82 @@ namespace vamp::planning
                     }
                     bezier_map[{nearest_node.index, free_index}] = sub_bez;
                     free_index++;
-                    // std::cout << "FREE INDEX: " << free_index << std::endl;
 
                     // increase extension of valid connection
                     if (settings.dynamic_extension)
                     {
-                        // std::cout << "VALID EXTENSION" << std::endl;
-                        extension[nearest_node.index] /= settings.alpha;
+                        extension[nearest_node.index] *= (1 + settings.alpha);
                         extension[nearest_node.index] = std::min(extension[nearest_node.index], 1.0f);
-                        // std::cout << "EXTENSION UPDATED: "<< extension[nearest_node.index] << std::endl;
                     }
 
-                    // Connect trees: TODO: Likely a bug here
-                    // Attempt direct connections from new node to other tree, similar to rrt+
-                    std::vector<std::pair<NNNode, float>> near_nodes = find_nearest_k(tree_b, target_vert, new_configuration_bez, max_cost - new_cost, settings.k_nearest);
-                    // std::cout << "NEAR NODES SIZE: " << near_nodes.size() << std::endl;
-                    if (near_nodes.size() == 0) {
-                        continue;
-                    }
+                    // connect the trees
+                    const std::size_t n_extensions = 1 / extension[free_index - 1];
+                    std::pair<NNNode, float> near_node = find_nearest(tree_b, target_vert, new_configuration_bez, max_cost - new_cost);
+                    
+                    // get full bezier connection
+                    std::pair<bool, Bezier> connection = validate_sub_bez_motion<Robot, rake, resolution>(
+                        new_configuration_bez,
+                        near_node.first.array,
+                        environment,
+                        1);
+                    Bezier connection_bez = connection.second;
 
-                    // find the minimum feasible connection
-                    bool valid_found = false;
-                    auto best_connection = near_nodes[0];
+                    // validate bezier incrementally
+                    std::size_t i_extension = 0;
+                    std::size_t new_index = free_index - 1;
+                    float alpha_i = extension[new_index];
+                    for (; i_extension < n_extensions and free_index < rrtc_settings.max_samples; ++i_extension)
+                    {
+                        std::pair<Bezier, Bezier> sub_bez_pair = connection_bez.subdivide(alpha_i);
+                        Bezier sub_bez_l = sub_bez_pair.first;
+                        connection_bez = sub_bez_pair.second;
 
-                    Bezier best_bez;
-
-                    for (int i = 0; i < near_nodes.size(); i++) {
-                        auto [other_nearest_node, other_nearest_distance] = near_nodes[i];
-                        if (new_cost + other_nearest_distance + other_nearest_node.cost >= max_cost)
+                        if (validate_bez<Robot, rake, resolution>(sub_bez_l, environment))
                         {
-                            continue;
-                        }
+                            Bezier dsub_bez_l = sub_bez_l.derivative();
+                            Bezier ddsub_bez_l = dsub_bez_l.derivative();
+                            auto sub_end = sub_bez_l.anchors.row(sub_bez_l.anchors.rows() - 1);
+                            auto dsub_end = dsub_bez_l.anchors.row(dsub_bez_l.anchors.rows() - 1);
+                            auto ddsub_end = ddsub_bez_l.anchors.row(ddsub_bez_l.anchors.rows() - 1);
 
-                        auto [valid_connection, sub_bez_connection] = validate_sub_bez_motion<Robot, rake, resolution>(
-                            new_configuration_bez, 
-                            other_nearest_node.array,
-                            environment,
-                            1);
-
-                        if (valid_connection)
-                        {
-                            valid_found = true;
-                            best_connection = {other_nearest_node, other_nearest_distance};
-                            best_bez = sub_bez_connection;
-                            if (not tree_a_is_start)
+                            std::array<float, Robot::dimension> sub_connection_end_array;
+                            for (auto i = 0U; i < Robot::dimension; i++)
                             {
-                                // need to flip bezier if connecting from goal tree to start tree
-                                best_bez.reverse();
+                                if (i < Robot::dimension / 3)
+                                {
+                                    sub_connection_end_array[i] = sub_end(i);
+                                }
+                                else if (i < 2 * Robot::dimension / 3)
+                                {
+                                    sub_connection_end_array[i] = dsub_end(i - Robot::dimension / 3);
+                                }
+                                else
+                                {
+                                    sub_connection_end_array[i] = ddsub_end(i - 2 * Robot::dimension / 3);
+                                }
                             }
+                            Configuration sub_connection_end_config(sub_connection_end_array);
+                            add_to_tree(tree_a, sub_connection_end_config, free_index, free_index - 1, new_cost + sub_bez_l.time, extension[new_index]);
+                            if (not tree_a_is_start) {
+                                sub_bez_l.reverse();
+                            }
+                            bezier_map[{free_index - 1, free_index}] = sub_bez_l;
+                            free_index++;
+                            alpha_i /= (1 - alpha_i);
+                        }
+                        else
+                        {
                             break;
                         }
                     }
-                    // solution found, construct path
-                    if (valid_found)
+                    if (i_extension == n_extensions)  // connected
                     {
                         // std::cout << "SOLUTION FOUND" << std::endl;
-                        auto connect_node = best_connection.first.array;
-                        add_to_tree(tree_a, connect_node, free_index, free_index - 1, new_cost + best_bez.time, settings.bez_range);
-                        bezier_map[{free_index - 1, free_index}] = best_bez;
-                        auto current = free_index;
+                        // auto connect_node = best_connection.first.array;
+                        // add_to_tree(tree_a, connect_node, free_index, free_index - 1, new_cost + best_bez.time, settings.bez_range);
+                        // bezier_map[{free_index - 1, free_index}] = best_bez;
+                        auto current = free_index - 1;
                         result.path.emplace_back(buffer_index(current));
-                        // result.beziers.push_back(bezier_map[{current - 1, current}]);
                         while (parents[current] != current)
                         {
                             auto parent = parents[current];
@@ -392,12 +402,10 @@ namespace vamp::planning
 
                         std::reverse(result.path.begin(), result.path.end());
                         std::reverse(result.beziers.begin(), result.beziers.end());
-                        current = best_connection.first.index;
-                        // current = parents[current];
+                        current = near_node.first.index;
 
                         while (parents[current] != current)
                         {
-                            // std::cout << "CURRENT: " << current << std::endl;
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
                             result.beziers.push_back(bezier_map[{parent, current}]);
@@ -419,8 +427,8 @@ namespace vamp::planning
                     if (settings.dynamic_extension)
                     {
                         // std::cout << "INVALID EXTENSION" << std::endl;
-                        extension[nearest_node.index] *= settings.alpha;
-                        extension[nearest_node.index] = std::max(extension[nearest_node.index], 0.005f);
+                        extension[nearest_node.index] *= (1 - settings.alpha);
+                        extension[nearest_node.index] = std::max(extension[nearest_node.index], 0.01f);
                         // std::cout << "EXTENSION UPDATED: " << extension[nearest_node.index] << std::endl;
                     }
                 }
@@ -447,7 +455,6 @@ namespace vamp::planning
         static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
         using AOX_TOPPLE = typename vamp::planning::AOX_TOPPLE<Robot, rake, resolution>;
-        using RRTCTOPP = typename vamp::planning::RRTCTOPP<Robot, rake, resolution>;
 
         inline static auto solve(
             const Configuration &start,
@@ -523,8 +530,6 @@ namespace vamp::planning
 
             auto phs_rng = std::make_shared<ProlateHyperspheroidRNG<Robot>>(phs, rng);
 
-            // AOX_RRTCTOPP instance(max_samples);
-
             // If we get close to straight line, just call it.
             // Also handles numerical issues with PHS when too close to straight line...
             // std::cout << "Optimizing" << std::endl;
@@ -537,29 +542,15 @@ namespace vamp::planning
                     std::min(settings.max_iterations - iters, settings.max_internal_iterations);
                 // std::cout << iters << std::endl;
                 // By default, use AORRTC
-                if (not settings.anytime)
+
+                // If there is a single goal, sample with PHS
+                if (settings.use_phs and goals.size() == 1)
                 {
-                    // If there is a single goal, sample with PHS
-                    if (settings.use_phs and goals.size() == 1)
-                    {
-                        result = instance.solve(start, goals, environment, settings, best_path_cost, phs_rng);
-                    }
-                    else
-                    {
-                        result = instance.solve(start, goals, environment, settings, best_path_cost, rng);
-                    }
+                    result = instance.solve(start, goals, environment, settings, best_path_cost, phs_rng);
                 }
-                // If anytime, use Anytime RRTC
                 else
                 {
-                    if (settings.use_phs and goals.size() == 1)
-                    {
-                        result = RRTCTOPP::solve(start, goals, environment, rrtc_settings, phs_rng);
-                    }
-                    else
-                    {
-                        result = RRTCTOPP::solve(start, goals, environment, rrtc_settings, rng);
-                    }
+                    result = instance.solve(start, goals, environment, settings, best_path_cost, rng);
                 }
 
                 iters += result.iterations;

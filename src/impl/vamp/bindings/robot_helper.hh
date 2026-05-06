@@ -22,7 +22,6 @@
 #include <vamp/planning/fcit.hh>
 #include <vamp/planning/rrtc.hh>
 #include <vamp/planning/aorrtc.hh>
-#include <vamp/planning/rrtctopp.hh>
 #include <vamp/planning/topple.hh>
 #include <vamp/vector.hh>
 
@@ -232,10 +231,6 @@ namespace vamp::binding
         using AORRTC = PlannerHelper<
             vamp::planning::AORRTC<Robot, rake, Robot::resolution>,
             vamp::planning::AORRTCSettings>;
-        
-        using RRTCTOPP = PlannerHelper<
-            vamp::planning::RRTCTOPP<Robot, rake, Robot::resolution>,
-            vamp::planning::RRTCSettings>;
 
         using TOPPLE = PlannerHelper<
             vamp::planning::TOPPLE<Robot, rake, Robot::resolution>,
@@ -624,7 +619,6 @@ namespace vamp::binding
         PLANNER("prm", PRM, "PRM");
         PLANNER("fcit", FCIT, "FCIT");
         PLANNER("aorrtc", AORRTC, "AORRTC");
-        PLANNER("rrtctopp", RRTCTOPP, "RRTCTOPP");
         PLANNER("topple", TOPPLE, "TOPPLE");
 
         if constexpr (has_set_lows_v<Robot>)

@@ -17,6 +17,48 @@
 
 namespace vamp::planning
 {
+
+    struct TreeGrowthData
+    {
+        enum class TreeSide
+        {
+            Start,
+            Goal
+        };
+
+        struct Node
+        {
+            size_t planner_index;          // node index in planner tree/buffer
+            std::vector<float> config;      // configuration space position
+            size_t parent_index;            // parent planner index
+            size_t iteration;               // planner iteration when this node was added
+            std::string loop_type;          // seed | outer_extend | inner_connect
+            TreeSide tree_side;             // Start | Goal
+        };
+
+        struct FailedExtension
+        {
+            std::vector<float> config;      // candidate config that failed collision validation
+            size_t iteration;               // planner iteration when this failure happened
+            std::string loop_type;          // outer_extend | inner_connect
+            TreeSide tree_side;             // Start | Goal
+        };
+
+        struct BridgeEdge
+        {
+            size_t from_index;
+            size_t to_index;
+            size_t iteration;
+            std::string loop_type;
+            TreeSide tree_side;
+        };
+
+        std::vector<Node> nodes;            // all nodes in chronological order
+        std::vector<size_t> iteration_starts;  // iteration_starts[i] = index of first node in iteration i
+        std::vector<FailedExtension> failed_extensions;  // failed candidate extensions by iteration
+        std::vector<BridgeEdge> bridge_edges;  // explicit bridge edges (e.g. final goal connect)
+    };    
+
     template <typename Robot, std::size_t rake, std::size_t resolution>
     struct AOX_TOPPLE
     {
@@ -130,11 +172,21 @@ namespace vamp::planning
             const collision::Environment<FloatVector<rake>> &environment,
             const TOPPLESettings &settings,
             const float max_cost,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr rng,
+            TreeGrowthData* tree_growth = nullptr) noexcept -> PlanningResult<Robot>
         {
             // profiling variables
             int total_samples = 0;
             int valid_extensions = 0;
+
+            if (tree_growth) {
+                tree_growth->nodes.clear();
+                tree_growth->iteration_starts.clear();
+                tree_growth->failed_extensions.clear();
+                tree_growth->bridge_edges.clear();
+                tree_growth->iteration_starts.push_back(0);
+            }
+            
             
             static constexpr std::size_t start_index = 0;
             const RRTCSettings &rrtc_settings = settings.rrtc;
@@ -163,9 +215,27 @@ namespace vamp::planning
             auto *tree_a = (rrtc_settings.start_tree_first) ? &goal_tree : &start_tree;
             auto *tree_b = (rrtc_settings.start_tree_first) ? &start_tree : &goal_tree;
 
+            if (tree_growth) {
+                typename Robot::ConfigurationBuffer start_buffer;
+                start.to_array(start_buffer.data());
+                TreeGrowthData::Node start_node;
+                start_node.planner_index = 0;
+                start_node.config.assign(start_buffer.begin(), start_buffer.end());
+                start_node.parent_index = 0;
+                start_node.iteration = 0;
+                start_node.loop_type = "seed";
+                start_node.tree_side = TreeGrowthData::TreeSide::Start;
+                tree_growth->nodes.push_back(start_node);
+            }
+
+
             // Search loop
             while (iter++ < rrtc_settings.max_iterations and free_index < rrtc_settings.max_samples)
             {
+                if (tree_growth && tree_growth->iteration_starts.size() == iter) {
+                    tree_growth->iteration_starts.push_back(tree_growth->nodes.size());
+                }
+
                 // std::cout << "ITERATION: " << iter << std::endl;
                 float asize = tree_a->size();
                 float bsize = tree_b->size();
@@ -211,108 +281,68 @@ namespace vamp::planning
 
                 const auto nearest_vector = temp - nearest_node.array;
                 auto new_node = temp;
+
+                auto bez = compute_bez<Robot, rake, resolution>(nearest_node.array, new_node);
+                auto sub_bez = compute_sub_bez<Robot, rake, resolution>(bez, extension[nearest_node.index]);
+                auto valid_extension = validate_bez<Robot, rake, resolution>(sub_bez, environment);
                                 
-                auto [valid_extension, sub_bez] = validate_sub_bez_motion<Robot, rake, resolution>(
-                    nearest_node.array,
-                    new_node,
-                    environment,
-                    extension[nearest_node.index]);
-                // std::cout << "VALIDATED" << std::endl;
+                Bezier dsub_bez = sub_bez.derivative();
+                Bezier ddsub_bez = dsub_bez.derivative();
+
+                // check this when reversed
+                auto new_q = sub_bez.anchors.row(sub_bez.anchors.rows() - 1);
+                auto new_dq = dsub_bez.anchors.row(dsub_bez.anchors.rows() - 1);
+                auto new_ddq = ddsub_bez.anchors.row(ddsub_bez.anchors.rows() - 1);
+                
+                // convert to Robot configuration in phase space
+                std::array<float, Robot::dimension> new_configuration_array;
+                
+                for (auto i = 0U; i < Robot::dimension; i++)
+                {
+                    if (i < Robot::dimension / 3)
+                    {
+                        new_configuration_array[i] = new_q(i);
+                    }
+                    else if (i < 2 * Robot::dimension / 3)
+                    {
+                        new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
+                    }
+                    else
+                    {
+                        new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
+                    }
+                }
+                // std::cout << std::endl;
+                Configuration new_configuration_bez(new_configuration_array);
 
                 if (valid_extension)
                 {
                     valid_extensions++;
                     // store end of sub bez
-                    const auto new_configuration = new_node;
+                    // const auto new_configuration = new_node;
 
                     // Calculate and store actual node cost
                     // REPLACE WITH NN INFERENCE
-                    auto new_cost = nearest_node.cost + new_configuration.distance(nearest_node.array);
+                    auto new_cost = nearest_node.cost + new_configuration_bez.distance(nearest_node.array);
 
-                    // If resampling costs to try and find a better parent...
-                    // if (settings.cost_bound_resample)
-                    // {
-                    //     const float g_hat = tree_a_is_start ? Robot::template get_nn_time(root_vert.array, new_configuration) :
-                    //                                          Robot::template get_nn_time(new_configuration, root_vert.array);
-
-                    //     // Continuously resample cost until an invalid connection is found
-                    //     for (auto i = 0U; i < settings.max_cost_bound_resamples; ++i)
-                    //     {
-                    //         const float c_range = std::max(new_cost - g_hat, 0.0F);
-                    //         const float c_rand = (rng->dist.uniform_01() * c_range) + g_hat;
-
-                    //         auto [new_nearest_node, new_nearest_distance] =
-                    //             find_nearest(tree_a, root_vert, new_configuration, c_rand);
-
-
-                    //         // Validate edge to newly found parent
-                    //         auto [valid_resample, sub_bez_resample] =  
-                    //                     validate_sub_bez_motion<Robot, rake, resolution>(
-                    //                         new_nearest_node.array,
-                    //                         new_configuration,
-                    //                         environment,
-                    //                         extension[new_nearest_node.index]);
-                            
-                    //         // If we have connected:
-                    //         //      to the same parent
-                    //         //      with a worse cost
-                    //         //      to the best possible parent before this (crange == 0 \equiv cost == g^)
-                    //         // ...then stop spending effort resampling costs
-                    //         if (new_nearest_node.index == nearest_node.index or
-                    //             new_nearest_node.cost + new_nearest_distance >= new_cost or c_range == 0)
-                    //         {
-                    //             break;
-                    //         }
-                    //         else if (valid_resample)
-                    //         {
-                    //             // Congratulations to the new parent
-                    //             nearest_node = new_nearest_node;
-                    //             new_cost = new_nearest_node.cost + sub_bez_resample.time;
-                    //             // Store the new bezier
-                    //             sub_bez = sub_bez_resample;
-                    //         }
-                    //         // The edge is invalid, we have failed a connection. Stop resampling!
-                    //         else
-                    //         {
-                    //             break;
-                    //         }
-                    //     }
-                    // }
-
-                    // Need to add the end of the sub bezier to the tree, not the original new node
-                    // compute higher order terms of new node
-                    Bezier dsub_bez = sub_bez.derivative();
-                    Bezier ddsub_bez = dsub_bez.derivative();
-
-                    // check this when reversed
-                    auto new_q = sub_bez.anchors.row(sub_bez.anchors.rows() - 1);
-                    auto new_dq = dsub_bez.anchors.row(dsub_bez.anchors.rows() - 1);
-                    auto new_ddq = ddsub_bez.anchors.row(ddsub_bez.anchors.rows() - 1);
-                    
-                    // convert to Robot configuration in phase space
-                    std::array<float, Robot::dimension> new_configuration_array;
-                    
-                    for (auto i = 0U; i < Robot::dimension; i++)
-                    {
-                        if (i < Robot::dimension / 3)
-                        {
-                            new_configuration_array[i] = new_q(i);
-                        }
-                        else if (i < 2 * Robot::dimension / 3)
-                        {
-                            new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
-                        }
-                        else
-                        {
-                            new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
-                        }
-                    }
-                    // std::cout << std::endl;
-                    Configuration new_configuration_bez(new_configuration_array);
                     add_to_tree(tree_a, new_configuration_bez, free_index, nearest_node.index, new_cost, settings.bez_range);
                     if (not tree_a_is_start) {
                         sub_bez.reverse();
                     }
+
+                    if (tree_growth) {
+                        typename Robot::ConfigurationBuffer new_buffer;
+                        new_configuration_bez.to_array(new_buffer.data());
+                        TreeGrowthData::Node node;
+                        node.planner_index = free_index;
+                        node.config.assign(new_buffer.begin(), new_buffer.end());
+                        node.parent_index = nearest_node.index;
+                        node.iteration = iter;
+                        node.loop_type = "outer_extend";
+                        node.tree_side = tree_a_is_start ? TreeGrowthData::TreeSide::Start : TreeGrowthData::TreeSide::Goal;
+                        tree_growth->nodes.push_back(node);
+                    }
+
                     bezier_map[{nearest_node.index, free_index}] = sub_bez;
                     free_index++;
 
@@ -338,53 +368,105 @@ namespace vamp::planning
                     // validate bezier incrementally
                     std::size_t i_extension = 0;
                     std::size_t new_index = free_index - 1;
+                    Configuration sub_connection_end_config;
                     float alpha_i = extension[new_index];
                     for (; i_extension < n_extensions and free_index < rrtc_settings.max_samples; ++i_extension)
                     {
                         std::pair<Bezier, Bezier> sub_bez_pair = connection_bez.subdivide(alpha_i);
                         Bezier sub_bez_l = sub_bez_pair.first;
                         connection_bez = sub_bez_pair.second;
+                        Bezier dsub_bez_l = sub_bez_l.derivative();
+                        Bezier ddsub_bez_l = dsub_bez_l.derivative();
+                        auto sub_end = sub_bez_l.anchors.row(sub_bez_l.anchors.rows() - 1);
+                        auto dsub_end = dsub_bez_l.anchors.row(dsub_bez_l.anchors.rows() - 1);
+                        auto ddsub_end = ddsub_bez_l.anchors.row(ddsub_bez_l.anchors.rows() - 1);
+
+                        std::array<float, Robot::dimension> sub_connection_end_array;
+                        for (auto i = 0U; i < Robot::dimension; i++)
+                        {
+                            if (i < Robot::dimension / 3)
+                            {
+                                sub_connection_end_array[i] = sub_end(i);
+                            }
+                            else if (i < 2 * Robot::dimension / 3)
+                            {
+                                sub_connection_end_array[i] = dsub_end(i - Robot::dimension / 3);
+                            }
+                            else
+                            {
+                                sub_connection_end_array[i] = ddsub_end(i - 2 * Robot::dimension / 3);
+                            }
+                        }
+                        sub_connection_end_config = Configuration(sub_connection_end_array);
 
                         if (validate_bez<Robot, rake, resolution>(sub_bez_l, environment))
                         {
-                            Bezier dsub_bez_l = sub_bez_l.derivative();
-                            Bezier ddsub_bez_l = dsub_bez_l.derivative();
-                            auto sub_end = sub_bez_l.anchors.row(sub_bez_l.anchors.rows() - 1);
-                            auto dsub_end = dsub_bez_l.anchors.row(dsub_bez_l.anchors.rows() - 1);
-                            auto ddsub_end = ddsub_bez_l.anchors.row(ddsub_bez_l.anchors.rows() - 1);
-
-                            std::array<float, Robot::dimension> sub_connection_end_array;
-                            for (auto i = 0U; i < Robot::dimension; i++)
-                            {
-                                if (i < Robot::dimension / 3)
-                                {
-                                    sub_connection_end_array[i] = sub_end(i);
-                                }
-                                else if (i < 2 * Robot::dimension / 3)
-                                {
-                                    sub_connection_end_array[i] = dsub_end(i - Robot::dimension / 3);
-                                }
-                                else
-                                {
-                                    sub_connection_end_array[i] = ddsub_end(i - 2 * Robot::dimension / 3);
-                                }
-                            }
-                            Configuration sub_connection_end_config(sub_connection_end_array);
                             add_to_tree(tree_a, sub_connection_end_config, free_index, free_index - 1, new_cost + sub_bez_l.time, extension[new_index]);
                             if (not tree_a_is_start) {
                                 sub_bez_l.reverse();
                             }
+
+                            if (tree_growth) {
+                                typename Robot::ConfigurationBuffer next_buffer;
+                                sub_connection_end_config.to_array(next_buffer.data());
+                                TreeGrowthData::Node node;
+                                node.planner_index = free_index;
+                                node.config.assign(next_buffer.begin(), next_buffer.end());
+                                node.parent_index = free_index - 1;
+                                node.iteration = iter;
+                                node.loop_type = "inner_connect";
+                                node.tree_side = tree_a_is_start ? TreeGrowthData::TreeSide::Start : TreeGrowthData::TreeSide::Goal;
+                                tree_growth->nodes.push_back(node);
+                            }
+
                             bezier_map[{free_index - 1, free_index}] = sub_bez_l;
                             free_index++;
                             alpha_i /= (1 - alpha_i);
+
+
+
                         }
                         else
                         {
+
+                            if (tree_growth)
+                            {
+                                typename Robot::ConfigurationBuffer failed_buffer;
+                                sub_connection_end_config.to_array(failed_buffer.data());
+                                TreeGrowthData::FailedExtension failed;
+                                failed.config.assign(failed_buffer.begin(), failed_buffer.end());
+                                failed.iteration = iter;
+                                failed.loop_type = "inner_connect";
+                                tree_growth->failed_extensions.push_back(std::move(failed));
+                            }
+
                             break;
                         }
                     }
                     if (i_extension == n_extensions)  // connected
                     {
+                        if (tree_growth)
+                        {
+                            typename Robot::ConfigurationBuffer reached_buffer;
+                            sub_connection_end_config.to_array(reached_buffer.data());
+                            TreeGrowthData::Node node;
+                            node.planner_index = free_index;
+                            node.config.assign(reached_buffer.begin(), reached_buffer.end());
+                            node.parent_index = free_index - 1;
+                            node.iteration = iter;
+                            node.loop_type = "goal_connect";
+                            node.tree_side = tree_a_is_start ? TreeGrowthData::TreeSide::Start : TreeGrowthData::TreeSide::Goal;
+                            tree_growth->nodes.push_back(std::move(node));
+
+                            TreeGrowthData::BridgeEdge bridge;
+                            bridge.from_index = free_index - 1;
+                            bridge.to_index = free_index;
+                            bridge.iteration = iter;
+                            bridge.loop_type = "goal_connect";
+                            bridge.tree_side = tree_a_is_start ? TreeGrowthData::TreeSide::Start : TreeGrowthData::TreeSide::Goal;
+                            tree_growth->bridge_edges.push_back(std::move(bridge));
+                        }
+
                         // std::cout << "SOLUTION FOUND" << std::endl;
                         // auto connect_node = best_connection.first.array;
                         // add_to_tree(tree_a, connect_node, free_index, free_index - 1, new_cost + best_bez.time, settings.bez_range);
@@ -423,6 +505,21 @@ namespace vamp::planning
                     }
                 }
                 else {
+
+                    if (tree_growth)
+                    {
+                        auto failed_configuration = temp;
+                        typename Robot::ConfigurationBuffer failed_buffer;
+                        failed_configuration.to_array(failed_buffer.data());
+                        TreeGrowthData::FailedExtension failed;
+                        failed.config.assign(failed_buffer.begin(), failed_buffer.end());
+                        failed.iteration = iter;
+                        failed.loop_type = "outer_extend";
+                        failed.tree_side = tree_a_is_start ? TreeGrowthData::TreeSide::Start : TreeGrowthData::TreeSide::Goal;
+                        tree_growth->failed_extensions.push_back(std::move(failed));
+                    }
+
+
                     // decrease extension
                     if (settings.dynamic_extension)
                     {
@@ -437,6 +534,7 @@ namespace vamp::planning
             std::cout << "TOTAL SAMPLES: " << total_samples << std::endl;
             std::cout << "VALID EXTENSIONS: " << valid_extensions << std::endl;
             std::cout << "VALID RATIO: " << 1.0 * valid_extensions / total_samples << std::endl;
+            std::cout << "Tree sizes are : " << start_tree.size() << " and " << goal_tree.size() << std::endl;
             result.iterations = iter;
             return result;
         }
@@ -461,9 +559,10 @@ namespace vamp::planning
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const TOPPLESettings &settings,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr rng,
+            TreeGrowthData *tree_growth = nullptr) noexcept -> PlanningResult<Robot>
         {
-            return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
+            return solve(start, std::vector<Configuration>{goal}, environment, settings, rng, tree_growth);
         }
 
         inline static auto solve(
@@ -471,7 +570,8 @@ namespace vamp::planning
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
             const TOPPLESettings &settings_in,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr rng,
+            TreeGrowthData *tree_growth = nullptr) noexcept -> PlanningResult<Robot>
         {
             auto start_time = std::chrono::steady_clock::now();
 
@@ -495,7 +595,7 @@ namespace vamp::planning
             do
             {
                 // Find an initial solution
-                result = instance.solve(start, goals, environment, settings, best_path_cost, rng);
+                result = instance.solve(start, goals, environment, settings, best_path_cost, rng, tree_growth);
                 iters += result.iterations;
             } while (result.path.empty() and iters < settings.max_iterations);
             std::cout << "Initial solution found." << std::endl;
@@ -546,11 +646,11 @@ namespace vamp::planning
                 // If there is a single goal, sample with PHS
                 if (settings.use_phs and goals.size() == 1)
                 {
-                    result = instance.solve(start, goals, environment, settings, best_path_cost, phs_rng);
+                    result = instance.solve(start, goals, environment, settings, best_path_cost, phs_rng, tree_growth);
                 }
                 else
                 {
-                    result = instance.solve(start, goals, environment, settings, best_path_cost, rng);
+                    result = instance.solve(start, goals, environment, settings, best_path_cost, rng, tree_growth);
                 }
 
                 iters += result.iterations;

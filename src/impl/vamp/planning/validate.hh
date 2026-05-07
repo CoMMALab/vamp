@@ -140,23 +140,23 @@ namespace vamp::planning
         //     block[j] = FloatVector<rake>(block_matrix.row(j).data());
         // }
 
-        float dist = 0;
-        for (auto i = 0U; i < rake - 1; i++)
-        {
-            float sq_dist = 0;
-            for(auto j = 0U; j < robot_dim_q; j++)
-            {
-                sq_dist = sq_dist + block[{j, i}] * block[{j, i}];
-            }
-            dist = dist + std::sqrt(sq_dist);
-        }
+        // float dist = 0;
+        // for (auto i = 0U; i < rake - 1; i++)
+        // {
+        //     float sq_dist = 0;
+        //     for(auto j = 0U; j < robot_dim_q; j++)
+        //     {
+        //         sq_dist = sq_dist + block[{j, i}] * block[{j, i}];
+        //     }
+        //     dist = dist + std::sqrt(sq_dist);
+        // }
 
         auto bez_distance_call_time = std::chrono::steady_clock::now();
         auto bez_distance_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
             bez_distance_call_time - bezier_call_time).count();
         vamp::profiling::get_profiler()["bezier_distance_calculation"].push_back(bez_distance_time);
 
-        const std::size_t n = std::max(resolution * dist / rake, 1.0F);
+        const std::size_t n = std::max(resolution * 1.0F / rake, 1.0F);
 
         auto coll_check_time_start = std::chrono::steady_clock::now();
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
@@ -355,6 +355,7 @@ namespace vamp::planning
         // return both sub_bez and bez_valid
         return bez_valid;
     }
+
 
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline constexpr auto validate_sub_bez_motion(

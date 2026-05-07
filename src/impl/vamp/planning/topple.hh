@@ -133,8 +133,8 @@ namespace vamp::planning
             const float max_cost,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
-
             auto topple_start_time = std::chrono::steady_clock::now();
+            
             // profiling variables
             int total_samples = 0;
             int valid_extensions = 0;
@@ -170,7 +170,7 @@ namespace vamp::planning
             while (iter++ < rrtc_settings.max_iterations and free_index < rrtc_settings.max_samples)
             {
                 auto loop_start = std::chrono::steady_clock::now();
-                
+               
                 // std::cout << "ITERATION: " << iter << std::endl;
                 float asize = tree_a->size();
                 float bsize = tree_b->size();
@@ -216,20 +216,17 @@ namespace vamp::planning
 
                 const auto nearest_vector = temp - nearest_node.array;
                 auto new_node = temp;
-                                
-                // bool, Bezier
-                // std::cout << "VALIDATE" << std::endl;
-                // std::cout << nearest_node.index << std::endl;
-                auto validate_start = std::chrono::steady_clock::now();
+                auto validate_start = std::chrono::steady_clock::now();                                
                 auto [valid_extension, sub_bez] = validate_sub_bez_motion<Robot, rake, resolution>(
                     nearest_node.array,
                     new_node,
                     environment,
                     extension[nearest_node.index]);
-                auto validate_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                    std::chrono::steady_clock::now() - validate_start).count();
-                vamp::profiling::get_profiler()["validate_motion"].push_back(validate_time);
-                // std::cout << "VALIDATED" << std::endl;
+                    // std::cout << "VALIDATED" << std::endl;
+                auto validate_time = std::chrono::steady_clock::now();
+                auto validate_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    validate_time - validate_start).count();
+                vamp::profiling::get_profiler()["validate_sub_bez_motion"].push_back(validate_duration);
 
                 if (valid_extension)
                 {
@@ -293,12 +290,10 @@ namespace vamp::planning
 
                     // Need to add the end of the sub bezier to the tree, not the original new node
                     // compute higher order terms of new node
-                    auto derivative_start = std::chrono::steady_clock::now();
+                    auto validate_start = std::chrono::steady_clock::now();
                     Bezier dsub_bez = sub_bez.derivative();
                     Bezier ddsub_bez = dsub_bez.derivative();
-                    auto derivative_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                        std::chrono::steady_clock::now() - derivative_start).count();
-                    vamp::profiling::get_profiler()["bezier_derivative"].push_back(derivative_time);
+                    auto validate_time = std::chrono::steady_clock::now();
 
                     // check this when reversed
                     auto new_q = sub_bez.anchors.row(sub_bez.anchors.rows() - 1);
@@ -369,22 +364,8 @@ namespace vamp::planning
                             auto dsub_end = dsub_bez_l.anchors.row(dsub_bez_l.anchors.rows() - 1);
                             auto ddsub_end = ddsub_bez_l.anchors.row(ddsub_bez_l.anchors.rows() - 1);
 
-                        auto connection_start = std::chrono::steady_clock::now();
-                        auto [valid_connection, sub_bez_connection] = validate_sub_bez_motion<Robot, rake, resolution>(
-                            new_configuration_bez, 
-                            other_nearest_node.array,
-                            environment,
-                            1);
-                        auto connection_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                            std::chrono::steady_clock::now() - connection_start).count();
-                        vamp::profiling::get_profiler()["validate_connection"].push_back(connection_time);
-
-                        if (valid_connection)
-                        {
-                            valid_found = true;
-                            best_connection = {other_nearest_node, other_nearest_distance};
-                            best_bez = sub_bez_connection;
-                            if (not tree_a_is_start)
+                            std::array<float, Robot::dimension> sub_connection_end_array;
+                            for (auto i = 0U; i < Robot::dimension; i++)
                             {
                                 if (i < Robot::dimension / 3)
                                 {
@@ -462,11 +443,10 @@ namespace vamp::planning
                         // std::cout << "EXTENSION UPDATED: " << extension[nearest_node.index] << std::endl;
                     }
                 }
-
-                auto loop_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                    std::chrono::steady_clock::now() - loop_start).count();
-                vamp::profiling::get_profiler()["iteration_time"].push_back(loop_time);
-
+            auto loop_end = std::chrono::steady_clock::now();
+            auto loop_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                loop_end - loop_start).count();
+            vamp::profiling::get_profiler()["main_loop"].push_back(loop_duration);
             }
             std::cout << "DONE" << std::endl;
             std::cout << "TOTAL SAMPLES: " << total_samples << std::endl;

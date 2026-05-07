@@ -90,7 +90,7 @@ namespace vamp::planning
                 for (auto k = 0U; k < Robot::dimension; k++) {
                     x[k + Robot::dimension] = static_cast<float>(path[index].to_array()[k]);
                 }
-                Robot::template topple_nn_forward(x, out);
+                out = Robot::template topple_nn_forward(x);
                 og_time += out[Robot::topple_out_dim * robot_dim_q];
 
                 for (auto k = 0U; k < Robot::dimension; k++) {
@@ -99,7 +99,7 @@ namespace vamp::planning
                 for (auto k = 0U; k < Robot::dimension; k++) {
                     x[k + Robot::dimension] = static_cast<float>(path[index + 1].to_array()[k]);
                 }
-                Robot::template topple_nn_forward(x, out);
+                out = Robot::template topple_nn_forward(x);
                 og_time += out[Robot::topple_out_dim * robot_dim_q];
 
                 float cut_time = 0;
@@ -109,7 +109,7 @@ namespace vamp::planning
                 for (auto l = 0U; l < Robot::dimension; l++) {
                     x[l + Robot::dimension] = static_cast<float>(midpoint.to_array()[l]);
                 }
-                Robot::template topple_nn_forward(x, out);
+                out = Robot::template topple_nn_forward(x);
                 cut_time += out[Robot::topple_out_dim * robot_dim_q];
 
                 for (auto l = 0U; l < Robot::dimension; l++) {
@@ -118,7 +118,7 @@ namespace vamp::planning
                 for (auto l = 0U; l < Robot::dimension; l++) {
                     x[l + Robot::dimension] = static_cast<float>(path[index + 1].to_array()[l]);
                 }
-                Robot::template topple_nn_forward(x, out);
+                out = Robot::template topple_nn_forward(x);
                 cut_time += out[Robot::topple_out_dim * robot_dim_q];
 
                 if (cut_time <= og_time) {
@@ -319,7 +319,7 @@ namespace vamp::planning
                     for (int k = 0; k < Robot::dimension; k++) {
                         x[k + Robot::dimension] = static_cast<float>(path[j].to_array()[k]);
                     }
-                    Robot::template topple_nn_forward(x, out);
+                    out = Robot::template topple_nn_forward(x);
                     T[i][j] = out[Robot::topple_out_dim * robot_dim_q];
                     BT[i][j] = -1;
                 }
@@ -339,7 +339,7 @@ namespace vamp::planning
                 for (int k = 0; k < Robot::dimension; k++) {
                     x[k + Robot::dimension] = static_cast<float>(path[j].to_array()[k]);
                 }
-                Robot::template topple_nn_forward(x, out);
+                out = Robot::template topple_nn_forward(x);
                 if (validate_bez_motion<Robot, rake, resolution>(path[i], path[j], environment)) {
                     min_k = -1;
                     min = out[Robot::topple_out_dim * robot_dim_q];
@@ -535,9 +535,8 @@ namespace vamp::planning
             for (auto j = 0U; j < Robot::dimension; j++) {
                 x[j + Robot::dimension] = static_cast<float>(path_arr1[j]);
             }
-            std::array<float, Robot::topple_out_dim * robot_dim_q + 1> out;
 
-            Robot::template topple_nn_forward(x, out);
+            auto out = Robot::template topple_nn_forward(x);
 
             // build the anchors
             row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);

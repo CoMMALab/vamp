@@ -84,7 +84,7 @@ namespace vamp::planning {
             }
 
             // implements de casteljaus alg 
-            Bezier subdivide(float t) {
+            std::pair<Bezier, Bezier> subdivide(float t) {
                 // let C[i][j] be control point i on the jth iteration for the new curve
                 // std::cout << "in subdivide" << std::endl;
                 std::vector<std::vector<state>> C;
@@ -103,13 +103,20 @@ namespace vamp::planning {
                 }
 
                 // we want C[0][j]
-                row_matrix new_anchors(this->anchors.rows(), this->anchors.cols());
+                row_matrix left_anchors(this->anchors.rows(), this->anchors.cols());
                 for (int j = 0; j <= this->degree; j++) {
-                    new_anchors.row(j) = C[0][j];
+                    left_anchors.row(j) = C[0][j];
                 }
-                Bezier sub_bez(new_anchors);
-                sub_bez.time = this->time * t;
-                return sub_bez;
+                // also find the right subcurve
+                row_matrix right_anchors(this->anchors.rows(), this->anchors.cols());
+                for (int j = 0; j <= this->degree; j++) {
+                    right_anchors.row(j) = C[j][this->degree - j];
+                }
+                Bezier left_sub_bez(left_anchors);
+                Bezier right_sub_bez(right_anchors);
+                left_sub_bez.time = this->time * t;
+                right_sub_bez.time = this->time * (1 - t);
+                return {left_sub_bez, right_sub_bez};
             }
 
             void reverse() {

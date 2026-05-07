@@ -91,8 +91,6 @@ namespace vamp::planning
     // topple addons
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline constexpr auto validate_bez(
-        const typename Robot::Configuration &start,
-        float T,
         Bezier bez,
         const collision::Environment<FloatVector<rake>> &environment) -> bool
     {
@@ -108,6 +106,28 @@ namespace vamp::planning
         typename Robot::template ConfigurationBlock<rake> block;
         Robot::bezier(bez_anchors_vec, percents, block);
         const std::size_t n = std::max(resolution * T / rake, 1.0F);
+
+
+        // row_matrix states(rake, robot_dim_q);  
+        // for (auto i = 0U; i < rake; i++)  
+        // {  
+        //     const auto &state_i = bez.evaluate(static_cast<float>(percents_arr[i]));  
+        //     states.row(i) = state_i;
+        // }
+        // row_matrix block_matrix = states.transpose();
+        // for (auto j = 0U; j < robot_dim_q; j++)
+        // {            
+        //     block[j] = FloatVector<rake>(block_matrix.row(j).data());
+        // }
+
+        // float dist = 0;
+        // for (auto i = 0U; i < rake - 1; i++)
+        // {
+        //     dist += (states.row(i + 1) - states.row(i)).norm();
+        // }
+
+        // const std::size_t n = std::max(resolution * dist / rake, 1.0F);
+        // std::cout << n << std::endl;
 
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                  Robot::template fkcc<rake>(environment, block);
@@ -130,68 +150,6 @@ namespace vamp::planning
                 return false;
             }
         }
-        return true;
-    }
-
-    // attempt to do more informed sampling for narrow problems
-    // if the line works, try to find some combination of velocity and accel
-    // so the bez works too
-    template <typename Robot, std::size_t rake, std::size_t resolution>
-    inline constexpr auto validate_bez_linear(
-        const typename Robot::Configuration &start,
-        const typename Robot::Configuration &goal,
-        const collision::Environment<FloatVector<rake>> &environment
-    ) {
-        // obtain the position only as floatvector, do the same collision check as normal vamp
-        auto start_arr = start.to_array();
-        auto goal_arr = goal.to_array();
-        std::array<float, Robot::dimension / 3> q_start;
-        std::array<float, Robot::dimension / 3> q_goal;
-        for (auto i = 0U; i < Robot::dimension / 3; i++) {
-            q_start[i] = start_arr[i];
-            q_goal[i] = goal_arr[i];
-        }
-        FloatVector<Robot::dimension / 3> start_vec(q_start);
-        FloatVector<Robot::dimension / 3> goal_vec(q_goal);
-        auto vector = goal_vec - start_vec;
-
-        // collision check routine
-        const auto percents = FloatVector<rake>(Percents<rake>::percents);
-
-        typename Robot::template ConfigurationBlock<rake> block;
-
-        // HACK: broadcast() implicitly assumes that the rake is exactly VectorWidth
-        for (auto i = 0U; i < Robot::dimension; ++i)
-        {
-            block[i] = start_vec.broadcast(i) + (vector.broadcast(i) * percents);
-        }
-
-        auto distance = vector.l2_norm();
-        const std::size_t n = std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
-
-        bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
-                                                 Robot::template fkcc<rake>(environment, block);
-        if (not valid or n == 1)
-        {
-            return valid;
-        }
-
-        const auto backstep = vector / (rake * n);
-        for (auto i = 1U; i < n; ++i)
-        {
-            for (auto j = 0U; j < Robot::dimension; ++j)
-            {
-                block[j] = block[j] - backstep.broadcast(j);
-            }
-
-            bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
-                                                     Robot::template fkcc<rake>(environment, block);
-            if (not valid)
-            {
-                return false;
-            }
-        }
-
         return true;
     }
 
@@ -310,11 +268,7 @@ namespace vamp::planning
         // array to store inference output
         std::array<float, Robot::topple_out_dim * Robot::dimension / 3 + 1> out;
 
-        // auto ts = std::chrono::steady_clock::now();
         Robot::template topple_nn_forward(x, out);
-        // auto tf = std::chrono::steady_clock::now();
-        // std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
-        // std::cout << "NN inference: " << elapsed_ms.count() << std::endl;
 
         // build the anchors
         row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
@@ -343,7 +297,7 @@ namespace vamp::planning
         bez.time = T;
 
         // collision check only on sub_bez
-        bool bez_valid = validate_bez<Robot, rake, resolution>(start, T, bez, environment);
+        bool bez_valid = validate_bez<Robot, rake, resolution>(bez, environment);
 
         // return both sub_bez and bez_valid
         return bez_valid;
@@ -374,12 +328,11 @@ namespace vamp::planning
         // array to store inference output
         std::array<float, Robot::topple_out_dim * Robot::dimension / 3 + 1> out;
 
-        // auto ts = std::chrono::steady_clock::now();
-        // std::cout << "NN FORWARD" << std::endl;
+        auto ts = std::chrono::steady_clock::now();
         Robot::template topple_nn_forward(x, out);
-        // auto tf = std::chrono::steady_clock::now();
-        // std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
-        // std::cout << "NN inference: " << elapsed_ms.count() << std::endl;
+        auto tf = std::chrono::steady_clock::now();
+        std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
+        std::cout << "NN inference: " << elapsed_ms.count() << std::endl;
 
         // build the anchors
         row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
@@ -409,9 +362,8 @@ namespace vamp::planning
         Bezier sub_bez;
 
         // ts = std::chrono::steady_clock::now();
-        // std::cout << "SUBDIVIDING" << std::endl;
         if (bez_range < 1) {
-            sub_bez = bez.subdivide(bez_range);
+            sub_bez = bez.subdivide(bez_range).first;
         }
         else {
             sub_bez = bez;
@@ -421,11 +373,11 @@ namespace vamp::planning
         // std::cout << "Subdivision: " << elapsed_ms.count() << std::endl;
         // std::cout << "VALIDATING" << std::endl;
         // collision check only on sub_bez
-        // ts = std::chrono::steady_clock::now();
-        bool bez_valid = validate_bez<Robot, rake, resolution>(start, sub_bez.time, sub_bez, environment);
-        // tf = std::chrono::steady_clock::now();
-        // elapsed_ms = tf - ts;
-        // std::cout << "Validate: " << elapsed_ms.count() << std::endl;
+        ts = std::chrono::steady_clock::now();
+        bool bez_valid = validate_bez<Robot, rake, resolution>(sub_bez, environment);
+        tf = std::chrono::steady_clock::now();
+        elapsed_ms = tf - ts;
+        std::cout << "Validate: " << elapsed_ms.count() << std::endl;
         // return both sub_bez and bez_valid
         return {bez_valid, sub_bez};
     }

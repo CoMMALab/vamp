@@ -105,7 +105,7 @@ namespace vamp::planning
 
         typename Robot::template ConfigurationBlock<rake> block;
         Robot::bezier(bez_anchors_vec, percents, block);
-        const std::size_t n = std::max(resolution * T / rake, 1.0F);
+        // const std::size_t n = std::max(resolution * T / rake, 1.0F);
 
 
         // row_matrix states(rake, robot_dim_q);  
@@ -120,13 +120,18 @@ namespace vamp::planning
         //     block[j] = FloatVector<rake>(block_matrix.row(j).data());
         // }
 
-        // float dist = 0;
-        // for (auto i = 0U; i < rake - 1; i++)
-        // {
-        //     dist += (states.row(i + 1) - states.row(i)).norm();
-        // }
+        float dist = 0;
+        for (auto i = 0U; i < rake - 1; i++)
+        {
+            float sq_dist = 0;
+            for(auto j = 0U; j < robot_dim_q; j++)
+            {
+                sq_dist = sq_dist + block[{j, i}] * block[{j, i}];
+            }
+            dist = dist + std::sqrt(sq_dist);
+        }
 
-        // const std::size_t n = std::max(resolution * dist / rake, 1.0F);
+        const std::size_t n = std::max(resolution * dist / rake, 1.0F);
         // std::cout << n << std::endl;
 
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
@@ -266,9 +271,7 @@ namespace vamp::planning
         }
 
         // array to store inference output
-        std::array<float, Robot::topple_out_dim * Robot::dimension / 3 + 1> out;
-
-        Robot::template topple_nn_forward(x, out);
+        auto out = Robot::template topple_nn_forward(x);
 
         // build the anchors
         row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
@@ -326,13 +329,7 @@ namespace vamp::planning
         }
 
         // array to store inference output
-        std::array<float, Robot::topple_out_dim * Robot::dimension / 3 + 1> out;
-
-        auto ts = std::chrono::steady_clock::now();
-        Robot::template topple_nn_forward(x, out);
-        auto tf = std::chrono::steady_clock::now();
-        std::chrono::duration<double, std::milli> elapsed_ms = tf - ts;
-        std::cout << "NN inference: " << elapsed_ms.count() << std::endl;
+        auto out = Robot::template topple_nn_forward(x);
 
         // build the anchors
         row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
@@ -373,11 +370,11 @@ namespace vamp::planning
         // std::cout << "Subdivision: " << elapsed_ms.count() << std::endl;
         // std::cout << "VALIDATING" << std::endl;
         // collision check only on sub_bez
-        ts = std::chrono::steady_clock::now();
+        // ts = std::chrono::steady_clock::now();
         bool bez_valid = validate_bez<Robot, rake, resolution>(sub_bez, environment);
-        tf = std::chrono::steady_clock::now();
-        elapsed_ms = tf - ts;
-        std::cout << "Validate: " << elapsed_ms.count() << std::endl;
+        // tf = std::chrono::steady_clock::now();
+        // elapsed_ms = tf - ts;
+        // std::cout << "Validate: " << elapsed_ms.count() << std::endl;
         // return both sub_bez and bez_valid
         return {bez_valid, sub_bez};
     }

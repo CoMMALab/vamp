@@ -126,7 +126,7 @@ namespace vamp::planning
             float sq_dist = 0;
             for(auto j = 0U; j < robot_dim_q; j++)
             {
-                sq_dist = sq_dist + block[{j, i}] * block[{j, i}];
+                sq_dist = sq_dist + (block[{j, i}] - block[{j, i + 1}]) * (block[{j, i}] - block[{j, i + 1}]);
             }
             dist = dist + std::sqrt(sq_dist);
         }

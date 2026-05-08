@@ -152,15 +152,25 @@ namespace vamp::planning
                 // auto extension_vector =
                 //     (reach) ? nearest_vector : nearest_vector * (settings.range / nearest_distance);
 
+                auto extensions_start_time = std::chrono::steady_clock::now();
                 auto [valid_extension, sub_bez] = validate_sub_bez_motion<Robot, rake, resolution>(
                         nearest_configuration,
                         temp,
                         environment,
                         extensions[nearest_node.index]);
+                auto extensions_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - extensions_start_time).count();
+                vamp::profiling::get_profiler()["extensions_validation"].push_back(extensions_time);
 
                 // create new config ending at sub bez
+                auto derivative_start_time = std::chrono::steady_clock::now();
                 Bezier dsub_bez = sub_bez.derivative();
                 Bezier ddsub_bez = dsub_bez.derivative();
+                auto derivative_end_time = std::chrono::steady_clock::now();
+                auto derivative_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    derivative_end_time - derivative_start_time).count();
+                vamp::profiling::get_profiler()["bezier_derivative_calculation"].push_back(derivative_time);
+
 
                 // check this when reversed
                 auto new_q = sub_bez.anchors.row(sub_bez.anchors.rows() - 1);
@@ -187,6 +197,11 @@ namespace vamp::planning
                 }
                 // std::cout << std::endl;
                 Configuration new_configuration_bez(new_configuration_array);
+
+                auto new_config_formation_time = std::chrono::steady_clock::now();
+                auto new_config_formation_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    new_config_formation_time - derivative_end_time).count();
+                vamp::profiling::get_profiler()["new_configuration_formation"].push_back(new_config_formation_time_ns);
 
                 if (valid_extension)
                 {
@@ -223,21 +238,32 @@ namespace vamp::planning
                     const auto &[other_nearest_node, other_nearest_distance] = *other_nearest;
                     const auto other_nearest_configuration = other_nearest_node.as_vector();
 
+                    auto bez_compute_start = std::chrono::steady_clock::now();
                     auto connection_bez = compute_bez<Robot, rake>(
                         new_configuration_bez,
                         other_nearest_configuration);
+                    auto bez_compute_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - bez_compute_start).count();
+                    vamp::profiling::get_profiler()["bezier_computation"].push_back(bez_compute_time);
                     // std::cout << "Tried to validate connection between " << new_configuration_bez << " and " << other_nearest_configuration << " with bezier " << connection_bez.anchors << std::endl;
 
                     std::size_t i_extension = 0;
                     // std::size_t new_index = free_index - 1;
                     float alpha_i = settings.bez_range;
+                    auto connect_start_time_outer = std::chrono::steady_clock::now();
                     for (; i_extension < n_extensions and free_index < settings.max_samples; ++i_extension)
                     {
                         std::pair<Bezier, Bezier> sub_bez_pair = connection_bez.subdivide(alpha_i);
                         Bezier sub_bez_l = sub_bez_pair.first;
                         connection_bez = sub_bez_pair.second;
 
-                        if (validate_bez<Robot, rake, resolution>(sub_bez_l, environment))
+                        auto connect_start_time_inner = std::chrono::steady_clock::now();
+                        auto valid_connect = validate_bez<Robot, rake, resolution>(sub_bez_l, environment);
+                        auto connect_time_inner = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now() - connect_start_time_inner).count();
+                        vamp::profiling::get_profiler()["bez_validation"].push_back(connect_time_inner);
+
+                        if (valid_connect)
                         {
                             Bezier dsub_bez_l = sub_bez_l.derivative();
                             Bezier ddsub_bez_l = dsub_bez_l.derivative();
@@ -280,6 +306,9 @@ namespace vamp::planning
                             break;
                         }
                     }
+                    auto connect_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - connect_start_time_outer).count();
+                    vamp::profiling::get_profiler()["connection_extensions_validation"].push_back(connect_time);
 
                     // const auto &[other_nearest_node, other_nearest_distance] = *other_nearest;
                     // const auto other_nearest_configuration = other_nearest_node.as_vector();

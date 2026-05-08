@@ -437,7 +437,11 @@ namespace vamp::planning
         const collision::Environment<FloatVector<rake>> &environment,
         const float bez_range) -> std::pair<bool, Bezier>
     {
+        auto bez_compute_start = std::chrono::steady_clock::now();
         Bezier bez = compute_bez<Robot, rake>(start, goal);
+        auto bez_compute_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - bez_compute_start).count();
+        vamp::profiling::get_profiler()["bezier_computation"].push_back(bez_compute_time);
         Bezier sub_bez = compute_sub_bez<Robot, rake>(bez, bez_range);
 
         auto bez_validate_start = std::chrono::steady_clock::now();

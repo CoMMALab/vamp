@@ -32,7 +32,7 @@ static const std::vector<std::array<float, 3>> problem = {
     {0.35, -0.35, 0.25},
     {0.35, 0.35, 0.8},
     {0, 0.55, 0.8},
-    // {-0.35, 0.35, 0.8},
+    {-0.35, 0.35, 0.8},
     {-0.55, 0, 0.8},
     {-0.35, -0.35, 0.8},
     {0, -0.55, 0.8},
@@ -64,7 +64,7 @@ auto main(int, char **) -> int
     auto result =
         RRTC::solve(Robot::Configuration(start), Robot::Configuration(goal), env_v, rrtc_settings, rng);
     std::cout << "Planning completed in " << result.iterations << " iterations and "
-              << result.nanoseconds / 1e9 << " seconds." << " with path of length " << result.path.size() << std::endl;
+              << result.nanoseconds / 1e6 << "  milliseconds." << " with path of length " << result.path.size() << std::endl;
 
     // If successful
     if (result.path.size() > 0)

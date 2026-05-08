@@ -10,7 +10,7 @@
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
 #include <vamp/vector.hh>
-
+#include <map>
 namespace vamp::planning
 {
     template <typename Robot, std::size_t rake, std::size_t resolution>
@@ -123,6 +123,8 @@ namespace vamp::planning
                 typename Robot::ConfigurationBuffer temp_array;
                 temp.to_array(temp_array.data());
 
+                // std::cout << "Sampling random configuration: " << temp << std::endl;
+
                 const auto nearest = tree_a->nearest(NNFloatArray<dimension>{temp_array.data()});
                 if (not nearest)
                 {
@@ -130,7 +132,7 @@ namespace vamp::planning
                 }
 
                 const auto &[nearest_node, nearest_distance] = *nearest;
-                // const auto nearest_radius = radii[nearest_node.index];
+                // std::cout << "Nearest node index is : " << nearest_node.index << " for tree " << (tree_a_is_start ? "goal" : "start") << " of size " << tree_a->size() << std::endl;                // const auto nearest_radius = radii[nearest_node.index];
 
                 // if (settings.dynamic_domain and nearest_radius < nearest_distance)
                 // {
@@ -151,41 +153,43 @@ namespace vamp::planning
                         environment,
                         extensions[nearest_node.index]);
 
+                // create new config ending at sub bez
+                Bezier dsub_bez = sub_bez.derivative();
+                Bezier ddsub_bez = dsub_bez.derivative();
+
+                // check this when reversed
+                auto new_q = sub_bez.anchors.row(sub_bez.anchors.rows() - 1);
+                auto new_dq = dsub_bez.anchors.row(dsub_bez.anchors.rows() - 1);
+                auto new_ddq = ddsub_bez.anchors.row(ddsub_bez.anchors.rows() - 1);
+                
+                // convert to Robot configuration in phase space
+                std::array<float, Robot::dimension> new_configuration_array;
+                
+                for (auto i = 0U; i < Robot::dimension; i++)
+                {
+                    if (i < Robot::dimension / 3)
+                    {
+                        new_configuration_array[i] = new_q(i);
+                    }
+                    else if (i < 2 * Robot::dimension / 3)
+                    {
+                        new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
+                    }
+                    else
+                    {
+                        new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
+                    }
+                }
+                // std::cout << std::endl;
+                Configuration new_configuration_bez(new_configuration_array);
+
                 if (valid_extension)
                 {
-                    // create new config ending at sub bez
-                    Bezier dsub_bez = sub_bez.derivative();
-                    Bezier ddsub_bez = dsub_bez.derivative();
-
-                    // check this when reversed
-                    auto new_q = sub_bez.anchors.row(sub_bez.anchors.rows() - 1);
-                    auto new_dq = dsub_bez.anchors.row(dsub_bez.anchors.rows() - 1);
-                    auto new_ddq = ddsub_bez.anchors.row(ddsub_bez.anchors.rows() - 1);
-                    
-                    // convert to Robot configuration in phase space
-                    std::array<float, Robot::dimension> new_configuration_array;
-                    
-                    for (auto i = 0U; i < Robot::dimension; i++)
-                    {
-                        if (i < Robot::dimension / 3)
-                        {
-                            new_configuration_array[i] = new_q(i);
-                        }
-                        else if (i < 2 * Robot::dimension / 3)
-                        {
-                            new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
-                        }
-                        else
-                        {
-                            new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
-                        }
-                    }
-                    // std::cout << std::endl;
-                    Configuration new_configuration_bez(new_configuration_array);
                     
                     float *new_configuration_index = buffer_index(free_index);
                     new_configuration_bez.to_array(new_configuration_index);
                     tree_a->insert(NNNode<dimension>{free_index, {new_configuration_index}});
+                    // std::cout << "Added new node index : " << free_index << " for tree " << (tree_a_is_start ? "goal" : "start") << " with configuration " << new_configuration_bez << std::endl;
 
                     if (not tree_a_is_start) {
                         sub_bez.reverse();
@@ -214,12 +218,10 @@ namespace vamp::planning
                     const auto &[other_nearest_node, other_nearest_distance] = *other_nearest;
                     const auto other_nearest_configuration = other_nearest_node.as_vector();
 
-                    std::pair<bool, Bezier> connection = validate_sub_bez_motion<Robot, rake, resolution>(
+                    auto connection_bez = compute_bez<Robot, rake>(
                         new_configuration_bez,
-                        other_nearest_configuration,
-                        environment,
-                        extensions[free_index - 1]);
-                    Bezier connection_bez = connection.second;
+                        other_nearest_configuration);
+                    // std::cout << "Tried to validate connection between " << new_configuration_bez << " and " << other_nearest_configuration << " with bezier " << connection_bez.anchors << std::endl;
 
                     std::size_t i_extension = 0;
                     // std::size_t new_index = free_index - 1;
@@ -237,6 +239,8 @@ namespace vamp::planning
                             auto sub_end = sub_bez_l.anchors.row(sub_bez_l.anchors.rows() - 1);
                             auto dsub_end = dsub_bez_l.anchors.row(dsub_bez_l.anchors.rows() - 1);
                             auto ddsub_end = ddsub_bez_l.anchors.row(ddsub_bez_l.anchors.rows() - 1);
+
+                            // std::cout << sub_bez_l.anchors <<", " << dsub_bez_l.anchors << " " << ddsub_bez_l.anchors << std::endl;
 
                             std::array<float, Robot::dimension> sub_connection_end_array;
                             for (auto i = 0U; i < Robot::dimension; i++)
@@ -337,6 +341,7 @@ namespace vamp::planning
                 }
                 else
                 {
+                    // std::cout << "Invalid extension from node index : " << nearest_node.index << " for tree " << (tree_a_is_start ? "goal" : "start") << " from " << nearest_configuration << " towards " << temp << std::endl ;
                     if (settings.dynamic_extension)
                     {
                         // std::cout << "INVALID EXTENSION" << std::endl;

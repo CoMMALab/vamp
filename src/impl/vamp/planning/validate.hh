@@ -140,23 +140,23 @@ namespace vamp::planning
         //     block[j] = FloatVector<rake>(block_matrix.row(j).data());
         // }
 
-        // float dist = 0;
-        // for (auto i = 0U; i < rake - 1; i++)
-        // {
-        //     float sq_dist = 0;
-        //     for(auto j = 0U; j < robot_dim_q; j++)
-        //     {
-        //         sq_dist = sq_dist + block[{j, i}] * block[{j, i}];
-        //     }
-        //     dist = dist + std::sqrt(sq_dist);
-        // }
+        float dist = 0;
+        for (auto i = 0U; i < rake - 1; i++)
+        {
+            float sq_dist = 0;
+            for(auto j = 0U; j < robot_dim_q; j++)
+            {
+                sq_dist = sq_dist + block[{j, i}] * block[{j, i}];
+            }
+            dist = dist + std::sqrt(sq_dist);
+        }
 
         auto bez_distance_call_time = std::chrono::steady_clock::now();
         auto bez_distance_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
             bez_distance_call_time - bezier_call_time).count();
         vamp::profiling::get_profiler()["bezier_distance_calculation"].push_back(bez_distance_time);
 
-        const std::size_t n = std::max(resolution * 1.0F / rake, 1.0F);
+        const std::size_t n = std::max(resolution * dist / rake, 1.0F);
 
         auto coll_check_time_start = std::chrono::steady_clock::now();
         bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
@@ -356,14 +356,13 @@ namespace vamp::planning
         return bez_valid;
     }
 
-
-    template <typename Robot, std::size_t rake, std::size_t resolution>
-    inline constexpr auto validate_sub_bez_motion(
+    template <typename Robot, std::size_t rake>
+    inline constexpr auto compute_bez(
         const typename Robot::Configuration &start,
-        const typename Robot::Configuration &goal,
-        const collision::Environment<FloatVector<rake>> &environment,
-        const float bez_range) -> std::pair<bool, Bezier>
+        const typename Robot::Configuration &goal
+    ) -> Bezier
     {
+
         // std::cout << "???" << std::endl;
         std::array<float, Robot::dimension * 2> x;
         // std::cout << "CONVERT START TO ARRAY" << std::endl;
@@ -412,27 +411,41 @@ namespace vamp::planning
 
         Bezier bez(anchors);
         bez.time = T;
+        return bez;
+    }
+    template <typename Robot, std::size_t rake>
+    inline constexpr auto compute_sub_bez(
+        Bezier &bez,
+        const float range
+    ) -> Bezier
+    {
         Bezier sub_bez;
-
-        // ts = std::chrono::steady_clock::now();
-        if (bez_range < 1) {
-            sub_bez = bez.subdivide(bez_range).first;
+        if (range < 1) {
+            sub_bez = bez.subdivide(range).first;
         }
         else {
             sub_bez = bez;
         }
-        // tf = std::chrono::steady_clock::now();
-        // elapsed_ms = tf - ts;
-        // std::cout << "Subdivision: " << elapsed_ms.count() << std::endl;
-        // std::cout << "VALIDATING" << std::endl;
-        // collision check only on sub_bez
+        return sub_bez;
+    }
+
+
+    template <typename Robot, std::size_t rake, std::size_t resolution>
+    inline constexpr auto validate_sub_bez_motion(
+        const typename Robot::Configuration &start,
+        const typename Robot::Configuration &goal,
+        const collision::Environment<FloatVector<rake>> &environment,
+        const float bez_range) -> std::pair<bool, Bezier>
+    {
+        Bezier bez = compute_bez<Robot, rake>(start, goal);
+        Bezier sub_bez = compute_sub_bez<Robot, rake>(bez, bez_range);
 
         auto bez_validate_start = std::chrono::steady_clock::now();
         bool bez_valid = validate_bez<Robot, rake, resolution>(sub_bez, environment);
         auto bez_validate_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - bez_validate_start).count();
         vamp::profiling::get_profiler()["bez_validation"].push_back(bez_validate_time);
-        // return both sub_bez and bez_valid
+
         return {bez_valid, sub_bez};
     }
 }  // namespace vamp::planning

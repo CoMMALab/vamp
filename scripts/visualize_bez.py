@@ -16,26 +16,12 @@ for i in range(14):
     simp_settings,
 ) = vamp.configure_robot_and_planner_with_kwargs("pandatopp", "topple")
 
-rng = vamp_module.xorshift()
+rng = vamp_module.halton()
 
 plan_settings.max_iterations = 1000000
-plan_settings.rrtc.max_iterations = 100000
 plan_settings.max_samples = 1000000
-plan_settings.rrtc.range = 8
 plan_settings.simplify.bez = True
-plan_settings.rrtc.radius = 16
-plan_settings.rrtc.min_radius = 0.5
-plan_settings.rrtc.dynamic_domain = False
-plan_settings.rrtc.alpha = 0.00001
-plan_settings.use_phs = False
-plan_settings.optimize = False
-plan_settings.simplify_intermediate = False
-plan_settings.max_runs = 1
-plan_settings.cost_bound_resample = False
-simp_settings.bez = True
-# cant be too small or it tweaks, maybe can dynamically adjust???
-plan_settings.bez_range = 0.1
-plan_settings.rrtc.tree_ratio = 1
+plan_settings.bez_range = 0.2
 
 # xyz, rpy, lwh
 cuboids_data = [

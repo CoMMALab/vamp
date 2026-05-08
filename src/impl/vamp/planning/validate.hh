@@ -139,14 +139,13 @@ namespace vamp::planning
         // {            
         //     block[j] = FloatVector<rake>(block_matrix.row(j).data());
         // }
-
         float dist = 0;
         for (auto i = 0U; i < rake - 1; i++)
         {
             float sq_dist = 0;
             for(auto j = 0U; j < robot_dim_q; j++)
             {
-                sq_dist = sq_dist + block[{j, i}] * block[{j, i}];
+                sq_dist = sq_dist + (block[{j, i}] - block[{j, i + 1}]) * (block[{j, i}] - block[{j, i + 1}]);
             }
             dist = dist + std::sqrt(sq_dist);
         }
@@ -170,6 +169,7 @@ namespace vamp::planning
         {
             return valid;
         }
+        // std::cout << "Running bez validate with n = " << n << " and dist = " << dist << std::endl;
 
         auto bez_validate_inner_loop_start = std::chrono::steady_clock::now();
 

@@ -18,39 +18,41 @@ namespace vamp::planning
     {
         using Configuration = typename Robot::Configuration;
         static constexpr auto dimension = Robot::dimension;
+        using Phase = typename Robot::Phase;
+        static constexpr auto topple_dimension = Robot::topple_dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
 
         inline static auto solve(
-            const Configuration &start,
-            const Configuration &goal,
+            const Phase &start,
+            const Phase &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const TOPPLESettings &settings,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
-            return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
+            return solve(start, std::vector<Phase>{goal}, environment, settings, rng);
         }
 
         inline static auto solve(
-            const Configuration &start,
-            const std::vector<Configuration> &goals,
+            const Phase &start,
+            const std::vector<Phase> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
             const TOPPLESettings &settings,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
             PlanningResult<Robot> result;
 
-            NN<dimension> start_tree;
-            NN<dimension> goal_tree;
+            NN<topple_dimension> start_tree;
+            NN<topple_dimension> goal_tree;
 
             constexpr const std::size_t start_index = 0;
 
             auto buffer = std::unique_ptr<float, decltype(&free)>(
                 vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
-                    settings.max_samples * Configuration::num_scalars_rounded),
+                    settings.max_samples * Phase::num_scalars_rounded),
                 &free);
 
             const auto buffer_index = [&buffer](std::size_t index) -> float *
-            { return buffer.get() + index * Configuration::num_scalars_rounded; };
+            { return buffer.get() + index * Phase::num_scalars_rounded; };
 
             std::vector<std::size_t> parents(settings.max_samples);
             std::map<std::pair<std::size_t, std::size_t>, Bezier> bezier_map;
@@ -92,7 +94,7 @@ namespace vamp::planning
 
             // add start to tree
             start.to_array(buffer_index(start_index));
-            start_tree.insert(NNNode<dimension>{start_index, {buffer_index(start_index)}});
+            start_tree.insert(NNNode<topple_dimension>{start_index, {buffer_index(start_index)}});
             parents[start_index] = start_index;
             extensions[start_index] = 1.0;
             radii[start_index] = std::numeric_limits<float>::max();
@@ -100,7 +102,7 @@ namespace vamp::planning
             for (const auto &goal : goals)
             {
                 goal.to_array(buffer_index(free_index));
-                goal_tree.insert(NNNode<dimension>{free_index, {buffer_index(free_index)}});
+                goal_tree.insert(NNNode<topple_dimension>{free_index, {buffer_index(free_index)}});
                 parents[free_index] = free_index;
                 extensions[free_index] = 1.0;
                 radii[free_index] = std::numeric_limits<float>::max();
@@ -119,13 +121,13 @@ namespace vamp::planning
                     tree_a_is_start = not tree_a_is_start;
                 }
 
-                auto temp = rng->next();
-                typename Robot::ConfigurationBuffer temp_array;
+                auto temp = rng->next_s();
+                typename Robot::PhaseBuffer temp_array;
                 temp.to_array(temp_array.data());
 
                 // std::cout << "Sampling random configuration: " << temp << std::endl;
 
-                const auto nearest = tree_a->nearest(NNFloatArray<dimension>{temp_array.data()});
+                const auto nearest = tree_a->nearest(NNFloatArray<topple_dimension>{temp_array.data()});
                 if (not nearest)
                 {
                     continue;
@@ -163,32 +165,32 @@ namespace vamp::planning
                 auto new_ddq = ddsub_bez.anchors.row(ddsub_bez.anchors.rows() - 1);
                 
                 // convert to Robot configuration in phase space
-                std::array<float, Robot::dimension> new_configuration_array;
+                std::array<float, Robot::topple_dimension> new_configuration_array;
                 
-                for (auto i = 0U; i < Robot::dimension; i++)
+                for (auto i = 0U; i < Robot::topple_dimension; i++)
                 {
-                    if (i < Robot::dimension / 3)
+                    if (i < Robot::dimension)
                     {
                         new_configuration_array[i] = new_q(i);
                     }
-                    else if (i < 2 * Robot::dimension / 3)
+                    else if (i < 2 * Robot::dimension)
                     {
-                        new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
+                        new_configuration_array[i] = new_dq(i - Robot::dimension);
                     }
                     else
                     {
-                        new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
+                        new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension);
                     }
                 }
                 // std::cout << std::endl;
-                Configuration new_configuration_bez(new_configuration_array);
+                Phase new_configuration_bez(new_configuration_array);
 
                 if (valid_extension)
                 {
                     
                     float *new_configuration_index = buffer_index(free_index);
                     new_configuration_bez.to_array(new_configuration_index);
-                    tree_a->insert(NNNode<dimension>{free_index, {new_configuration_index}});
+                    tree_a->insert(NNNode<topple_dimension>{free_index, {new_configuration_index}});
                     // std::cout << "Added new node index : " << free_index << " for tree " << (tree_a_is_start ? "goal" : "start") << " with configuration " << new_configuration_bez << std::endl;
 
                     if (not tree_a_is_start) {
@@ -208,7 +210,7 @@ namespace vamp::planning
                     }
 
                     // Extend to goal tree
-                    const auto other_nearest = tree_b->nearest(NNFloatArray<dimension>{new_configuration_index});
+                    const auto other_nearest = tree_b->nearest(NNFloatArray<topple_dimension>{new_configuration_index});
                     if (not other_nearest)
                     {
                         continue;
@@ -249,26 +251,26 @@ namespace vamp::planning
 
                             // std::cout << sub_bez_l.anchors <<", " << dsub_bez_l.anchors << " " << ddsub_bez_l.anchors << std::endl;
 
-                            std::array<float, Robot::dimension> sub_connection_end_array;
-                            for (auto i = 0U; i < Robot::dimension; i++)
+                            std::array<float, Robot::topple_dimension> sub_connection_end_array;
+                            for (auto i = 0U; i < Robot::topple_dimension; i++)
                             {
-                                if (i < Robot::dimension / 3)
+                                if (i < Robot::dimension)
                                 {
                                     sub_connection_end_array[i] = sub_end(i);
                                 }
-                                else if (i < 2 * Robot::dimension / 3)
+                                else if (i < 2 * Robot::dimension)
                                 {
-                                    sub_connection_end_array[i] = dsub_end(i - Robot::dimension / 3);
+                                    sub_connection_end_array[i] = dsub_end(i - Robot::dimension);
                                 }
                                 else
                                 {
-                                    sub_connection_end_array[i] = ddsub_end(i - 2 * Robot::dimension / 3);
+                                    sub_connection_end_array[i] = ddsub_end(i - 2 * Robot::dimension);
                                 }
                             }
-                            Configuration sub_connection_end_config(sub_connection_end_array);
+                            Phase sub_connection_end_config(sub_connection_end_array);
                             float *next_index = buffer_index(free_index);
                             sub_connection_end_config.to_array(next_index);
-                            tree_a->insert(NNNode<dimension>{free_index, {next_index}});
+                            tree_a->insert(NNNode<topple_dimension>{free_index, {next_index}});
                             parents[free_index] = free_index - 1;
                             if (not tree_a_is_start) {
                                 sub_bez_l.reverse();

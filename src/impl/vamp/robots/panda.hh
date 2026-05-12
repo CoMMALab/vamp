@@ -117,8 +117,9 @@ namespace vamp::robots
         // placeholders
         template <typename InputVector>
         static inline auto topple_nn_forward(const InputVector &x) noexcept {
-            return std::array<float, 6 * 2 + 1>{};
+            return std::array<float, topple_out_dim * (dimension / 3) + 1>{};
         }
+        
         template <typename InputVector, typename OutputVector>
         static inline auto get_nn_time(const InputVector &start, OutputVector &goal) noexcept -> float {
             return 0.0f;

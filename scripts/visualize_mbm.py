@@ -40,10 +40,17 @@ def topple(
         **kwargs,
         )
 
-    plan_settings.max_iterations = 1000000
-    plan_settings.max_samples = 1000000
+    # plan_settings.max_iterations = 100000
+    # plan_settings.max_samples = 100000
+    # plan_settings.simplify.bez = True
+    # plan_settings.bez_range = 0.5
+
+    plan_settings.max_iterations = 10000000
+    plan_settings.rrtc.max_iterations = 100000
+    plan_settings.max_samples = 10000000
     plan_settings.simplify.bez = True
     plan_settings.bez_range = 0.5
+    plan_settings.dynamic_extension = False
 
     if not problem:
         problem = list(data['problems'].keys())[0]
@@ -102,7 +109,9 @@ CAPT Construction Time: {build_time * 1e-6:5.3f}ms
 
     if valid:
         ts = time.perf_counter()
+        print("Calling planner...")
         result = planner_func(start, goals, env, plan_settings, sampler)
+        print("Planner finished! ", result.solved)
         tf = time.perf_counter()
         # print(tf - ts)
         solved = result.solved

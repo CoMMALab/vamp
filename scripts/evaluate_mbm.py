@@ -12,12 +12,12 @@ from vamp import pointcloud as vpc
 
 
 def main(
-    robot: str = "panda",                  # Robot to plan for
-    planner: str = "rrtc",                 # Planner name to use
+    robot: str = "pandatopp",                  # Robot to plan for
+    planner: str = "topple",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
     problem: Union[str, List[str]] = [],   # Problem name or list of problems to evaluate
     trials: int = 1,                       # Number of trials to evaluate each instance
-    sampler: str = "halton",               # Sampler to use.
+    sampler: str = "xorshift",               # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     print_failures: bool = False,          # Print out failures and invalid problems
     pointcloud: bool = False,              # Use pointcloud rather than primitive geometry
@@ -30,7 +30,7 @@ def main(
     if robot not in vamp.robots:
         raise RuntimeError(f"Robot {robot} does not exist in VAMP!")
 
-    problems_dir = Path(__file__).parent.parent / 'resources' / robot / 'problems'
+    problems_dir = Path(__file__).parent.parent / 'resources' / "panda" / 'problems'
     with open(problems_dir.parent / dataset, 'rb') as f:
         problems = pickle.load(f)
 
@@ -49,6 +49,14 @@ def main(
 
     (vamp_module, planner_func, plan_settings,
      simp_settings) = vamp.configure_robot_and_planner_with_kwargs(robot, planner, **kwargs)
+
+    plan_settings.max_iterations = 500000
+    plan_settings.rrtc.max_iterations = 500000
+    plan_settings.max_samples = 10000000
+    plan_settings.simplify.bez = True
+    plan_settings.bez_range = 0.5
+    plan_settings.dynamic_extension = False
+
 
     sampler = getattr(vamp_module, sampler)()
 
@@ -98,12 +106,26 @@ def main(
             sampler.reset()
             sampler.skip(skip_rng_iterations)
             for _ in range(trials):
-                result = planner_func(data['start'], data['goals'], env, plan_settings, sampler)
+
+                start = data['start']
+                goals = [g for g in data['goals']]
+
+                for i in range(14):
+                    start.append(0)
+                print(f"start: {start}")
+                for goal in goals:
+                    for j in range(14):
+                        goal.append(0)
+                    print(f"goal: {goal}")
+
+
+                result = planner_func(start, goals, env, plan_settings, sampler)
                 if not result.solved:
                     failures.append(i)
                     break
 
-                simple = vamp_module.simplify(result.path, env, simp_settings, sampler)
+                # simple = vamp_module.simplify(result.path, env, simp_settings, sampler)
+                simple = result
 
                 trial_result = vamp.results_to_dict(result, simple)
                 if pointcloud:

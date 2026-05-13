@@ -69,7 +69,7 @@ auto main(int, char **) -> int
     // topple_rrtc_settings.simplify_intermediate = false;
     // topple_rrtc_settings.max_runs = 1;
     // topple_rrtc_settings.cost_bound_resample = false;
-    topple_rrtc_settings.bez_range = 0.25;
+    topple_rrtc_settings.bez_range = 0.5;
     // topple_rrtc_settings.k_nearest = 16;
     // topple_rrtc_settings.alpha = 0.5;
     topple_rrtc_settings.dynamic_extension = false;

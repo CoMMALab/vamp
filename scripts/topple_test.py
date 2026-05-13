@@ -1,6 +1,6 @@
 import vamp
 import numpy as np
-from vamp import pybullet_interface as vpb
+# from vamp import pybullet_interface as vpb
 import matplotlib.pyplot as plt
 
 pos1 = [0., -0.785, 0., -2.356, 0., 1.571, 0.785]
@@ -16,24 +16,44 @@ for i in range(14):
     simp_settings,
 ) = vamp.configure_robot_and_planner_with_kwargs("pandatopp", "topple")
 
-rng = vamp_module.xorshift()
+rng = vamp_module.halton()
 
 plan_settings.max_iterations = 10000000
 plan_settings.rrtc.max_iterations = 100000
 plan_settings.max_samples = 10000000
 plan_settings.simplify.bez = True
-plan_settings.use_phs = False
-plan_settings.optimize = False
-plan_settings.simplify_intermediate = False
-plan_settings.max_runs = 1
-plan_settings.cost_bound_resample = False
-plan_settings.bez_range = 0.1
-plan_settings.k_nearest = 4
-plan_settings.alpha = 0.1
-plan_settings.dynamic_extension = True
+# plan_settings.use_phs = False
+# plan_settings.optimize = False
+# plan_settings.simplify_intermediate = False
+# plan_settings.max_runs = 1
+# plan_settings.cost_bound_resample = False
+plan_settings.bez_range = 0.5
+# plan_settings.k_nearest = 4
+# plan_settings.alpha = 0.1
+plan_settings.dynamic_extension = False
+
+problem_spheres = [
+    [0.55, 0, 0.25],
+    [0.35, 0.35, 0.25],
+    [0, 0.55, 0.25],
+    [-0.55, 0, 0.25],
+    [-0.35, -0.35, 0.25],
+    [0, -0.55, 0.25],
+    [0.35, -0.35, 0.25],
+    [0.35, 0.35, 0.8],
+    [0, 0.55, 0.8],
+    [-0.35, 0.35, 0.8],
+    [-0.55, 0, 0.8],
+    [-0.35, -0.35, 0.8],
+    [0, -0.55, 0.8],
+    [0.35, -0.35, 0.8],
+]
 
 env = vamp.Environment()
-sim = vpb.PyBulletSimulator(str("../resources/panda/panda.urdf"), vamp_module.joint_names(), True)
+for sphere in problem_spheres:
+    env.add_sphere(vamp.Sphere(sphere, 0.2))
+
+# sim = vpb.PyBulletSimulator(str("../resources/panda/panda.urdf"), vamp_module.joint_names(), True)
 
 result = planner_func(np.array(pos1), np.array(pos2), env, plan_settings, rng)
 if result.solved:
@@ -45,7 +65,7 @@ else:
 traj = vamp_module.compute_bez_traj(result, env, simp_settings, rng)
 path = traj.path.numpy()
 
-sim.animate(traj.path.numpy()[np.arange(0, len(traj.path.numpy()), 10)])
+# sim.animate(traj.path.numpy()[np.arange(0, len(traj.path.numpy()), 10)])
 
 # bez = result.beziers[1]
 # sub_bez = bez.subdivide(0.1)

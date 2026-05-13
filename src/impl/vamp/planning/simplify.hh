@@ -437,16 +437,16 @@ namespace vamp::planning
 
         PlanningResult<Robot> result;
 
-        if (settings.bez) {
-            // const auto shortcut_bez = [&result, &environment, settings]()
-            //     { return shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut_bez); };
-            // result.path
-            result.path = path;
-            // smooth_bspline_bez<Robot, rake, resolution>(result.path, environment, settings.bspline);
-            shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut);
+        // if (settings.bez) {
+        //     // const auto shortcut_bez = [&result, &environment, settings]()
+        //     //     { return shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut_bez); };
+        //     // result.path
+        //     result.path = path;
+        //     // smooth_bspline_bez<Robot, rake, resolution>(result.path, environment, settings.bspline);
+        //     shortcut_bez_path<Robot, rake, resolution>(result.path, environment, settings.shortcut);
         
-            return result;
-        }
+        //     return result;
+        // }
 
         const auto bspline = [&result, &environment, settings]()
         { return smooth_bspline<Robot, rake, resolution>(result.path, environment, settings.bspline); };
@@ -605,7 +605,7 @@ namespace vamp::planning
         PlanningResult<Robot> result;
 
         std::vector<Bezier> beziers = planning_result.beziers;
-        std::cout << "number of beziers: " << beziers.size() << std::endl;
+        // std::cout << "number of beziers: " << beziers.size() << std::endl;
         for (auto i = 0U; i < beziers.size(); i++) {
             Bezier bez = beziers[i];
             // std::cout << "bez time: " << bez.time << std::endl;

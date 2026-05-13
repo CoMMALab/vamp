@@ -157,10 +157,11 @@ namespace vamp::robots
         }
 
         // placeholder
-        template <typename InputVector, typename OutputVector>
-        static inline auto topple_nn_forward(const InputVector &x, OutputVector &out) noexcept {
-            return;
+        template <typename InputVector>
+        static inline auto topple_nn_forward(const InputVector &x) noexcept {
+            return std::array<float, topple_out_dim * (dimension / 3) + 1>{};
         }
+
         template <typename InputVector, typename OutputVector>
         static inline auto get_nn_time(const InputVector &start, OutputVector &goal) noexcept -> float {
             return 0.0f;
@@ -41458,6 +41459,12 @@ namespace vamp::robots
             y[8] = v[38] * v[11] + v[34] * v[30] + v[3] * v[27];
 
             return to_isometry(y.data());
+        }
+
+        template <std::size_t rake, typename InputVector, typename OutputVector>
+        static inline auto bezier(const InputVector &x, const FloatVector<rake> t, OutputVector &y) noexcept
+        {
+            return;
         }
     };
 }  // namespace vamp::robots

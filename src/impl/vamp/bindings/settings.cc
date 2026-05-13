@@ -55,6 +55,8 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_samples", &vp::TOPPLESettings::max_samples)
         .def_rw("alpha", &vp::TOPPLESettings::alpha)
         .def_rw("dynamic_extension", &vp::TOPPLESettings::dynamic_extension)
+        .def_rw("rand_connect", &vp::TOPPLESettings::rand_connect)
+        .def_rw("rand_ratio", &vp::TOPPLESettings::rand_ratio)
         .def_rw("bez_range", &vp::TOPPLESettings::bez_range);
 
     // TODO: Redesign a neater form of RoadmapSettings/NeighborParams
@@ -129,7 +131,6 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("interpolate", &vp::SimplifySettings::interpolate)
         .def_rw("operations", &vp::SimplifySettings::operations)
         .def_rw("reduce", &vp::SimplifySettings::reduce)
-        .def_rw("bez", &vp::SimplifySettings::bez)
         .def_rw("shortcut", &vp::SimplifySettings::shortcut)
         .def_rw("perturb", &vp::SimplifySettings::perturb)
         .def_rw("bspline", &vp::SimplifySettings::bspline);

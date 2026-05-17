@@ -171,6 +171,9 @@ namespace vamp::planning
         std::size_t batch_size = 1000;
         bool optimize = false;
         NeighborParams neighbor_params;
+        // Wall-clock budget for the planner's main loop. When zero (the
+        // default) the loop terminates only on iteration / sample limits.
+        std::size_t max_nanoseconds = 0;
     };
 
     struct RoadmapNode

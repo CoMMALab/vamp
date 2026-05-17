@@ -421,6 +421,8 @@ namespace vamp::planning
             PlanningResult<Robot> final_result;
             final_result.path = result.path;
             best_path_cost = result.path.cost();
+            final_result.cost_history.emplace_back(
+                vamp::utils::get_elapsed_nanoseconds(start_time), best_path_cost);
 
             float best_possible_cost = std::numeric_limits<float>::max();
             for (const auto &goal : goals)
@@ -439,6 +441,11 @@ namespace vamp::planning
             // Also handles numerical issues with PHS when too close to straight line...
             while (iters < max_iterations and (best_path_cost - best_possible_cost) > 1e-8)
             {
+                if (settings.max_nanoseconds > 0 and
+                    vamp::utils::get_elapsed_nanoseconds(start_time) >= settings.max_nanoseconds)
+                {
+                    break;
+                }
                 // Update internal maximum iterations
                 rrtc_settings.max_iterations =
                     std::min(settings.max_iterations - iters, settings.max_internal_iterations);
@@ -487,6 +494,8 @@ namespace vamp::planning
                         // Update best solution
                         final_result.path = result.path;
                         best_path_cost = result.path.cost();
+                        final_result.cost_history.emplace_back(
+                            vamp::utils::get_elapsed_nanoseconds(start_time), best_path_cost);
 
                         phs_rng->phs.set_transverse_diameter(best_path_cost);
                     }

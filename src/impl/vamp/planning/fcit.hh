@@ -133,9 +133,19 @@ namespace vamp::planning
             Configuration temp_config_self;
             std::vector<QueueEdge> open_set;
 
+            // Track the best (lowest) goal-side g-value across all goals so we
+            // can emit a per-improvement (elapsed_ns, cost) entry into the
+            // result's cost_history.
+            float prev_best_goal_g = std::numeric_limits<float>::infinity();
+
             // Search until Initial Solution
             while (nodes.size() < settings.max_samples and iter++ < settings.max_iterations)
             {
+                if (settings.max_nanoseconds > 0 and
+                    vamp::utils::get_elapsed_nanoseconds(start_time) >= settings.max_nanoseconds)
+                {
+                    break;
+                }
                 for (auto i = 0U; i < goals.size(); ++i)
                 {
                     const auto &goal = goals[i];
@@ -310,6 +320,23 @@ namespace vamp::planning
                                     (*current_node.neighbor_iterator).distance});
                             current_node.neighbor_iterator++;
                         }
+                    }
+                }
+
+                // Emit a cost_history entry whenever the best goal-g improves,
+                // before any early-out so a one-shot run still records a point.
+                {
+                    float best_goal_g = std::numeric_limits<float>::infinity();
+                    for (auto gi = 0U; gi < goals.size(); ++gi)
+                    {
+                        best_goal_g = std::min(best_goal_g, nodes[gi + 1].g);
+                    }
+                    if (best_goal_g < prev_best_goal_g and
+                        best_goal_g < std::numeric_limits<float>::infinity())
+                    {
+                        result.cost_history.emplace_back(
+                            vamp::utils::get_elapsed_nanoseconds(start_time), best_goal_g);
+                        prev_best_goal_g = best_goal_g;
                     }
                 }
 

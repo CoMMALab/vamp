@@ -176,6 +176,10 @@ namespace vamp::planning
         std::size_t nanoseconds{0};
         std::size_t iterations{0};
         std::vector<std::size_t> size;
+        // Anytime planners (AORRTC, FCIT) populate this with one entry per
+        // incumbent improvement: (elapsed nanoseconds since planner start,
+        // best-known path cost at that moment). Empty for one-shot planners.
+        std::vector<std::pair<std::size_t, float>> cost_history;
     };
 
     template <typename Robot>

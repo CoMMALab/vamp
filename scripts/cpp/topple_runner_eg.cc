@@ -7,6 +7,7 @@
 #include <vamp/collision/factory.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/topple.hh>
+#include <vamp/planning/trajopt.hh>
 // #include <vamp/planning/simplify.hh>
 #include <vamp/planning/topple_settings.hh>
 #include <vamp/robots/pandatopp.hh>
@@ -64,7 +65,7 @@ auto main(int, char **) -> int
 
     topple_rrtc_settings.rrtc.max_iterations = 100000;
     // topple_rrtc_settings.max_samples = 10000000;
-    topple_rrtc_settings.simplify.bez = true;
+    // topple_rrtc_settings.simplify.bez = true;
     // topple_rrtc_settings.use_phs = false;
     // topple_rrtc_settings.simplify_intermediate = false;
     // topple_rrtc_settings.max_runs = 1;
@@ -104,6 +105,11 @@ auto main(int, char **) -> int
             std::cout << std::endl;
         }
     }
+
+    vamp::planning::discrete_time_trajopt_loop<Robot, rake, Robot::resolution>(
+        result.path,
+        env_v
+    );
 
     return 0;
 }

@@ -22,6 +22,9 @@
 #include <vamp/planning/fcit.hh>
 #include <vamp/planning/rrtc.hh>
 #include <vamp/planning/aorrtc.hh>
+#include <vamp/planning/kpiece.hh>
+#include <vamp/planning/bkpiece.hh>
+#include <vamp/planning/kpiece_projections.hh>
 #include <vamp/vector.hh>
 
 #include <nanobind/nanobind.h>
@@ -231,6 +234,14 @@ namespace vamp::binding
             vamp::planning::AORRTC<Robot, rake, Robot::resolution>,
             vamp::planning::AORRTCSettings>;
 
+        using KPIECE = PlannerHelper<
+            vamp::planning::KPIECE<Robot, vamp::planning::ShoulderProjection<Robot, 2>, rake, Robot::resolution>,
+            vamp::planning::KPIECESettings>;
+
+        using BKPIECE = PlannerHelper<
+            vamp::planning::BKPIECE<Robot, vamp::planning::ShoulderProjection<Robot, 3>, rake, Robot::resolution>,
+            vamp::planning::KPIECESettings>;
+
         inline static auto fk(const Type &c_in) -> std::vector<vamp::collision::Sphere<float>>
         {
             typename Robot::template Spheres<1> out;
@@ -285,7 +296,7 @@ namespace vamp::binding
             const bool in_bounds_out = (copy_out <= 1.F).all() and (copy_out >= 0.F).all();
 
             return (not check_bounds or (in_bounds_in and in_bounds_out)) and
-                   vamp::planning::validate_motion<Robot, rake, 1>(
+                   vamp::planning::validate_motion<Robot, rake, Robot::resolution>(
                        configuration_in, configuration_out, EnvironmentVector(environment));
         }
 
@@ -628,6 +639,8 @@ namespace vamp::binding
         PLANNER("prm", PRM, "PRM");
         PLANNER("fcit", FCIT, "FCIT");
         PLANNER("aorrtc", AORRTC, "AORRTC");
+        PLANNER("kpiece", KPIECE, "KPIECE");
+        PLANNER("bkpiece", BKPIECE, "BKPIECE");
 
         if constexpr (has_set_lows_v<Robot>)
         {

@@ -1,5 +1,6 @@
 #include <vamp_python_init.hh>
 
+#include <vamp/planning/kpiece_settings.hh>
 #include <vamp/planning/roadmap.hh>
 #include <vamp/planning/rrtc_settings.hh>
 #include <vamp/planning/aorrtc_settings.hh>
@@ -114,4 +115,15 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("shortcut", &vp::SimplifySettings::shortcut)
         .def_rw("perturb", &vp::SimplifySettings::perturb)
         .def_rw("bspline", &vp::SimplifySettings::bspline);
+
+    nb::class_<vp::KPIECESettings>(pymodule, "KPIECESettings")
+        .def(nb::init<>())
+        .def_rw("cell_size", &vp::KPIECESettings::cell_size)
+        .def_rw("range", &vp::KPIECESettings::range)
+        .def_rw("goal_bias", &vp::KPIECESettings::goal_bias)
+        .def_rw("min_valid_path_fraction", &vp::KPIECESettings::min_valid_path_fraction)
+        .def_rw("failed_expansion_score_factor", &vp::KPIECESettings::failed_expansion_score_factor)
+        .def_rw("border_fraction", &vp::KPIECESettings::border_fraction)
+        .def_rw("max_samples", &vp::KPIECESettings::max_samples)
+        .def_rw("max_iterations", &vp::KPIECESettings::max_iterations);
 }

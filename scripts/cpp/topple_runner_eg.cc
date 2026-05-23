@@ -33,12 +33,12 @@ static const std::vector<std::array<float, 3>> problem = {
     {0, -0.55, 0.25},
     {0.35, -0.35, 0.25},
     {0.35, 0.35, 0.8},
-    {0, 0.55, 0.8},
-    {-0.35, 0.35, 0.8},
-    {-0.55, 0, 0.8},
-    {-0.35, -0.35, 0.8},
-    {0, -0.55, 0.8},
-    {0.35, -0.35, 0.8},
+    // {0, 0.55, 0.8},
+    // {-0.35, 0.35, 0.8},
+    // {-0.55, 0, 0.8},
+    // {-0.35, -0.35, 0.8},
+    // {0, -0.55, 0.8},
+    // {0.35, -0.35, 0.8},
 };
 
 // Radius for obstacle spheres
@@ -64,6 +64,7 @@ auto main(int, char **) -> int
     // topple_rrtc_settings.optimize = false;
 
     topple_rrtc_settings.rrtc.max_iterations = 100000;
+    topple_rrtc_settings.rrtc.range = 1.0;
     // topple_rrtc_settings.max_samples = 10000000;
     // topple_rrtc_settings.simplify.bez = true;
     // topple_rrtc_settings.use_phs = false;

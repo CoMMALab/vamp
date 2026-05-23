@@ -114,43 +114,43 @@ namespace vamp::planning
 
     }
 
-    template <typename Robot, std::size_t rake, std::size_t resolution>
-    inline constexpr auto trajopt2(
-        std::vector<FloatVector<Robot::dimension>> &path,
-        const collision::Environment<FloatVector<rake>> &environment,
-        const size_t num_iteration)
-    {
-        for (auto i = 0; i < num_iteration; i++) {
-            std::vector<FloatVector<Robot::dimension>> gradients(path.size(), FloatVector<Robot::dimension>(0));
+    // template <typename Robot, std::size_t rake, std::size_t resolution>
+    // inline constexpr auto trajopt2(
+    //     std::vector<FloatVector<Robot::dimension>> &path,
+    //     const collision::Environment<FloatVector<rake>> &environment,
+    //     const size_t num_iteration)
+    // {
+    //     for (auto i = 0; i < num_iteration; i++) {
+    //         std::vector<FloatVector<Robot::dimension>> gradients(path.size(), FloatVector<Robot::dimension>(0));
 
-            // skip start and goal
-            for (auto i = 1U; i < path.size() - 1; ++i) {
-                const auto &start = path[i];
-                const auto &end = path[i + 1];
+    //         // skip start and goal
+    //         for (auto i = 1U; i < path.size() - 1; ++i) {
+    //             const auto &start = path[i];
+    //             const auto &end = path[i + 1];
 
-                std::array<Robot::dimension> start_arr;
-                std::array<Robot::dimension> end_arr;
-                for (auto j = 0U; j < Robot::dimension; ++j)
-                {
-                    start_arr[j] = start[j];
-                    end_arr[j] = end[j];
-                }
+    //             std::array<Robot::dimension> start_arr;
+    //             std::array<Robot::dimension> end_arr;
+    //             for (auto j = 0U; j < Robot::dimension; ++j)
+    //             {
+    //                 start_arr[j] = start[j];
+    //                 end_arr[j] = end[j];
+    //             }
 
-                auto nn_time_start = std::chrono::steady_clock::now();
-                auto cost_and_grads =
-                    Robot::template topple_nn_time_forward_backward_arr(start_arr, end_arr);
-                auto nn_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                    std::chrono::steady_clock::now() - nn_time_start).count();
-                vamp::profiling::get_profiler()["nn_inference"].push_back(nn_time);
+    //             auto nn_time_start = std::chrono::steady_clock::now();
+    //             auto cost_and_grads =
+    //                 Robot::template topple_nn_time_forward_backward_arr(start_arr, end_arr);
+    //             auto nn_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+    //                 std::chrono::steady_clock::now() - nn_time_start).count();
+    //             // vamp::profiling::get_profiler()["nn_inference"].push_back(nn_time);
 
-                // now store the gradients for the start and end points
-                for (auto j = 0U; j < Robot::dimension; ++j)
-                {
-                    gradients[i][j] += cost_and_grads[j + 1];
-                    gradients[i + 1][j] += cost_and_grads[j + 1 + Robot::dimension];
-                }
-                // take a step in the direction of the negative gradient
-            }
-        }
-    }
+    //             // now store the gradients for the start and end points
+    //             for (auto j = 0U; j < Robot::dimension; ++j)
+    //             {
+    //                 gradients[i][j] += cost_and_grads[j + 1];
+    //                 gradients[i + 1][j] += cost_and_grads[j + 1 + Robot::dimension];
+    //             }
+    //             // take a step in the direction of the negative gradient
+    //         }
+    //     }
+    // }
 }

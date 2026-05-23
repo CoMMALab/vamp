@@ -12,7 +12,7 @@ from vamp import pointcloud as vpc
 
 
 def main(
-    robot: str = "pandatopp",                  # Robot to plan for
+    robot: str = "panda_topple",                  # Robot to plan for
     planner: str = "topple",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
     problem: Union[str, List[str]] = [],   # Problem name or list of problems to evaluate
@@ -53,7 +53,7 @@ def main(
     plan_settings.max_iterations = 500000
     plan_settings.rrtc.max_iterations = 500000
     plan_settings.max_samples = 10000000
-    plan_settings.simplify.bez = True
+    # plan_settings.simplify.bez = True
     plan_settings.bez_range = 0.5
     plan_settings.dynamic_extension = False
 

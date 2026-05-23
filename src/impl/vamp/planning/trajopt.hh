@@ -6,6 +6,7 @@
 #include <vamp/vector.hh>
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/bezier.hh>
+#include <vamp/planning/validate.hh>
 #include <iostream>
 
 namespace vamp::planning
@@ -15,7 +16,7 @@ namespace vamp::planning
         std::vector<FloatVector<Robot::dimension>> &path,
         const collision::Environment<FloatVector<rake>> &environment,
         const float learning_rate=0.05,
-        const size_t num_iterations = 1) -> bool
+        const size_t num_iterations = 10) -> bool
     {
         // for each path segment,
         // I call topple_nn_time_forward_backward_arr
@@ -45,7 +46,7 @@ namespace vamp::planning
             // std::vector<FloatVector<Robot::dimension>> gradients(path.size(), FloatVector<Robot::dimension>(0));
             std::vector<std::array<float, Robot::dimension>> gradients(path.size());
             std::vector<float> costs(path.size() - 1);
-            std::cout << "Iteration " << iter << ":" << std::endl;
+            std::cout << "\nIteration " << iter << ":" << std::endl;
 
             for (auto i = 0U; i < path.size() - 1; ++i)
             {
@@ -55,10 +56,10 @@ namespace vamp::planning
                     pair_arr[j] = path_arr[i][j];
                     pair_arr[j + Robot::dimension] = path_arr[i+1][j];
                 }
-                for(auto j=0U; j < 2 * Robot::dimension; ++j) {
-                    std::cout << pair_arr[j] << ", ";
-                }
-                std::cout << std::endl;
+                // for(auto j=0U; j < 2 * Robot::dimension; ++j) {
+                //     std::cout << pair_arr[j] << ", ";
+                // }
+                // std::cout << std::endl;
 
                 auto cost_and_grads =
                     Robot::template topple_nn_time_forward_backward_arr(pair_arr);
@@ -71,16 +72,40 @@ namespace vamp::planning
                 }
                 costs[i] = cost_and_grads[0];
             }
+
+            int total_valid_segments = 0;
+
+            Bezier bez = compute_bez<Robot, rake>(path_arr[0], path_arr[1]);
+            bool segment_valid = validate_bez<Robot, rake, resolution>(bez, environment);
+
+
             // take a step in the direction of the negative gradient
             for (auto i = 1U; i < path.size() - 1; ++i)
             {
-                std::cout << "Cost for segment " << i << ": " << costs[i-1] << " : ";
-                for (auto j = 0U; j < Robot::dimension; ++j){
-                    path_arr[i][j] = path_arr[i][j] - learning_rate * gradients[i][j];
-                    std::cout << gradients[i][j] << ", ";
-                }
-                std::cout << std::endl;
+                std::cout << costs[i-1] << ", ";
 
+                // std::cout << "Cost for segment " << i << ": " << costs[i-1] << " : " << std::endl;
+                Bezier bez = compute_bez<Robot, rake>(path_arr[i], path_arr[i+1]);
+                bool current_segment_valid = validate_bez<Robot, rake, resolution>(bez, environment);
+                if (segment_valid && current_segment_valid)
+                {
+                    for (auto j = 0U; j < Robot::dimension; ++j)
+                    {
+                        path_arr[i][j] = path_arr[i][j] - learning_rate * gradients[i][j];
+                    }
+                }
+                else
+                {
+                    std::cout << "Segment " << i << " is invalid, not updating." << std::endl;
+                }
+                segment_valid = current_segment_valid;
+                total_valid_segments += current_segment_valid;
+
+            }
+
+            if (total_valid_segments == 0) {
+                std::cout << "No valid segments found in iteration " << iter << ", stopping optimization." << std::endl;
+                break;
             }
 
          }

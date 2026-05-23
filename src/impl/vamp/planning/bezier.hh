@@ -76,7 +76,7 @@ namespace vamp::planning {
                 // where Q_i = n(C_{i + 1} - C_{i})
                 row_matrix Q(this->degree, this->anchors.cols());
                 for (int i = 0; i < this->degree; i++) {
-                    Q.row(i) = (this->degree + 1) * (this->anchors.row(i + 1) - this->anchors.row(i)) / this->time;
+                    Q.row(i) = this->degree * (this->anchors.row(i + 1) - this->anchors.row(i)) / this->time;
                 }
                 Bezier dB(Q);
                 dB.time = this->time;

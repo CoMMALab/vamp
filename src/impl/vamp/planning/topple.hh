@@ -141,17 +141,35 @@ namespace vamp::planning
 
                 const auto nearest_configuration = nearest_node.as_vector();
 
-                // auto nearest_vector = temp - nearest_configuration;
+                // std::cout << " --> " << temp << std::endl;
 
-                // bool reach = nearest_distance < settings.range;
-                // auto extension_vector =
-                //     (reach) ? nearest_vector : nearest_vector * (settings.range / nearest_distance);
+                auto nearest_vector = temp - nearest_configuration;
 
+                bool reach = nearest_distance < settings.rrtc.range;
+                auto extension_vector =
+                    (reach) ? nearest_vector : nearest_vector * (settings.rrtc.range / nearest_distance);
+
+                // only replace the position part of configuration with a fixed range,
+                // and retain the sampled velocity and acceleration
+                typename Robot::ConfigurationBuffer to_extend_array;
+                for (auto i = 0U; i < Robot::dimension / 3; i++)
+                {
+                    to_extend_array[i] = nearest_configuration[{i, 0}] + extension_vector[{i, 0}];
+                }
+                for (auto i = Robot::dimension / 3; i < Robot::dimension; i++)
+                {
+                    to_extend_array[i] = temp_array[i];
+                }
+
+
+                auto to_extend = typename Robot::Configuration(to_extend_array.data());
+
+                // std::cout << " <-- " << to_extend << std::endl;
                 auto [valid_extension, sub_bez] = validate_sub_bez_motion<Robot, rake, resolution>(
                         nearest_configuration,
-                        temp,
+                        to_extend,
                         environment,
-                        extensions[nearest_node.index]);
+                        1.0);
 
                 // create new config ending at sub bez
                 Bezier dsub_bez = sub_bez.derivative();

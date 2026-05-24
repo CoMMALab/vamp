@@ -145,16 +145,37 @@ namespace vamp::planning
 
                 auto nearest_vector = temp - nearest_configuration;
 
-                bool reach = nearest_distance < settings.rrtc.range;
-                auto extension_vector =
-                    (reach) ? nearest_vector : nearest_vector * (settings.rrtc.range / nearest_distance);
 
-                // only replace the position part of configuration with a fixed range,
-                // and retain the sampled velocity and acceleration
-                typename Robot::ConfigurationBuffer to_extend_array;
+                // just be super dumb and convert to arrays and work
+                std::array<float, Robot::dimension> nearest_vector_array, nearest_configuration_array, extension_vector_array, to_extend_array;
+                nearest_vector.to_array(nearest_vector_array.data());
+                nearest_configuration.to_array(nearest_configuration_array.data());
+
+                float position_distance = 0.0f;
                 for (auto i = 0U; i < Robot::dimension / 3; i++)
                 {
-                    to_extend_array[i] = nearest_configuration[{i, 0}] + extension_vector[{i, 0}];
+                    position_distance += nearest_vector_array[i] * nearest_vector_array[i];
+                }
+                position_distance = std::sqrt(position_distance);
+
+
+                // std::cout << " --> " << nearest_configuration << " to " << temp << "via " << nearest_vector << std::endl;
+
+
+                auto extensions_start_time = std::chrono::steady_clock::now();
+                bool reach = position_distance < settings.rrtc.range;
+                auto extension_vector =
+                    (reach) ? nearest_vector : nearest_vector * (settings.rrtc.range / position_distance);
+                
+                extension_vector.to_array(extension_vector_array.data());
+
+                // // only replace the position part of configuration with a fixed range,
+                // // and retain the sampled velocity and acceleration
+                // typename Robot::ConfigurationBuffer to_extend_array;
+                for (auto i = 0U; i < Robot::dimension / 3; i++)
+                {
+                    // std::cout << "[" << i << "] Adding extension vector: " << extension_vector_array[i] << " to nearest vector: " << nearest_configuration_array[i] << std::endl;
+                    to_extend_array[i] = nearest_configuration_array[i] + extension_vector_array[i];
                 }
                 for (auto i = Robot::dimension / 3; i < Robot::dimension; i++)
                 {
@@ -163,7 +184,6 @@ namespace vamp::planning
 
 
                 auto to_extend = typename Robot::Configuration(to_extend_array.data());
-
                 // std::cout << " <-- " << to_extend << std::endl;
                 auto [valid_extension, sub_bez] = validate_sub_bez_motion<Robot, rake, resolution>(
                         nearest_configuration,

@@ -63,7 +63,7 @@ auto main(int, char **) -> int
     vamp::planning::TOPPLESettings topple_rrtc_settings;
     // topple_rrtc_settings.optimize = false;
 
-    topple_rrtc_settings.rrtc.max_iterations = 100000;
+    topple_rrtc_settings.rrtc.max_iterations = 1000000;
     topple_rrtc_settings.rrtc.range = 1.0;
     // topple_rrtc_settings.max_samples = 10000000;
     // topple_rrtc_settings.simplify.bez = true;
@@ -73,8 +73,9 @@ auto main(int, char **) -> int
     // topple_rrtc_settings.cost_bound_resample = false;
     topple_rrtc_settings.bez_range = 0.5;
     // topple_rrtc_settings.k_nearest = 16;
-    // topple_rrtc_settings.alpha = 0.5;
-    topple_rrtc_settings.dynamic_extension = false;
+    // topple_rrtc_settings.alpha = 0.001;
+    topple_rrtc_settings.dynamic_extension = true;
+    topple_rrtc_settings.rand_connect = false;
 
 
    

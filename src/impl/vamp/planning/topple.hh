@@ -94,7 +94,7 @@ namespace vamp::planning
             start.to_array(buffer_index(start_index));
             start_tree.insert(NNNode<dimension>{start_index, {buffer_index(start_index)}});
             parents[start_index] = start_index;
-            extensions[start_index] = 1.0;
+            extensions[start_index] = settings.bez_range;
             radii[start_index] = std::numeric_limits<float>::max();
 
             for (const auto &goal : goals)
@@ -102,7 +102,7 @@ namespace vamp::planning
                 goal.to_array(buffer_index(free_index));
                 goal_tree.insert(NNNode<dimension>{free_index, {buffer_index(free_index)}});
                 parents[free_index] = free_index;
-                extensions[free_index] = 1.0;
+                extensions[free_index] = settings.bez_range;
                 radii[free_index] = std::numeric_limits<float>::max();
                 free_index++;
             }
@@ -132,9 +132,10 @@ namespace vamp::planning
                 }
 
                 const auto &[nearest_node, nearest_distance] = *nearest;
-                // std::cout << "Nearest node index is : " << nearest_node.index << " for tree " << (tree_a_is_start ? "goal" : "start") << " of size " << tree_a->size() << std::endl;                // const auto nearest_radius = radii[nearest_node.index];
+                // std::cout << "Nearest node index is : " << nearest_node.index << " for tree " << (tree_a_is_start ? "goal" : "start") << " of size " << tree_a->size() << std::endl;
+                const auto nearest_radius = radii[nearest_node.index];
 
-                // if (settings.dynamic_domain and nearest_radius < nearest_distance)
+                // if (settings.rrtc.dynamic_domain and nearest_radius < nearest_distance)
                 // {
                 //     continue;
                 // }
@@ -158,6 +159,10 @@ namespace vamp::planning
                 }
                 position_distance = std::sqrt(position_distance);
 
+                if (settings.rrtc.dynamic_domain and nearest_radius < position_distance)
+                {
+                    continue;
+                }
 
                 // std::cout << " --> " << nearest_configuration << " to " << temp << "via " << nearest_vector << std::endl;
 
@@ -185,45 +190,47 @@ namespace vamp::planning
 
                 auto to_extend = typename Robot::Configuration(to_extend_array.data());
                 // std::cout << " <-- " << to_extend << std::endl;
+                // std::cout << "Extending for " << extensions[nearest_node.index] << std::endl;
                 auto [valid_extension, sub_bez] = validate_sub_bez_motion<Robot, rake, resolution>(
                         nearest_configuration,
                         to_extend,
                         environment,
-                        settings.bez_range);
-
-                // create new config ending at sub bez
-                Bezier dsub_bez = sub_bez.derivative();
-                Bezier ddsub_bez = dsub_bez.derivative();
-
-                // check this when reversed
-                auto new_q = sub_bez.anchors.row(sub_bez.anchors.rows() - 1);
-                auto new_dq = dsub_bez.anchors.row(dsub_bez.anchors.rows() - 1);
-                auto new_ddq = ddsub_bez.anchors.row(ddsub_bez.anchors.rows() - 1);
-                
-                // convert to Robot configuration in phase space
-                std::array<float, Robot::dimension> new_configuration_array;
-                
-                for (auto i = 0U; i < Robot::dimension; i++)
-                {
-                    if (i < Robot::dimension / 3)
-                    {
-                        new_configuration_array[i] = new_q(i);
-                    }
-                    else if (i < 2 * Robot::dimension / 3)
-                    {
-                        new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
-                    }
-                    else
-                    {
-                        new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
-                    }
-                }
-                // std::cout << std::endl;
-                Configuration new_configuration_bez(new_configuration_array);
+                        extensions[nearest_node.index]);
 
                 if (valid_extension)
                 {
                     
+
+                    // create new config ending at sub bez
+                    Bezier dsub_bez = sub_bez.derivative();
+                    Bezier ddsub_bez = dsub_bez.derivative();
+
+                    // check this when reversed
+                    auto new_q = sub_bez.anchors.row(sub_bez.anchors.rows() - 1);
+                    auto new_dq = dsub_bez.anchors.row(dsub_bez.anchors.rows() - 1);
+                    auto new_ddq = ddsub_bez.anchors.row(ddsub_bez.anchors.rows() - 1);
+                    
+                    // convert to Robot configuration in phase space
+                    std::array<float, Robot::dimension> new_configuration_array;
+                    
+                    for (auto i = 0U; i < Robot::dimension; i++)
+                    {
+                        if (i < Robot::dimension / 3)
+                        {
+                            new_configuration_array[i] = new_q(i);
+                        }
+                        else if (i < 2 * Robot::dimension / 3)
+                        {
+                            new_configuration_array[i] = new_dq(i - Robot::dimension / 3);
+                        }
+                        else
+                        {
+                            new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
+                        }
+                    }
+                    // std::cout << std::endl;
+                    Configuration new_configuration_bez(new_configuration_array);
+
                     float *new_configuration_index = buffer_index(free_index);
                     new_configuration_bez.to_array(new_configuration_index);
                     tree_a->insert(NNNode<dimension>{free_index, {new_configuration_index}});
@@ -235,7 +242,8 @@ namespace vamp::planning
 
                     parents[free_index] = nearest_node.index;
                     bezier_map[{nearest_node.index, free_index}] = sub_bez;
-                    // radii[free_index] = std::numeric_limits<float>::max();
+                    extensions[free_index] = settings.bez_range;
+                    radii[free_index] = std::numeric_limits<float>::max();
 
                     free_index++;
 
@@ -243,6 +251,11 @@ namespace vamp::planning
                     {
                         extensions[nearest_node.index] *= (1 + settings.alpha);
                         extensions[nearest_node.index] = std::min(extensions[nearest_node.index], 1.0f);
+                    }
+
+                    if (settings.rrtc.dynamic_domain and nearest_radius != std::numeric_limits<float>::max())
+                    {
+                        radii[nearest_node.index] *= (1 + settings.rrtc.alpha);
                     }
 
                     // Extend to goal tree
@@ -312,6 +325,8 @@ namespace vamp::planning
                                 sub_bez_l.reverse();
                             }
                             bezier_map[{free_index - 1, free_index}] = sub_bez_l;
+                            extensions[free_index] = settings.bez_range;
+                            radii[free_index] = std::numeric_limits<float>::max();
                             free_index++;
                             alpha_i /= (1 - alpha_i);
                         }
@@ -434,6 +449,19 @@ namespace vamp::planning
                         extensions[nearest_node.index] *= (1 - settings.alpha);
                         extensions[nearest_node.index] = std::max(extensions[nearest_node.index], 0.01f);
                         // std::cout << "EXTENSION UPDATED: " << extension[nearest_node.index] << std::endl;
+                    }
+
+                    if (settings.rrtc.dynamic_domain)
+                    {
+                        if (nearest_radius == std::numeric_limits<float>::max())
+                        {
+                            radii[nearest_node.index] = settings.rrtc.radius;
+                        }
+                        else
+                        {
+                            radii[nearest_node.index] =
+                                std::max(radii[nearest_node.index] * (1.F - settings.rrtc.alpha), settings.rrtc.min_radius);
+                        }
                     }
                 }
             }

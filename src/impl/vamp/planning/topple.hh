@@ -189,7 +189,7 @@ namespace vamp::planning
                         nearest_configuration,
                         to_extend,
                         environment,
-                        1.0);
+                        settings.bez_range);
 
                 // create new config ending at sub bez
                 Bezier dsub_bez = sub_bez.derivative();

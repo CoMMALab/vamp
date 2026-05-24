@@ -50,11 +50,12 @@ def main(
     (vamp_module, planner_func, plan_settings,
      simp_settings) = vamp.configure_robot_and_planner_with_kwargs(robot, planner, **kwargs)
 
-    plan_settings.max_iterations = 500000
-    plan_settings.rrtc.max_iterations = 500000
+    plan_settings.max_iterations = 250000
+    plan_settings.rrtc.max_iterations = 250000
+    # plan_settings.rrtc.range = 1.0
     plan_settings.max_samples = 10000000
     # plan_settings.simplify.bez = True
-    plan_settings.bez_range = 0.5
+    plan_settings.bez_range = 0.75
     plan_settings.dynamic_extension = False
 
 

@@ -23,6 +23,7 @@
 #include <vamp/planning/rrtc.hh>
 #include <vamp/planning/aorrtc.hh>
 #include <vamp/planning/topple.hh>
+#include <vamp/planning/aotopple.hh>
 #include <vamp/vector.hh>
 
 #include <nanobind/nanobind.h>
@@ -235,6 +236,10 @@ namespace vamp::binding
         using TOPPLE = PlannerHelper<
             vamp::planning::TOPPLE<Robot, rake, Robot::resolution>,
             vamp::planning::TOPPLESettings>;
+        
+        using AOTOPPLE = PlannerHelper<
+            vamp::planning::AOTOPPLE<Robot, rake, Robot::resolution>,
+            vamp::planning::AOTOPPLESettings>;
 
         inline static auto fk(const Type &c_in) -> std::vector<vamp::collision::Sphere<float>>
         {
@@ -620,6 +625,7 @@ namespace vamp::binding
         PLANNER("fcit", FCIT, "FCIT");
         PLANNER("aorrtc", AORRTC, "AORRTC");
         PLANNER("topple", TOPPLE, "TOPPLE");
+        PLANNER("aotopple", AOTOPPLE, "AOTOPPLE")
 
         if constexpr (has_set_lows_v<Robot>)
         {

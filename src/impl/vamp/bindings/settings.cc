@@ -4,6 +4,7 @@
 #include <vamp/planning/rrtc_settings.hh>
 #include <vamp/planning/aorrtc_settings.hh>
 #include <vamp/planning/topple_settings.hh>
+#include <vamp/planning/aotopple_settings.hh>
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/planning/bezier.hh>
 #include <Eigen/Dense>
@@ -58,6 +59,23 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("rand_connect", &vp::TOPPLESettings::rand_connect)
         .def_rw("rand_ratio", &vp::TOPPLESettings::rand_ratio)
         .def_rw("bez_range", &vp::TOPPLESettings::bez_range);
+
+    nb::class_<vp::AOTOPPLESettings>(pymodule, "AOTOPPLESettings")
+        .def(nb::init<>())
+        .def_rw("rrtc", &vp::AOTOPPLESettings::rrtc)
+        .def_rw("simplify", &vp::AOTOPPLESettings::simplify)
+        .def_rw("optimize", &vp::AOTOPPLESettings::optimize)
+        .def_rw("cost_bound_resample", &vp::AOTOPPLESettings::cost_bound_resample)
+        .def_rw("use_phs", &vp::AOTOPPLESettings::use_phs)
+        .def_rw("max_iterations", &vp::AOTOPPLESettings::max_iterations)
+        .def_rw("max_internal_iterations", &vp::AOTOPPLESettings::max_internal_iterations)
+        .def_rw("max_samples", &vp::AOTOPPLESettings::max_samples)
+        .def_rw("max_cost_bound_resamples", &vp::AOTOPPLESettings::max_cost_bound_resamples)
+        .def_rw("alpha", &vp::AOTOPPLESettings::alpha)
+        .def_rw("dynamic_extension", &vp::AOTOPPLESettings::dynamic_extension)
+        .def_rw("rand_connect", &vp::AOTOPPLESettings::rand_connect)
+        .def_rw("rand_ratio", &vp::AOTOPPLESettings::rand_ratio)
+        .def_rw("bez_range", &vp::AOTOPPLESettings::bez_range);
 
     // TODO: Redesign a neater form of RoadmapSettings/NeighborParams
     // TODO: Expose the other NeighborParams types
@@ -143,6 +161,7 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("combs", &vp::Bezier::combs)
         .def_rw("time", &vp::Bezier::time)
         .def("evaluate", &vp::Bezier::evaluate)
+        .def("derivative", &vp::Bezier::derivative)
         .def("generate_trajectory", &vp::Bezier::generate_trajectory)
         .def("subdivide", &vp::Bezier::subdivide);
 }

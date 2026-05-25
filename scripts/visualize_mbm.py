@@ -12,10 +12,10 @@ import time
 
 
 def topple(
-    robot: str = "pandatopp",                  # Robot to plan for
-    planner: str = "topple",                 # Planner name to use
+    robot: str = "panda_topple",                  # Robot to plan for
+    planner: str = "aotopple",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "box",                     # Problem name
+    problem: str = "table_under_pick",                     # Problem name
     index: int = 1,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
@@ -40,13 +40,19 @@ def topple(
         **kwargs,
         )
 
-    plan_settings.max_iterations = 100000
-    plan_settings.max_samples = 1000000
+    plan_settings.max_iterations = 10000
+    plan_settings.max_internal_iterations = 100000
+    plan_settings.max_samples = 100000
     plan_settings.bez_range = 0.5
-    plan_settings.dynamic_extension = False
-    plan_settings.alpha = 0.0000001
-    plan_settings.rand_connect = True
-    plan_settings.rand_ratio = 0.5
+    plan_settings.dynamic_extension = True
+    plan_settings.alpha = 0.00001
+    plan_settings.rand_connect = False
+    plan_settings.rrtc.range = 2.5
+    plan_settings.rrtc.dynamic_domain = True
+    plan_settings.rrtc.alpha = 0.00001
+    plan_settings.optimize = True
+    plan_settings.cost_bound_resample = False
+    plan_settings.use_phs = False
 
 
     if not problem:
@@ -171,20 +177,38 @@ n Graph States: {result.size}
         sim.draw_pointcloud(filtered_pc)
 
     beziers = result.beziers
-    print(len(beziers))
-    print(len(result.path))
-    trajs = []
-    for i in range(0, len(beziers)):
-        trajs += beziers[i].generate_trajectory()
+    # print(len(beziers))
+    # print(len(result.path))
+    # trajs = []
+    # for i in range(0, len(beziers)):
+    #     trajs += beziers[i].generate_trajectory()
     
-    trajs = np.array(trajs)
-    np.save("topple_trials/traj.npy", trajs)
-    print(trajs[0])
+    # trajs = np.array(trajs)
+    # np.save("topple_trials/traj.npy", trajs)
+    # print(trajs[0])
 
-    # sim.animate(simplify.path)
-    print(trajs.shape)
-    sim.animate(trajs[np.arange(0, len(trajs), 8)])
-    # sim.animate(result.path.numpy())
+    # # sim.animate(simplify.path)
+    # print(trajs.shape)
+    # sim.animate(trajs[np.arange(0, len(trajs), 8)])
+
+    traj = []
+    dtraj = []
+    ddtraj = []
+    for i in range(0, len(beziers)):
+        bezier = beziers[i]
+        temp_traj = bezier.generate_trajectory()
+        temp_dtraj = bezier.derivative().generate_trajectory()
+        temp_ddtraj = bezier.derivative().derivative().generate_trajectory()
+        traj.append(temp_traj)
+        dtraj.append(temp_dtraj)
+        ddtraj.append(temp_ddtraj)
+    traj = np.concatenate(traj)
+    dtraj = np.concatenate(dtraj)
+    ddtraj = np.concatenate(ddtraj)
+    np.save(f"topple_trials/traj.npy", traj)
+    np.save(f"topple_trials/dtraj.npy", dtraj)
+    np.save(f"topple_trials/ddtraj.npy", ddtraj)
+    sim.animate(plan[np.arange(0, len(plan), 10)])
 
 
 def toppra(
@@ -339,6 +363,7 @@ n Graph States: {result.size}
 
     if pointcloud:
         sim.draw_pointcloud(filtered_pc)
+
 
 
     # sim.animate(simplify.path)

@@ -105,6 +105,32 @@ namespace vamp::planning
 
         typename Robot::template ConfigurationBlock<rake> block;
         Robot::bezier(bez_anchors_vec, percents, block);
+
+        Robot::descale_configuration_block(block);
+        for(auto i = 0U; i < Robot::dimension/3; ++i)
+        {
+            auto lower_bound_violate = block.test_all_greater_equal(0.0F);
+            auto upper_bound_violate = block.test_all_less_equal(1.0F);
+            if (lower_bound_violate == false or upper_bound_violate == false)
+            {
+                return false;
+            }
+        }
+        Robot::scale_configuration_block(block);
+
+
+        // first check if it is within bounds
+        
+
+        bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
+                                                 Robot::template fkcc<rake>(environment, block);
+
+        // std::cout << valid << std::endl;
+        if (not valid)
+        {
+            return valid;
+        }
+
         // const std::size_t n = std::max(resolution * T / rake, 1.0F);
 
 
@@ -132,13 +158,7 @@ namespace vamp::planning
         }
 
         const std::size_t n = std::max(resolution * dist / rake, 1.0F);
-        // std::cout << n << std::endl;
-
-        bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
-                                                 Robot::template fkcc<rake>(environment, block);
-                                                
-        // std::cout << valid << std::endl;
-        if (not valid or n == 1)
+        if (n == 1)
         {
             return valid;
         }

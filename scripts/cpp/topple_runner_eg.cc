@@ -10,10 +10,10 @@
 #include <vamp/planning/trajopt.hh>
 // #include <vamp/planning/simplify.hh>
 #include <vamp/planning/topple_settings.hh>
-#include <vamp/robots/pandatopp.hh>
+#include <vamp/robots/panda_topple.hh>
 #include <vamp/random/halton.hh>
 
-using Robot = vamp::robots::Pandatopp;
+using Robot = vamp::robots::PandaTOPPLE;
 static constexpr const std::size_t rake = vamp::FloatVectorWidth;
 using EnvironmentInput = vamp::collision::Environment<float>;
 using EnvironmentVector = vamp::collision::Environment<vamp::FloatVector<rake>>;
@@ -75,6 +75,7 @@ auto main(int, char **) -> int
     // topple_rrtc_settings.k_nearest = 16;
     // topple_rrtc_settings.alpha = 0.001;
     topple_rrtc_settings.dynamic_extension = true;
+    topple_rrtc_settings.rrtc.dynamic_domain = true;
     topple_rrtc_settings.rand_connect = false;
 
 

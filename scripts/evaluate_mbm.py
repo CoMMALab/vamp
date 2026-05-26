@@ -61,11 +61,11 @@ def main(
 
     plan_settings.max_iterations = 500000
     plan_settings.max_samples = 1000000
-    plan_settings.bez_range = 0.5
+    plan_settings.bez_range = 0.75
     plan_settings.dynamic_extension = True
     plan_settings.alpha = 0.00001
     plan_settings.rand_connect = False
-    plan_settings.rrtc.range = 2.5
+    plan_settings.rrtc.range = 2.0
     plan_settings.rrtc.dynamic_domain = True
     plan_settings.rrtc.alpha = 0.00001
 

@@ -50,7 +50,7 @@ def topple(
     plan_settings.rrtc.range = 2.5
     plan_settings.rrtc.dynamic_domain = True
     plan_settings.rrtc.alpha = 0.00001
-    plan_settings.optimize = True
+    plan_settings.optimize = False
     plan_settings.cost_bound_resample = False
     plan_settings.use_phs = False
 

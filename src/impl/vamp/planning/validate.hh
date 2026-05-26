@@ -329,7 +329,10 @@ namespace vamp::planning
         }
 
         // array to store inference output
+        auto ts = std::chrono::high_resolution_clock::now();
         auto out = Robot::template topple_nn_forward(x);
+        auto tf = std::chrono::high_resolution_clock::now();
+        std::cout << "NN inference time: " << std::chrono::duration_cast<std::chrono::milliseconds>(tf - ts).count() << " ms" << std::endl;
 
         // build the anchors
         row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
@@ -355,6 +358,12 @@ namespace vamp::planning
         }
 
         Bezier bez(anchors);
+        // print anchors
+        for (auto i = 0U; i < Robot::topple_out_dim + 2; i++) {
+            std::cout << "Anchor " << i << ": ";
+            std::cout << bez.anchors.row(i) << std::endl;
+            std::cout << std::endl;
+        }
         bez.time = T;
         return bez;
     }

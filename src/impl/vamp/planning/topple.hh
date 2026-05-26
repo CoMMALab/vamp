@@ -159,10 +159,10 @@ namespace vamp::planning
                 }
                 position_distance = std::sqrt(position_distance);
 
-                // if (settings.rrtc.dynamic_domain and nearest_radius < position_distance)
-                // {
-                //     continue;
-                // }
+                if (settings.rrtc.dynamic_domain and nearest_radius < position_distance)
+                {
+                    continue;
+                }
 
                 // std::cout << " --> " << nearest_configuration << " to " << temp << "via " << nearest_vector << std::endl;
 

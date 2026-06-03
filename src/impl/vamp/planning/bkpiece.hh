@@ -235,102 +235,118 @@ struct BKPIECE
                 break;
 
             auto &[ecell_coord, ecell] = *maybe_cell;
+            if (ecell->score < std::numeric_limits<double>::epsilon())
+                active.grid.rescoreAllCells(active.iteration);
             ++ecell->selections;
 
             const std::size_t existing_idx = pickMotionIdx(ecell);
             const Motion     &existing     = active.pool[existing_idx];
 
-            // 3. Sample a random target state (no goal bias in BKPIECE).
-            Configuration xstate = rng->next();
+            bool valid_sample = false;
+            std::size_t num_samples = 0;
+            Configuration xstate;
+            do {
+                // 3. Sample a random target state (no goal bias in BKPIECE).
+                num_samples++;
+                xstate = rng->next();
 
-            // 4. Steer.
-            const float d        = existing.state.distance(xstate);
-            const bool  is_reach = (d <= settings.range);
-            if (!is_reach)
-                xstate = existing.state.interpolate(xstate, settings.range / d);
+                // 4. Steer.
+                const float d        = existing.state.distance(xstate);
+                const float scaled_range = settings.range * std::pow(rng->dist.uniform_01(), 1.0 / static_cast<float>(Robot::dimension));
+                const bool  is_reach = (d <= scaled_range);
+                if (!is_reach)
+                    xstate = existing.state.interpolate(xstate, scaled_range / d);
 
-            // 5. Validate (with partial fallback).
-            Configuration last_valid;
-            bool keep = validate_motion<Robot, rake, resolution>(
-                existing.state, xstate, environment);
+                valid_sample = validate_motion<Robot, rake, resolution>(xstate, xstate, environment);
+            } while (!valid_sample && num_samples < 100);
 
-            if (!keep and settings.min_valid_path_fraction < 1.0)
-            {
-                const float frac = validate_motion_partial<Robot, rake, resolution>(
-                    existing.state, xstate, environment, last_valid);
-                if (frac >= settings.min_valid_path_fraction)
+            if (valid_sample) {
+                // 5. Validate (with partial fallback).
+                Configuration last_valid;
+                bool keep = validate_motion<Robot, rake, resolution>(
+                    existing.state, xstate, environment);
+
+                if (!keep and settings.min_valid_path_fraction < 1.0)
                 {
-                    xstate = last_valid;
-                    keep   = true;
+                    const float frac = validate_motion_partial<Robot, rake, resolution>(
+                        existing.state, xstate, environment, last_valid);
+                    if (frac >= settings.min_valid_path_fraction)
+                    {
+                        xstate = last_valid;
+                        keep   = true;
+                    }
                 }
-            }
 
-            if (!keep)
-            {
+                if (!keep)
+                {
+                    ecell->score *= settings.failed_expansion_score_factor;
+                }
+                else
+                {
+                    // 6. Add new motion to active tree.
+                    const std::size_t new_idx = active.addMotion(xstate, existing_idx, settings.cell_size);
+
+                    // 7. Connection attempt: check if the passive tree has a cell at
+                    //    the same grid coordinate as the new state.
+                    Coord new_coord = active.projectToGrid(xstate, settings.cell_size);
+
+                    Cell *passive_cell = passive.grid.getCell(new_coord);
+                    if (passive_cell && !passive_cell->motion_indices.empty())
+                    {
+                        // Pick a random motion from the matching cell using uniform
+                        // integer distribution — the connection target is chosen
+                        // uniformly, not by importance (matching OMPL's uniformInt).
+                        const std::size_t n_passive  = passive_cell->motion_indices.size();
+                        const std::size_t connect_pool_idx =
+                            passive_cell->motion_indices[
+                                rng->dist.uniform_integer(std::size_t(0), n_passive - 1)];
+
+                        const Motion &connect_motion = passive.pool[connect_pool_idx];
+
+                        // Full motion check — connections are all-or-nothing.
+                        if (validate_motion<Robot, rake, resolution>(
+                                xstate, connect_motion.state, environment))
+                        {
+                            // 8. Reconstruct path.
+                            //
+                            // At this point `extending_start` has already been flipped
+                            // for the next iteration, so:
+                            //   extending_start == true  → active was goal_ctx
+                            //   extending_start == false → active was start_ctx
+                            const bool active_is_start = !extending_start;
+
+                            auto active_chain  = traceBack(active.pool,  new_idx);
+                            auto passive_chain = traceBack(passive.pool, connect_pool_idx);
+
+                            // Route to canonical (start-first) order.
+                            const auto &start_chain  = active_is_start ? active_chain  : passive_chain;
+                            const auto &goal_chain   = active_is_start ? passive_chain : active_chain;
+                            const auto &start_pool_r = active_is_start ? active.pool   : passive.pool;
+                            const auto &goal_pool_r  = active_is_start ? passive.pool  : active.pool;
+
+                            // start_chain: [start_root, ..., start_side_of_connection]
+                            for (std::size_t idx : start_chain)
+                                result.path.emplace_back(start_pool_r[idx].state);
+
+                            // goal_chain:  [goal_root, ..., goal_side_of_connection]
+                            // Reverse so the connection point is adjacent to the start chain.
+                            for (int i = static_cast<int>(goal_chain.size()) - 1; i >= 0; --i)
+                                result.path.emplace_back(goal_pool_r[goal_chain[i]].state);
+
+                            result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
+                            result.iterations  = iter;
+                            result.size.emplace_back(start_ctx.size());
+                            result.size.emplace_back(goal_ctx.size());
+                            return result;
+                        }
+                        // Connection attempt failed — do NOT penalise ecell;
+                        // the extension itself succeeded.
+                    }
+                }
+            } else {
                 ecell->score *= settings.failed_expansion_score_factor;
-                active.grid.updateImportance(ecell, ecell_coord);
-                continue;
             }
-
-            // 6. Add new motion to active tree.
-            const std::size_t new_idx = active.addMotion(xstate, existing_idx, settings.cell_size);
-
-            // 7. Connection attempt: check if the passive tree has a cell at
-            //    the same grid coordinate as the new state.
-            Coord new_coord = active.projectToGrid(xstate, settings.cell_size);
-
-            Cell *passive_cell = passive.grid.getCell(new_coord);
-            if (passive_cell && !passive_cell->motion_indices.empty())
-            {
-                // Pick a random motion from the matching cell using uniform
-                // integer distribution — the connection target is chosen
-                // uniformly, not by importance (matching OMPL's uniformInt).
-                const std::size_t n_passive  = passive_cell->motion_indices.size();
-                const std::size_t connect_pool_idx =
-                    passive_cell->motion_indices[
-                        rng->dist.uniform_integer(std::size_t(0), n_passive - 1)];
-
-                const Motion &connect_motion = passive.pool[connect_pool_idx];
-
-                // Full motion check — connections are all-or-nothing.
-                if (validate_motion<Robot, rake, resolution>(
-                        xstate, connect_motion.state, environment))
-                {
-                    // 8. Reconstruct path.
-                    //
-                    // At this point `extending_start` has already been flipped
-                    // for the next iteration, so:
-                    //   extending_start == true  → active was goal_ctx
-                    //   extending_start == false → active was start_ctx
-                    const bool active_is_start = !extending_start;
-
-                    auto active_chain  = traceBack(active.pool,  new_idx);
-                    auto passive_chain = traceBack(passive.pool, connect_pool_idx);
-
-                    // Route to canonical (start-first) order.
-                    const auto &start_chain  = active_is_start ? active_chain  : passive_chain;
-                    const auto &goal_chain   = active_is_start ? passive_chain : active_chain;
-                    const auto &start_pool_r = active_is_start ? active.pool   : passive.pool;
-                    const auto &goal_pool_r  = active_is_start ? passive.pool  : active.pool;
-
-                    // start_chain: [start_root, ..., start_side_of_connection]
-                    for (std::size_t idx : start_chain)
-                        result.path.emplace_back(start_pool_r[idx].state);
-
-                    // goal_chain:  [goal_root, ..., goal_side_of_connection]
-                    // Reverse so the connection point is adjacent to the start chain.
-                    for (int i = static_cast<int>(goal_chain.size()) - 1; i >= 0; --i)
-                        result.path.emplace_back(goal_pool_r[goal_chain[i]].state);
-
-                    result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
-                    result.iterations  = iter;
-                    result.size.emplace_back(start_ctx.size());
-                    result.size.emplace_back(goal_ctx.size());
-                    return result;
-                }
-                // Connection attempt failed — do NOT penalise ecell;
-                // the extension itself succeeded.
-            }
+            active.grid.updateImportance(ecell, ecell_coord);
         }
 
         // BKPIECE does not produce approximate solutions.

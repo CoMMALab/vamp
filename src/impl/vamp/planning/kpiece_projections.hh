@@ -62,7 +62,10 @@ struct EEProjection
         const typename Robot::Configuration &q,
         std::array<float, 3>                &coord) noexcept
     {
-        const Eigen::Isometry3f pose = Robot::eefk(q.to_array());
+        const auto arr = q.to_array();
+        std::array<float, Robot::dimension> q_array;
+        std::copy_n(arr.begin(), Robot::dimension, q_array.begin());
+        const Eigen::Isometry3f pose = Robot::eefk(q_array);
         const Eigen::Vector3f   pos  = pose.translation();
         coord[0] = pos.x();
         coord[1] = pos.y();

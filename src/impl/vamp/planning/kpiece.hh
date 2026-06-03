@@ -231,6 +231,10 @@ struct KPIECE
             const Coord ecell_coord = *maybe_coord;
             Cell       *ecell       = grid.getCell(ecell_coord);
             assert(ecell && !ecell->motion_indices.empty());
+
+            if (ecell->score < std::numeric_limits<double>::epsilon())
+                grid.rescoreAllCells(iteration);
+
             ++ecell->selections;
 
             const std::size_t existing_idx = pickMotionIdx(ecell);
@@ -293,8 +297,8 @@ struct KPIECE
             else
             {
                 ecell->score *= settings.failed_expansion_score_factor;
-                grid.updateImportance(ecell, ecell_coord);
             }
+            grid.updateImportance(ecell, ecell_coord);
         }
 
         // ── Reconstruct path ──────────────────────────────────────────
@@ -312,7 +316,7 @@ struct KPIECE
         }
 
         result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
-        result.iterations  = 0;
+        result.iterations  = iteration;
         return result;
     }
 };

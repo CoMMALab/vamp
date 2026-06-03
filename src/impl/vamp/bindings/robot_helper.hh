@@ -239,7 +239,7 @@ namespace vamp::binding
             vamp::planning::KPIECESettings>;
 
         using BKPIECE = PlannerHelper<
-            vamp::planning::BKPIECE<Robot, vamp::planning::ShoulderProjection<Robot, 3>, rake, Robot::resolution>,
+            vamp::planning::BKPIECE<Robot, vamp::planning::EEProjection<Robot>, rake, Robot::resolution>,
             vamp::planning::KPIECESettings>;
 
         inline static auto fk(const Type &c_in) -> std::vector<vamp::collision::Sphere<float>>

@@ -189,8 +189,10 @@ struct BKPIECE
                 return 0;
             constexpr float focus = 3.0F;
             const float     raw   = std::abs(nd(rng->dist.rng));
-            const auto      idx   = static_cast<std::size_t>(
-                std::floor(raw * static_cast<float>(n) / focus));
+            const float     v     = static_cast<float>(n) * (1.0F - raw / focus);
+            if (v <= 0.0F)
+                return 0;
+            const auto      idx   = static_cast<std::size_t>(std::floor(v));
             return std::min(idx, n - 1);
         };
 

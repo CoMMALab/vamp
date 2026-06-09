@@ -125,5 +125,6 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("failed_expansion_score_factor", &vp::KPIECESettings::failed_expansion_score_factor)
         .def_rw("border_fraction", &vp::KPIECESettings::border_fraction)
         .def_rw("max_samples", &vp::KPIECESettings::max_samples)
-        .def_rw("max_iterations", &vp::KPIECESettings::max_iterations);
+        .def_rw("max_iterations", &vp::KPIECESettings::max_iterations)
+        .def_rw("max_valid_sample_attempts", &vp::KPIECESettings::max_valid_sample_attempts);
 }

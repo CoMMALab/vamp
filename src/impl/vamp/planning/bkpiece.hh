@@ -72,26 +72,26 @@ struct BKPIECE
         // Project `q` to float coords, bin to grid integer coords,
         // add to the pool, insert into the grid, update importance.
         // Returns the new motion's pool index.
-        Coord projectToGrid(const Configuration &q, float cell_size) const
+        Coord projectToGrid(const Configuration &q, const std::vector<float> &cell_sizes) const
         {
             std::array<float, proj_dim> proj;
             Projection::project(q, proj);
             Coord coord;
             for (std::size_t i = 0; i < proj_dim; ++i)
-                coord[i] = static_cast<int>(std::floor(proj[i] / cell_size));
+                coord[i] = static_cast<int>(std::floor(proj[i] / cell_sizes[i]));
             return coord;
         }
 
         std::size_t addMotion(
             const Configuration &q,
             std::size_t          parent_idx,
-            float                cell_size,
+            const std::vector<float> &cell_sizes,
             double               dist_to_goal = 0.0)
         {
             const std::size_t idx = pool.size();
             pool.push_back({q, parent_idx});
 
-            Coord coord = projectToGrid(q, cell_size);
+            Coord coord = projectToGrid(q, cell_sizes);
 
             Cell *cell = grid.getCell(coord);
             if (cell)
@@ -180,7 +180,7 @@ struct BKPIECE
         // ── Half-normal motion selection ───────────────────────────────
         // Mirrors OMPL's rng_.halfNormalInt(0, n-1, focus=3.0):
         // samples |N(0,1)| * n / focus, clamped to [0, n).
-        // Biases toward index 0 (the oldest motion in the cell).
+        // Biases toward index n-1 (the newest motion in the cell).
         std::normal_distribution<float> nd;  // N(0, 1)
 
         auto halfNormalIndex = [&](std::size_t n) -> std::size_t
@@ -199,6 +199,22 @@ struct BKPIECE
         auto pickMotionIdx = [&](const Cell *cell) -> std::size_t
         {
             return cell->motion_indices[halfNormalIndex(cell->motion_indices.size())];
+        };
+
+        // Uniform-on-sphere direction via logit transform (matching phs.hh).
+        auto uniform_on_ball = [&]() -> Configuration {
+            auto U1 = rng->next();
+            Robot::descale_configuration(U1);
+            auto logit_val = (U1 * (1.0F - U1).rcp()).log()
+                           * std::sqrt(static_cast<float>(vamp::utils::constants::pi / 8.0));
+            auto trimmed = logit_val.trim();
+            return trimmed / trimmed.l2_norm();
+        };
+
+        // Uniform-in-ball: scale direction by pow(uniform_01, 1/dim) for volume uniformity.
+        auto uniform_in_ball = [&]() -> Configuration {
+            return std::pow(rng->dist.uniform_01(), 1.0F / static_cast<float>(Robot::dimension))
+                 * uniform_on_ball();
         };
 
         // ── Path reconstruction helper ─────────────────────────────────
@@ -248,19 +264,12 @@ struct BKPIECE
             std::size_t num_samples = 0;
             Configuration xstate;
             do {
-                // 3. Sample a random target state (no goal bias in BKPIECE).
+                // 3. Sample uniformly from a ball around the existing state.
                 num_samples++;
-                xstate = rng->next();
-
-                // 4. Steer.
-                const float d        = existing.state.distance(xstate);
-                const float scaled_range = settings.range * std::pow(rng->dist.uniform_01(), 1.0 / static_cast<float>(Robot::dimension));
-                const bool  is_reach = (d <= scaled_range);
-                if (!is_reach)
-                    xstate = existing.state.interpolate(xstate, scaled_range / d);
+                xstate = existing.state + settings.range * uniform_in_ball();
 
                 valid_sample = validate_motion<Robot, rake, resolution>(xstate, xstate, environment);
-            } while (!valid_sample && num_samples < 100);
+            } while (!valid_sample && num_samples < settings.max_valid_sample_attempts);
 
             if (valid_sample) {
                 // 5. Validate (with partial fallback).

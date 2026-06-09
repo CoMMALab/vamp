@@ -1,13 +1,15 @@
 #pragma once
 
 #include <cstddef>
+#include <vector>
 
 namespace vamp::planning
 {
     struct KPIECESettings
     {
-        // Size of a grid cell in projection space (e.g., radians or meters).
-        float cell_size{0.1F};
+        // Per-dimension cell sizes in projection space (e.g., radians or meters).
+        // One value for each dimension of the projection space.
+        std::vector<float> cell_size{0.1F};
 
         // Maximum range of a single extension step (same as OMPL's "range").
         float range{2.0F};
@@ -30,5 +32,8 @@ namespace vamp::planning
 
         // Hard limit on planning iterations.
         std::size_t max_iterations{100000};
+
+        // Maximum attempts to sample a valid configuration from a single state.
+        std::size_t max_valid_sample_attempts{100};
     };
 }  // namespace vamp::planning

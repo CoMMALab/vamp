@@ -142,7 +142,7 @@ struct KPIECE
             Projection::project(q, proj);
             Coord coord;
             for (std::size_t i = 0; i < proj_dim; ++i)
-                coord[i] = static_cast<int>(std::floor(proj[i] / settings.cell_size));
+                coord[i] = static_cast<int>(std::floor(proj[i] / settings.cell_size[i]));
             return coord;
         };
 
@@ -177,7 +177,7 @@ struct KPIECE
         // ── Half-normal motion selection ───────────────────────────────
         // Mirrors OMPL's rng_.halfNormalInt(0, n-1, focus=3.0):
         // samples |N(0,1)| * n / focus, clamped to [0, n).
-        // This biases toward index 0 (the oldest motion in the cell).
+        // Biases toward index n-1 (the newest motion in the cell).
         std::normal_distribution<float> nd;  // N(0, 1)
 
         auto halfNormalIndex = [&](std::size_t n) -> std::size_t
@@ -186,14 +186,32 @@ struct KPIECE
                 return 0;
             constexpr float focus = 3.0F;
             const float     raw   = std::abs(nd(rng->dist.rng));
-            const auto      idx   = static_cast<std::size_t>(
-                std::floor(raw * static_cast<float>(n) / focus));
+            const float     v     = static_cast<float>(n) * (1.0F - raw / focus);
+            if (v <= 0.0F)
+                return 0;
+            const auto      idx   = static_cast<std::size_t>(std::floor(v));
             return std::min(idx, n - 1);
         };
 
         auto pickMotionIdx = [&](const Cell *cell) -> std::size_t
         {
             return cell->motion_indices[halfNormalIndex(cell->motion_indices.size())];
+        };
+
+        // Uniform-on-sphere direction via logit transform (matching phs.hh).
+        auto uniform_on_ball = [&]() -> Configuration {
+            auto U1 = rng->next();
+            Robot::descale_configuration(U1);
+            auto logit_val = (U1 * (1.0F - U1).rcp()).log()
+                           * std::sqrt(static_cast<float>(vamp::utils::constants::pi / 8.0));
+            auto trimmed = logit_val.trim();
+            return trimmed / trimmed.l2_norm();
+        };
+
+        // Uniform-in-ball: scale direction by pow(uniform_01, 1/dim) for volume uniformity.
+        auto uniform_in_ball = [&]() -> Configuration {
+            return std::pow(rng->dist.uniform_01(), 1.0F / static_cast<float>(Robot::dimension))
+                 * uniform_on_ball();
         };
 
         // ── Goal sampling helpers ──────────────────────────────────────
@@ -241,61 +259,77 @@ struct KPIECE
             const Motion     &existing     = pool[existing_idx];
 
             // 2. Sample target state (goal-biased).
-            Configuration xstate =
-                (rng->dist.uniform_01() < settings.goal_bias)
-                    ? sampleGoal()
-                    : rng->next();
+            Configuration xstate;
+            bool valid_sample = false;
+            if (rng->dist.uniform_01() < settings.goal_bias) {
+                xstate = sampleGoal();
+                // 3. Steer.
+                const float d        = existing.state.distance(xstate);
+                const bool  is_reach = (d <= settings.range);
+                if (!is_reach)
+                    xstate = existing.state.interpolate(xstate, settings.range / d);
+                valid_sample = validate_motion<Robot, rake, resolution>(xstate, xstate, environment);
+            }
+            else {
+                std::size_t num_samples = 0;
+                do {
+                    // 3. Sample uniformly from a ball around the existing state.
+                    num_samples++;
+                    xstate = existing.state + settings.range * uniform_in_ball();
 
-            // 3. Steer.
-            const float d        = existing.state.distance(xstate);
-            const bool  is_reach = (d <= settings.range);
-            if (!is_reach)
-                xstate = existing.state.interpolate(xstate, settings.range / d);
-
-            // 4. Validate (with partial fallback).
-            Configuration last_valid;
-            bool keep = validate_motion<Robot, rake, resolution>(
-                existing.state, xstate, environment);
-
-            if (!keep)
-            {
-                const float frac = validate_motion_partial<Robot, rake, resolution>(
-                    existing.state, xstate, environment, last_valid);
-                if (frac >= settings.min_valid_path_fraction)
-                {
-                    xstate = last_valid;
-                    keep   = true;
-                }
+                    valid_sample = validate_motion<Robot, rake, resolution>(xstate, xstate, environment);
+                } while (!valid_sample and num_samples < settings.max_valid_sample_attempts);
             }
 
-            if (keep)
-            {
-                const float       dist_goal = goalDist(xstate);
-                const std::size_t new_idx   =
-                    addMotion(xstate, existing_idx, static_cast<double>(dist_goal));
+            if (valid_sample) {
+                // 4. Validate (with partial fallback).
+                Configuration last_valid;
+                bool keep = validate_motion<Robot, rake, resolution>(
+                    existing.state, xstate, environment);
 
-                // Check goal satisfaction.
-                bool solved = false;
-                for (const auto &goal : goals)
+                if (!keep)
                 {
-                    if (xstate.distance(goal) < 1e-4F)
+                    const float frac = validate_motion_partial<Robot, rake, resolution>(
+                        existing.state, xstate, environment, last_valid);
+                    if (frac >= settings.min_valid_path_fraction)
                     {
-                        solved       = true;
-                        solution_idx = new_idx;
-                        break;
+                        xstate = last_valid;
+                        keep   = true;
                     }
                 }
-                if (solved)
-                    break;
 
-                if (dist_goal < approx_dif)
+                if (keep)
                 {
-                    approx_dif     = dist_goal;
-                    approx_sol_idx = new_idx;
+                    const float       dist_goal = goalDist(xstate);
+                    const std::size_t new_idx   =
+                        addMotion(xstate, existing_idx, static_cast<double>(dist_goal));
+
+                    // Check goal satisfaction.
+                    bool solved = false;
+                    for (const auto &goal : goals)
+                    {
+                        if (xstate.distance(goal) < 1e-4F)
+                        {
+                            solved       = true;
+                            solution_idx = new_idx;
+                            break;
+                        }
+                    }
+                    if (solved)
+                        break;
+
+                    if (dist_goal < approx_dif)
+                    {
+                        approx_dif     = dist_goal;
+                        approx_sol_idx = new_idx;
+                    }
+                }
+                else
+                {
+                    ecell->score *= settings.failed_expansion_score_factor;
                 }
             }
-            else
-            {
+            else {
                 ecell->score *= settings.failed_expansion_score_factor;
             }
             grid.updateImportance(ecell, ecell_coord);

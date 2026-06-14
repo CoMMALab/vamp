@@ -437,6 +437,11 @@ namespace vamp
         {
             return _mm256_max_ps(v, other);
         }
+        template <unsigned int = 0>
+        inline static constexpr auto min(VectorT v, VectorT other) noexcept -> VectorT
+        {
+            return _mm256_min_ps(v, other);
+        }
 
         template <unsigned int = 0>
         inline static constexpr auto hsum(VectorT v) noexcept -> ScalarT
@@ -546,6 +551,222 @@ namespace vamp
 
             return y;
         }
+        template <unsigned int = 0>
+        inline static constexpr auto asin(VectorT x) noexcept -> VectorT
+        {
+
+            const auto ps_sign_mask = constant_int(0x80000000);
+
+            const auto ps_cephes_P0 = constant( 4.253011369004428248960E-3);
+            const auto ps_cephes_P1 = constant(-6.019598008014123785661E-1);
+            const auto ps_cephes_P2 = constant( 5.444622390564711410273E0);
+            const auto ps_cephes_P3 = constant(-1.626247967210700244449E1);
+            const auto ps_cephes_P4 = constant( 1.956261983317594739197E1);
+            const auto ps_cephes_P5 = constant(-8.198089802484824371615E0);
+
+
+            const auto ps_cephes_Q0 = constant(-1.474091372988853791896E1);
+            const auto ps_cephes_Q1 = constant( 7.049610280856842141659E1);
+            const auto ps_cephes_Q2 = constant(-1.471791292232726029859E2);
+            const auto ps_cephes_Q3 = constant( 1.395105614657485689735E2);
+            const auto ps_cephes_Q4 = constant(-4.918853881490881290097E1);
+
+            const auto ps_cephes_R0 = constant( 2.967721961301243206100E-3);
+            const auto ps_cephes_R1 = constant(-5.634242780008963776856E-1);
+            const auto ps_cephes_R2 = constant( 6.968710824104713396794E0);
+            const auto ps_cephes_R3 = constant(-2.556901049652824852289E1);
+            const auto ps_cephes_R4 = constant( 2.853665548261061424989E1);
+
+
+            const auto ps_cephes_S0 = constant(-2.194779531642920639778E1);
+            const auto ps_cephes_S1 = constant( 1.470656354026814941758E2);
+            const auto ps_cephes_S2 = constant(-3.838770957603691357202E2);
+            const auto ps_cephes_S3 = constant( 3.424398657913078477438E2);
+
+            const auto ps_1 = constant(1.0f);
+            const auto ps_cephes_pi4 = constant(7.85398163397448309616E-1);
+            const auto ps_cephes_morebits = constant(6.123233995736765886130E-17);
+
+            const auto ps_625 = constant(0.625); // 0.625
+            const auto ps_1en8 = constant(1E-8); // 1e-8
+
+            auto sign_bit = x;
+            auto a = abs(x);
+            sign_bit = and_(sign_bit, ps_sign_mask);
+
+            // Evaluate asin for x > 0.625
+            auto zz = sub(ps_1, a);
+
+            // solve r = polevl( zz, R, 4)
+            auto r = ps_cephes_R0;
+            r = mul(r, zz);
+            r = add(r, ps_cephes_R1);
+            r = mul(r, zz);
+            r = add(r, ps_cephes_R2);
+            r = mul(r, zz);
+            r = add(r, ps_cephes_R3);
+            r = mul(r, zz);
+            r = add(r, ps_cephes_R4);
+
+            // solve s = p1evl( zz, S, 4);
+            auto s = add(zz, ps_cephes_S0);
+            s = mul(s, zz);
+            s = add(s, ps_cephes_S1);
+            s = mul(s, zz);
+            s = add(s, ps_cephes_S2);
+            s = mul(s, zz);
+            s = add(s, ps_cephes_S3);
+
+            auto p = mul(zz, r);
+            p = div(p, s);
+            zz = add(zz, zz);
+            zz = sqrt(zz);
+            auto z = sub(ps_cephes_pi4, zz);
+            zz = mul(zz, p);
+            zz = sub(zz, ps_cephes_morebits);
+            z = sub(z, zz);
+            z = add(z, ps_cephes_pi4);
+
+
+            // evaluate for x < 0.625
+            zz = mul(a, a);
+            // evaluate pq = polevl( zz, P, 5)
+            auto pq = ps_cephes_P0;
+            pq = mul(pq, zz);
+            pq = add(pq, ps_cephes_P1);
+            pq = mul(pq, zz);
+            pq = add(pq, ps_cephes_P2);
+            pq = mul(pq, zz);
+            pq = add(pq, ps_cephes_P3);
+            pq = mul(pq, zz);
+            pq = add(pq, ps_cephes_P4);
+            pq = mul(pq, zz);
+            pq = add(pq, ps_cephes_P5);
+
+
+            auto qp = add(zz, ps_cephes_Q0);
+            qp = mul(qp, zz);
+            qp = add(qp, ps_cephes_Q1);
+            qp = mul(qp, zz);
+            qp = add(qp, ps_cephes_Q2);
+            qp = mul(qp, zz);
+            qp = add(qp, ps_cephes_Q3);
+            qp = mul(qp, zz);
+            qp = add(qp, ps_cephes_Q4);
+
+            auto z2 = mul(zz, pq);
+            z2 = div(z2, qp);
+            z2 = mul(a, z2);
+            z2 = add(z2, a);
+
+
+            // implement >0.625 mask first
+            // calculate a mask
+            auto gt_625_mask = cmp_greater_than(a, ps_625);
+            z = and_(gt_625_mask, z);
+            z2 = _mm256_andnot_ps(gt_625_mask, z2);
+            z = add(z, z2);
+
+            z = _mm256_xor_ps(z, sign_bit);
+
+
+            auto gt_1en8_mask = cmp_greater_than(a, ps_1en8);
+            z = and_(gt_1en8_mask, z);
+            z2 = _mm256_andnot_ps(gt_1en8_mask, x);
+            z = add(z, z2);
+
+            return z;
+        }
+
+
+        // TODO (shru) -- acos has some 3rd decimal errors, fix it pls
+        template <unsigned int = 0>
+        inline static constexpr auto acos(VectorT x) noexcept -> VectorT
+        {
+
+            const auto ps_cephes_morebits = constant(6.123233995736765886130E-17);
+
+            const auto ps_05 = constant(0.5); // 0.5
+            const auto ps_cephes_pi4 = constant(7.85398163397448309616E-1); // pi/4
+            const auto ps_2 = constant(2.0f); // 0.5
+
+
+            auto z = mul(ps_05, x);
+            z = sub(ps_05, z);
+            z = sqrt(z);
+            z = asin(z);
+            z = mul(ps_2, z);
+
+
+            auto z2 = asin(x);
+            z2 = sub(ps_cephes_pi4, z2);
+            z2 = add(z2, ps_cephes_morebits);
+            z2 = add(z2, ps_cephes_pi4);
+
+            auto gt_05_mask = cmp_greater_than(x, ps_05);
+            z = and_(gt_05_mask, z);
+            z2 = _mm256_andnot_ps(gt_05_mask, z2);
+            z = add(z, z2);
+
+            return z;
+
+        }
+        template <unsigned int = 0>
+        inline static auto atan(VectorT x) noexcept -> VectorT
+        {
+            const auto p7 = constant(-0.0443265554792128f);
+            const auto p3 = constant(-0.3258083974640975f);
+            const auto p5 = constant(0.1555786518463281f);
+            const auto p1 = constant(0.9997878412794807f);
+
+            const auto pi_2 = constant(1.5707963267948966f);
+            const auto one = constant(1.0f);
+            const auto zero = zero_vector();
+
+            auto ax = abs(x);
+
+            // reciprocal approximation with two Newton refinements
+            auto recip = rcp(ax);
+            recip = mul(recip, sub(constant(2.0f), mul(ax, recip)));
+            recip = mul(recip, sub(constant(2.0f), mul(ax, recip)));
+
+            // xinv + ax
+            recip = add(recip, ax);
+
+            // mask for |x| > 1
+            auto gt1 = cmp_greater_than(ax, one);
+
+            // if |x| > 1 -> ax = ax - recip, r = pi/2
+            auto ax1 = and_(gt1, sub(ax, recip));
+            auto ax2 = _mm256_andnot_ps(gt1, ax);
+            ax = add(ax1, ax2);
+
+            auto r = and_(gt1, pi_2);
+
+            // polynomial evaluation
+            auto xx = mul(ax, ax);
+
+            auto a = mul(mul(p7, ax), xx);
+            a = add(a, mul(p5, ax));
+
+            auto b = mul(mul(p3, ax), xx);
+            b = add(b, mul(p1, ax));
+
+            xx = mul(xx, xx);
+            b = add(b, mul(a, xx));
+
+            r = add(r, b);
+
+            // if x < 0 -> r = -r
+            auto neg_r = neg(r);
+            auto neg_mask = cmp_less_than(x, zero);
+            auto r_neg_part = and_(neg_mask, neg_r);
+            auto r_pos_part = _mm256_andnot_ps(neg_mask, r);
+            r = add(r_neg_part, r_pos_part);
+
+            return r;
+        }
+
 
         // NOTE: Dummy parameter because otherwise we get constexpr errors with set1_ps...
         template <unsigned int = 0>

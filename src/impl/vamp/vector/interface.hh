@@ -456,6 +456,27 @@ namespace vamp
                                         static_cast<typename S::ScalarT>(2 * PI));
             return vsq_sq.sin();
         }
+        inline constexpr auto asin() const noexcept -> D
+        {
+            return D(apply<S::template asin<0>>(d()->data));
+        }
+
+        template <
+            typename ScalarT = typename S::ScalarT,
+            typename =
+                std::enable_if_t<std::is_same_v<ScalarT, float> or std::is_same_v<ScalarT, double>, bool>>
+        inline constexpr auto acos() const noexcept -> D
+        {
+            return D(apply<S::template acos<0>>(d()->data));
+        }
+        template <
+            typename ScalarT = typename S::ScalarT,
+            typename =
+                std::enable_if_t<std::is_same_v<ScalarT, float> or std::is_same_v<ScalarT, double>, bool>>
+        inline constexpr auto atan() const noexcept -> D
+        {
+            return D(apply<S::template atan<0>>(d()->data));
+        }
 
         template <typename OtherT, typename BoundsT>
         inline static constexpr auto map_to_range(OtherT v, BoundsT min_v, BoundsT max_v) noexcept -> D

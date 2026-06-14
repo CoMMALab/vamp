@@ -139,12 +139,12 @@ endif()
 
 # C++ demos
 if(VAMP_BUILD_CPP_DEMO)
-  add_executable(vamp_rrtc_example scripts/cpp/rrtc_example.cc)
-  target_link_libraries(vamp_rrtc_example PRIVATE vamp_cpp)
+  add_executable(iiwa_try scripts/cpp/iiwa_try.cc)
+  target_link_libraries(iiwa_try PRIVATE vamp_cpp)
   
   # Disable strict warnings for demos to maintain compatibility
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(vamp_rrtc_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+    target_compile_options(iiwa_try PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
   endif()
 endif()
 

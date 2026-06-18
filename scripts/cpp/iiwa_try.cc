@@ -120,7 +120,8 @@ auto main(int, char **) -> int
 
     // Setup RRTC and plan
     vamp::planning::RRTCSettings rrtc_settings;
-    rrtc_settings.range = 0.2;
+    rrtc_settings.range = 0.5;
+    rrtc_settings.dynamic_domain = false;
 
     auto result =
         RRTC::solve(Robot::Configuration(start), Robot::Configuration(goal), env_v, rrtc_settings, rng);

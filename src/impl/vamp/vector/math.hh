@@ -118,6 +118,21 @@ inline constexpr auto atan(const DataT &v) -> DataT
 
 }
 
+template <typename DataT>
+inline constexpr auto atan2(const DataT &y, const DataT &x) -> DataT
+{
+
+    if constexpr (std::is_arithmetic_v<DataT>)
+    {
+        return std::atan2(y, x);
+    }
+    else
+    {
+        return y.atan2(x);
+    }
+
+}
+
 
 template <typename DataT>
 inline static auto to_isometry(const DataT *buf) -> Eigen::Transform<DataT, 3, Eigen::Isometry>

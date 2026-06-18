@@ -714,57 +714,89 @@ namespace vamp
         template <unsigned int = 0>
         inline static auto atan(VectorT x) noexcept -> VectorT
         {
-            const auto p7 = constant(-0.0443265554792128f);
-            const auto p3 = constant(-0.3258083974640975f);
-            const auto p5 = constant(0.1555786518463281f);
-            const auto p1 = constant(0.9997878412794807f);
 
-            const auto pi_2 = constant(1.5707963267948966f);
-            const auto one = constant(1.0f);
-            const auto zero = zero_vector();
+            const auto ps_sign_mask = constant_int(0x80000000);
 
-            auto ax = abs(x);
+            const auto ps_cephes_P0 = constant(-8.750608600031904122785E-1);
+            const auto ps_cephes_P1 = constant(-1.615753718733365076637E1);
+            const auto ps_cephes_P2 = constant(-7.500855792314704667340E1);
+            const auto ps_cephes_P3 = constant(-1.228866684490136173410E2);
+            const auto ps_cephes_P4 = constant(-6.485021904942025371773E1);
 
-            // reciprocal approximation with two Newton refinements
-            auto recip = rcp(ax);
-            recip = mul(recip, sub(constant(2.0f), mul(ax, recip)));
-            recip = mul(recip, sub(constant(2.0f), mul(ax, recip)));
+            const auto ps_cephes_Q0 = constant( 2.485846490142306297962E1);
+            const auto ps_cephes_Q1 = constant( 1.650270098316988542046E2);
+            const auto ps_cephes_Q2 = constant( 4.328810604912902668951E2);
+            const auto ps_cephes_Q3 = constant( 4.853903996359136964868E2);
+            const auto ps_cephes_Q4 = constant( 1.945506571482613964425E2);
 
-            // xinv + ax
-            recip = add(recip, ax);
+            const auto ps_1      = constant(1.0);
+            const auto ps_0_66   = constant(0.66);
+            const auto ps_2_4142 = constant(2.41421356237309504880);
 
-            // mask for |x| > 1
-            auto gt1 = cmp_greater_than(ax, one);
+            const auto ps_pi4 = constant(7.85398163397448309616E-1);
+            const auto ps_pi2 = constant(1.57079632679489661923);
 
-            // if |x| > 1 -> ax = ax - recip, r = pi/2
-            auto ax1 = and_(gt1, sub(ax, recip));
-            auto ax2 = _mm256_andnot_ps(gt1, ax);
-            ax = add(ax1, ax2);
+            auto sign_bit = and_(x, ps_sign_mask);
+            auto a = abs(x);
 
-            auto r = and_(gt1, pi_2);
+            //------------------------------------------------------------
+            // Range reduction
+            //------------------------------------------------------------
 
-            // polynomial evaluation
-            auto xx = mul(ax, ax);
+            auto gt_2414_mask = cmp_greater_than(a, ps_2_4142);
+            auto gt_066_mask  = cmp_greater_than(a, ps_0_66);
 
-            auto a = mul(mul(p7, ax), xx);
-            a = add(a, mul(p5, ax));
+            // 0.66 < x <= 2.4142
+            auto mid_mask = _mm256_andnot_ps(gt_2414_mask, gt_066_mask);
 
-            auto b = mul(mul(p3, ax), xx);
-            b = add(b, mul(p1, ax));
+            auto reduced_big = div(constant(-1.0), a);
+            auto reduced_mid = div(sub(a, ps_1), add(a, ps_1));
 
-            xx = mul(xx, xx);
-            b = add(b, mul(a, xx));
+            a = blend(a, reduced_big, gt_2414_mask);
+            a = blend(a, reduced_mid, mid_mask);
 
-            r = add(r, b);
+            auto y = constant(0.0);
+            y = blend(y, ps_pi2, gt_2414_mask);
+            y = blend(y, ps_pi4, mid_mask);
 
-            // if x < 0 -> r = -r
-            auto neg_r = neg(r);
-            auto neg_mask = cmp_less_than(x, zero);
-            auto r_neg_part = and_(neg_mask, neg_r);
-            auto r_pos_part = _mm256_andnot_ps(neg_mask, r);
-            r = add(r_neg_part, r_pos_part);
+            //------------------------------------------------------------
+            // Rational approximation
+            //------------------------------------------------------------
 
-            return r;
+            auto zz = mul(a, a);
+
+            // numerator
+            auto p = ps_cephes_P0;
+            p = mul(p, zz);
+            p = add(p, ps_cephes_P1);
+            p = mul(p, zz);
+            p = add(p, ps_cephes_P2);
+            p = mul(p, zz);
+            p = add(p, ps_cephes_P3);
+            p = mul(p, zz);
+            p = add(p, ps_cephes_P4);
+            p = mul(p, zz);
+            p = mul(p, a);
+
+            // denominator (p1evl)
+            auto q = add(zz, ps_cephes_Q0);
+            q = mul(q, zz);
+            q = add(q, ps_cephes_Q1);
+            q = mul(q, zz);
+            q = add(q, ps_cephes_Q2);
+            q = mul(q, zz);
+            q = add(q, ps_cephes_Q3);
+            q = mul(q, zz);
+            q = add(q, ps_cephes_Q4);
+
+            auto z = div(p, q);
+            z = add(z, a);
+            z = add(z, y);
+
+            // restore sign
+            z = _mm256_xor_ps(z, sign_bit);
+
+            return z;
         }
 
 

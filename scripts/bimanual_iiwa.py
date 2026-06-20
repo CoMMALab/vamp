@@ -70,6 +70,8 @@ def main(
             # print(vamp.bimanualiiwa.parameterized_ik(q_tilde_middle)[1])
             # print(vamp.bimanualiiwa.parameterized_ik(q_tilde_bottom)[1])
 
+            # vamp.bimanualiiwa.set_ik_parameters([1.0, 1.0, -1.0, 0.6])
+
 
             # pick two random configurations of the three and make sure they are different
             start = random.choice([q_tilde_bottom, q_tilde_middle, q_tilde_top])

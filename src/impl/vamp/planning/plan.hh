@@ -1,7 +1,7 @@
 #pragma once
 
 #include <limits>
-#include <vamp/planning/parameterized_ik_validate.hh>
+#include <vamp/planning/validate.hh>
 #include <vamp/planning/nn.hh>
 #include <vamp/vector.hh>
 

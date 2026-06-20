@@ -29,14 +29,45 @@ namespace vamp::planning
     {
         // TODO: Fix use of reinterpret_cast in pack() so that this can be constexpr
         const auto percents = FloatVector<rake>(Percents<rake>::percents);
+        
 
-        typename Robot::template ConfigurationBlock<rake> block;
+        typename Robot::template AmbientConfigurationBlock<rake> block;
+        FloatVector<rake, Robot::dimension + 4> config_block;
 
-        // HACK: broadcast() implicitly assumes that the rake is exactly VectorWidth
-        for (auto i = 0U; i < Robot::dimension; ++i)
+        if constexpr (Robot::use_parameterized_ik)
         {
-            block[i] = start.broadcast(i) + (vector.broadcast(i) * percents);
+
+            // HACK: broadcast() implicitly assumes that the rake is exactly VectorWidth
+            for (auto i = 0U; i < Robot::dimension; ++i)
+            {
+                config_block[i] = start.broadcast(i) + (vector.broadcast(i) * percents);
+            }
+            for (auto i = 0U; i < Robot::num_ik_parameters; ++i)
+            {
+                config_block[Robot::dimension + i] = Robot::ik_parameters[i];
+            }
+
+            bool param_valid;
+            std::tie(param_valid, block) = Robot::template parameterized_ik<FloatVector<rake, Robot::dimension + 4>, rake>(config_block);
+
+            if (not param_valid)
+            {
+                return false;
+            }
+
         }
+        else
+        {
+            // HACK: broadcast() implicitly assumes that the rake is exactly VectorWidth
+            for (auto i = 0U; i < Robot::dimension; ++i)
+            {
+                block[i] = start.broadcast(i) + (vector.broadcast(i) * percents);
+            }
+        }
+
+
+        // typename Robot::template ConfigurationBlock<rake> block;
+
 
         const std::size_t n = std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
 
@@ -50,10 +81,29 @@ namespace vamp::planning
         const auto backstep = vector / (rake * n);
         for (auto i = 1U; i < n; ++i)
         {
-            for (auto j = 0U; j < Robot::dimension; ++j)
+
+            if constexpr (Robot::use_parameterized_ik)
             {
-                block[j] = block[j] - backstep.broadcast(j);
+                for (auto j = 0U; j < Robot::dimension; ++j)
+                {
+                    config_block[j] = config_block[j] - backstep.broadcast(j);
+                }
+                bool param_valid;
+                std::tie(param_valid, block) = Robot::template parameterized_ik<FloatVector<rake, Robot::dimension + 4>, rake>(config_block);
+
+                if (not param_valid)
+                {
+                    return false;
+                }
             }
+            else
+            {
+                for (auto j = 0U; j < Robot::dimension; ++j)
+                {
+                    block[j] = block[j] - backstep.broadcast(j);
+                }
+            }
+
 
             bool valid = (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
                                                      Robot::template fkcc<rake>(environment, block);

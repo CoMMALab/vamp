@@ -16,6 +16,10 @@ namespace vamp::robots
         static constexpr float min_radius = 0.012000000104308128;
         static constexpr float max_radius = 0.07999999821186066;
         static constexpr std::size_t resolution = 32;
+        static constexpr std::size_t ambient_dimension = dimension;
+
+        static constexpr bool use_parameterized_ik = false;
+        static constexpr std::size_t num_ik_parameters = 0;
 
         static constexpr std::array<std::string_view, dimension> joint_names = {
             "panda_joint1",
@@ -29,6 +33,8 @@ namespace vamp::robots
 
         using Configuration = FloatVector<dimension>;
         using ConfigurationArray = std::array<FloatT, dimension>;
+        using AmbientConfiguration = FloatVector<ambient_dimension>;
+        using AmbientConfigurationArray = std::array<FloatT, ambient_dimension>;
 
         struct alignas(FloatVectorAlignment) ConfigurationBuffer
           : std::array<float, Configuration::num_scalars_rounded>
@@ -37,6 +43,8 @@ namespace vamp::robots
 
         template <std::size_t rake>
         using ConfigurationBlock = FloatVector<rake, dimension>;
+        template <std::size_t rake>
+        using AmbientConfigurationBlock = FloatVector<rake, ambient_dimension>;
 
         template <std::size_t rake>
         struct Spheres

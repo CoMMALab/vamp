@@ -18,6 +18,10 @@ namespace vamp::robots
         static constexpr std::size_t dimension = 3;
         static constexpr std::size_t n_spheres = 1;
         static constexpr std::size_t resolution = 32;
+        static constexpr bool use_parameterized_ik = false;
+        static constexpr std::size_t num_ik_parameters = 0;
+        static constexpr std::size_t ambient_dimension = dimension;
+
 
         static constexpr float &min_radius = radius;
         static constexpr float &max_radius = radius;
@@ -27,6 +31,10 @@ namespace vamp::robots
 
         template <std::size_t rake>
         using ConfigurationBlock = FloatVector<rake, 3>;
+        template <std::size_t rake>
+        using AmbientConfigurationBlock = FloatVector<rake, 3>;
+        using AmbientConfiguration = FloatVector<ambient_dimension>;
+        using AmbientConfigurationArray = std::array<FloatT, ambient_dimension>;
 
         struct alignas(FloatVectorAlignment) ConfigurationBuffer
           : std::array<float, Configuration::num_scalars_rounded>

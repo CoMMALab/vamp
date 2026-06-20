@@ -61,11 +61,17 @@ namespace vamp::binding
     {
         using Type = nanobind::
             ndarray<FloatT, nanobind::numpy, nanobind::shape<Robot::dimension>, nanobind::device::cpu>;
+        
+        using AmbientType = nanobind::ndarray<FloatT, nanobind::numpy, nanobind::shape<Robot::ambient_dimension>, nanobind::device::cpu>;
 
         using Configuration = typename Robot::Configuration;
         using ConfigurationArray = typename Robot::ConfigurationArray;
         template <std::size_t rake>
         using ConfigurationBlock = typename Robot::template ConfigurationBlock<rake>;
+
+        template <std::size_t rake>
+        using AmbientConfigurationBlock = typename Robot::template AmbientConfigurationBlock<rake>;
+        using AmbientConfiguration = typename Robot::AmbientConfiguration;
 
         inline static auto from(const Configuration &c) -> Type
         {
@@ -81,10 +87,32 @@ namespace vamp::binding
             return Type(arr, {Robot::dimension}, arr_owner);
         };
 
+        inline static auto from_ambient(const AmbientConfiguration &c) -> AmbientType
+        {
+            auto *arr = new FloatT[Robot::ambient_dimension];
+            auto c_arr = c.to_array();
+            for (auto i = 0U; i < Robot::ambient_dimension; ++i)
+            {
+                arr[i] = c_arr[i];
+            }
+
+            nanobind::capsule arr_owner(
+                arr, [](void *a) noexcept { delete[] reinterpret_cast<FloatT *>(a); });
+            return AmbientType(arr, {Robot::ambient_dimension}, arr_owner);
+        };
+
         inline static auto to(const Type &a) -> Configuration
         {
             return Configuration(array(a));
         };
+
+        // overload to
+        inline static auto to_ambient(const AmbientType &a) -> AmbientConfiguration
+        {
+            return AmbientConfiguration(array(a));
+        };
+
+
 
         inline static auto array(const Type &a) -> ConfigurationArray
         {
@@ -108,17 +136,64 @@ namespace vamp::binding
 
             return out;
         }
+
+        // overload block
+        template <std::size_t rake>
+        inline static auto block_ambient(const AmbientType &a) -> AmbientConfigurationBlock<rake>
+        {
+            AmbientConfigurationBlock<rake> out;
+            for (auto i = 0U; i < Robot::ambient_dimension; ++i)
+            {
+                out[i] = a(i);
+            }
+
+            return out;
+        }
+
+        template <std::size_t rake>
+        inline static auto block_to_type(const ConfigurationBlock<rake> &block) -> Type
+        {
+            auto *arr = new FloatT[Robot::dimension];
+            for (auto i = 0U; i < Robot::dimension; ++i)
+            {
+                arr[i] = block[{i, 0}];
+            }
+
+            nanobind::capsule arr_owner(
+                arr, [](void *a) noexcept { delete[] reinterpret_cast<FloatT *>(a); });
+            return Type(arr, {Robot::dimension}, arr_owner);
+        }
+
+        template <std::size_t rake>
+        inline static auto block_ambient_to_type(const AmbientConfigurationBlock<rake> &block) -> AmbientType
+        {
+            auto *arr = new FloatT[Robot::ambient_dimension];
+            for (auto i = 0U; i < Robot::ambient_dimension; ++i)
+            {
+                arr[i] = block[{i, 0}];
+            }
+            nanobind::capsule arr_owner(
+                arr, [](void *a) noexcept { delete[] reinterpret_cast<FloatT *>(a); });
+            return AmbientType(arr, {Robot::ambient_dimension}, arr_owner);
+        }
+
+
     };
 
     template <typename Robot>
     struct ArrayInput
     {
         using Type = typename Robot::ConfigurationArray;
+        using AmbientType = typename Robot::AmbientConfigurationArray;
 
         using Configuration = typename Robot::Configuration;
         using ConfigurationArray = typename Robot::ConfigurationArray;
         template <std::size_t rake>
         using ConfigurationBlock = typename Robot::template ConfigurationBlock<rake>;
+        using AmbientConfiguration = typename Robot::AmbientConfiguration;
+        using AmbientConfigurationArray = typename Robot::AmbientConfigurationArray;
+        template <std::size_t rake>
+        using AmbientConfigurationBlock = typename Robot::template AmbientConfigurationBlock<rake>;
 
         inline static auto from(const Configuration &c) -> Type
         {
@@ -131,16 +206,35 @@ namespace vamp::binding
 
             return a;
         };
+        inline static auto from_ambient(const AmbientConfiguration &c) -> AmbientType
+        {
+            AmbientType a;
+            auto c_arr = c.to_array();
+            for (auto i = 0U; i < Robot::ambient_dimension; ++i)
+            {
+                a[i] = c_arr[i];
+            }
+
+            return a;
+        };
 
         inline static auto to(const Type &a) -> Configuration
         {
             return Configuration(a);
+        };
+        inline static auto to_ambient(const AmbientType &a) -> AmbientConfiguration
+        {
+            return AmbientConfiguration(a);
         };
 
         inline static auto array(const Type &a) -> ConfigurationArray
         {
             return a;
         }
+        inline static auto array_ambient(const AmbientType &a) -> AmbientConfigurationArray
+        {
+            return a;
+        };
 
         template <std::size_t rake>
         inline static auto block(const Type &a) -> ConfigurationBlock<rake>
@@ -153,6 +247,44 @@ namespace vamp::binding
 
             return out;
         }
+
+        template <std::size_t rake>
+        inline static auto block_ambient(const AmbientType &a) -> AmbientConfigurationBlock<rake>
+        {
+            AmbientConfigurationBlock<rake> out;
+            for (auto i = 0U; i < Robot::ambient_dimension; ++i)
+            {
+                out[i] = a[i];
+            }
+
+            return out;
+        }
+
+        template <std::size_t rake>
+        inline static auto block_to_type(const ConfigurationBlock<rake> &block) -> Type
+        {
+            Type a;
+            for (auto i = 0U; i < Robot::dimension; ++i)
+            {
+                a[i] = block[{i, 0}];
+            }
+
+            return a;
+        }
+
+        template <std::size_t rake>
+        inline static auto block_ambient_to_type(const AmbientConfigurationBlock<rake> &block
+        ) -> AmbientType
+        {
+            AmbientType a;
+            for (auto i = 0U; i < Robot::ambient_dimension; ++i)
+            {
+                a[i] = block[{i, 0}];
+            }
+
+            return a;
+        }
+
     };
 
     template <typename Robot, typename Input>
@@ -216,41 +348,41 @@ namespace vamp::binding
             }
         };
 
-        using PRM = PlannerHelper<
-            vamp::planning::PRM<Robot, rake, Robot::resolution>,
-            vamp::planning::RoadmapSettings<vamp::planning::PRMStarNeighborParams>>;
+        // using PRM = PlannerHelper<
+        //     vamp::planning::PRM<Robot, rake, Robot::resolution>,
+        //     vamp::planning::RoadmapSettings<vamp::planning::PRMStarNeighborParams>>;
 
         using RRTC =
             PlannerHelper<vamp::planning::RRTC<Robot, rake, Robot::resolution>, vamp::planning::RRTCSettings>;
 
-        using FCIT = PlannerHelper<
-            vamp::planning::FCIT<Robot, rake, Robot::resolution>,
-            vamp::planning::RoadmapSettings<vamp::planning::FCITStarNeighborParams>>;
+        // using FCIT = PlannerHelper<
+        //     vamp::planning::FCIT<Robot, rake, Robot::resolution>,
+        //     vamp::planning::RoadmapSettings<vamp::planning::FCITStarNeighborParams>>;
 
         using AORRTC = PlannerHelper<
             vamp::planning::AORRTC<Robot, rake, Robot::resolution>,
             vamp::planning::AORRTCSettings>;
 
-        inline static auto fk(const Type &c_in) -> std::vector<vamp::collision::Sphere<float>>
-        {
-            typename Robot::template Spheres<1> out;
-            Robot::template sphere_fk<1>(Input::template block<1>(c_in), out);
+        // inline static auto fk(const Type &c_in) -> std::vector<vamp::collision::Sphere<float>>
+        // {
+        //     typename Robot::template Spheres<1> out;
+        //     Robot::template sphere_fk<1>(Input::template block<1>(c_in), out);
 
-            std::vector<vamp::collision::Sphere<float>> result(Robot::n_spheres);
-            for (auto i = 0U; i < Robot::n_spheres; ++i)
-            {
-                result[i] = vamp::collision::Sphere<float>{
-                    out.x[{i, 0}], out.y[{i, 0}], out.z[{i, 0}], out.r[{i, 0}]};
-            }
+        //     std::vector<vamp::collision::Sphere<float>> result(Robot::n_spheres);
+        //     for (auto i = 0U; i < Robot::n_spheres; ++i)
+        //     {
+        //         result[i] = vamp::collision::Sphere<float>{
+        //             out.x[{i, 0}], out.y[{i, 0}], out.z[{i, 0}], out.r[{i, 0}]};
+        //     }
 
-            return result;
-        }
+        //     return result;
+        // }
 
-        inline static auto debug(const Type &c_in, const EnvironmentInput &environment) ->
-            typename Robot::Debug
-        {
-            return Robot::fkcc_debug(EnvironmentVector(environment), Input::template block<rake>(c_in));
-        }
+        // inline static auto debug(const Type &c_in, const EnvironmentInput &environment) ->
+        //     typename Robot::Debug
+        // {
+        //     return Robot::fkcc_debug(EnvironmentVector(environment), Input::template block<rake>(c_in));
+        // }
 
         inline static auto
         validate(const Type &c_in, const EnvironmentInput &environment, bool check_bounds = false) -> bool
@@ -304,45 +436,82 @@ namespace vamp::binding
             return Robot::eefk(Input::array(start)).matrix();
         }
 
-        inline static auto filter_self_from_pointcloud(
-            const std::vector<collision::Point> &pc,
-            float point_radius,
-            const Type &c_in,
-            const EnvironmentInput &environment) -> std::vector<collision::Point>
+
+        inline static auto parameterized_ik(const Type &c_in) -> std::pair<bool, typename Input::AmbientType>
         {
-            // TODO: Do this smarter with SIMD CC
-            EnvironmentVector ev(environment);
-
-            typename Robot::template Spheres<1> out;
-            Robot::template sphere_fk<1>(Input::template block<1>(c_in), out);
-
-            std::vector<collision::Point> filtered;
-            filtered.reserve(pc.size());
-
-            for (const auto &point : pc)
+            if constexpr (Robot::use_parameterized_ik)
             {
-                const float x = point[0], y = point[1], z = point[2], r = point_radius;
-
-                bool valid = true;
-                for (auto i = 0U; i < Robot::n_spheres; ++i)
+                vamp::FloatVector<rake, Robot::dimension + 4> c_in_full;
+                for (auto i = 0U; i < Robot::dimension; ++i)
                 {
-                    if (collision::sphere_sphere_sql2(
-                            out.x[{i, 0}], out.y[{i, 0}], out.z[{i, 0}], out.r[{i, 0}], x, y, z, r) < 0 or
-                        sphere_environment_in_collision<>(ev, x, y, z, r))
+                    // if it is of type ArrayInput, c_in[i] is valid. If it is of type NDArrayInput, c_in(i) is valid.
+                    if constexpr (std::is_same_v<Input, ArrayInput<Robot>>)
                     {
-                        valid = false;
-                        break;
+                        c_in_full[i] = c_in[i];
                     }
+                    else
+                        {
+                            c_in_full[i] = c_in(i);
+                        }
                 }
-
-                if (valid)
+                for (auto i = Robot::dimension; i < Robot::dimension + 4; ++i)
                 {
-                    filtered.emplace_back(point);
+                    c_in_full[i] = Robot::ik_parameters[i - Robot::dimension];
                 }
-            }
 
-            return filtered;
+                typename Robot::template AmbientConfigurationBlock<rake> block;
+                bool valid;
+                std::tie(valid, block) = Robot::template parameterized_ik<vamp::FloatVector<rake, Robot::dimension + 4>, rake>(c_in_full);
+                return {valid, Input::block_ambient_to_type(block)};
+            }
+            else
+            {
+                // Not applicable for robots without parameterized IK.
+                // convert to ambient type for consistency, but return false to indicate invalidity.
+                return {false, Input::from_ambient(Input::to(c_in))};
+
+            }
         }
+
+        // inline static auto filter_self_from_pointcloud(
+        //     const std::vector<collision::Point> &pc,
+        //     float point_radius,
+        //     const Type &c_in,
+        //     const EnvironmentInput &environment) -> std::vector<collision::Point>
+        // {
+        //     // TODO: Do this smarter with SIMD CC
+        //     EnvironmentVector ev(environment);
+
+        //     typename Robot::template Spheres<1> out;
+        //     Robot::template sphere_fk<1>(Input::template block<1>(c_in), out);
+
+        //     std::vector<collision::Point> filtered;
+        //     filtered.reserve(pc.size());
+
+        //     for (const auto &point : pc)
+        //     {
+        //         const float x = point[0], y = point[1], z = point[2], r = point_radius;
+
+        //         bool valid = true;
+        //         for (auto i = 0U; i < Robot::n_spheres; ++i)
+        //         {
+        //             if (collision::sphere_sphere_sql2(
+        //                     out.x[{i, 0}], out.y[{i, 0}], out.z[{i, 0}], out.r[{i, 0}], x, y, z, r) < 0 or
+        //                 sphere_environment_in_collision<>(ev, x, y, z, r))
+        //             {
+        //                 valid = false;
+        //                 break;
+        //             }
+        //         }
+
+        //         if (valid)
+        //         {
+        //             filtered.emplace_back(point);
+        //         }
+        //     }
+
+        //     return filtered;
+        // }
     };
 
     template <typename Robot>
@@ -379,6 +548,25 @@ namespace vamp::binding
         submodule.def(
             "joint_names", []() { return Robot::joint_names; }, "Joint names for the robot in order of DoF");
         submodule.def("end_effector", []() { return Robot::end_effector; }, "End-effector frame name.");
+
+        if constexpr (Robot::use_parameterized_ik)
+        {
+            submodule.def(
+                "get_ik_parameters",
+                []() -> std::array<float, Robot::num_ik_parameters> { 
+                    return Robot::ik_parameters; 
+                },
+                "Get the parameterized IK values (e.g. self-motion manifold parameters).");
+            
+            submodule.def(
+                "set_ik_parameters",
+                [](const std::array<float, Robot::num_ik_parameters> &params) { 
+                    Robot::ik_parameters = params; 
+                },
+                "Set the parameterized IK values (e.g. self-motion manifold parameters).");
+
+        }
+
 
         submodule.def(
             "upper_bounds",
@@ -572,21 +760,21 @@ namespace vamp::binding
     submodule.def(name, HPN::func, ##__VA_ARGS__, desc);                                                     \
     submodule.def(name, HPA::func, ##__VA_ARGS__, desc);
 
-        MF("fk",
-           fk,
-           "Computes the forward kinematics of the robot. Returns array of all collision sphere positions.",
-           "configuration"_a);
+        // MF("fk",
+        //    fk,
+        //    "Computes the forward kinematics of the robot. Returns array of all collision sphere positions.",
+        //    "configuration"_a);
 
-        MF("eefk",
-           eefk,
-           "Computes the forward kinematics of the robot's end-effector. Returns XYZ and a XYZW quaternion.",
-           "configuration"_a);
+        // MF("eefk",
+        //    eefk,
+        //    "Computes the forward kinematics of the robot's end-effector. Returns XYZ and a XYZW quaternion.",
+        //    "configuration"_a);
 
-        MF("debug",
-           debug,
-           "Check which spheres of a robot configuration are in collision.",
-           "configuration"_a,
-           "environment"_a = vamp::collision::Environment<float>());
+        // MF("debug",
+        //    debug,
+        //    "Check which spheres of a robot configuration are in collision.",
+        //    "configuration"_a,
+        //    "environment"_a = vamp::collision::Environment<float>());
 
         MF("validate",
            validate,
@@ -603,30 +791,35 @@ namespace vamp::binding
            "environment"_a = vamp::collision::Environment<float>(),
            "check_bounds"_a = true);
 
-        MF("filter_self_from_pointcloud",
-           filter_self_from_pointcloud,
-           "Removes points from pointcloud which collide with the robot and environment.",
-           "pc"_a,
-           "point_radius"_a,
-           "configuration"_a,
-           "environment"_a = vamp::collision::Environment<float>());
+        MF("parameterized_ik",
+           parameterized_ik,
+           "Get a parameterized IK solution for the given configuration. Returns a tuple of (valid, configuration), where valid is true if the IK solution is valid.",
+           "configuration"_a);
 
-        MF("roadmap",
-           PRM::roadmap,
-           "PRM roadmap construction.",
-           "start"_a,
-           "goal"_a,
-           "environment"_a,
-           "settings"_a,
-           "rng"_a);
+        // MF("filter_self_from_pointcloud",
+        //    filter_self_from_pointcloud,
+        //    "Removes points from pointcloud which collide with the robot and environment.",
+        //    "pc"_a,
+        //    "point_radius"_a,
+        //    "configuration"_a,
+        //    "environment"_a = vamp::collision::Environment<float>());
+
+        // MF("roadmap",
+        //    PRM::roadmap,
+        //    "PRM roadmap construction.",
+        //    "start"_a,
+        //    "goal"_a,
+        //    "environment"_a,
+        //    "settings"_a,
+        //    "rng"_a);
 
 #define PLANNER(name, func, desc, ...)                                                                       \
     MF(name, func::single, desc, "start"_a, "goal"_a, "environment"_a, "settings"_a, "rng"_a);               \
     MF(name, func::multi, desc, "start"_a, "goal"_a, "environment"_a, "settings"_a, "rng"_a);
 
         PLANNER("rrtc", RRTC, "RRTConnect");
-        PLANNER("prm", PRM, "PRM");
-        PLANNER("fcit", FCIT, "FCIT");
+        // PLANNER("prm", PRM, "PRM");
+        // PLANNER("fcit", FCIT, "FCIT");
         PLANNER("aorrtc", AORRTC, "AORRTC");
 
         if constexpr (has_set_lows_v<Robot>)

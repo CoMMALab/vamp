@@ -495,13 +495,14 @@ namespace vamp
         {
             return D(apply<S::template atan<0>>(d()->data));
         }
+        // write atan2 interface here
         template <
             typename ScalarT = typename S::ScalarT,
             typename =
                 std::enable_if_t<std::is_same_v<ScalarT, float> or std::is_same_v<ScalarT, double>, bool>>
-        inline constexpr auto atan2(D o) const noexcept -> D
+        inline constexpr auto atan2(D other) const noexcept -> D
         {
-            return D(apply<S::template atan2<0>>(d()->data, o.data));
+            return D(apply<S::template atan2<0>>(d()->data, other.data));
         }
 
         template <typename OtherT, typename BoundsT>

@@ -5,7 +5,7 @@
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/nn.hh>
 #include <vamp/planning/plan.hh>
-#include <vamp/planning/parameterized_ik_validate.hh>
+#include <vamp/planning/validate.hh>
 #include <vamp/planning/rrtc_settings.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>

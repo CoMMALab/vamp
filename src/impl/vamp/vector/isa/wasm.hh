@@ -632,6 +632,7 @@ namespace vamp
             return blend(ys, neg(ys), sign_mask_sin);
         }
 
+        // NOTE: Dummy parameter because otherwise we get constexpr errors with set1_ps...
         template <unsigned int = 0>
         inline static constexpr auto log(VectorT x) noexcept -> VectorT
         {

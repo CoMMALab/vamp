@@ -104,11 +104,11 @@ namespace vamp::planning
             const auto solution_heuristic = [&](std::size_t idx) -> float
             {
                 Configuration cfg(buffer_index(idx));
-                float g_hat = cfg.distance(start);
+                float g_hat = Robot::distance(cfg, start);
                 float h_hat = std::numeric_limits<float>::max();
                 for (const auto &goal : goals)
                 {
-                    h_hat = std::min(h_hat, cfg.distance(goal));
+                    h_hat = std::min(h_hat, Robot::distance(cfg, goal));
                 }
                 return g_hat + h_hat;
             };
@@ -324,11 +324,11 @@ namespace vamp::planning
                 // Cost gating
                 if (has_solution)
                 {
-                    float g_hat = temp.distance(start);
+                    float g_hat = Robot::distance(temp, start);
                     float h_hat = std::numeric_limits<float>::max();
                     for (const auto &goal : goals)
                     {
-                        h_hat = std::min(h_hat, temp.distance(goal));
+                        h_hat = std::min(h_hat, Robot::distance(temp, goal));
                     }
                     float f_hat = g_hat + h_hat;
                     if (f_hat >= best_cost)
@@ -383,12 +383,12 @@ namespace vamp::planning
                         h_hat = std::numeric_limits<float>::max();
                         for (const auto &g : goals)
                         {
-                            h_hat = std::min(h_hat, new_configuration.distance(g));
+                            h_hat = std::min(h_hat, Robot::distance(new_configuration, g));
                         }
                     }
                     else
                     {
-                        h_hat = new_configuration.distance(start);
+                        h_hat = Robot::distance(new_configuration, start);
                     }
                     if (new_cost + h_hat >= best_cost)
                     {
@@ -669,8 +669,8 @@ namespace vamp::planning
                                     greedy_best_cost = 0.F;
                                     for (std::size_t i = 0; i < best_path.size(); ++i)
                                     {
-                                        float g_hat = best_path[i].distance(start);
-                                        float h_hat = best_path[i].distance(goals[0]);
+                                        float g_hat = Robot::distance(best_path[i], start);
+                                        float h_hat = Robot::distance(best_path[i], goals[0]);
                                         float f_hat = g_hat + h_hat;
                                         greedy_best_cost = std::max(greedy_best_cost, f_hat);
                                     }

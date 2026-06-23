@@ -175,7 +175,7 @@ namespace vamp::planning
                     }
 
                     const auto &goal = goals[i - 1];
-                    auto parents = utils::astar(nodes, start, goal, state_index);
+                    auto parents = utils::astar<Robot>(nodes, start, goal, state_index);
                     // NOTE: If the connected component check is correct, we can assume that a solution
                     // was found by A* when we've reached this point
                     utils::recover_path<Robot>(std::move(parents), state_index, result.path);

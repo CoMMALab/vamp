@@ -497,7 +497,6 @@ namespace vamp
             y = y - z * Scalar(0.5F);
             x = x + y + e * Scalar(0.693359375F);
 
-            // Inputs that were <= 0 are mapped to NaN via OR with the all-1s mask.
             return x | invalid_mask;
         }
 
@@ -517,19 +516,14 @@ namespace vamp
             using IntVec = Vector<typename S::IntT, num_rows, num_scalars_per_row>;
 
             D x = *d();
-
-            // Capture sign bit (bit AND with -0.0f's bit pattern 0x80000000).
             D sign_bit = x & Scalar(-0.0F);
 
             x = x.abs();
-
-            // y = floor(x * 4/pi), but rounded to even via (j + 1) & ~1
-            D y = x * Scalar(1.27323954473516F);  // 4/pi
+            D y = x * Scalar(1.27323954473516F);
             IntVec emm2 = IntVec::template from<D>(y);
             emm2 = (emm2 + IntVec::fill(1)) & IntVec::fill(~1);
             y = D::template from<IntVec>(emm2);
 
-            // Octant info: j&4 => sign swap; j&2 => polynomial select
             const IntVec emm0 = (emm2 & IntVec::fill(4)) << 29U;
             const IntVec poly_select = (emm2 & IntVec::fill(2)).equal(IntVec::fill(0));
 
@@ -537,20 +531,16 @@ namespace vamp
             const D poly_mask = poly_select.template as<D>();
             sign_bit = sign_bit ^ swap_sign_bit;
 
-            // Extended-precision modular reduction:
-            // x = ((x - y*DP1) - y*DP2) - y*DP3
             x = x + y * Scalar(-0.78515625F);
             x = x + y * Scalar(-2.4187564849853515625E-4F);
             x = x + y * Scalar(-3.77489497744594108E-8F);
 
-            // Polynomial 1 (cos approximation, for 0 <= x <= pi/4)
             const D z = x * x;
             D poly_a = D(Scalar(2.443315711809948E-5F));
             poly_a = poly_a * z + Scalar(-1.388731625493765E-3F);
             poly_a = poly_a * z + Scalar(4.166664568298827E-2F);
             poly_a = poly_a * z * z - z * Scalar(0.5F) + Scalar(1.0F);
 
-            // Polynomial 2 (sin approximation, for pi/4 < x <= pi/2)
             D poly_b = D(Scalar(-1.9515295891E-4F));
             poly_b = poly_b * z + Scalar(8.3321608736E-3F);
             poly_b = poly_b * z + Scalar(-1.6666654611E-1F);
@@ -584,13 +574,10 @@ namespace vamp
             const D a = x.abs();
             const auto gt_half = a > Scalar(0.5);
 
-            // zz = (|x|>0.5) ? 0.5*(1-a) : a*a
-            // x_branch = (|x|>0.5) ? sqrt(zz) : a
             const D zz_high = (D(Scalar(1)) - a) * Scalar(0.5);
             const D zz = (a * a).blend(zz_high, gt_half);
             const D x_branch = a.blend(zz_high.sqrt(), gt_half);
 
-            // Horner polynomial: (((((A0*zz+A1)*zz+A2)*zz+A3)*zz+A4)*zz)*x_branch + x_branch
             D z = D(Scalar(4.2163199048E-2));
             z = z * zz + Scalar(2.4181311049E-2);
             z = z * zz + Scalar(4.5470025998E-2);
@@ -598,11 +585,9 @@ namespace vamp
             z = z * zz + Scalar(1.6666752422E-1);
             z = z * zz * x_branch + x_branch;
 
-            // For |x|>0.5 the Cephes branch returns pi/2 - 2z; otherwise z.
             const D z_large = Scalar(1.5707963267948966) - (z + z);
             const D res = z.blend(z_large, gt_half);
 
-            // Sign restoration: asin(-x) == -asin(x).
             return res.blend(-res, x < Scalar(0));
         }
 
@@ -616,11 +601,9 @@ namespace vamp
             const D x = *d();
             const auto gt_half = x > Scalar(0.5);
 
-            // Branch 1 (x > 0.5): 2 * asin(sqrt(0.5 - 0.5*x))
             const D arg1 = Scalar(0.5) - x * Scalar(0.5);
             const D z = arg1.sqrt().asin() * Scalar(2);
 
-            // Branch 2 (x <= 0.5): pi/4 - asin(x) + morebits + pi/4
             constexpr Scalar PI4 = 7.85398163397448309616E-1;
             constexpr Scalar MOREBITS = 6.123233995736765886130E-17;
             const D z2 = (Scalar(PI4) - x.asin()) + Scalar(MOREBITS) + Scalar(PI4);
@@ -638,8 +621,8 @@ namespace vamp
             const D x = *d();
             D a = x.abs();
 
-            const auto gt_3pi8 = a > Scalar(2.41421356237309504880);  // tan(3*pi/8)
-            const auto gt_pi8 = a > Scalar(0.41421356237309504880);   // tan(pi/8)
+            const auto gt_3pi8 = a > Scalar(2.41421356237309504880);
+            const auto gt_pi8 = a > Scalar(0.41421356237309504880);
             const auto mid_mask = gt_pi8 & ~gt_3pi8;
 
             const D reduced_big = D(Scalar(-1)) / a;
@@ -648,8 +631,8 @@ namespace vamp
             a = a.blend(reduced_big, gt_3pi8).blend(reduced_mid, mid_mask);
 
             D y = D(Scalar(0));
-            y = y.blend(D(Scalar(1.57079632679489661923)), gt_3pi8);    // pi/2
-            y = y.blend(D(Scalar(0.785398163397448309616)), mid_mask);  // pi/4
+            y = y.blend(D(Scalar(1.57079632679489661923)), gt_3pi8);
+            y = y.blend(D(Scalar(0.785398163397448309616)), mid_mask);
 
             const D zz = a * a;
             D p = D(Scalar(-8.750608600031904122785E-1));

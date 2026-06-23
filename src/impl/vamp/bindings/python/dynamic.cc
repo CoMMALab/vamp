@@ -485,7 +485,10 @@ namespace vamp::binding
                const std::vector<std::string> &planners,
                std::size_t rake,
                std::size_t resolution,
-               const std::string &name) -> std::shared_ptr<vj::DynamicRobot>
+               const std::string &name,
+               const std::optional<std::array<double, 3>> &bounds_lower,
+               const std::optional<std::array<double, 3>> &bounds_upper)
+                -> std::shared_ptr<vj::DynamicRobot>
             {
                 cricket::GenOptions g;
                 g.urdf = urdf;
@@ -497,6 +500,16 @@ namespace vamp::binding
                 if (not end_effector.empty())
                 {
                     g.end_effector = end_effector;
+                }
+
+                if (bounds_lower and bounds_upper)
+                {
+                    cricket::Bounds b;
+                    b.lower = Eigen::Vector3d(
+                        (*bounds_lower)[0], (*bounds_lower)[1], (*bounds_lower)[2]);
+                    b.upper = Eigen::Vector3d(
+                        (*bounds_upper)[0], (*bounds_upper)[1], (*bounds_upper)[2]);
+                    g.bounds = b;
                 }
 
                 g.data = {{"name", name}, {"resolution", resolution}};
@@ -524,6 +537,9 @@ namespace vamp::binding
             "rake"_a = 8,
             "resolution"_a = 32,
             "name"_a = std::string("DynamicRobot"),
-            "JIT-compile a robot from a URDF.");
+            "bounds_lower"_a = nb::none(),
+            "bounds_upper"_a = nb::none(),
+            "JIT-compile a robot from a URDF. For URDFs with floating-base or planar joints, "
+            "pass `bounds_lower` and `bounds_upper` as [x, y, z] Cartesian limits.");
     }
 }  // namespace vamp::binding

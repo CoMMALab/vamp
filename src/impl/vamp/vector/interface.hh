@@ -394,6 +394,23 @@ namespace vamp
             return D(apply<S::template max<0>>(d()->data, broadcast_scalar(other)));
         }
 
+        template <typename T, typename allow_types<D>::template check<T> = true>
+        inline constexpr auto min(T o) const noexcept -> D
+        {
+            return min(o.data);
+        }
+
+        template <typename T, typename allow_types<DataT, typename S::VectorT>::template check<T> = true>
+        inline constexpr auto min(T other) const noexcept -> D
+        {
+            return D(apply<S::template min<0>>(d()->data, other));
+        }
+
+        inline constexpr auto min(typename S::ScalarT other) const noexcept -> D
+        {
+            return D(apply<S::template min<0>>(d()->data, broadcast_scalar(other)));
+        }
+
         inline constexpr auto hsum() const noexcept -> typename S::ScalarT
         {
             return S::hsum(unpack::sum_(d()->data));
@@ -455,6 +472,133 @@ namespace vamp
             const auto vsq_sq = v_sq - ((v_sq >= static_cast<typename S::ScalarT>(PI)) &
                                         static_cast<typename S::ScalarT>(2 * PI));
             return vsq_sq.sin();
+        }
+
+        template <
+            typename ScalarT = typename S::ScalarT,
+            typename =
+                std::enable_if_t<std::is_same_v<ScalarT, float> or std::is_same_v<ScalarT, double>, bool>>
+        inline auto asin() const noexcept -> D
+        {
+            using Scalar = typename S::ScalarT;
+            const D x = *d();
+            const D a = x.abs();
+            const auto gt_half = a > Scalar(0.5);
+
+            // zz = (|x|>0.5) ? 0.5*(1-a) : a*a
+            // x_branch = (|x|>0.5) ? sqrt(zz) : a
+            const D zz_high = (D(Scalar(1)) - a) * Scalar(0.5);
+            const D zz = (a * a).blend(zz_high, gt_half);
+            const D x_branch = a.blend(zz_high.sqrt(), gt_half);
+
+            // Horner polynomial: (((((A0*zz+A1)*zz+A2)*zz+A3)*zz+A4)*zz)*x_branch + x_branch
+            D z = D(Scalar(4.2163199048E-2));
+            z = z * zz + Scalar(2.4181311049E-2);
+            z = z * zz + Scalar(4.5470025998E-2);
+            z = z * zz + Scalar(7.4953002686E-2);
+            z = z * zz + Scalar(1.6666752422E-1);
+            z = z * zz * x_branch + x_branch;
+
+            // For |x|>0.5 the Cephes branch returns pi/2 - 2z; otherwise z.
+            const D z_large = Scalar(1.5707963267948966) - (z + z);
+            const D res = z.blend(z_large, gt_half);
+
+            // Sign restoration: asin(-x) == -asin(x).
+            return res.blend(-res, x < Scalar(0));
+        }
+
+        template <
+            typename ScalarT = typename S::ScalarT,
+            typename =
+                std::enable_if_t<std::is_same_v<ScalarT, float> or std::is_same_v<ScalarT, double>, bool>>
+        inline auto acos() const noexcept -> D
+        {
+            using Scalar = typename S::ScalarT;
+            const D x = *d();
+            const auto gt_half = x > Scalar(0.5);
+
+            // Branch 1 (x > 0.5): 2 * asin(sqrt(0.5 - 0.5*x))
+            const D arg1 = Scalar(0.5) - x * Scalar(0.5);
+            const D z = arg1.sqrt().asin() * Scalar(2);
+
+            // Branch 2 (x <= 0.5): pi/4 - asin(x) + morebits + pi/4
+            constexpr Scalar PI4 = 7.85398163397448309616E-1;
+            constexpr Scalar MOREBITS = 6.123233995736765886130E-17;
+            const D z2 = (Scalar(PI4) - x.asin()) + Scalar(MOREBITS) + Scalar(PI4);
+
+            return z2.blend(z, gt_half);
+        }
+
+        template <
+            typename ScalarT = typename S::ScalarT,
+            typename =
+                std::enable_if_t<std::is_same_v<ScalarT, float> or std::is_same_v<ScalarT, double>, bool>>
+        inline auto atan() const noexcept -> D
+        {
+            using Scalar = typename S::ScalarT;
+            const D x = *d();
+            D a = x.abs();
+
+            const auto gt_3pi8 = a > Scalar(2.41421356237309504880);  // tan(3*pi/8)
+            const auto gt_pi8 = a > Scalar(0.41421356237309504880);   // tan(pi/8)
+            const auto mid_mask = gt_pi8 & ~gt_3pi8;
+
+            const D reduced_big = D(Scalar(-1)) / a;
+            const D reduced_mid = (a - Scalar(1)) / (a + Scalar(1));
+
+            a = a.blend(reduced_big, gt_3pi8).blend(reduced_mid, mid_mask);
+
+            D y = D(Scalar(0));
+            y = y.blend(D(Scalar(1.57079632679489661923)), gt_3pi8);    // pi/2
+            y = y.blend(D(Scalar(0.785398163397448309616)), mid_mask);  // pi/4
+
+            const D zz = a * a;
+            D p = D(Scalar(-8.750608600031904122785E-1));
+            p = p * zz + Scalar(-1.615753718733365076637E1);
+            p = p * zz + Scalar(-7.500855792314704667340E1);
+            p = p * zz + Scalar(-1.228866684490136173410E2);
+            p = p * zz + Scalar(-6.485021904942025371773E1);
+            p = p * zz * a;
+
+            D q = zz + Scalar(2.485846490142306297962E1);
+            q = q * zz + Scalar(1.650270098316988542046E2);
+            q = q * zz + Scalar(4.328810604912902668951E2);
+            q = q * zz + Scalar(4.853903996359136964868E2);
+            q = q * zz + Scalar(1.945506571482613964425E2);
+
+            const D z = p / q + a + y;
+            return z.blend(-z, x < Scalar(0));
+        }
+
+        template <
+            typename ScalarT = typename S::ScalarT,
+            typename =
+                std::enable_if_t<std::is_same_v<ScalarT, float> or std::is_same_v<ScalarT, double>, bool>>
+        inline auto atan2(D x) const noexcept -> D
+        {
+            using Scalar = typename S::ScalarT;
+            constexpr Scalar PI = 3.14159265358979323846;
+            constexpr Scalar PI_2 = 1.57079632679489661923;
+
+            const D y = *d();
+            D z = (y / x).atan();
+
+            const auto x_lt_0 = x < Scalar(0);
+            const auto y_lt_0 = y < Scalar(0);
+            const auto y_ge_0 = y >= Scalar(0);
+
+            // x < 0, y >= 0 -> +pi; x < 0, y < 0 -> -pi
+            z = z.blend(z + Scalar(PI), x_lt_0 & y_ge_0);
+            z = z.blend(z - Scalar(PI), x_lt_0 & y_lt_0);
+
+            // x == 0: +/- pi/2 depending on sign of y
+            const auto x_eq_0 = x == Scalar(0);
+            z = z.blend(D(Scalar(PI_2)), x_eq_0 & (y > Scalar(0)));
+            z = z.blend(D(Scalar(-PI_2)), x_eq_0 & (y < Scalar(0)));
+
+            // x == 0 && y == 0 -> 0
+            z = z.blend(D(Scalar(0)), x_eq_0 & (y == Scalar(0)));
+            return z;
         }
 
         template <typename OtherT, typename BoundsT>

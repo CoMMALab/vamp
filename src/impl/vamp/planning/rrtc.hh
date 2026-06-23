@@ -198,7 +198,8 @@ namespace vamp::planning
                         {
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.cost += result.path[result.path.size() - 1].distance(
+                            result.cost += Robot::distance(
+                                result.path[result.path.size() - 1],
                                 result.path[result.path.size() - 2]);
                             current = parent;
                         }
@@ -210,7 +211,8 @@ namespace vamp::planning
                         {
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.cost += result.path[result.path.size() - 1].distance(
+                            result.cost += Robot::distance(
+                                result.path[result.path.size() - 1],
                                 result.path[result.path.size() - 2]);
                             current = parent;
                         }

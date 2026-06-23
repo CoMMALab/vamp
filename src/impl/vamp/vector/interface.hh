@@ -16,6 +16,9 @@
 
 namespace vamp
 {
+    template <typename SimdT, std::size_t num_rows, std::size_t num_scalars_per_row>
+    struct Vector;
+
     template <typename S>
     inline constexpr void print_vector(std::ostream &out, typename S::VectorT vec) noexcept
     {
@@ -328,6 +331,17 @@ namespace vamp
             return D(apply<S::template or_<0>>(d()->data, o));
         }
 
+        inline constexpr auto xor_(D o) const noexcept -> D
+        {
+            return xor_(o.data);
+        }
+
+        template <typename T, typename allow_types<DataT, typename S::VectorT>::template check<T> = true>
+        inline constexpr auto xor_(T o) const noexcept -> D
+        {
+            return D(apply<S::template xor_<0>>(d()->data, o));
+        }
+
         template <
             typename T,
             typename allow_types<DataT, typename S::VectorT, unsigned int>::template check<T> = true>
@@ -441,9 +455,50 @@ namespace vamp
             return *d() + (other - *d()) * alpha;
         }
 
-        inline constexpr auto log() const noexcept -> D
+        template <
+            typename ScalarT = typename S::ScalarT,
+            typename = std::enable_if_t<std::is_same_v<ScalarT, float>, bool>>
+        inline auto log() const noexcept -> D
         {
-            return D(apply<S::template log<0>>(d()->data));
+            using Scalar = typename S::ScalarT;
+            using IntVec = Vector<typename S::IntT, num_rows, num_scalars_per_row>;
+            using IntScalar = typename IntVec::S::ScalarT;
+
+            D x = *d();
+            const D invalid_mask = x <= Scalar(0);
+
+            x = x.max(D(std::numeric_limits<Scalar>::min()));
+            IntVec emm0 = x.template as<IntVec>() >> 23U;
+
+            const D mantissa_mask = IntVec::fill(static_cast<IntScalar>(0x807FFFFF)).template as<D>();
+            x = x & mantissa_mask;
+            x = x | D(Scalar(0.5F));
+
+            emm0 = emm0 - IntVec::fill(0x7F);
+            D e = D::template from<IntVec>(emm0) + Scalar(1);
+
+            const D small = x < Scalar(0.707106781186547524F);
+            const D delta = x & small;
+            x = x - Scalar(1) + delta;
+            e = e - (D(Scalar(1)) & small);
+
+            const D z = x * x;
+            D y = D(Scalar(7.0376836292E-2F));
+            y = y * x + Scalar(-1.1514610310E-1F);
+            y = y * x + Scalar(+1.1676998740E-1F);
+            y = y * x + Scalar(-1.2420140846E-1F);
+            y = y * x + Scalar(+1.4249322787E-1F);
+            y = y * x + Scalar(-1.6668057665E-1F);
+            y = y * x + Scalar(+2.0000714765E-1F);
+            y = y * x + Scalar(-2.4999993993E-1F);
+            y = y * x + Scalar(+3.3333331174E-1F);
+            y = y * x * z;
+            y = y + e * Scalar(-2.12194440E-4F);
+            y = y - z * Scalar(0.5F);
+            x = x + y + e * Scalar(0.693359375F);
+
+            // Inputs that were <= 0 are mapped to NaN via OR with the all-1s mask.
+            return x | invalid_mask;
         }
 
         inline constexpr auto remove_corrupted() const noexcept -> D
@@ -456,9 +511,53 @@ namespace vamp
             typename ScalarT = typename S::ScalarT,
             typename =
                 std::enable_if_t<std::is_same_v<ScalarT, float> or std::is_same_v<ScalarT, double>, bool>>
-        inline constexpr auto sin() const noexcept -> D
+        inline auto sin() const noexcept -> D
         {
-            return D(apply<S::template sin<0>>(d()->data));
+            using Scalar = typename S::ScalarT;
+            using IntVec = Vector<typename S::IntT, num_rows, num_scalars_per_row>;
+
+            D x = *d();
+
+            // Capture sign bit (bit AND with -0.0f's bit pattern 0x80000000).
+            D sign_bit = x & Scalar(-0.0F);
+
+            x = x.abs();
+
+            // y = floor(x * 4/pi), but rounded to even via (j + 1) & ~1
+            D y = x * Scalar(1.27323954473516F);  // 4/pi
+            IntVec emm2 = IntVec::template from<D>(y);
+            emm2 = (emm2 + IntVec::fill(1)) & IntVec::fill(~1);
+            y = D::template from<IntVec>(emm2);
+
+            // Octant info: j&4 => sign swap; j&2 => polynomial select
+            const IntVec emm0 = (emm2 & IntVec::fill(4)) << 29U;
+            const IntVec poly_select = (emm2 & IntVec::fill(2)).equal(IntVec::fill(0));
+
+            const D swap_sign_bit = emm0.template as<D>();
+            const D poly_mask = poly_select.template as<D>();
+            sign_bit = sign_bit ^ swap_sign_bit;
+
+            // Extended-precision modular reduction:
+            // x = ((x - y*DP1) - y*DP2) - y*DP3
+            x = x + y * Scalar(-0.78515625F);
+            x = x + y * Scalar(-2.4187564849853515625E-4F);
+            x = x + y * Scalar(-3.77489497744594108E-8F);
+
+            // Polynomial 1 (cos approximation, for 0 <= x <= pi/4)
+            const D z = x * x;
+            D poly_a = D(Scalar(2.443315711809948E-5F));
+            poly_a = poly_a * z + Scalar(-1.388731625493765E-3F);
+            poly_a = poly_a * z + Scalar(4.166664568298827E-2F);
+            poly_a = poly_a * z * z - z * Scalar(0.5F) + Scalar(1.0F);
+
+            // Polynomial 2 (sin approximation, for pi/4 < x <= pi/2)
+            D poly_b = D(Scalar(-1.9515295891E-4F));
+            poly_b = poly_b * z + Scalar(8.3321608736E-3F);
+            poly_b = poly_b * z + Scalar(-1.6666654611E-1F);
+            poly_b = poly_b * z * x + x;
+
+            D y_out = poly_a.blend(poly_b, poly_mask);
+            return y_out ^ sign_bit;
         }
 
         template <
@@ -670,6 +769,11 @@ namespace vamp
             return and_(o.data);
         }
 
+        inline constexpr auto operator^(D o) const noexcept -> D
+        {
+            return xor_(o.data);
+        }
+
         inline constexpr auto operator==(D o) const noexcept -> D
         {
             return equal(o.data);
@@ -788,9 +892,9 @@ namespace vamp
         }
 
         template <typename OtherT, typename std::enable_if_t<not std::is_same_v<OtherT, D>, bool> = true>
-        inline static constexpr auto from(typename OtherT::DataT v) noexcept -> D
+        inline static constexpr auto from(OtherT v) noexcept -> D
         {
-            return D(apply<S::template from<typename OtherT::S::VectorT>>(v.data));
+            return D(apply<S::template from<typename OtherT::S::VectorT>, typename OtherT::DataT>(v.data));
         }
 
         template <typename OtherT, typename std::enable_if_t<not std::is_same_v<OtherT, D>, bool> = true>

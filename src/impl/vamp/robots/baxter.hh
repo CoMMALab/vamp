@@ -4,7 +4,13 @@
 #include <vamp/vector/math.hh>
 #include <vamp/collision/environment.hh>
 #include <vamp/collision/validity.hh>
+#include <vamp/planning/nn.hh>
 
+#include <Eigen/Geometry>
+#include <nigh/so3_space.hpp>
+#include <nigh/cartesian_space.hpp>
+
+// clang-format off
 // NOLINTBEGIN(*-magic-numbers)
 namespace vamp::robots
 {
@@ -23,8 +29,26 @@ struct Baxter
     static constexpr const char *end_effector = "right_gripper";
 
     using Configuration = FloatVector<dimension>;
-    using ConfigurationArray = std::array<FloatT, dimension>;
+    struct alignas(FloatVectorAlignment) ConfigurationArray
+        : std::array<FloatT, dimension>
+    {
+    };
     using Sample = FloatVector<sample_dimension>;
+
+    using NNKey = std::tuple<
+        vamp::planning::NNFloatArray<14>
+        >;
+
+    using NNSpace = unc::robotics::nigh::metric::CartesianSpace<
+        unc::robotics::nigh::metric::Space<vamp::planning::NNFloatArray<14>, unc::robotics::nigh::metric::LP<2>>
+        >;
+
+    static inline auto nn_key(float *cfg_ptr) noexcept -> NNKey
+    {
+        return NNKey{
+            vamp::planning::NNFloatArray<14>{cfg_ptr + 0}
+            };
+    }
 
     struct alignas(FloatVectorAlignment) ConfigurationBuffer
         : std::array<float, Configuration::num_scalars_rounded>
@@ -107,7 +131,7 @@ q[13] = 0.16345210373401642 * (q[13] - -3.059000015258789);
 
     inline static auto space_measure() noexcept -> float
     {
-        return 590532800.0;
+        return 590532810.7756368;
     }
 
     alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> lower_bound{
@@ -1973,6 +1997,7 @@ q[13] = 0.16345210373401642 * (q[13] - -3.059000015258789);
                 y[299]));
         
 
+        
         
         
         
@@ -37675,6 +37700,7 @@ q[13] = 0.16345210373401642 * (q[13] - -3.059000015258789);
         
         
         
+        
 
         return output;
     }
@@ -38332,7 +38358,9 @@ q[13] = 0.16345210373401642 * (q[13] - -3.059000015258789);
    y[427] = 0.0320000015199184;
    y[431] = 0.0281421355903149;
 
-        
+        // clang-format off
+// 
+
 
 
 
@@ -80684,7 +80712,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
     
     
 }
-
 
 
 
@@ -81347,7 +81374,9 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
    y[427] = 0.0320000015199184;
    y[431] = 0.0281421355903149;
 
-        
+        // clang-format off
+// 
+
 
 
 
@@ -123699,7 +123728,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
     
     
 }
-
 
 
 
@@ -124693,6 +124721,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
 
         return to_isometry(y.data());
     }
+
+    
 };
 }
 

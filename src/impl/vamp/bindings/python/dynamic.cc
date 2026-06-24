@@ -487,7 +487,8 @@ namespace vamp::binding
                std::size_t resolution,
                const std::string &name,
                const std::optional<std::array<double, 3>> &bounds_lower,
-               const std::optional<std::array<double, 3>> &bounds_upper)
+               const std::optional<std::array<double, 3>> &bounds_upper,
+               bool compact_collisions)
                 -> std::shared_ptr<vj::DynamicRobot>
             {
                 cricket::GenOptions g;
@@ -512,7 +513,11 @@ namespace vamp::binding
                     g.bounds = b;
                 }
 
-                g.data = {{"name", name}, {"resolution", resolution}};
+                g.data = {
+                    {"name", name},
+                    {"resolution", resolution},
+                    {"compact_collisions", compact_collisions},
+                };
                 auto gen = cricket::generate_robot_source(g);
 
                 vj::LoadOptions opts = vj::default_load_options();
@@ -539,7 +544,7 @@ namespace vamp::binding
             "name"_a = std::string("DynamicRobot"),
             "bounds_lower"_a = nb::none(),
             "bounds_upper"_a = nb::none(),
-            "JIT-compile a robot from a URDF. For URDFs with floating-base or planar joints, "
-            "pass `bounds_lower` and `bounds_upper` as [x, y, z] Cartesian limits.");
+            "compact_collisions"_a = false,
+            "JIT-compile a robot from a URDF.");
     }
 }  // namespace vamp::binding

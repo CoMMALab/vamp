@@ -1,6 +1,13 @@
 #pragma once
 
 #include <vamp/vector.hh>
+#include <vamp/planning/nn.hh>
+
+#include <Eigen/Geometry>
+#include <nigh/so3_space.hpp>
+#include <nigh/cartesian_space.hpp>
+
+#include <tuple>
 
 namespace vamp::robots
 {
@@ -27,6 +34,17 @@ namespace vamp::robots
         using Configuration = FloatVector<dimension>;
         using ConfigurationArray = std::array<FloatT, dimension>;
         using Sample = FloatVector<sample_dimension>;
+
+        static constexpr std::size_t nn_dimension = dimension;
+
+        using NNKey = std::tuple<vamp::planning::NNFloatArray<dimension>>;
+        using NNSpace = unc::robotics::nigh::metric::CartesianSpace<
+            unc::robotics::nigh::metric::Space<vamp::planning::NNFloatArray<dimension>, unc::robotics::nigh::metric::LP<2>>>;
+
+        static inline auto nn_key(float *cfg_ptr) noexcept -> NNKey
+        {
+            return NNKey{vamp::planning::NNFloatArray<dimension>{cfg_ptr}};
+        }
 
         template <std::size_t rake>
         using ConfigurationBlock = FloatVector<rake, 3>;

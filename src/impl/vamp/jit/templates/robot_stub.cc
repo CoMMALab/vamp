@@ -58,7 +58,7 @@ namespace vamp_jit_robot
 
     inline auto load_config(const float *data) -> typename R::Configuration
     {
-        std::array<float, R::dimension> arr;
+        typename R::ConfigurationArray arr;
         std::memcpy(arr.data(), data, R::dimension * sizeof(float));
         return typename R::Configuration(arr);
     }

@@ -4,7 +4,13 @@
 #include <vamp/vector/math.hh>
 #include <vamp/collision/environment.hh>
 #include <vamp/collision/validity.hh>
+#include <vamp/planning/nn.hh>
 
+#include <Eigen/Geometry>
+#include <nigh/so3_space.hpp>
+#include <nigh/cartesian_space.hpp>
+
+// clang-format off
 // NOLINTBEGIN(*-magic-numbers)
 namespace vamp::robots
 {
@@ -23,8 +29,26 @@ struct Panda
     static constexpr const char *end_effector = "panda_grasptarget";
 
     using Configuration = FloatVector<dimension>;
-    using ConfigurationArray = std::array<FloatT, dimension>;
+    struct alignas(FloatVectorAlignment) ConfigurationArray
+        : std::array<FloatT, dimension>
+    {
+    };
     using Sample = FloatVector<sample_dimension>;
+
+    using NNKey = std::tuple<
+        vamp::planning::NNFloatArray<7>
+        >;
+
+    using NNSpace = unc::robotics::nigh::metric::CartesianSpace<
+        unc::robotics::nigh::metric::Space<vamp::planning::NNFloatArray<7>, unc::robotics::nigh::metric::LP<2>>
+        >;
+
+    static inline auto nn_key(float *cfg_ptr) noexcept -> NNKey
+    {
+        return NNKey{
+            vamp::planning::NNFloatArray<7>{cfg_ptr + 0}
+            };
+    }
 
     struct alignas(FloatVectorAlignment) ConfigurationBuffer
         : std::array<float, Configuration::num_scalars_rounded>
@@ -93,7 +117,7 @@ q[6] = 0.16851471364498138 * (q[6] - -2.967099905014038);
 
     inline static auto space_measure() noexcept -> float
     {
-        return 57376.3984375;
+        return 57376.4026747593;
     }
 
     alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> lower_bound{
@@ -1371,6 +1395,7 @@ q[6] = 0.16851471364498138 * (q[6] - -2.967099905014038);
                 y[235]));
         
 
+        
         
         
         
@@ -13466,6 +13491,7 @@ q[6] = 0.16851471364498138 * (q[6] - -2.967099905014038);
         
         
         
+        
 
         return output;
     }
@@ -13855,7 +13881,9 @@ q[6] = 0.16851471364498138 * (q[6] - -2.967099905014038);
    y[275] = 0.0235433969646692;
    y[279] = 0.0235433969646692;
 
-        
+        // clang-format off
+// 
+
 
 
 
@@ -27080,7 +27108,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[256],
     
     
 }
-
 
 
 
@@ -27481,7 +27508,9 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[256],
    y[275] = 0.0235433969646692;
    y[279] = 0.0235433969646692;
 
-        
+        // clang-format off
+// 
+
 
 
 
@@ -40709,7 +40738,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[256],
 
 
 
-
         // attaching at panda_grasptarget
         set_attachment_pose(environment, to_isometry(&y[280]));
 
@@ -41100,6 +41128,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[256],
 
         return to_isometry(y.data());
     }
+
+    
 };
 }
 

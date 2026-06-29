@@ -32,7 +32,7 @@ namespace vamp::planning
         
 
         typename Robot::template AmbientConfigurationBlock<rake> block;
-        FloatVector<rake, Robot::dimension + 4> config_block;
+        FloatVector<rake, Robot::dimension + Robot::num_ik_parameters> config_block;
 
         if constexpr (Robot::use_parameterized_ik)
         {
@@ -48,7 +48,7 @@ namespace vamp::planning
             }
 
             bool param_valid;
-            std::tie(param_valid, block) = Robot::template parameterized_ik<FloatVector<rake, Robot::dimension + 4>, rake>(config_block);
+            std::tie(param_valid, block) = Robot::template parameterized_ik<FloatVector<rake, Robot::dimension + Robot::num_ik_parameters>, rake>(config_block);
 
             if (not param_valid)
             {
@@ -89,7 +89,7 @@ namespace vamp::planning
                     config_block[j] = config_block[j] - backstep.broadcast(j);
                 }
                 bool param_valid;
-                std::tie(param_valid, block) = Robot::template parameterized_ik<FloatVector<rake, Robot::dimension + 4>, rake>(config_block);
+                std::tie(param_valid, block) = Robot::template parameterized_ik<FloatVector<rake, Robot::dimension + Robot::num_ik_parameters>, rake>(config_block);
 
                 if (not param_valid)
                 {

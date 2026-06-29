@@ -233,21 +233,26 @@ auto main(int, char **) -> int
     }
 
     // also use std::array and check ik parameterization
-    std::array<float, Robot::dimension + 4> start_array;
-    std::array<float, Robot::dimension + 4> goal_array;
+    std::array<float, Robot::dimension + Robot::num_ik_parameters> start_array;
+    std::array<float, Robot::dimension + Robot::num_ik_parameters> goal_array;
     for (auto i = 0U; i < Robot::dimension; ++i)
     {
         start_array[i] = start[i];
         goal_array[i] = goal[i];
     }
-    start_array[Robot::dimension + 0] = 1.F;
-    start_array[Robot::dimension + 1] = 1.F;
-    start_array[Robot::dimension + 2] = -1.F;
-    start_array[Robot::dimension + 3] = 0.6F;
-    goal_array[Robot::dimension + 0] = 1.F;
-    goal_array[Robot::dimension + 1] = 1.F;
-    goal_array[Robot::dimension + 2] = -1.F;
-    goal_array[Robot::dimension + 3] = 0.6F;
+    for (auto i = 0U; i < Robot::num_ik_parameters; ++i)
+    {
+        start_array[Robot::dimension + i] = Robot::ik_parameters[i];  // default values for IK parameters
+        goal_array[Robot::dimension + i] = Robot::ik_parameters[i];  // default values for IK parameters
+    }
+    // start_array[Robot::dimension + 0] = 1.F;
+    // start_array[Robot::dimension + 1] = 1.F;
+    // start_array[Robot::dimension + 2] = -1.F;
+    // start_array[Robot::dimension + 3] = 0.6F;
+    // goal_array[Robot::dimension + 0] = 1.F;
+    // goal_array[Robot::dimension + 1] = 1.F;
+    // goal_array[Robot::dimension + 2] = -1.F;
+    // goal_array[Robot::dimension + 3] = 0.6F;
 
     auto [valid_start, output_start] = Robot::parameterized_ik(start_array);
     auto [valid_goal, output_goal] = Robot::parameterized_ik(goal_array);

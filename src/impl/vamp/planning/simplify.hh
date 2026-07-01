@@ -608,19 +608,26 @@ namespace vamp::planning
         // std::cout << "number of beziers: " << beziers.size() << std::endl;
         for (auto i = 0U; i < beziers.size(); i++) {
             Bezier bez = beziers[i];
+            Bezier dbez = bez.derivative();
+            Bezier ddbez = dbez.derivative();
             // std::cout << "bez time: " << bez.time << std::endl;
             std::vector<state> waypts = bez.generate_trajectory();
+            std::vector<state> dwaypts = dbez.generate_trajectory();
+            std::vector<state> ddwaypts = ddbez.generate_trajectory();
             //convert waypoints to floatvector
             // std::cout << "number of waypoints: " << waypts.size() << std::endl;
             for (auto j = 0U; j < waypts.size(); j++) {
                 alignas(vamp::FloatVectorAlignment)
                 std::array<float, vamp::FloatVector<Robot::dimension>::num_scalars_rounded> tmp = {};
                 for (auto k = 0U; k < Robot::dimension; k++) {
-                    if (k >= robot_dim_q) {
-                        tmp[k] = 0;
+                    if (k < robot_dim_q) {
+                        tmp[k] = static_cast<float>(waypts[j](0, static_cast<int>(k)));
+                    }
+                    else if (k < 2 * robot_dim_q) {
+                        tmp[k] = static_cast<float>(dwaypts[j](0, static_cast<int>(k)));
                     }
                     else {
-                        tmp[k] = static_cast<float>(waypts[j](0, static_cast<int>(k)));
+                        tmp[k] = static_cast<float>(ddwaypts[j](0, static_cast<int>(k)));
                     }
                 }
                 vamp::FloatVector<Robot::dimension> vv(tmp.data());

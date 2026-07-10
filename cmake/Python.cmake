@@ -20,7 +20,9 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     list(APPEND VAMP_ROBOT_MODULES
       sphere
       ur5
+      ur5_flask
       panda
+      panda_flask
       fetch
       baxter
     )
@@ -28,7 +30,9 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     list(APPEND VAMP_ROBOT_STRUCTS
       Sphere
       UR5
+      UR5Flask
       Panda
+      PandaFlask
       Fetch
       Baxter
     )

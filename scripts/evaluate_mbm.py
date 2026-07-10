@@ -3,6 +3,7 @@ import time
 from tabulate import tabulate
 from tqdm import tqdm
 from pathlib import Path
+import numpy as np
 import pandas as pd
 from typing import Union, List
 
@@ -95,10 +96,13 @@ def main(
             else:
                 env = vamp.problem_dict_to_vamp(data)
 
+            start = np.asarray(data['start'], dtype = np.float32)
+            goals = [np.asarray(goal, dtype = np.float32) for goal in data['goals']]
+
             sampler.reset()
             sampler.skip(skip_rng_iterations)
             for _ in range(trials):
-                result = planner_func(data['start'], data['goals'], env, plan_settings, sampler)
+                result = planner_func(start, goals, env, plan_settings, sampler)
                 if not result.solved:
                     failures.append(i)
                     break

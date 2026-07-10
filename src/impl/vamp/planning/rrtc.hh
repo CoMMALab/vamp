@@ -52,8 +52,9 @@ namespace vamp::planning
             const auto buffer_index = [&buffer](std::size_t index) -> float *
             { return buffer.get() + index * Configuration::num_scalars_rounded; };
 
-            std::vector<std::size_t> parents(settings.max_samples);
-            std::vector<float> radii(settings.max_samples);
+            auto parents =
+                vamp::utils::buffer_alloc<std::size_t, FloatVectorAlignment>(settings.max_samples);
+            auto radii = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(settings.max_samples);
 
             auto start_time = std::chrono::steady_clock::now();
 
@@ -127,20 +128,26 @@ namespace vamp::planning
 
                 const auto nearest_configuration = Configuration(buffer_index(nearest_node.index));
 
-                auto nearest_vector = temp - nearest_configuration;
+                // Edges are executed from start to goal: goal-tree edges run child -> parent, so
+                // steer and validate along the local path in that direction (identical for
+                // symmetric interpolation).
+                const bool reach = nearest_distance < settings.range;
+                const float step = settings.range / nearest_distance;
+                const auto new_configuration =
+                    (reach)          ? temp :
+                    (tree_a_is_start) ? Robot::interpolate(nearest_configuration, temp, step) :
+                                        Robot::interpolate(temp, nearest_configuration, 1.F - step);
 
-                bool reach = nearest_distance < settings.range;
-                auto extension_vector =
-                    (reach) ? nearest_vector : nearest_vector * (settings.range / nearest_distance);
+                const bool extend_valid =
+                    (tree_a_is_start) ?
+                        validate_motion<Robot, rake, resolution>(
+                            nearest_configuration, new_configuration, environment) :
+                        validate_motion<Robot, rake, resolution>(
+                            new_configuration, nearest_configuration, environment);
 
-                if (validate_vector<Robot, rake, resolution>(
-                        nearest_configuration,
-                        extension_vector,
-                        (reach) ? nearest_distance : settings.range,
-                        environment))
+                if (extend_valid)
                 {
                     float *new_configuration_index = buffer_index(free_index);
-                    auto new_configuration = nearest_configuration + extension_vector;
                     new_configuration.to_array(new_configuration_index);
                     tree_a->insert(NNNode<Robot>{free_index, Robot::nn_key(new_configuration_index)});
 
@@ -164,21 +171,40 @@ namespace vamp::planning
 
                     const auto &[other_nearest_node, other_nearest_distance] = *other_nearest;
                     const auto other_nearest_configuration = Configuration(buffer_index(other_nearest_node.index));
-                    auto other_nearest_vector = other_nearest_configuration - new_configuration;
 
                     const std::size_t n_extensions = std::ceil(other_nearest_distance / settings.range);
-                    const float increment_length = other_nearest_distance / static_cast<float>(n_extensions);
-                    auto increment = other_nearest_vector * (1.0F / static_cast<float>(n_extensions));
 
                     std::size_t i_extension = 0;
+                    bool connected = false;
                     auto prior = new_configuration;
-                    for (; i_extension < n_extensions and
-                           validate_vector<Robot, rake, resolution>(
-                               prior, increment, increment_length, environment) and
-                           free_index < settings.max_samples;
-                         ++i_extension)
+                    while (not connected and i_extension < n_extensions and
+                           free_index < settings.max_samples)
                     {
-                        auto next = prior + increment;
+                        auto next = other_nearest_configuration;
+                        const float remaining =
+                            Robot::distance(prior, other_nearest_configuration);
+                        connected =
+                            (i_extension == n_extensions - 1) or (remaining <= settings.range);
+                        if (not connected)
+                        {
+                            const float step = settings.range / remaining;
+                            next = (tree_a_is_start) ?
+                                       Robot::interpolate(prior, other_nearest_configuration, step) :
+                                       Robot::interpolate(
+                                           other_nearest_configuration, prior, 1.F - step);
+                        }
+
+                        const bool step_valid =
+                            (tree_a_is_start) ?
+                                validate_motion<Robot, rake, resolution>(prior, next, environment) :
+                                validate_motion<Robot, rake, resolution>(next, prior, environment);
+
+                        if (not step_valid)
+                        {
+                            connected = false;
+                            break;
+                        }
+
                         float *next_index = buffer_index(free_index);
                         next.to_array(next_index);
                         tree_a->insert(NNNode<Robot>{free_index, Robot::nn_key(next_index)});
@@ -187,10 +213,11 @@ namespace vamp::planning
 
                         free_index++;
 
+                        i_extension++;
                         prior = next;
                     }
 
-                    if (i_extension == n_extensions)  // connected
+                    if (connected)
                     {
                         auto current = free_index - 1;
                         result.path.emplace_back(buffer_index(current));

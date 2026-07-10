@@ -82,10 +82,8 @@ namespace vamp::planning
 
             constexpr const std::size_t start_index = 0;
 
-            auto buffer = std::unique_ptr<float, decltype(&free)>(
-                vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
-                    settings.max_samples * Configuration::num_scalars_rounded),
-                &free);
+            auto buffer = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(
+                settings.max_samples * Configuration::num_scalars_rounded);
 
             const auto buffer_index = [&buffer](std::size_t index) -> float *
             { return buffer.get() + index * Configuration::num_scalars_rounded; };

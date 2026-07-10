@@ -47,7 +47,7 @@ namespace vamp::planning::flask
         }
 
         // Depressed quartic T^4 + p T^2 + q T + r = 0 (stationarity of C, divided by rho)
-        constexpr double rho_d = static_cast<double>(Robot::rho);
+        const double rho_d = static_cast<double>(Robot::rho);
         const double p = -4. * (v00 + v0f + vff) / rho_d;
         const double q = 24. * (dyv0 + dyvf) / rho_d;
         const double r = -36. * dy2 / rho_d;

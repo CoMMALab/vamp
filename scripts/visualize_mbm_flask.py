@@ -1,5 +1,6 @@
 import pickle
 from pathlib import Path
+from typing import Union
 import numpy as np
 
 from fire import Fire
@@ -19,6 +20,7 @@ def main(
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
     fps: float = 60.0,                     # Animation frames per second of trajectory time
+    rho: Union[float, None] = None,        # Override the LQMT cost weight rho for this robot
     **kwargs,
     ):
 
@@ -31,6 +33,9 @@ def main(
     # Geometric twin: shares the URDF/sphere model; used for problems and state display
     base_robot = robot[:-len("_flask")]
     geo_module = getattr(vamp, base_robot)
+
+    if rho is not None:
+        getattr(vamp, robot).set_rho(float(rho))
 
     robot_dir = Path(__file__).parent.parent / 'resources' / base_robot
     with open(robot_dir / dataset, 'rb') as f:

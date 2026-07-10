@@ -34,7 +34,7 @@ struct PandaFlask
     static constexpr std::size_t resolution = 32;
     static constexpr bool euclidean = false;
     static constexpr bool flask = true;
-    static constexpr float rho = 32.0;
+    static inline float rho = 32.0;
 
     static constexpr std::array<std::string_view, dimension> joint_names = {"panda_joint1", "panda_joint2", "panda_joint3", "panda_joint4", "panda_joint5", "panda_joint6", "panda_joint7", "panda_joint1_vel", "panda_joint2_vel", "panda_joint3_vel", "panda_joint4_vel", "panda_joint5_vel", "panda_joint6_vel", "panda_joint7_vel"};
     static constexpr const char *end_effector = "panda_grasptarget";

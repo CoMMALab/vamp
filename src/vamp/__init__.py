@@ -122,6 +122,13 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
                 setattr(plan_settings.rrtc, sk, v)
 
     simp_settings = SimplifySettings()
+    if robot_name.endswith("_flask"):
+        simp_settings.operations = [
+            SimplifyRoutine.BSPLINE,
+            SimplifyRoutine.REDUCE,
+            SimplifyRoutine.INTERP,
+            SimplifyRoutine.REDUCE,
+        ]
 
     for k, v in kwargs.items():
         if "simplification_" in k:

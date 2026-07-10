@@ -1,11 +1,13 @@
 #pragma once
 
+#include <functional>
 #include <limits>
 #include <memory>
 
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/aox_nn.hh>
 #include <vamp/planning/cost.hh>
+#include <vamp/planning/flask_informed.hh>
 #include <vamp/planning/phs.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/simplify.hh>
@@ -28,8 +30,7 @@ namespace vamp::planning
         using NNNode = GNATNode<dimension>;
         using NN = NearestNeighborsGNAT<NNNode>;
 
-        std::unique_ptr<float, decltype(&free)> buffer;
-        // Uninitialized: every element is written in add_to_tree before any read
+        vamp::utils::buffer_ptr<float> buffer;
         vamp::utils::buffer_ptr<std::size_t> parents;
         vamp::utils::buffer_ptr<float> radii;
         vamp::utils::buffer_ptr<float> costs;
@@ -111,11 +112,8 @@ namespace vamp::planning
         }
 
         AOX_RRTC(std::size_t max_samples)
-          : buffer(
-                std::unique_ptr<float, decltype(&free)>(
-                    vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
-                        max_samples * Configuration::num_scalars_rounded),
-                    &free))
+          : buffer(vamp::utils::buffer_alloc<float, FloatVectorAlignment>(
+                max_samples * Configuration::num_scalars_rounded))
           , parents(vamp::utils::buffer_alloc<std::size_t, FloatVectorAlignment>(max_samples))
           , radii(vamp::utils::buffer_alloc<float, FloatVectorAlignment>(max_samples))
           , costs(vamp::utils::buffer_alloc<float, FloatVectorAlignment>(max_samples))
@@ -489,10 +487,29 @@ namespace vamp::planning
                 best_possible_cost = std::min(best_possible_cost, planning::cost<Robot>(start, goal));
             }
 
-            ProlateHyperspheroid<Robot> phs(start, goals[0]);
-            phs.set_transverse_diameter(best_path_cost);
-
-            auto phs_rng = std::make_shared<ProlateHyperspheroidRNG<Robot>>(phs, rng);
+            // Informed sampler: PHS (L2) for Euclidean-cost robots; time-informed envelope for
+            // cost robots (flask). Both keyed by the single-goal best_path_cost.
+            typename rng::RNG<Robot>::Ptr informed_rng;
+            std::function<void(float)> update_informed_bound = [](float) {};
+            if (settings.use_phs and goals.size() == 1)
+            {
+                if constexpr (has_cost_v<Robot>)
+                {
+                    auto flask_rng = std::make_shared<FlaskInformedRNG<Robot>>(start, goals[0], rng);
+                    flask_rng->set_cost_bound(best_path_cost);
+                    informed_rng = flask_rng;
+                    update_informed_bound = [flask_rng](float c) { flask_rng->set_cost_bound(c); };
+                }
+                else
+                {
+                    ProlateHyperspheroid<Robot> phs(start, goals[0]);
+                    phs.set_transverse_diameter(best_path_cost);
+                    auto phs_rng = std::make_shared<ProlateHyperspheroidRNG<Robot>>(phs, rng);
+                    informed_rng = phs_rng;
+                    update_informed_bound = [phs_rng](float c)
+                    { phs_rng->phs.set_transverse_diameter(c); };
+                }
+            }
 
             AOX_RRTC instance(max_samples);
 
@@ -504,31 +521,16 @@ namespace vamp::planning
                 rrtc_settings.max_iterations =
                     std::min(settings.max_iterations - iters, settings.max_internal_iterations);
 
-                // By default, use AORRTC
+                auto &sample_rng = informed_rng ? informed_rng : rng;
+
                 if (not settings.anytime)
                 {
-                    // If there is a single goal, sample with PHS (an L2 construction — meaningless
-                    // for robots with a non-metric edge cost, so gated off for those)
-                    if (settings.use_phs and goals.size() == 1 and not has_cost_v<Robot>)
-                    {
-                        result = instance.solve(start, goals, environment, settings, best_path_cost, phs_rng);
-                    }
-                    else
-                    {
-                        result = instance.solve(start, goals, environment, settings, best_path_cost, rng);
-                    }
+                    result = instance.solve(
+                        start, goals, environment, settings, best_path_cost, sample_rng);
                 }
-                // If anytime, use Anytime RRTC
                 else
                 {
-                    if (settings.use_phs and goals.size() == 1 and not has_cost_v<Robot>)
-                    {
-                        result = RRTC::solve(start, goals, environment, rrtc_settings, phs_rng);
-                    }
-                    else
-                    {
-                        result = RRTC::solve(start, goals, environment, rrtc_settings, rng);
-                    }
+                    result = RRTC::solve(start, goals, environment, rrtc_settings, sample_rng);
                 }
 
                 iters += result.iterations;
@@ -550,7 +552,7 @@ namespace vamp::planning
                         final_result.path = result.path;
                         best_path_cost = result.path.cost();
 
-                        phs_rng->phs.set_transverse_diameter(best_path_cost);
+                        update_informed_bound(best_path_cost);
                     }
                 }
             }

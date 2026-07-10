@@ -6,9 +6,6 @@ namespace vamp::planning
 {
     VAMP_DEFINE_HAS_METHOD(cost)
 
-    // Edge cost a -> b used as the planners' optimization objective. Robots may provide a
-    // (possibly asymmetric) Robot::cost; otherwise the symmetric configuration-space distance
-    // is used. Asymmetric costs must always be evaluated in execution (start -> goal) order.
     template <typename Robot>
     [[nodiscard]] inline auto cost(
         const typename Robot::Configuration &a,
@@ -21,6 +18,24 @@ namespace vamp::planning
         else
         {
             return Robot::distance(a, b);
+        }
+    }
+
+    template <typename Robot>
+    [[nodiscard]] inline auto cost_nonincreasing(
+        const typename Robot::Configuration &prev,
+        const typename Robot::Configuration &mid_old,
+        const typename Robot::Configuration &mid_new,
+        const typename Robot::Configuration &next) noexcept -> bool
+    {
+        if constexpr (has_cost_v<Robot>)
+        {
+            return cost<Robot>(prev, mid_new) + cost<Robot>(mid_new, next) <=
+                   cost<Robot>(prev, mid_old) + cost<Robot>(mid_old, next);
+        }
+        else
+        {
+            return true;
         }
     }
 }  // namespace vamp::planning

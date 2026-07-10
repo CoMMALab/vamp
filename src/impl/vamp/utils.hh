@@ -34,12 +34,6 @@ namespace vamp::utils
         return not(iptr % alignment);
     }
 
-    template <typename T, std::size_t alignment, std::size_t vector_size>
-    inline auto vector_alloc(std::size_t n) noexcept -> T *
-    {
-        return static_cast<T *>(aligned_alloc(alignment, sizeof(T) * round_size(n, vector_size)));
-    }
-
     template <typename T>
     using buffer_ptr = std::unique_ptr<T[], decltype(&free)>;
 

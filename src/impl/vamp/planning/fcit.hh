@@ -93,10 +93,8 @@ namespace vamp::planning
 
             std::size_t iter = 0;
             typename Robot::template ConfigurationBlock<rake> temp_block;
-            auto states = std::unique_ptr<float, decltype(&free)>(
-                vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
-                    settings.max_samples * Configuration::num_scalars_rounded),
-                &free);
+            auto states = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(
+                settings.max_samples * Configuration::num_scalars_rounded);
 
             // TODO: Is it better to just use arrays for these since we're reserving full capacity
             // anyway? Test it!

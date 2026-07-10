@@ -22,6 +22,7 @@ def main(
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     print_failures: bool = False,          # Print out failures and invalid problems
     samples_per_segment: int = 64,         # Trajectory samples per segment for post-hoc checks
+    rho: Union[float, None] = None,        # Override the LQMT cost weight rho for this robot
     **kwargs,
     ):
 
@@ -34,6 +35,9 @@ def main(
     # Geometric twin: shares the URDF/sphere model; used for problems and post-hoc collision checks
     base_robot = robot[:-len("_flask")]
     geo_module = getattr(vamp, base_robot)
+
+    if rho is not None:
+        getattr(vamp, robot).set_rho(float(rho))
 
     problems_dir = Path(__file__).parent.parent / 'resources' / base_robot / 'problems'
     with open(problems_dir.parent / dataset, 'rb') as f:

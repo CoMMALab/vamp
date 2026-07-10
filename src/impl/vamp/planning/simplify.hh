@@ -35,24 +35,8 @@ namespace vamp::planning
                 const auto temp_2 = Robot::interpolate(path[index], path[index + 1], settings.midpoint_interpolation);
                 const auto midpoint = Robot::interpolate(temp_1, temp_2, 0.5);
 
-                // Under an asymmetric edge cost, smoothing must not inflate the path objective
-                const auto cost_nonincreasing = [&]() -> bool
-                {
-                    if constexpr (has_cost_v<Robot>)
-                    {
-                        return cost<Robot>(path[index - 1], midpoint) +
-                                   cost<Robot>(midpoint, path[index + 1]) <=
-                               cost<Robot>(path[index - 1], path[index]) +
-                                   cost<Robot>(path[index], path[index + 1]);
-                    }
-                    else
-                    {
-                        return true;
-                    }
-                };
-
                 if (Robot::distance(path[index], midpoint) > settings.min_change and
-                    cost_nonincreasing() and
+                    cost_nonincreasing<Robot>(path[index - 1], path[index], midpoint, path[index + 1]) and
                     validate_motion<Robot, rake, resolution>(path[index - 1], midpoint, environment) and
                     validate_motion<Robot, rake, resolution>(midpoint, path[index + 1], environment))
                 {
@@ -231,12 +215,17 @@ namespace vamp::planning
         { return shortcut_path<Robot, rake, resolution>(result.path, environment, settings.shortcut); };
         const auto perturb = [&result, &environment, settings, rng]()
         { return perturb_path<Robot, rake, resolution>(result.path, environment, settings.perturb, rng); };
+        
+        const auto interpolate = [&result, settings]()
+        { result.path.interpolate_to_n_states(settings.interpolate);
+          return true; };
 
         const std::map<SimplifyRoutine, std::function<bool()>> operations = {
             {BSPLINE, bspline},
             {REDUCE, reduce},
             {SHORTCUT, shortcut},
             {PERTURB, perturb},
+            {INTERP, interpolate},
         };
 
         // Check if straight line is valid

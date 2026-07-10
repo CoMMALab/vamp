@@ -450,6 +450,7 @@ namespace vamp::binding
             submodule.def("flask", []() { return Robot::flask; });
             submodule.def("flat_dimension", []() { return Robot::flat_dimension; });
             submodule.def("rho", []() { return Robot::rho; });
+            submodule.def("set_rho", [](float r) { Robot::rho = r; }, "rho"_a);
             submodule.def("velocity_limits", []() { return Robot::velocity_limits; });
             submodule.def("effort_limits", []() { return Robot::effort_limits; });
 

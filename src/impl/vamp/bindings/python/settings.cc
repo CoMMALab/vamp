@@ -105,6 +105,7 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .value("REDUCE", vp::SimplifyRoutine::REDUCE)
         .value("SHORTCUT", vp::SimplifyRoutine::SHORTCUT)
         .value("PERTURB", vp::SimplifyRoutine::PERTURB)
+        .value("INTERP", vp::SimplifyRoutine::INTERP)
         .export_values();
 
     nb::class_<vp::BSplineSettings>(pymodule, "BSplineSettings")

@@ -10,6 +10,7 @@ namespace vamp::planning
         REDUCE,
         SHORTCUT,
         PERTURB,
+        INTERP,
     };
 
     struct BSplineSettings

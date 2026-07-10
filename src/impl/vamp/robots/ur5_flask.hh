@@ -34,7 +34,7 @@ struct UR5Flask
     static constexpr std::size_t resolution = 32;
     static constexpr bool euclidean = false;
     static constexpr bool flask = true;
-    static constexpr float rho = 16.0;
+    static inline float rho = 16.0;
 
     static constexpr std::array<std::string_view, dimension> joint_names = {"shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint", "shoulder_pan_joint_vel", "shoulder_lift_joint_vel", "elbow_joint_vel", "wrist_1_joint_vel", "wrist_2_joint_vel", "wrist_3_joint_vel"};
     static constexpr const char *end_effector = "robotiq_85_base_link";

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <limits>
+#include <vamp/planning/cost.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/nn.hh>
 #include <vamp/vector.hh>
@@ -18,13 +19,13 @@ namespace vamp::planning
                 float total = 0;
                 for (auto i = 0U; i + 1 < n; ++i)
                 {
-                    total += Robot::distance(wps[i], wps[i + 1]);
+                    total += planning::cost<Robot>(wps[i], wps[i + 1]);
                 }
                 return total;
             }
             if (n == 2)
             {
-                return Robot::distance(wps.front(), wps.back());
+                return planning::cost<Robot>(wps.front(), wps.back());
             }
             return std::numeric_limits<float>::infinity();
         }

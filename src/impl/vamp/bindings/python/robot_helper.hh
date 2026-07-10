@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include <vamp/bindings/python/api_binder.hh>
 #include <vamp/bindings/python/array_helpers.hh>
 
@@ -47,6 +49,7 @@
 VAMP_DEFINE_HAS_METHOD(set_lows)
 VAMP_DEFINE_HAS_METHOD(set_highs)
 VAMP_DEFINE_HAS_METHOD(set_radius)
+VAMP_DEFINE_HAS_METHOD(flask)
 
 namespace vamp::binding
 {
@@ -354,6 +357,46 @@ namespace vamp::binding
         }
     };
 
+    template <typename Robot, typename Input>
+    inline void bind_flask_methods(nanobind::module_ &submodule)
+    {
+        using Cfg = typename Input::Type;
+        constexpr auto n_q = Robot::flat_dimension;
+
+        submodule.def(
+            "optimal_time",
+            [](const Cfg &a, const Cfg &b) { return Robot::optimal_time(Input::to(a), Input::to(b)); },
+            "a"_a,
+            "b"_a,
+            "Optimal duration T* of the local trajectory between flat states a and b.");
+
+        submodule.def(
+            "cost",
+            [](const Cfg &a, const Cfg &b) { return Robot::cost(Input::to(a), Input::to(b)); },
+            "a"_a,
+            "b"_a,
+            "LQMT edge cost C_loc(a -> b) = rho T* + integral |u|^2 of the local trajectory; "
+            "asymmetric in (a, b).");
+
+        submodule.def(
+            "eval",
+            [](const Cfg &a, const Cfg &b, float T, float t)
+            {
+                const auto x = Robot::eval(Input::to(a), Input::to(b), T, t);
+                std::array<float, n_q> y, yd, ydd;
+                std::copy_n(x.begin(), n_q, y.begin());
+                std::copy_n(x.begin() + n_q, n_q, yd.begin());
+                std::copy_n(x.begin() + 2 * n_q, n_q, ydd.begin());
+                return std::make_tuple(y, yd, ydd);
+            },
+            "a"_a,
+            "b"_a,
+            "T"_a,
+            "t"_a,
+            "Evaluate the trajectory from a to b of duration T at fraction t in [0, 1]; returns "
+            "(position, velocity, acceleration).");
+    }
+
     template <typename Robot>
     inline auto init_robot(nanobind::module_ &pymodule) -> nanobind::module_
     {
@@ -399,6 +442,41 @@ namespace vamp::binding
 
         bind_robot_methods<TA>(submodule);
         bind_robot_methods<TC>(submodule);
+
+        if constexpr (has_flask_v<Robot>)
+        {
+            constexpr auto n_q = Robot::flat_dimension;
+
+            submodule.def("flask", []() { return Robot::flask; });
+            submodule.def("flat_dimension", []() { return Robot::flat_dimension; });
+            submodule.def("rho", []() { return Robot::rho; });
+            submodule.def("velocity_limits", []() { return Robot::velocity_limits; });
+            submodule.def("effort_limits", []() { return Robot::effort_limits; });
+
+            bind_flask_methods<Robot, NA>(submodule);
+            bind_flask_methods<Robot, CA>(submodule);
+
+            using XType = nanobind::
+                ndarray<FloatT, nanobind::numpy, nanobind::shape<3 * n_q>, nanobind::device::cpu>;
+            const char *torques_doc = "Joint torques for a flat state stack x = [q; qd; qdd].";
+            submodule.def(
+                "torques",
+                [](const XType &x)
+                {
+                    std::array<float, 3 * n_q> xa;
+                    std::vector<float> scratch;
+                    const auto *ptr = as_flat_1d(x, 3 * n_q, scratch, "flat state");
+                    std::memcpy(xa.data(), ptr, 3 * n_q * sizeof(float));
+                    return Robot::torques(xa);
+                },
+                "x"_a,
+                torques_doc);
+            submodule.def(
+                "torques",
+                [](const std::array<float, 3 * n_q> &x) { return Robot::torques(x); },
+                "x"_a,
+                torques_doc);
+        }
 
         if constexpr (has_set_lows_v<Robot>)
         {

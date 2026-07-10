@@ -3,6 +3,7 @@
 #include <map>
 
 #include <vamp/collision/environment.hh>
+#include <vamp/planning/cost.hh>
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/validate.hh>
@@ -34,7 +35,24 @@ namespace vamp::planning
                 const auto temp_2 = Robot::interpolate(path[index], path[index + 1], settings.midpoint_interpolation);
                 const auto midpoint = Robot::interpolate(temp_1, temp_2, 0.5);
 
+                // Under an asymmetric edge cost, smoothing must not inflate the path objective
+                const auto cost_nonincreasing = [&]() -> bool
+                {
+                    if constexpr (has_cost_v<Robot>)
+                    {
+                        return cost<Robot>(path[index - 1], midpoint) +
+                                   cost<Robot>(midpoint, path[index + 1]) <=
+                               cost<Robot>(path[index - 1], path[index]) +
+                                   cost<Robot>(path[index], path[index + 1]);
+                    }
+                    else
+                    {
+                        return true;
+                    }
+                };
+
                 if (Robot::distance(path[index], midpoint) > settings.min_change and
+                    cost_nonincreasing() and
                     validate_motion<Robot, rake, resolution>(path[index - 1], midpoint, environment) and
                     validate_motion<Robot, rake, resolution>(midpoint, path[index + 1], environment))
                 {
@@ -164,7 +182,8 @@ namespace vamp::planning
             auto before_state = path[to_perturb_idx - 1];
             auto after_state = path[to_perturb_idx + 1];
 
-            float old_cost = Robot::distance(perturb_state, before_state) + Robot::distance(perturb_state, after_state);
+            float old_cost =
+                cost<Robot>(before_state, perturb_state) + cost<Robot>(perturb_state, after_state);
 
             for (auto attempt = 0U; attempt < settings.perturbation_attempts; ++attempt)
             {
@@ -172,11 +191,12 @@ namespace vamp::planning
                 Robot::scale_configuration(perturbation);
 
                 const auto new_state = Robot::interpolate(perturb_state, perturbation, settings.range);
-                float new_cost = Robot::distance(new_state, before_state) + Robot::distance(new_state, after_state);
+                float new_cost =
+                    cost<Robot>(before_state, new_state) + cost<Robot>(new_state, after_state);
 
                 if (new_cost < old_cost and
                     validate_motion<Robot, rake, resolution>(before_state, new_state, environment) and
-                    validate_motion<Robot, rake, resolution>(after_state, new_state, environment))
+                    validate_motion<Robot, rake, resolution>(new_state, after_state, environment))
                 {
                     no_change = 0;
                     changed = true;

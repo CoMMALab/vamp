@@ -2,6 +2,8 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <memory>
+#include <type_traits>
 #include <utility>
 #include <cstdint>
 
@@ -36,6 +38,17 @@ namespace vamp::utils
     inline auto vector_alloc(std::size_t n) noexcept -> T *
     {
         return static_cast<T *>(aligned_alloc(alignment, sizeof(T) * round_size(n, vector_size)));
+    }
+
+    template <typename T>
+    using buffer_ptr = std::unique_ptr<T[], decltype(&free)>;
+
+    template <typename T, std::size_t alignment>
+    inline auto buffer_alloc(std::size_t n) noexcept -> buffer_ptr<T>
+    {
+        static_assert(std::is_trivial_v<T>);
+        return buffer_ptr<T>(
+            static_cast<T *>(aligned_alloc(alignment, round_size(sizeof(T) * n, alignment))), &free);
     }
 
     // Because ceil isn't constexpr until C++23 for some reason.....

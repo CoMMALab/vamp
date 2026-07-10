@@ -1,4 +1,5 @@
 build/
+build-py/
 build_local/
 build-wasm/
 .cache/

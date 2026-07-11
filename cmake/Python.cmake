@@ -24,6 +24,7 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       panda
       panda_flask
       fetch
+      fetch_flask
       baxter
     )
 
@@ -34,6 +35,7 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       Panda
       PandaFlask
       Fetch
+      FetchFlask
       Baxter
     )
   endif()

@@ -83,6 +83,8 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
         plan_settings = RRTCSettings()
         if robot_name in ROBOT_RRT_RANGES:
             plan_settings.range = ROBOT_RRT_RANGES[robot_name]
+        if robot_name in ROBOT_RRTC_DD_RADIUS:
+            plan_settings.radius = ROBOT_RRTC_DD_RADIUS[robot_name]
 
     elif planner_name == "prm":
         plan_settings = PRMSettings(PRMNeighborParams(robot_module.dimension(), robot_module.space_measure()))
@@ -96,11 +98,15 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
         plan_settings = AORRTCSettings()
         if robot_name in ROBOT_RRT_RANGES:
             plan_settings.rrtc.range = ROBOT_RRT_RANGES[robot_name]
+        if robot_name in ROBOT_RRTC_DD_RADIUS:
+            plan_settings.rrtc.radius = ROBOT_RRTC_DD_RADIUS[robot_name]
 
     elif planner_name == "grrtstar":
         plan_settings = GRRTStarSettings()
         if robot_name in ROBOT_RRT_RANGES:
             plan_settings.range = ROBOT_RRT_RANGES[robot_name]
+        if robot_name in ROBOT_RRTC_DD_RADIUS:
+            plan_settings.dd_radius = ROBOT_RRTC_DD_RADIUS[robot_name]
 
     else:
         raise NotImplementedError(f"Automatic setup for planner {planner_name} is not implemented yet!")
@@ -123,10 +129,17 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
 
     simp_settings = SimplifySettings()
     if robot_name.endswith("_flask"):
+        # Two rounds of BSPLINE -> VELOPT -> REDUCE. Each round subdivides, tunes the new
+        # midpoints' velocities against C_loc, then removes redundant vertices. Empirically
+        # wins on panda cage rho=64 (C_loc 240.5 vs 253 for one round; 3+ rounds show
+        # diminishing returns). Front SHORTCUT gets ~3% cheap cleanup up front.
         simp_settings.operations = [
+            SimplifyRoutine.SHORTCUT,
             SimplifyRoutine.BSPLINE,
+            SimplifyRoutine.VELOPT,
             SimplifyRoutine.REDUCE,
-            SimplifyRoutine.INTERP,
+            SimplifyRoutine.BSPLINE,
+            SimplifyRoutine.VELOPT,
             SimplifyRoutine.REDUCE,
         ]
 

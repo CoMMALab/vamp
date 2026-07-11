@@ -379,6 +379,18 @@ namespace vamp::binding
             "asymmetric in (a, b).");
 
         submodule.def(
+            "cost_grad",
+            [](const Cfg &a, const Cfg &b)
+            {
+                const auto g = Robot::cost_grad(Input::to(a), Input::to(b));
+                return std::make_tuple(g.cost, g.time, g.grad_a, g.grad_b);
+            },
+            "a"_a,
+            "b"_a,
+            "(cost, time, dC/da, dC/db) for the LQMT edge a -> b; gradients are laid out to "
+            "match the Configuration = (q, v) memory ordering.");
+
+        submodule.def(
             "eval",
             [](const Cfg &a, const Cfg &b, float T, float t)
             {

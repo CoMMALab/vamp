@@ -185,6 +185,12 @@ q[13] = 0.17415534344523725 * (q[13] - -2.871000051498413);
         return vamp::planning::flask::cost<PandaFlask>(a_in, b_in);
     }
 
+    static inline auto cost_grad(const Configuration &a_in, const Configuration &b_in) noexcept
+        -> vamp::planning::flask::LQMTCostGrad<dimension>
+    {
+        return vamp::planning::flask::cost_grad<PandaFlask>(a_in, b_in);
+    }
+
     // Cubic state (y, yd, ydd) at fraction t of duration T; layout [y; yd; ydd]
     static inline auto eval(const Configuration &a_in, const Configuration &b_in, float T, float t) noexcept
         -> std::array<float, 21>

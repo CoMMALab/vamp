@@ -5,6 +5,7 @@
 namespace vamp::planning
 {
     VAMP_DEFINE_HAS_METHOD(cost)
+    VAMP_DEFINE_HAS_METHOD(cost_grad)
 
     template <typename Robot>
     [[nodiscard]] inline auto cost(

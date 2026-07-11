@@ -191,4 +191,61 @@ namespace vamp::planning::flask
     {
         return solve<Robot>(a, b).cost;
     }
+
+    // Endpoint gradients of C_loc(a -> b). Layout matches Configuration = (q, v):
+    // grad_a[0..n-1] = dC/dq_a,  grad_a[n..2n-1] = dC/dv_a  (and similarly for grad_b).
+    //
+    // Derivation: C = rho T* + E(T*) and dC/dT|_{T*} = 0, so by the envelope theorem
+    // dC*/d(endpoint) = dE/d(endpoint) evaluated at T = T*. Per joint j, with T = T*,
+    // d1 = dy - v_a T and d2 = v_b - v_a:
+    //   dC/dq_a = -24 d1 / T^3 + 12 d2 / T^2      dC/dv_a = -12 d1 / T^2 + 4 d2 / T
+    //   dC/dq_b = +24 d1 / T^3 - 12 d2 / T^2      dC/dv_b = -12 d1 / T^2 + 8 d2 / T
+    template <std::size_t N>
+    struct LQMTCostGrad
+    {
+        float cost;
+        float time;
+        std::array<float, N> grad_a;
+        std::array<float, N> grad_b;
+    };
+
+    template <typename Robot>
+    inline auto cost_grad(
+        const typename Robot::Configuration &a_in,
+        const typename Robot::Configuration &b_in) noexcept
+        -> LQMTCostGrad<2 * Robot::flat_dimension>
+    {
+        constexpr std::size_t n = Robot::flat_dimension;
+        const auto sol = solve<Robot>(a_in, b_in);
+
+        LQMTCostGrad<2 * n> out{};
+        out.cost = sol.cost;
+        out.time = sol.time;
+
+        const auto a = a_in.to_array();
+        const auto b = b_in.to_array();
+        const double T = static_cast<double>(sol.time);
+        const double invT = 1.0 / T;
+        const double invT2 = invT * invT;
+        const double invT3 = invT2 * invT;
+
+        for (std::size_t j = 0; j < n; ++j)
+        {
+            const double v_a = a[n + j];
+            const double v_b = b[n + j];
+            const double dy = static_cast<double>(b[j]) - static_cast<double>(a[j]);
+            const double d1 = dy - v_a * T;
+            const double d2 = v_b - v_a;
+
+            const double g_q = 24.0 * d1 * invT3 - 12.0 * d2 * invT2;  // dC/dq_b
+            const double g_va = -12.0 * d1 * invT2 + 4.0 * d2 * invT;
+            const double g_vb = -12.0 * d1 * invT2 + 8.0 * d2 * invT;
+
+            out.grad_a[j]     = static_cast<float>(-g_q);
+            out.grad_a[n + j] = static_cast<float>(g_va);
+            out.grad_b[j]     = static_cast<float>(g_q);
+            out.grad_b[n + j] = static_cast<float>(g_vb);
+        }
+        return out;
+    }
 }  // namespace vamp::planning::flask

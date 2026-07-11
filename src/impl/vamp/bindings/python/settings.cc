@@ -106,6 +106,8 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .value("SHORTCUT", vp::SimplifyRoutine::SHORTCUT)
         .value("PERTURB", vp::SimplifyRoutine::PERTURB)
         .value("INTERP", vp::SimplifyRoutine::INTERP)
+        .value("VELOPT", vp::SimplifyRoutine::VELOPT)
+        .value("POLISH", vp::SimplifyRoutine::POLISH)
         .export_values();
 
     nb::class_<vp::BSplineSettings>(pymodule, "BSplineSettings")
@@ -129,6 +131,20 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("perturbation_attempts", &vp::PerturbSettings::perturbation_attempts)
         .def_rw("range_ratio", &vp::PerturbSettings::range);
 
+    nb::class_<vp::VeloptSettings>(pymodule, "VeloptSettings")
+        .def(nb::init<>())
+        .def_rw("max_steps", &vp::VeloptSettings::max_steps)
+        .def_rw("line_search_max", &vp::VeloptSettings::line_search_max)
+        .def_rw("initial_step", &vp::VeloptSettings::initial_step)
+        .def_rw("min_improvement", &vp::VeloptSettings::min_improvement);
+
+    nb::class_<vp::PolishSettings>(pymodule, "PolishSettings")
+        .def(nb::init<>())
+        .def_rw("max_steps", &vp::PolishSettings::max_steps)
+        .def_rw("line_search_max", &vp::PolishSettings::line_search_max)
+        .def_rw("initial_step", &vp::PolishSettings::initial_step)
+        .def_rw("min_improvement", &vp::PolishSettings::min_improvement);
+
     nb::class_<vp::SimplifySettings>(pymodule, "SimplifySettings")
         .def(nb::init<>())
         .def_rw("max_iterations", &vp::SimplifySettings::max_iterations)
@@ -137,5 +153,8 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("reduce", &vp::SimplifySettings::reduce)
         .def_rw("shortcut", &vp::SimplifySettings::shortcut)
         .def_rw("perturb", &vp::SimplifySettings::perturb)
-        .def_rw("bspline", &vp::SimplifySettings::bspline);
+        .def_rw("bspline", &vp::SimplifySettings::bspline)
+        .def_rw("velopt", &vp::SimplifySettings::velopt)
+        .def_rw("polish", &vp::SimplifySettings::polish)
+        .def_rw("polish_at_end", &vp::SimplifySettings::polish_at_end);
 }

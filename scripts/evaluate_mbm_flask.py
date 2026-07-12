@@ -13,7 +13,7 @@ from vamp import flask
 
 
 def main(
-    robot: str = "panda_flask",            # Flask robot to plan for
+    robot: str = "panda.flask",            # Flask robot to plan for
     planner: str = "rrtc",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
     problem: Union[str, List[str]] = [],   # Problem name or list of problems to evaluate
@@ -26,18 +26,18 @@ def main(
     **kwargs,
     ):
 
-    if robot not in vamp.robots:
-        raise RuntimeError(f"Robot {robot} does not exist in VAMP!")
-
-    if not robot.endswith("_flask"):
+    if not robot.endswith(".flask"):
         raise RuntimeError(f"Robot {robot} is not a flask robot!")
 
-    # Geometric twin: shares the URDF/sphere model; used for problems and post-hoc collision checks
-    base_robot = robot[:-len("_flask")]
+    # Ambient geometric parent: shares the URDF/sphere model; used for problems and
+    # post-hoc collision checks. The flask robot is its nested submodule.
+    base_robot = robot[:-len(".flask")]
+    if base_robot not in vamp.robots:
+        raise RuntimeError(f"Robot {base_robot} does not exist in VAMP!")
     geo_module = getattr(vamp, base_robot)
 
     if rho is not None:
-        getattr(vamp, robot).set_rho(float(rho))
+        geo_module.flask.set_rho(float(rho))
 
     problems_dir = Path(__file__).parent.parent / 'resources' / base_robot / 'problems'
     with open(problems_dir.parent / dataset, 'rb') as f:

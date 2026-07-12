@@ -38,12 +38,28 @@ namespace vamp::planning::constraint
         // than tight_row_width. Determined by the bounds alone, so configuration-independent.
         virtual void active_rows(bool *rows) const noexcept = 0;
 
+        // Run the error/Jacobian kernel on the whole block, caching every lane for
+        // extract_error_jacobian(). One evaluation serves all rake lanes, so batch callers
+        // (chart construction over a block of samples) pay the kernel once instead of per
+        // lane. Overwrites the cache of squared_error(); re-call squared_error() before
+        // step().
+        virtual void evaluate_error_jacobian(const Block &q) const noexcept = 0;
+
         // Hinged error (n_rows() entries) and *raw*-error Jacobian (n_rows() x
-        // Robot::dimension, row-major) of one SIMD lane of q, for tangent-space (chart)
-        // construction. The hinge mask of squared_error() cannot apply here: on the
-        // manifold the hinged error vanishes, so masking would zero every row. Overwrites
-        // the cache of squared_error(); re-call squared_error() before step().
-        virtual void error_jacobian(const Block &q, std::size_t lane, float *err, float *jac)
+        // Robot::dimension, row-major) of one SIMD lane of the last
+        // evaluate_error_jacobian() block, for tangent-space (chart) construction. The
+        // hinge mask of squared_error() cannot apply to the Jacobian: on the manifold the
+        // hinged error vanishes, so masking would zero every row.
+        virtual void extract_error_jacobian(std::size_t lane, float *err, float *jac)
             const noexcept = 0;
+
+        // Error and Jacobian of one lane of q; batch callers should evaluate once and
+        // extract per lane instead.
+        void error_jacobian(const Block &q, std::size_t lane, float *err, float *jac)
+            const noexcept
+        {
+            evaluate_error_jacobian(q);
+            extract_error_jacobian(lane, err, jac);
+        }
     };
 }  // namespace vamp::planning::constraint

@@ -93,14 +93,17 @@ namespace vamp::planning::constraint
             rows[1] = false;
         }
 
-        void error_jacobian(const Block &q, std::size_t lane, float *err, float *jac)
-            const noexcept final
+        void evaluate_error_jacobian(const Block &q) const noexcept final
         {
             // The half-plane hinge is intrinsic here (the error has no unhinged form: it is
             // identically zero inside the polygon), but these rows are never chart-active, so
             // the masked Jacobian is safe to report.
             evaluate(q);
+        }
 
+        void extract_error_jacobian(std::size_t lane, float *err, float *jac)
+            const noexcept final
+        {
             for (auto i = 0U; i < err_size; ++i)
             {
                 err[i] = solve.err[{i, lane}];

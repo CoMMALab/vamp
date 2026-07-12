@@ -83,9 +83,28 @@ namespace vamp::planning::constraint
         void error_jacobian(const Block &q, std::size_t lane, float *err, float *jac)
             const noexcept
         {
+            evaluate_error_jacobian(q);
+            extract_error_jacobian(lane, err, jac);
+        }
+
+        // Run every constraint's error/Jacobian kernel on the whole block, caching all
+        // lanes for extract_error_jacobian(): batch callers pay each kernel once instead
+        // of per lane. Overwrites the constraints' squared_error() caches.
+        void evaluate_error_jacobian(const Block &q) const noexcept
+        {
             for (const auto &c : constraints_)
             {
-                c->error_jacobian(q, lane, err, jac);
+                c->evaluate_error_jacobian(q);
+            }
+        }
+
+        // Stacked per-lane error and Jacobian (layout as error_jacobian()) from the caches
+        // of the last evaluate_error_jacobian() call.
+        void extract_error_jacobian(std::size_t lane, float *err, float *jac) const noexcept
+        {
+            for (const auto &c : constraints_)
+            {
+                c->extract_error_jacobian(lane, err, jac);
                 err += c->n_rows();
                 jac += c->n_rows() * Robot::dimension;
             }

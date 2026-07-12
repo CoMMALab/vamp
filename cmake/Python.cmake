@@ -20,12 +20,9 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     list(APPEND VAMP_ROBOT_MODULES
       sphere
       ur5
-      ur5_flask
       panda
-      panda_flask
       bimanual_panda
       fetch
-      fetch_flask
       baxter
       digit
       r2c6
@@ -34,12 +31,9 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     list(APPEND VAMP_ROBOT_STRUCTS
       Sphere
       UR5
-      UR5Flask
       Panda
-      PandaFlask
       BimanualPanda
       Fetch
-      FetchFlask
       Baxter
       Digit
       R2c6

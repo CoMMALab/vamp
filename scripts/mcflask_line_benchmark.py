@@ -5,7 +5,7 @@ the integrated API: end-effector constrained to a line (orientation free), start
 configurations sampled on the constraint by projection, random sphere obstacles with
 clearance around the line.
 
-panda_flask.rrtc plans rest-to-rest kinodynamic trajectories on the manifold
+panda.flask.rrtc plans rest-to-rest kinodynamic trajectories on the manifold
 (chart LQMT cubics lifted through the SIMD projector, bidirectional trees);
 panda.rrtc with the same constraints plans geometric paths (projection-based local
 planner). Times are not apples-to-apples (different problems solved), but both are
@@ -14,11 +14,11 @@ reported, along with constraint adherence for both.
 Prototype reference (mcflask branch, single tree): 92% success, ~0.5 ms median,
 adherence <= 1e-6 squared on 31/33, max velocity ratio 0.46.
 
-Velocity note: bounds are enforced on chart-center tangent-frame velocities; the
-executed (lifted) velocity is re-projected at each sample's own tangent space, so
-per-joint components can exceed limits by the tangent seam, which grows with chart
-radius. With this recipe's eps_chart=0.5 the max observed ratio is ~1.02; the
-default eps_chart=0.25 keeps it under 1.0. (The prototype hid this with
+Velocity note: bounds are enforced on execution-frame velocities — each sample's
+chart-center-frame velocity is re-projected into the tangent space at its own
+lifted point before the limit check, matching the lift used at execution time —
+so the velocity ratio gate holds at any chart radius. (The prototype enforced
+chart-center-frame velocities only and hid the tangent seam with
 velocity_scale=0.25, reporting 0.46.)
 """
 
@@ -116,7 +116,7 @@ def main():
     rng = np.random.default_rng(SEED)
 
     pa = vamp.panda
-    pf = vamp.panda_flask
+    pf = vamp.panda.flask
 
     settings = vamp.RRTCSettings()
     settings.range = 0.5

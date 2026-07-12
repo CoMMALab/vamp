@@ -15,28 +15,47 @@
 namespace vamp::planning
 {
     // Interpolate the path to n states; for projecting local planners, every interpolated
-    // state is projected back onto the constraint manifold (reverting on failure).
-    template <typename Robot, typename LocalPlanner>
-    inline static auto
-    interpolate_and_project(Path<Robot> &path, std::size_t n, const LocalPlanner &lp) -> bool
+    // state is projected back onto the constraint manifold and every resulting edge is
+    // revalidated (projection bends states off their validated chords, so the new edges
+    // do not inherit validity), reverting on any failure.
+    template <typename Robot, std::size_t rake, typename LocalPlanner>
+    inline static auto interpolate_and_project(
+        Path<Robot> &path,
+        std::size_t n,
+        const collision::Environment<FloatVector<rake>> &environment,
+        const LocalPlanner &lp) -> bool
     {
         if constexpr (LocalPlanner::projecting)
         {
             auto backup = path;
             path.interpolate_to_n_states(n);
+
+            bool admitted = true;
             for (auto &state : path)
             {
                 if (not lp.project(state))
                 {
-                    path = std::move(backup);
-                    return false;
+                    admitted = false;
+                    break;
                 }
+            }
+
+            for (auto i = 0U; admitted and i + 1 < path.size(); ++i)
+            {
+                admitted = lp.validate(path[i], path[i + 1], environment);
+            }
+
+            if (not admitted)
+            {
+                path = std::move(backup);
+                return false;
             }
 
             return true;
         }
         else
         {
+            (void)environment;
             path.interpolate_to_n_states(n);
             return true;
         }
@@ -81,24 +100,28 @@ namespace vamp::planning
         bool changed = false;
         for (auto step = 0U; step < settings.max_steps; ++step)
         {
-            // Subdivision midpoints must lie on the constraint manifold; bail out (reverting
-            // this step's subdivision) if any fails to project.
+            // Subdivision midpoints must lie on the constraint manifold, and projection
+            // bends them off their validated chords, so the subdivided edges do not
+            // inherit validity from the edges they split; bail out (reverting this step's
+            // subdivision) unless every midpoint projects and every new edge revalidates.
             if constexpr (LocalPlanner::projecting)
             {
                 auto backup = path;
                 path.subdivide();
 
-                bool projected = true;
-                for (auto index = 1U; index < path.size(); index += 2)
+                bool admitted = true;
+                for (auto index = 1U; admitted and index < path.size(); index += 2)
                 {
-                    if (not lp.project(path[index]))
-                    {
-                        projected = false;
-                        break;
-                    }
+                    admitted = lp.project(path[index]);
                 }
 
-                if (not projected)
+                for (auto index = 1U; admitted and index < path.size(); index += 2)
+                {
+                    admitted = lp.validate(path[index - 1], path[index], environment) and
+                               lp.validate(path[index], path[index + 1], environment);
+                }
+
+                if (not admitted)
                 {
                     path = std::move(backup);
                     break;
@@ -666,8 +689,11 @@ namespace vamp::planning
                 result.path, environment, settings.polish, lp);
         };
 
-        const auto interpolate = [&result, settings, &lp]()
-        { return interpolate_and_project<Robot>(result.path, settings.interpolate, lp); };
+        const auto interpolate = [&result, &environment, settings, &lp]()
+        {
+            return interpolate_and_project<Robot>(
+                result.path, settings.interpolate, environment, lp);
+        };
 
         const std::map<SimplifyRoutine, std::function<bool()>> operations = {
             {BSPLINE, bspline},
@@ -713,7 +739,7 @@ namespace vamp::planning
 
         if (settings.interpolate)
         {
-            interpolate_and_project<Robot>(result.path, settings.interpolate, lp);
+            interpolate_and_project<Robot>(result.path, settings.interpolate, environment, lp);
         }
 
         if (path.size() > 2)

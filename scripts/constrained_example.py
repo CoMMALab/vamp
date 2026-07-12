@@ -9,6 +9,11 @@ entry points (rrtc, aorrtc, grrtstar) and simplify:
 
 Start and goal must lie on the constraint manifold: the planners raise ValueError
 otherwise, so this script projects them first with the module's project() helper.
+
+With --flask, the panda examples (line, plane) plan kinodynamically instead: the
+chart-LQMT planner on vamp.panda_flask steers rest-to-rest (q, qdot) states along
+time-optimal cubics on the constraint manifold. Constraints are still built from the
+ambient panda submodule; the executed trajectory is reconstructed with lift_edge.
 """
 
 from pathlib import Path
@@ -40,6 +45,53 @@ LINE_EXTENT = 0.6
 # Reference pose (qw, qx, qy, qz, x, y, z) of the plane constraint: the end-effector
 # slides in the local x-y plane of this frame with fixed orientation.
 PLANE_POSE = [0.0, 0.707107, 0.0, 0.707107, 0.354, 0.7, 0.243]
+
+# Playback rate for geometric (non-flask) paths, which carry no timing.
+PLAYBACK_FPS = 30.0
+
+
+def rest_state(q):
+    return np.concatenate([q, np.zeros_like(q)]).astype(np.float32)
+
+
+def lift_path(module, path, constraints, constraint_settings, chart_settings):
+    """Lift every edge of a z-path through the chart machinery; per edge pick the
+    direction whose reconstructed endpoint matches (goal-tree edges lift backward and
+    are executed in reverse). The reconstruction shoots toward the recorded endpoint
+    and stops once attained, so misses up to ~reached_pos_tol are inherent; beyond 2x
+    the edge is considered unreconstructible. Returns (dense states, per-state times,
+    max constraint error, duration, max endpoint miss)."""
+    n_q = len(path[0]) // 2
+    dense = []
+    times = []
+    max_err = 0.0
+    total_T = 0.0
+    max_miss = 0.0
+    for i in range(len(path) - 1):
+        a, b = np.asarray(path[i]), np.asarray(path[i + 1])
+        best = None
+        for frm, tgt, fwd, endpoint in ((a, b, True, b), (b, a, False, a)):
+            try:
+                states, errs, T, _ = module.lift_edge(
+                    frm, tgt, constraints, forward=fwd, n_samples=32,
+                    constraint_settings=constraint_settings, chart_settings=chart_settings)
+            except ValueError:
+                continue
+            miss = float(np.linalg.norm(np.asarray(states[-1])[:n_q] - endpoint[:n_q]))
+            if best is None or miss < best[0]:
+                best = (miss, states, errs, T, fwd)
+        if best is None:
+            raise RuntimeError(f"edge {i} of the path could not be lifted")
+        miss, states, errs, T, fwd = best
+        if miss > 2.0 * chart_settings.reached_pos_tol:
+            raise RuntimeError(f"lifted edge {i} misses its endpoint by {miss:.2e}")
+        dense.extend(np.asarray(s) for s in (states if fwd else states[::-1]))
+        # lift_edge samples at uniform times in [0, T], so timestamps are recoverable.
+        times.extend(total_T + np.linspace(0.0, float(T), len(states)))
+        max_err = max(max_err, float(max(errs)))
+        total_T += float(T)
+        max_miss = max(max_miss, miss)
+    return np.array(dense, dtype=np.float32), np.array(times), max_err, total_T, max_miss
 
 
 def quat_from_matrix(m):
@@ -133,13 +185,25 @@ def main(
     mode: str = "plane",  # One of line, plane, bimanual.
     planner: str = "rrtc",  # One of rrtc, aorrtc, grrtstar.
     range_: float = 0.5,  # Planner range; constrained steps should stay small.
+    flask: bool = False,  # Plan kinodynamically on the manifold with the chart-LQMT planner.
+    rho: float | None = None,  # LQMT time weight in C = rho * T + int |u|^2 (flask only).
     visualize: bool = False,
     **kwargs,
 ):
     robot_name, problem, urdf = PROBLEMS[mode]
+    if rho is not None and not flask:
+        raise ValueError("--rho only applies to the chart-LQMT planner; pass --flask")
+    if flask:
+        if robot_name != "panda":
+            raise ValueError("--flask is only available for the panda examples (line, plane)")
+        kwargs.setdefault("max_iterations", 50000)
+        kwargs.setdefault("max_samples", 50000)
+        robot_name = "panda_flask"
 
     (module, planner_func, plan_settings,
      simp_settings) = vamp.configure_robot_and_planner_with_kwargs(robot_name, planner, **kwargs)
+    if rho is not None:
+        module.set_rho(rho)
 
     if planner == "rrtc" or planner == "grrtstar":
         plan_settings.range = range_
@@ -149,11 +213,19 @@ def main(
     constraint_settings = vamp.ConstraintSettings()
     constraint_settings.max_iterations = 10
 
-    start_seed, goal_seed, constraints, e = problem(module)
+    # Constraints always come from the ambient (geometric) robot's submodule.
+    ambient = vamp.panda if flask else module
+    start_seed, goal_seed, constraints, e = problem(ambient)
+    n_q = len(start_seed)
+
+    chart_kwargs = {}
+    if flask:
+        chart_kwargs["chart_settings"] = vamp.ChartSettings()
+        start_seed, goal_seed = rest_state(start_seed), rest_state(goal_seed)
 
     # Strict start/goal policy: seeds must be projected onto the manifold explicitly.
-    start = module.project(start_seed, constraints, constraint_settings)
-    goal = module.project(goal_seed, constraints, constraint_settings)
+    start = module.project(start_seed, constraints, constraint_settings, **chart_kwargs)
+    goal = module.project(goal_seed, constraints, constraint_settings, **chart_kwargs)
 
     for name, q in (("start", start), ("goal", goal)):
         if not module.validate(q, e):
@@ -163,7 +235,7 @@ def main(
     elapsed = time.perf_counter()
     result = planner_func(
         start, goal, e, plan_settings, sampler,
-        constraints=constraints, constraint_settings=constraint_settings)
+        constraints=constraints, constraint_settings=constraint_settings, **chart_kwargs)
     elapsed = time.perf_counter() - elapsed
 
     if not result.solved:
@@ -171,16 +243,26 @@ def main(
 
     simple = module.simplify(
         result.path, e, simp_settings, sampler,
-        constraints=constraints, constraint_settings=constraint_settings)
+        constraints=constraints, constraint_settings=constraint_settings, **chart_kwargs)
 
     path = simple.path
     on_manifold = all(
         module.satisfied(path[i], constraints, constraint_settings) for i in range(len(path)))
 
-    print(f"{mode} with {planner}: solved in {elapsed * 1e3:.1f} ms")
+    print(f"{mode} with {planner}{' (flask)' if flask else ''}: solved in {elapsed * 1e3:.1f} ms")
     print(f"path: {len(result.path)} -> {len(path)} states, "
           f"cost {result.path.cost():.4f} -> {path.cost():.4f}")
     print(f"all waypoints on manifold: {on_manifold}")
+
+    dense = dense_t = None
+    if flask:
+        dense, dense_t, max_err, total_T, max_miss = lift_path(
+            module, path, constraints, constraint_settings, chart_kwargs["chart_settings"])
+        vmax = np.abs(dense[:, n_q:]).max(axis=0)
+        vel_ratio = float((vmax / np.array(module.velocity_limits())).max())
+        print(f"trajectory: {total_T:.2f} s over {len(path) - 1} segments, "
+              f"max constraint dist^2 {max_err ** 2:.2e}, max velocity ratio {vel_ratio:.2f}, "
+              f"max endpoint miss {max_miss:.2e}")
 
     if visualize:
         from viser import transforms as tf
@@ -188,7 +270,7 @@ def main(
 
         robot_dir = Path(__file__).parents[1] / "resources" / "panda"
         server, robot = setup_viser_with_robot(robot_dir, urdf)
-        robot.update_cfg(np.array(start))
+        robot.update_cfg(np.asarray(start)[:n_q])
 
         if e.spheres:
             add_spheres(
@@ -201,7 +283,7 @@ def main(
         if mode == "line":
             # The line constraint is anchored at the end-effector pose of the start seed;
             # motion is allowed only along the local z (approach) axis.
-            reference = np.array(module.eefk(start_seed))
+            reference = np.array(ambient.eefk(start_seed[:n_q]))
             rotation, origin = reference[:3, :3], reference[:3, 3]
             axis = rotation[:, 2]
             server.scene.add_line_segments(
@@ -227,18 +309,38 @@ def main(
                 position=np.array(PLANE_POSE[4:]),
             )
 
+        # Geometric paths are already dense (planners emit whole projected waypoint
+        # chains); flask paths are lifted to the executed trajectory. Either way, no
+        # interpolation: linear interpolation leaves the manifold.
+        # numpy() is a read-only view and the bindings only take writable arrays, so copy.
+        waypoints = dense[:, :n_q] if flask else path.numpy().copy()
+
         if mode != "bimanual":
             # End-effector positions along the path; these should all lie on the constraint.
-            ee_trace = np.array([np.array(module.eefk(q))[:3, 3] for q in path])
+            ee_trace = np.array([np.array(ambient.eefk(q))[:3, 3] for q in waypoints])
             add_point_cloud(server, ee_trace, colors=[0, 255, 0], point_size=0.008, prefix="/ee_trace")
 
-        # No interpolation: linear interpolation leaves the manifold, and constrained
-        # paths are already dense (planners emit whole projected waypoint chains).
-        add_trajectory(server, path.numpy(), robot, [], [[]])
+        slider = add_trajectory(server, waypoints, robot, [], [[]])
+        play = server.gui.add_checkbox("Play", initial_value=True)
+
+        # Playback schedule: flask trajectories replay on the lifted wall-clock timing;
+        # geometric paths carry no timing, so they step at a constant rate.
+        play_times = dense_t if flask else np.arange(len(waypoints)) / PLAYBACK_FPS
+        period = play_times[-1] + 1.0  # Hold the goal pose for a beat before looping.
 
         print("visualization at http://localhost:8080; ctrl-c to exit")
+        t0 = time.perf_counter()
+        was_playing = True
         while True:
-            time.sleep(1.0)
+            if play.value:
+                if not was_playing:  # Resume from wherever the slider was scrubbed to.
+                    t0 = time.perf_counter() - play_times[int(slider.value)]
+                t = min((time.perf_counter() - t0) % period, play_times[-1])
+                idx = int(np.searchsorted(play_times, t, side="right") - 1)
+                if idx != int(slider.value):
+                    slider.value = idx  # Fires the slider callback, which moves the robot.
+            was_playing = play.value
+            time.sleep(1.0 / 60.0)
 
 
 if __name__ == "__main__":

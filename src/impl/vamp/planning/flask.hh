@@ -20,34 +20,19 @@ namespace vamp::planning::flask
     // with dy = yf - y0, d1 = dy - T v0, d2 = vf - v0. Returns {T*, C(T*)}.
     //
     // Note C is asymmetric in (a, b); evaluate in execution (a -> b) direction.
-    // Generic over any flask robot: depends only on Robot::flat_dimension and Robot::rho.
-    template <typename Robot>
-    inline auto solve(
-        const typename Robot::Configuration &a_in,
-        const typename Robot::Configuration &b_in) noexcept -> LQMTSolution
+    // Boundary data enters only through six inner products, so the solve is generic over
+    // the flat dimension; solve_scalars is the dimension-free core used by both the flask
+    // robots (via solve<Robot>) and the manifold-constrained chart LQMT (dimension d - k).
+    inline auto solve_scalars(
+        double v00,
+        double v0f,
+        double vff,
+        double dyv0,
+        double dyvf,
+        double dy2,
+        double rho_d) noexcept -> LQMTSolution
     {
-        constexpr std::size_t n = Robot::flat_dimension;
         constexpr double min_time = 1e-4;
-
-        const auto a = a_in.to_array();
-        const auto b = b_in.to_array();
-
-        double v00 = 0., v0f = 0., vff = 0., dyv0 = 0., dyvf = 0., dy2 = 0.;
-        for (std::size_t j = 0; j < n; ++j)
-        {
-            const double v0 = a[n + j];
-            const double vf = b[n + j];
-            const double dy = static_cast<double>(b[j]) - static_cast<double>(a[j]);
-            v00 += v0 * v0;
-            v0f += v0 * vf;
-            vff += vf * vf;
-            dyv0 += dy * v0;
-            dyvf += dy * vf;
-            dy2 += dy * dy;
-        }
-
-        // Depressed quartic T^4 + p T^2 + q T + r = 0 (stationarity of C, divided by rho)
-        const double rho_d = static_cast<double>(Robot::rho);
         const double p = -4. * (v00 + v0f + vff) / rho_d;
         const double q = 24. * (dyv0 + dyvf) / rho_d;
         const double r = -36. * dy2 / rho_d;
@@ -131,6 +116,29 @@ namespace vamp::planning::flask
                 add_quadratic_roots(-s2m, half + qterm);
                 add_quadratic_roots(s2m, half - qterm);
             }
+            else
+            {
+                // Degenerate resolvent (m -> 0 iff q -> 0): the quartic is numerically
+                // biquadratic. Boundary data built from float dot products carries
+                // ~1e-8 residues, so tiny-but-nonzero q must land here, not in a
+                // rootless Ferrari. (Found via MCFLASK tangent-projected velocities.)
+                const double disc = p * p - 4. * r;
+                if (disc >= 0.)
+                {
+                    const double sq = std::sqrt(disc);
+                    const double u1 = 0.5 * (-p + sq);
+                    const double u2 = 0.5 * (-p - sq);
+                    if (u1 > 0.)
+                    {
+                        roots[n_roots++] = std::sqrt(u1);
+                    }
+
+                    if (u2 > 0.)
+                    {
+                        roots[n_roots++] = std::sqrt(u2);
+                    }
+                }
+            }
         }
 
         double best_T = 0.;
@@ -173,6 +181,34 @@ namespace vamp::planning::flask
         }
 
         return {static_cast<float>(best_T), static_cast<float>(best_cost)};
+    }
+
+    // Configuration-space wrapper for flask robots (Configuration = (q, v), dimension 2n).
+    template <typename Robot>
+    inline auto solve(
+        const typename Robot::Configuration &a_in,
+        const typename Robot::Configuration &b_in) noexcept -> LQMTSolution
+    {
+        constexpr std::size_t n = Robot::flat_dimension;
+
+        const auto a = a_in.to_array();
+        const auto b = b_in.to_array();
+
+        double v00 = 0., v0f = 0., vff = 0., dyv0 = 0., dyvf = 0., dy2 = 0.;
+        for (std::size_t j = 0; j < n; ++j)
+        {
+            const double v0 = a[n + j];
+            const double vf = b[n + j];
+            const double dy = static_cast<double>(b[j]) - static_cast<double>(a[j]);
+            v00 += v0 * v0;
+            v0f += v0 * vf;
+            vff += vf * vf;
+            dyv0 += dy * v0;
+            dyvf += dy * vf;
+            dy2 += dy * dy;
+        }
+
+        return solve_scalars(v00, v0f, vff, dyv0, dyvf, dy2, static_cast<double>(Robot::rho));
     }
 
     template <typename Robot>

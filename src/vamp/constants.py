@@ -9,6 +9,7 @@ ROBOT_RRT_RANGES = {
     "fetch": 1.0,
     "fetch_flask": 1.0,
     "baxter": 0.5,
+    "digit": 0.75,
     }
 
 # Per-robot RRTC dynamic-domain radius overrides. z-space distance in flask robots easily

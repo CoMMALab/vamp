@@ -27,6 +27,8 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       fetch
       fetch_flask
       baxter
+      digit
+      r2c6
     )
 
     list(APPEND VAMP_ROBOT_STRUCTS
@@ -39,6 +41,8 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       Fetch
       FetchFlask
       Baxter
+      Digit
+      R2c6
     )
   endif()
 

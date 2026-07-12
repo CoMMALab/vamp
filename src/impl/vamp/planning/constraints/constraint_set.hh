@@ -53,6 +53,44 @@ namespace vamp::planning::constraint
             return d;
         }
 
+        // Total scalar rows across all constraints in a stacked error/Jacobian.
+        auto total_rows() const noexcept -> std::size_t
+        {
+            std::size_t n = 0;
+            for (const auto &c : constraints_)
+            {
+                n += c->n_rows();
+            }
+
+            return n;
+        }
+
+        // Concatenated manifold-defining row flags (total_rows() entries), in constraint
+        // order.
+        void active_rows(bool *rows) const noexcept
+        {
+            for (const auto &c : constraints_)
+            {
+                c->active_rows(rows);
+                rows += c->n_rows();
+            }
+        }
+
+        // Stacked hinged error (total_rows() entries) and raw-error Jacobian (total_rows()
+        // x Robot::dimension, row-major) of one lane of q, in constraint order. The stacked
+        // Jacobian's null space is the tangent space of the manifold the whole set defines.
+        // Overwrites the constraints' squared_error() caches.
+        void error_jacobian(const Block &q, std::size_t lane, float *err, float *jac)
+            const noexcept
+        {
+            for (const auto &c : constraints_)
+            {
+                c->error_jacobian(q, lane, err, jac);
+                err += c->n_rows();
+                jac += c->n_rows() * Robot::dimension;
+            }
+        }
+
         // One simultaneous (Jacobi-style) descent step across all constraints, consuming the
         // caches of the last squared_error() call on the same q.
         void step_in_place(Block &q) const noexcept

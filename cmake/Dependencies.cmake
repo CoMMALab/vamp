@@ -20,7 +20,7 @@ if(NOT Eigen3_FOUND)
   endif()
 endif()
 
-CPMAddPackage("gh:kavrakilab/nigh#548e6412b7c67e1ac9358dfd4c8f051f2e76f61d")
+CPMAddPackage("gh:kavrakilab/nigh#145bfa16077d1b8b36bf6f8b70aead04afe7971f")
 add_library(nigh INTERFACE)
 target_include_directories(nigh INTERFACE $<BUILD_INTERFACE:${nigh_SOURCE_DIR}/src>)
 if(VAMP_INSTALL_CPP_LIBRARY)

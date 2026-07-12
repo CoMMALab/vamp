@@ -118,6 +118,108 @@ namespace vamp::binding
             t, "grrtstar");
     }
 
+    template <typename Traits, vp_::Planner P, typename Settings, typename Target>
+    inline void register_chart_planner(Target &t, const char *name)
+    {
+        const auto doc =
+            std::string("Plan using ") + name + " on the constraint manifold via chart-local " +
+            "time-optimal steering. States are (q, qdot) over the ambient robot; constraints " +
+            "come from the ambient robot's submodule. Raises ValueError if the start or a goal " +
+            "violates the constraints; project them first with project(). Goal attainment is " +
+            "slab-aware: an edge reaches its target when position is within " +
+            "chart_settings.reached_pos_tol and velocity within reached_vel_tol scaled by " +
+            "(1 + target speed).";
+        t.def(
+            name,
+            &Traits::template solve_single_chart<P, Settings>,
+            "start"_a,
+            "goal"_a,
+            "environment"_a,
+            "settings"_a,
+            "sampler"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "chart_settings"_a = vamp::planning::constraint::ChartSettings{},
+            doc.c_str());
+        t.def(
+            name,
+            &Traits::template solve_multi_chart<P, Settings>,
+            "start"_a,
+            "goal"_a,
+            "environment"_a,
+            "settings"_a,
+            "sampler"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "chart_settings"_a = vamp::planning::constraint::ChartSettings{},
+            doc.c_str());
+    }
+
+    // Chart-constrained overloads on the same entry points as the unconstrained z-robot
+    // API: the extra required `constraints` argument (over the ambient robot) selects
+    // them. PRM and FCIT do not use the local planner, so they have no constrained form.
+    template <typename Traits, typename Target>
+    inline void bind_chart_methods(Target &t)
+    {
+        t.def(
+            "project",
+            &Traits::chart_project,
+            "state"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "chart_settings"_a = vamp::planning::constraint::ChartSettings{},
+            "Project a (q, qdot) state onto the constraint manifold: position by constraint "
+            "projection, velocity into the tangent space at the projected position. Raises "
+            "ValueError if the projection does not converge.");
+        t.def(
+            "satisfied",
+            &Traits::chart_satisfied,
+            "state"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "Whether a state's position satisfies every constraint within tolerance.");
+        t.def(
+            "simplify",
+            &Traits::simplify_chart,
+            "path"_a,
+            "environment"_a,
+            "settings"_a,
+            "sampler"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "chart_settings"_a = vamp::planning::constraint::ChartSettings{},
+            "Simplification heuristics restricted to the constraint manifold. Raises ValueError "
+            "if any path state violates the constraints.");
+        t.def(
+            "debug_chart",
+            &Traits::debug_chart,
+            "state"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "chart_settings"_a = vamp::planning::constraint::ChartSettings{},
+            "Debug: the orthonormal tangent-space basis at a state's position, as rows of "
+            "ambient components. Empty when no chart exists there.");
+        t.def(
+            "lift_edge",
+            &Traits::lift_edge,
+            "from_state"_a,
+            "target"_a,
+            "constraints"_a,
+            "forward"_a = true,
+            "n_samples"_a = 32,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "chart_settings"_a = vamp::planning::constraint::ChartSettings{},
+            "Debug: densify the exact edge from_state -> target through the chart/lift "
+            "machinery, without validation. Returns (states, constraint error norms, duration, "
+            "cost); states are sampled at uniform times in chart time from from_state, so "
+            "backward edges are executed by traversing them in reverse. Raises ValueError if "
+            "the edge cannot be constructed.");
+
+        register_chart_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
+        register_chart_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");
+        register_chart_planner<Traits, vp_::Planner::GRRTSTAR, vp_::GRRTStarSettings>(t, "grrtstar");
+    }
+
     template <typename Traits, typename Target>
     inline void bind_robot_methods(Target &t)
     {

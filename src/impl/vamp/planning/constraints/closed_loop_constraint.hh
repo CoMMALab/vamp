@@ -68,12 +68,15 @@ namespace vamp::planning::constraint
             }
         }
 
-        void error_jacobian(const Block &q, std::size_t lane, float *err, float *jac)
-            const noexcept final
+        void evaluate_error_jacobian(const Block &q) const noexcept final
         {
             input.q = q;
             Robot::template closed_loop_error<rake>(input, solve);
+        }
 
+        void extract_error_jacobian(std::size_t lane, float *err, float *jac)
+            const noexcept final
+        {
             for (auto i = 0U; i < err_size; ++i)
             {
                 err[i] = solve.err[{i, lane}];

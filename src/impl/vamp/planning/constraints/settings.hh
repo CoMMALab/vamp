@@ -62,7 +62,8 @@ namespace vamp::planning::constraint
         // the SIMD width).
         std::size_t max_edge_samples = 512;
 
-        // Relative singular-value cutoff for the rank of the stacked active-row Jacobian.
+        // Relative cutoff on the pivoted-QR R diagonal for the rank of the stacked
+        // active-row Jacobian.
         float rank_tolerance = 1e-4F;
     };
 }  // namespace vamp::planning::constraint

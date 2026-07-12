@@ -24,8 +24,9 @@ namespace vamp::planning::constraint
     //
     // The manifold-restricted system is differentially flat with flat output equal to
     // tangent-space (chart) coordinates u in R^{d-k}: local paths are LQMT cubics solved
-    // in the chart at the from-node -- an orthonormal basis B_0 of ker J(q_0) from an SVD
-    // of the stacked active-row constraint Jacobian -- and lifted onto the manifold by
+    // in the chart at the from-node -- an orthonormal basis B_0 of ker J(q_0) from a
+    // pivoted QR of the transposed stacked active-row constraint Jacobian -- and lifted
+    // onto the manifold by
     // batch projection, sigma(t) = P_M(q_0 + B_0 u(t)). Tree nodes are lifted states
     // (positions exactly on the manifold, velocities in its tangent space). Samples are
     // raw steering targets and need no projection, but states synthesized outside the
@@ -75,11 +76,18 @@ namespace vamp::planning::constraint
           , active_(std::make_unique<bool[]>(m_rows_))
           , err_(m_rows_)
           , jac_(m_rows_ * d)
+          , jac_batch_(rake * m_rows_ * d)
         {
             constraints.active_rows(active_.get());
             for (auto i = 0U; i < m_rows_; ++i)
             {
                 n_active_ += active_[i];
+            }
+
+            if (n_active_ > 0)
+            {
+                jat_.resize(d, static_cast<Eigen::Index>(n_active_));
+                q_.resize(d, d);
             }
         }
 
@@ -506,16 +514,39 @@ namespace vamp::planning::constraint
             return Configuration(arr);
         }
 
-        // Orthonormal tangent basis of ker J_active at q0 via SVD of the stacked
-        // active-row constraint Jacobian. An empty or slab-only constraint set yields the
-        // identity chart (nc = d), reducing every edge to an unconstrained ambient LQMT.
+        // Whether every chart-active row of a stacked Jacobian (layout as
+        // ConstraintSet::error_jacobian) is finite.
+        auto active_rows_finite(const float *jac) const noexcept -> bool
+        {
+            for (auto r = 0U; r < m_rows_; ++r)
+            {
+                if (not active_[r])
+                {
+                    continue;
+                }
+
+                for (auto c = 0U; c < d; ++c)
+                {
+                    if (not std::isfinite(jac[r * d + c]))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        // Orthonormal tangent basis of ker J_active at q0 via pivoted QR of the transposed
+        // stacked active-row constraint Jacobian. An empty or slab-only constraint set
+        // yields the identity chart (nc = d), reducing every edge to an unconstrained
+        // ambient LQMT.
         auto make_chart(const std::array<float, d> &q0) const noexcept -> Chart
         {
-            Chart chart;
-            chart.q0 = q0;
-
             if (n_active_ == 0)
             {
+                Chart chart;
+                chart.q0 = q0;
                 chart.nc = d;
                 for (auto c = 0U; c < d; ++c)
                 {
@@ -529,8 +560,7 @@ namespace vamp::planning::constraint
             // The traced rotation-error Jacobian is NaN exactly on the manifold (acos at
             // argument 1). J is continuous, so evaluate at a deterministically perturbed
             // point when needed; the O(1e-3) offset is far below the chart error budget.
-            bool finite = false;
-            for (auto attempt = 0U; attempt < 4 and not finite; ++attempt)
+            for (auto attempt = 0U; attempt < 4; ++attempt)
             {
                 auto q_eval = q0;
                 if (attempt > 0)
@@ -543,32 +573,25 @@ namespace vamp::planning::constraint
                 }
 
                 constraints.error_jacobian(broadcast(q_eval), 0, err_.data(), jac_.data());
-
-                finite = true;
-                for (auto r = 0U; r < m_rows_ and finite; ++r)
+                if (active_rows_finite(jac_.data()))
                 {
-                    if (not active_[r])
-                    {
-                        continue;
-                    }
-
-                    for (auto c = 0U; c < d; ++c)
-                    {
-                        if (not std::isfinite(jac_[r * d + c]))
-                        {
-                            finite = false;
-                            break;
-                        }
-                    }
+                    return chart_from_jacobian(q0, jac_.data());
                 }
             }
 
-            if (not finite)
-            {
-                return chart;
-            }
+            Chart chart;
+            chart.q0 = q0;
+            return chart;
+        }
 
-            Eigen::MatrixXf Ja(n_active_, d);
+        // Chart at q0 built from a precomputed, finite stacked Jacobian evaluated there
+        // (assumes n_active_ > 0; use make_chart when no Jacobian is at hand).
+        auto chart_from_jacobian(const std::array<float, d> &q0, const float *jac)
+            const noexcept -> Chart
+        {
+            Chart chart;
+            chart.q0 = q0;
+
             std::size_t k = 0;
             for (auto r = 0U; r < m_rows_; ++r)
             {
@@ -579,29 +602,36 @@ namespace vamp::planning::constraint
 
                 for (auto c = 0U; c < d; ++c)
                 {
-                    Ja(k, c) = jac_[r * d + c];
+                    jat_(c, k) = jac[r * d + c];
                 }
 
                 ++k;
             }
 
-            Eigen::JacobiSVD<Eigen::MatrixXf> svd(Ja, Eigen::ComputeFullV);
-            const auto &sv = svd.singularValues();
+            // Column-pivoted QR of J_active^T: the leading rank columns of Q span
+            // range(J^T) and the trailing d - rank columns its orthogonal complement,
+            // ker J -- the tangent basis. Pivoting keeps the R diagonal non-increasing in
+            // magnitude, so it stands in for the singular values in the rank cutoff at a
+            // fraction of the cost, and the preallocated decomposition avoids per-call
+            // heap traffic.
+            qr_.compute(jat_);
+            const auto &QR = qr_.matrixQR();
 
             std::size_t rank = 0;
-            const float tol = settings.rank_tolerance * std::max(sv(0), 1e-6F);
-            for (auto i = 0; i < sv.size(); ++i)
+            const float tol = settings.rank_tolerance * std::max(std::abs(QR(0, 0)), 1e-6F);
+            const auto n_diag = std::min<std::size_t>(d, n_active_);
+            for (auto i = 0U; i < n_diag; ++i)
             {
-                rank += sv(i) > tol;
+                rank += std::abs(QR(i, i)) > tol;
             }
 
             chart.nc = d - rank;
-            const auto &V = svd.matrixV();  // d x d
+            q_ = qr_.householderQ();  // d x d
             for (auto c = 0U; c < chart.nc; ++c)
             {
                 for (auto j = 0U; j < d; ++j)
                 {
-                    chart.basis[c][j] = V(j, rank + c);
+                    chart.basis[c][j] = q_(j, rank + c);
                 }
             }
 
@@ -706,9 +736,11 @@ namespace vamp::planning::constraint
         // reversal (negated boundary velocities, terminal velocity negated back). The
         // chart target is clipped to `range`; within range the edge shoots to land on qt
         // exactly. Each lifted sample must stay within eps_chart of its pre-image and
-        // within the continuity guard of its predecessor, and the assembled (y, yd, ydd)
-        // blocks must pass the z-robot's fused limit/torque/collision check. The gate sees
-        // the candidate frontier after the LQMT solve but before batch validation.
+        // within the continuity guard of its predecessor; its velocity row is re-projected
+        // into the tangent space at its own lifted point (the execution frame), and the
+        // assembled (y, yd, ydd) blocks must pass the z-robot's fused limit/torque/
+        // collision check. The gate sees the candidate frontier after the LQMT solve but
+        // before batch validation.
         template <typename Gate>
         auto make_edge(
             const std::array<float, d> &q0,
@@ -942,7 +974,8 @@ namespace vamp::planning::constraint
 
                         amb[lane + dim * rake] = q_amb;
                         pre_scalar[lane][dim] = q_amb;
-                        // Velocities in the chart-center tangent frame; the reversed sign
+                        // Provisional chart-center-frame velocities; re-projected into each
+                        // sample's own tangent space after the lift, below. The reversed sign
                         // is immaterial to the (even) velocity bounds and rigid-body RNEA.
                         zarr[lane + (d + dim) * rake] = sign * v_amb;
                         zarr[lane + (2 * d + dim) * rake] = a_amb;
@@ -955,9 +988,23 @@ namespace vamp::planning::constraint
                     return EdgeStatus::Invalid;
                 }
 
+                // One constraint-kernel evaluation covers the whole batch of lifted
+                // samples; extract every lane's Jacobian up front, since the NaN-fallback
+                // make_chart below overwrites the kernel caches.
+                if (n_active_ != 0)
+                {
+                    constraints.evaluate_error_jacobian(ablock);
+                    for (auto lane = 0U; lane < rake; ++lane)
+                    {
+                        constraints.extract_error_jacobian(
+                            lane, err_.data(), jac_batch_.data() + lane * m_rows_ * d);
+                    }
+                }
+
                 // Chart validity (lift displacement) and lift continuity guards
                 for (auto lane = 0U; lane < rake; ++lane)
                 {
+                    std::array<float, d> q_lift;
                     float disp2 = 0.F, jump2 = 0.F;
                     for (auto dim = 0U; dim < d; ++dim)
                     {
@@ -969,6 +1016,7 @@ namespace vamp::planning::constraint
                         jump2 += jj * jj;
 
                         zarr[lane + dim * rake] = pj;
+                        q_lift[dim] = pj;
                         prev_q[dim] = pj;
                     }
 
@@ -981,6 +1029,37 @@ namespace vamp::planning::constraint
                     if (jump2 > jump_tol * jump_tol)
                     {
                         return EdgeStatus::Invalid;
+                    }
+
+                    // Execution-frame velocity: the lift's pushforward is the tangent
+                    // projector at the lifted sample (as in arrival_velocity), and per-joint
+                    // components can exceed their chart-center-frame values by a
+                    // curvature-order amount, so the limit check must see the executed
+                    // values. Accelerations keep the chart frame: the executed correction
+                    // is the same order but needs the second fundamental form, which is not
+                    // economically available here.
+                    if (n_active_ != 0)
+                    {
+                        const float *jac_lane = jac_batch_.data() + lane * m_rows_ * d;
+                        const auto chart_t = active_rows_finite(jac_lane) ?
+                                                 chart_from_jacobian(q_lift, jac_lane) :
+                                                 make_chart(q_lift);
+                        if (not chart_t.valid)
+                        {
+                            return EdgeStatus::Invalid;
+                        }
+
+                        std::array<float, d> v_s;
+                        for (auto dim = 0U; dim < d; ++dim)
+                        {
+                            v_s[dim] = zarr[lane + (d + dim) * rake];
+                        }
+
+                        const auto v_exec = tangent_project(chart_t, v_s);
+                        for (auto dim = 0U; dim < d; ++dim)
+                        {
+                            zarr[lane + (d + dim) * rake] = v_exec[dim];
+                        }
                     }
                 }
 
@@ -1008,6 +1087,10 @@ namespace vamp::planning::constraint
         mutable std::unique_ptr<bool[]> active_;
         mutable std::vector<float> err_;
         mutable std::vector<float> jac_;
+        mutable std::vector<float> jac_batch_;
+        mutable Eigen::MatrixXf jat_;  // stacked active-row Jacobian, transposed (d x n_active_)
+        mutable Eigen::ColPivHouseholderQR<Eigen::MatrixXf> qr_;
+        mutable Eigen::MatrixXf q_;  // materialized Q factor (d x d)
         mutable std::vector<Configuration> chain_;
     };
 }  // namespace vamp::planning::constraint

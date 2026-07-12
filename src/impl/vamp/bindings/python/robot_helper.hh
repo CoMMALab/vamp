@@ -93,6 +93,23 @@ struct has_ambient<T, std::void_t<typename T::Ambient>> : std::true_type
 template <typename T>
 constexpr bool has_ambient_v = has_ambient<T>::value;
 
+// Robots generated with a FLASK block carry their z-space sibling as a nested struct.
+template <typename T, typename = void>
+struct has_flask_robot : std::false_type
+{
+};
+
+// The is_same check rejects the injected-class-name: for the nested Flask struct itself,
+// T::Flask names T, which would otherwise recurse init_robot forever.
+template <typename T>
+struct has_flask_robot<T, std::void_t<typename T::Flask>>
+  : std::bool_constant<not std::is_same_v<typename T::Flask, T>>
+{
+};
+
+template <typename T>
+constexpr bool has_flask_robot_v = has_flask_robot<T>::value;
+
 namespace vamp::binding
 {
     namespace nb = nanobind;
@@ -943,14 +960,23 @@ namespace vamp::binding
 
             if constexpr (has_ambient_v<Robot>)
             {
+                using Ambient = typename Robot::Ambient;
+
                 submodule.def(
                     "ambient",
-                    []() { return std::string(Robot::Ambient::name); },
+                    []() { return std::string(Ambient::name); },
                     "Name of the ambient position-space sibling robot whose constraints this "
                     "z-robot plans with.");
 
-                bind_chart_methods<ChartRobotTraits<Robot, NA>>(submodule);
-                bind_chart_methods<ChartRobotTraits<Robot, CA>>(submodule);
+                // Chart-based constrained planning projects through the ambient robot's
+                // generated constraint kernels; skip binding when it has none.
+                if constexpr (
+                    has_n_eef_v<Ambient> or has_n_closed_loops_v<Ambient> or
+                    robot_has_com_v<Ambient>)
+                {
+                    bind_chart_methods<ChartRobotTraits<Robot, NA>>(submodule);
+                    bind_chart_methods<ChartRobotTraits<Robot, CA>>(submodule);
+                }
             }
 
             using XType = nanobind::
@@ -986,6 +1012,13 @@ namespace vamp::binding
         if constexpr (has_set_radius_v<Robot>)
         {
             submodule.def("set_radius", &Robot::set_radius, "Set radius.");
+        }
+
+        // FLASK z-space sibling generated as a nested struct: bind it as a nested
+        // submodule (e.g. vamp.panda.flask).
+        if constexpr (has_flask_robot_v<Robot>)
+        {
+            init_robot<typename Robot::Flask>(submodule);
         }
 
         return submodule;

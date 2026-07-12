@@ -79,7 +79,14 @@ def png_to_heightfield(
 
 
 def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, **kwargs):
-    robot_module = getattr(_core, robot_name)
+    # Dotted names address nested submodules, e.g. "panda.flask".
+    robot_module: Any = _core
+    try:
+        for part in robot_name.split("."):
+            robot_module = getattr(robot_module, part)
+    except AttributeError:
+        raise ValueError(f"Robot {robot_name} does not exist!")
+
     try:
         planner_func = getattr(robot_module, planner_name)
     except AttributeError:
@@ -134,7 +141,7 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
                 setattr(plan_settings.rrtc, sk, v)
 
     simp_settings = SimplifySettings()
-    if robot_name.endswith("_flask"):
+    if robot_name.endswith(".flask"):
         # Two rounds of BSPLINE -> VELOPT -> REDUCE. Each round subdivides, tunes the new
         # midpoints' velocities against C_loc, then removes redundant vertices. Empirically
         # wins on panda cage rho=64 (C_loc 240.5 vs 253 for one round; 3+ rounds show

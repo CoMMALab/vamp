@@ -5,10 +5,16 @@
 #include <vamp/collision/environment.hh>
 #include <vamp/collision/validity.hh>
 #include <vamp/planning/nn.hh>
+#include <vamp/planning/flask.hh>
 
 #include <Eigen/Geometry>
 #include <nigh/so3_space.hpp>
 #include <nigh/cartesian_space.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 
 // clang-format off
 // NOLINTBEGIN(*-magic-numbers)
@@ -24,6 +30,7 @@ struct Fetch
     static constexpr float max_radius = 0.23999999463558197;
     static constexpr std::size_t resolution = 32;
     static constexpr bool euclidean = true;
+    static constexpr std::array<std::size_t, 0> so3_offsets = {  };
 
     static constexpr std::array<std::string_view, dimension> joint_names = {"torso_lift_joint", "shoulder_pan_joint", "shoulder_lift_joint", "upperarm_roll_joint", "elbow_flex_joint", "forearm_roll_joint", "wrist_flex_joint", "wrist_roll_joint"};
     static constexpr const char *end_effector = "gripper_link";
@@ -185,9 +192,12 @@ q[7] = 0.15915507078170776 * (q[7] - -3.141590118408203);
 
     }
 
-    template <std::size_t rake>
-    static inline void sphere_fk(const ConfigurationBlock<rake> &x, Spheres<rake> &out) noexcept
+    // The FK/CC kernels read only rows 0..dimension-1, so they accept any block with at least
+    // that many rows; a nested FLASK robot forwards its 3n-row z-blocks here directly.
+    template <std::size_t rake, std::size_t stride = dimension>
+    static inline void sphere_fk(const FloatVector<rake, stride> &x, Spheres<rake> &out) noexcept
     {
+        static_assert(stride >= dimension);
         std::array<FloatVector<rake, 1>, 17> v;
         std::array<FloatVector<rake, 1>, 444> y;
 
@@ -714,11 +724,12 @@ q[7] = 0.15915507078170776 * (q[7] - -3.141590118408203);
 
     using Debug = std::pair<std::vector<std::vector<std::string>>, std::vector<std::pair<std::size_t, std::size_t>>>;
 
-    template <std::size_t rake>
+    template <std::size_t rake, std::size_t stride = dimension>
         static inline auto fkcc_debug(
             const vamp::collision::Environment<FloatVector<rake>> &environment,
-            const ConfigurationBlock<rake> &x) noexcept -> Debug
+            const FloatVector<rake, stride> &x) noexcept -> Debug
     {
+        static_assert(stride >= dimension);
         std::array<FloatVector<rake, 1>, 50> v;
         std::array<FloatVector<rake, 1>, 504> y;
 
@@ -47561,11 +47572,12 @@ q[7] = 0.15915507078170776 * (q[7] - -3.141590118408203);
         return output;
     }
 
-    template <std::size_t rake>
+    template <std::size_t rake, std::size_t stride = dimension>
         static inline bool fkcc(
             const vamp::collision::Environment<FloatVector<rake>> &environment,
-            const ConfigurationBlock<rake> &x) noexcept
+            const FloatVector<rake, stride> &x) noexcept
     {
+        static_assert(stride >= dimension);
         std::array<FloatVector<rake, 1>, 50> v;
         std::array<FloatVector<rake, 1>, 504> y;
 
@@ -95652,11 +95664,12 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[496],
         return true;
     }
 
-    template <std::size_t rake>
+    template <std::size_t rake, std::size_t stride = dimension>
     static inline bool fkcc_attach(
         const vamp::collision::Environment<FloatVector<rake>> &environment,
-        const ConfigurationBlock<rake> &x) noexcept
+        const FloatVector<rake, stride> &x) noexcept
     {
+        static_assert(stride >= dimension);
         std::array<FloatVector<rake, 1>, 42> v;
         std::array<FloatVector<rake, 1>, 516> y;
 
@@ -144588,6 +144601,974 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[496],
 
         return to_isometry(y.data());
     }
+
+    
+
+    
+
+    
+
+    
+
+    
+    //
+    // FLASK flat-system (z-space) sibling: z = (q, qdot), planned kinodynamically
+    // with LQMT cubics. Rendered into the parent robot struct; the parent is the
+    // ambient position-space robot whose kernels this shares.
+    //
+
+    struct Flask
+    {
+        static constexpr const char *name = "flask";
+        static constexpr std::size_t dimension = 16;
+        static constexpr std::size_t sample_dimension = 16;
+        static constexpr std::size_t flat_dimension = 8;
+        static constexpr std::size_t n_spheres = 111;
+        static constexpr float min_radius = 0.012000000104308128;
+        static constexpr float max_radius = 0.23999999463558197;
+        static constexpr std::size_t resolution = 32;
+        static constexpr bool euclidean = false;
+        static constexpr bool flask = true;
+        static constexpr std::array<std::size_t, 0> so3_offsets = {};
+        static inline float rho = 16.0;
+
+        // Ambient position-space sibling (same kinematic structure, dimension =
+        // flat_dimension) whose constraint kernels define manifolds for chart-based
+        // constrained planning.
+        using Ambient = Fetch;
+
+        static constexpr std::array<std::string_view, dimension> joint_names = {"torso_lift_joint", "shoulder_pan_joint", "shoulder_lift_joint", "upperarm_roll_joint", "elbow_flex_joint", "forearm_roll_joint", "wrist_flex_joint", "wrist_roll_joint", "torso_lift_joint_vel", "shoulder_pan_joint_vel", "shoulder_lift_joint_vel", "upperarm_roll_joint_vel", "elbow_flex_joint_vel", "forearm_roll_joint_vel", "wrist_flex_joint_vel", "wrist_roll_joint_vel"};
+        static constexpr const char *end_effector = "gripper_link";
+
+        static constexpr std::array<float, flat_dimension> velocity_limits = {
+            0.10000000149011612, 1.25600004196167, 1.4539999961853027, 1.5709999799728394, 1.5210000276565552, 1.5709999799728394, 2.2679998874664307, 2.2679998874664307
+        };
+
+        static constexpr std::array<float, flat_dimension> effort_limits = {
+            450.0, 33.81999969482422, 131.75999450683594, 76.94000244140625, 66.18000030517578, 29.350000381469727, 25.700000762939453, 7.360000133514404
+        };
+
+        using Configuration = FloatVector<dimension>;
+        struct alignas(FloatVectorAlignment) ConfigurationArray
+            : std::array<FloatT, dimension>
+        {
+        };
+        using Sample = FloatVector<sample_dimension>;
+
+        using NNKey = std::tuple<vamp::planning::NNFloatArray<dimension>>;
+
+        using NNSpace = unc::robotics::nigh::metric::CartesianSpace<
+            unc::robotics::nigh::metric::Space<vamp::planning::NNFloatArray<dimension>, unc::robotics::nigh::metric::LP<2>>>;
+
+        static inline auto nn_key(float *cfg_ptr) noexcept -> NNKey
+        {
+            return NNKey{vamp::planning::NNFloatArray<dimension>{cfg_ptr}};
+        }
+
+        struct alignas(FloatVectorAlignment) ConfigurationBuffer
+            : std::array<float, Configuration::num_scalars_rounded>
+        {
+        };
+
+        template <std::size_t rake>
+        using ConfigurationBlock = FloatVector<rake, 24>;
+
+        template <std::size_t rake>
+        using Spheres = Ambient::Spheres<rake>;
+
+        alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> s_m{
+            0.3861500024795532, 3.211199998855591, 2.7389999628067017, 6.283180236816406, 4.501999855041504, 6.283180236816406, 4.320000171661377, 6.283180236816406, 0.20000000298023224, 2.51200008392334, 2.9079999923706055, 3.1419999599456787, 3.0420000553131104, 3.1419999599456787, 4.535999774932861, 4.535999774932861
+        };
+
+        alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> s_a{
+            0.0, -1.6055999994277954, -1.2209999561309814, -3.141590118408203, -2.250999927520752, -3.141590118408203, -2.1600000858306885, -3.141590118408203, -0.10000000149011612, -1.25600004196167, -1.4539999961853027, -1.5709999799728394, -1.5210000276565552, -1.5709999799728394, -2.2679998874664307, -2.2679998874664307
+        };
+
+        alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> d_m{
+            2.5896672111324155, 0.311410064884274, 0.3650967555966238, 0.15915507152579872, 0.22212350781845616, 0.15915507152579872, 0.2314814722832342, 0.15915507152579872, 4.999999925494195, 0.3980891586747724, 0.3438789555101748, 0.31826862277149387, 0.3287310919845039, 0.31826862277149387, 0.22045856473059489, 0.22045856473059489
+        };
+
+        static inline void scale_configuration(Configuration& q) noexcept
+        {
+            q = q * Configuration(s_m) + Configuration(s_a);
+        }
+
+        static inline void descale_configuration(Configuration& q) noexcept
+        {
+            q = (q - Configuration(s_a)) * Configuration(d_m);
+        }
+
+        template <std::size_t rake>
+        static inline void scale_configuration_block(ConfigurationBlock<rake> &q) noexcept
+        {
+            q[0] = 0.0 + (q[0] * 0.3861500024795532);
+q[1] = -1.6055999994277954 + (q[1] * 3.211199998855591);
+q[2] = -1.2209999561309814 + (q[2] * 2.7389999628067017);
+q[3] = -3.141590118408203 + (q[3] * 6.283180236816406);
+q[4] = -2.250999927520752 + (q[4] * 4.501999855041504);
+q[5] = -3.141590118408203 + (q[5] * 6.283180236816406);
+q[6] = -2.1600000858306885 + (q[6] * 4.320000171661377);
+q[7] = -3.141590118408203 + (q[7] * 6.283180236816406);
+q[8] = -0.10000000149011612 + (q[8] * 0.20000000298023224);
+q[9] = -1.25600004196167 + (q[9] * 2.51200008392334);
+q[10] = -1.4539999961853027 + (q[10] * 2.9079999923706055);
+q[11] = -1.5709999799728394 + (q[11] * 3.1419999599456787);
+q[12] = -1.5210000276565552 + (q[12] * 3.0420000553131104);
+q[13] = -1.5709999799728394 + (q[13] * 3.1419999599456787);
+q[14] = -2.2679998874664307 + (q[14] * 4.535999774932861);
+q[15] = -2.2679998874664307 + (q[15] * 4.535999774932861);
+
+        }
+
+        template <std::size_t rake>
+        static inline void descale_configuration_block(ConfigurationBlock<rake> & q) noexcept
+        {
+            q[0] = 2.5896672111324155 * (q[0] - 0.0);
+q[1] = 0.311410064884274 * (q[1] - -1.6055999994277954);
+q[2] = 0.3650967555966238 * (q[2] - -1.2209999561309814);
+q[3] = 0.15915507152579872 * (q[3] - -3.141590118408203);
+q[4] = 0.22212350781845616 * (q[4] - -2.250999927520752);
+q[5] = 0.15915507152579872 * (q[5] - -3.141590118408203);
+q[6] = 0.2314814722832342 * (q[6] - -2.1600000858306885);
+q[7] = 0.15915507152579872 * (q[7] - -3.141590118408203);
+q[8] = 4.999999925494195 * (q[8] - -0.10000000149011612);
+q[9] = 0.3980891586747724 * (q[9] - -1.25600004196167);
+q[10] = 0.3438789555101748 * (q[10] - -1.4539999961853027);
+q[11] = 0.31826862277149387 * (q[11] - -1.5709999799728394);
+q[12] = 0.3287310919845039 * (q[12] - -1.5210000276565552);
+q[13] = 0.31826862277149387 * (q[13] - -1.5709999799728394);
+q[14] = 0.22045856473059489 * (q[14] - -2.2679998874664307);
+q[15] = 0.22045856473059489 * (q[15] - -2.2679998874664307);
+
+        }
+
+        inline static auto space_measure() noexcept -> float
+        {
+            return 14791250.326882355;
+        }
+
+        alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> lower_bound{
+            0.0, -1.6055999994277954, -1.2209999561309814, -3.141590118408203, -2.250999927520752, -3.141590118408203, -2.1600000858306885, -3.141590118408203, -0.10000000149011612, -1.25600004196167, -1.4539999961853027, -1.5709999799728394, -1.5210000276565552, -1.5709999799728394, -2.2679998874664307, -2.2679998874664307
+        };
+
+        alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> upper_bound{
+            0.3861500024795532, 1.6055999994277954, 1.5180000066757202, 3.141590118408203, 2.250999927520752, 3.141590118408203, 2.1600000858306885, 3.141590118408203, 0.10000000149011612, 1.25600004196167, 1.4539999961853027, 1.5709999799728394, 1.5210000276565552, 1.5709999799728394, 2.2679998874664307, 2.2679998874664307
+        };
+
+        static inline auto in_bounds(const Configuration &x) -> bool
+        {
+            return (x <= Configuration(upper_bound)).all() and (x >= Configuration(lower_bound)).all();
+        }
+
+        static inline auto sample(const Sample &x_in) -> Configuration
+        {
+            Configuration q = x_in;
+            scale_configuration(q);
+            return q;
+        }
+
+        static inline auto distance(const Configuration &a_in, const Configuration &b_in) -> float
+        {
+            return a_in.distance(b_in);
+        }
+
+        // Optimal duration T* of the LQMT cubic; generic solver in vamp/planning/flask.hh
+        static inline auto optimal_time(const Configuration &a_in, const Configuration &b_in) noexcept -> float
+        {
+            return vamp::planning::flask::optimal_time<Flask>(a_in, b_in);
+        }
+
+        // LQMT edge cost C_loc(a -> b) = rho T* + integral |u|^2; asymmetric in (a, b)
+        static inline auto cost(const Configuration &a_in, const Configuration &b_in) noexcept -> float
+        {
+            return vamp::planning::flask::cost<Flask>(a_in, b_in);
+        }
+
+        static inline auto cost_grad(const Configuration &a_in, const Configuration &b_in) noexcept
+            -> vamp::planning::flask::LQMTCostGrad<dimension>
+        {
+            return vamp::planning::flask::cost_grad<Flask>(a_in, b_in);
+        }
+
+        // Cubic state (y, yd, ydd) at fraction t of duration T; layout [y; yd; ydd]
+        static inline auto eval(const Configuration &a_in, const Configuration &b_in, float T, float t) noexcept
+            -> std::array<float, 24>
+        {
+            std::array<float, 20> v;
+            std::array<float, 24> y;
+            const auto a = a_in.to_array();
+            const auto b = b_in.to_array();
+               v[0] = 1. / T;
+   v[1] = v[0] * v[0];
+   v[2] = v[1] * v[0];
+   v[3] = b[0] - a[0] - T * a[8];
+   v[4] = b[8] - a[8];
+   v[5] = -2. * v[2] * v[3] + v[1] * v[4];
+   v[6] = t * T;
+   v[4] = 3. * v[1] * v[3] - v[0] * v[4];
+   y[0] = ((v[5] * v[6] + v[4]) * v[6] + a[8]) * v[6] + a[0];
+   v[3] = b[1] - a[1] - T * a[9];
+   v[7] = b[9] - a[9];
+   v[8] = -2. * v[2] * v[3] + v[1] * v[7];
+   v[7] = 3. * v[1] * v[3] - v[0] * v[7];
+   y[1] = ((v[8] * v[6] + v[7]) * v[6] + a[9]) * v[6] + a[1];
+   v[3] = b[2] - a[2] - T * a[10];
+   v[9] = b[10] - a[10];
+   v[10] = -2. * v[2] * v[3] + v[1] * v[9];
+   v[9] = 3. * v[1] * v[3] - v[0] * v[9];
+   y[2] = ((v[10] * v[6] + v[9]) * v[6] + a[10]) * v[6] + a[2];
+   v[3] = b[3] - a[3] - T * a[11];
+   v[11] = b[11] - a[11];
+   v[12] = -2. * v[2] * v[3] + v[1] * v[11];
+   v[11] = 3. * v[1] * v[3] - v[0] * v[11];
+   y[3] = ((v[12] * v[6] + v[11]) * v[6] + a[11]) * v[6] + a[3];
+   v[3] = b[4] - a[4] - T * a[12];
+   v[13] = b[12] - a[12];
+   v[14] = -2. * v[2] * v[3] + v[1] * v[13];
+   v[13] = 3. * v[1] * v[3] - v[0] * v[13];
+   y[4] = ((v[14] * v[6] + v[13]) * v[6] + a[12]) * v[6] + a[4];
+   v[3] = b[5] - a[5] - T * a[13];
+   v[15] = b[13] - a[13];
+   v[16] = -2. * v[2] * v[3] + v[1] * v[15];
+   v[15] = 3. * v[1] * v[3] - v[0] * v[15];
+   y[5] = ((v[16] * v[6] + v[15]) * v[6] + a[13]) * v[6] + a[5];
+   v[3] = b[6] - a[6] - T * a[14];
+   v[17] = b[14] - a[14];
+   v[18] = -2. * v[2] * v[3] + v[1] * v[17];
+   v[17] = 3. * v[1] * v[3] - v[0] * v[17];
+   y[6] = ((v[18] * v[6] + v[17]) * v[6] + a[14]) * v[6] + a[6];
+   v[3] = b[7] - a[7] - T * a[15];
+   v[19] = b[15] - a[15];
+   v[2] = -2. * v[2] * v[3] + v[1] * v[19];
+   v[19] = 3. * v[1] * v[3] - v[0] * v[19];
+   y[7] = ((v[2] * v[6] + v[19]) * v[6] + a[15]) * v[6] + a[7];
+   y[8] = (3. * v[5] * v[6] + 2. * v[4]) * v[6] + a[8];
+   y[9] = (3. * v[8] * v[6] + 2. * v[7]) * v[6] + a[9];
+   y[10] = (3. * v[10] * v[6] + 2. * v[9]) * v[6] + a[10];
+   y[11] = (3. * v[12] * v[6] + 2. * v[11]) * v[6] + a[11];
+   y[12] = (3. * v[14] * v[6] + 2. * v[13]) * v[6] + a[12];
+   y[13] = (3. * v[16] * v[6] + 2. * v[15]) * v[6] + a[13];
+   y[14] = (3. * v[18] * v[6] + 2. * v[17]) * v[6] + a[14];
+   y[15] = (3. * v[2] * v[6] + 2. * v[19]) * v[6] + a[15];
+   y[16] = 6. * v[5] * v[6] + 2. * v[4];
+   y[17] = 6. * v[8] * v[6] + 2. * v[7];
+   y[18] = 6. * v[10] * v[6] + 2. * v[9];
+   y[19] = 6. * v[12] * v[6] + 2. * v[11];
+   y[20] = 6. * v[14] * v[6] + 2. * v[13];
+   y[21] = 6. * v[16] * v[6] + 2. * v[15];
+   y[22] = 6. * v[18] * v[6] + 2. * v[17];
+   y[23] = 6. * v[2] * v[6] + 2. * v[19];
+
+            return y;
+        }
+
+        // Joint torques for a flat state row-stack x = [q; qd; qdd]
+        static inline auto torques(const std::array<float, 24> &x) noexcept -> std::array<float, flat_dimension>
+        {
+            std::array<float, 128> v;
+            std::array<float, flat_dimension> y;
+               v[0] = 9.81 + x[16];
+   v[1] = - sin(x[2]);
+   v[2] = - x[10];
+   v[3] = cos(x[2]);
+   v[4] = v[3] * x[8];
+   v[5] = v[2] * v[4] + v[1] * v[0];
+   v[6] = - x[10];
+   v[7] = v[1] * x[9];
+   v[8] = (- v[6]) * v[7] + v[3] * x[17];
+   v[9] = 2.6615 * (v[5] - (0.0072 * v[8] - -0.0001 * x[18]));
+   v[10] = 2.6615 * (v[4] - (0.1432 * x[10] - 0.0072 * v[7]));
+   v[11] = v[3] * x[9];
+   v[12] = 0. - (0. - 0.117 * x[9]);
+   v[13] = 2.6615 * (v[12] - (-0.0001 * v[7] - 0.1432 * v[11]));
+   v[14] = - x[11];
+   v[15] = cos(x[3]);
+   v[16] = sin(x[3]);
+   v[17] = v[15] * x[10] + v[16] * v[11];
+   v[18] = - v[16];
+   v[19] = v[14] * v[17] + v[18] * x[18] + v[15] * v[8];
+   v[20] = 2.3311 * (v[5] - 0.0014 * v[19]);
+   v[21] = v[12] - (0. - 0.219 * v[11]);
+   v[22] = v[4] - 0.219 * x[10];
+   v[23] = v[18] * v[21] + v[15] * v[22];
+   v[24] = x[11] + v[7];
+   v[25] = 2.3311 * (v[23] - (0.1165 * v[17] - 0.0014 * v[24]));
+   v[26] = v[18] * x[10] + v[15] * v[11];
+   v[22] = v[15] * v[21] + v[16] * v[22];
+   v[21] = 2.3311 * (v[22] - (0. - 0.1165 * v[26]));
+   v[27] = cos(x[4]);
+   v[28] = - x[12];
+   v[29] = sin(x[4]);
+   v[30] = v[1] * x[8];
+   v[31] = v[23] - 0.133 * v[17];
+   v[32] = v[29] * v[30] + v[27] * v[31];
+   v[33] = - v[29];
+   v[34] = - x[11];
+   v[35] = 0. - (0. - 0.117 * x[17]);
+   v[36] = v[35] - (0. - 0.219 * v[8]);
+   v[2] = (- v[2]) * v[30] + v[3] * v[0];
+   v[37] = v[2] - 0.219 * x[18];
+   v[38] = v[34] * v[22] + v[18] * v[36] + v[15] * v[37];
+   v[14] = (- v[14]) * v[26] + v[15] * x[18] + v[16] * v[8];
+   v[39] = v[38] - 0.133 * v[14];
+   v[40] = v[28] * v[32] + v[27] * v[5] + v[33] * v[39];
+   v[41] = - x[12];
+   v[42] = v[27] * v[24] + v[33] * v[26];
+   v[6] = v[6] * v[11] + v[1] * x[17];
+   v[43] = x[19] + v[6];
+   v[44] = (- v[41]) * v[42] + v[29] * v[43] + v[27] * v[19];
+   v[45] = 2.1299 * (v[40] - 0.0073 * v[44]);
+   v[46] = x[12] + v[17];
+   v[47] = 2.1299 * (v[32] - (0.1279 * v[46] - 0.0073 * v[42]));
+   v[48] = v[29] * v[24] + v[27] * v[26];
+   v[49] = v[22] - (0. - 0.133 * v[26]);
+   v[50] = 2.1299 * (v[49] - (0. - 0.1279 * v[48]));
+   v[51] = - x[13];
+   v[52] = cos(x[5]);
+   v[53] = sin(x[5]);
+   v[54] = v[52] * v[46] + v[53] * v[48];
+   v[55] = - v[53];
+   v[56] = x[20] + v[14];
+   v[57] = v[51] * v[54] + v[55] * v[56] + v[52] * v[44];
+   v[58] = 1.6563 * (v[40] - -0.0266 * v[57]);
+   v[59] = v[49] - (0. - 0.197 * v[48]);
+   v[60] = v[32] - 0.197 * v[46];
+   v[61] = v[55] * v[59] + v[52] * v[60];
+   v[62] = x[13] + v[42];
+   v[63] = 1.6563 * (v[61] - (0.1097 * v[54] - -0.0266 * v[62]));
+   v[64] = v[55] * v[46] + v[52] * v[48];
+   v[60] = v[52] * v[59] + v[53] * v[60];
+   v[59] = 1.6563 * (v[60] - (0. - 0.1097 * v[64]));
+   v[65] = cos(x[6]);
+   v[66] = - x[14];
+   v[67] = sin(x[6]);
+   v[31] = v[27] * v[30] + v[33] * v[31];
+   v[68] = v[61] - 0.1245 * v[54];
+   v[69] = v[67] * v[31] + v[65] * v[68];
+   v[70] = - v[67];
+   v[71] = - x[13];
+   v[37] = (- v[34]) * v[23] + v[15] * v[36] + v[16] * v[37];
+   v[36] = v[37] - (0. - 0.133 * v[19]);
+   v[34] = v[36] - (0. - 0.197 * v[44]);
+   v[39] = (- v[28]) * v[31] + v[29] * v[5] + v[27] * v[39];
+   v[28] = v[39] - 0.197 * v[56];
+   v[5] = v[71] * v[60] + v[55] * v[34] + v[52] * v[28];
+   v[51] = (- v[51]) * v[64] + v[52] * v[56] + v[53] * v[44];
+   v[72] = v[5] - 0.1245 * v[51];
+   v[73] = v[66] * v[69] + v[65] * v[40] + v[70] * v[72];
+   v[74] = - x[14];
+   v[75] = v[65] * v[62] + v[70] * v[64];
+   v[41] = v[41] * v[48] + v[27] * v[43] + v[33] * v[19];
+   v[76] = x[21] + v[41];
+   v[77] = (- v[74]) * v[75] + v[67] * v[76] + v[65] * v[57];
+   v[78] = x[22] + v[51];
+   v[79] = 1.725 * (v[73] - (0.0009 * v[77] - -0.0001 * v[78]));
+   v[80] = x[14] + v[54];
+   v[81] = 1.725 * (v[69] - (0.0882 * v[80] - 0.0009 * v[75]));
+   v[82] = v[67] * v[62] + v[65] * v[64];
+   v[83] = v[60] - (0. - 0.1245 * v[64]);
+   v[84] = 1.725 * (v[83] - (-0.0001 * v[75] - 0.0882 * v[82]));
+   v[85] = - x[15];
+   v[86] = cos(x[7]);
+   v[87] = sin(x[7]);
+   v[88] = v[86] * v[80] + v[87] * v[82];
+   v[89] = - v[87];
+   v[90] = v[85] * v[88] + v[89] * v[78] + v[86] * v[77];
+   v[91] = v[89] * v[80] + v[86] * v[82];
+   v[85] = (- v[85]) * v[91] + v[86] * v[78] + v[87] * v[77];
+   v[73] = 1.8125 * (v[73] - (-5.38427586206903e-05 * v[90] - -0.00143825103448276 * v[85]));
+   v[92] = v[83] - (0. - 0.1385 * v[82]);
+   v[93] = v[69] - 0.1385 * v[80];
+   v[94] = v[89] * v[92] + v[86] * v[93];
+   v[95] = x[15] + v[75];
+   v[96] = 1.8125 * (v[94] - (0.0784930179310345 * v[88] - -5.38427586206903e-05 * v[95]));
+   v[93] = v[86] * v[92] + v[87] * v[93];
+   v[92] = 1.8125 * (v[93] - (-0.00143825103448276 * v[95] - 0.0784930179310345 * v[91]));
+   v[97] = v[79] + v[80] * v[81] - v[82] * v[84] + v[73] + v[88] * v[96] - v[91] * v[92];
+   v[68] = v[65] * v[31] + v[70] * v[68];
+   v[72] = (- v[66]) * v[68] + v[67] * v[40] + v[65] * v[72];
+   v[74] = v[74] * v[82] + v[65] * v[76] + v[70] * v[57];
+   v[66] = 1.725 * (v[72] - (0.0882 * v[78] - 0.0009 * v[74]));
+   v[40] = 1.725 * (v[68] - (0.0009 * v[82] - -0.0001 * v[80]));
+   v[98] = - x[15];
+   v[28] = (- v[71]) * v[61] + v[52] * v[34] + v[53] * v[28];
+   v[34] = v[28] - (0. - 0.1245 * v[57]);
+   v[71] = v[34] - (0. - 0.1385 * v[77]);
+   v[72] = v[72] - 0.1385 * v[78];
+   v[99] = x[23] + v[74];
+   v[100] = 1.8125 * ((- v[98]) * v[94] + v[86] * v[71] + v[87] * v[72] - (-0.00143825103448276 * v[99] - 0.0784930179310345 * v[90]));
+   v[101] = 1.8125 * (v[68] - (-5.38427586206903e-05 * v[91] - -0.00143825103448276 * v[88]));
+   v[102] = v[100] + v[91] * v[101] - v[95] * v[96];
+   v[72] = 1.8125 * (v[98] * v[93] + v[89] * v[71] + v[86] * v[72] - (0.0784930179310345 * v[85] - -5.38427586206903e-05 * v[99]));
+   v[71] = v[72] + v[95] * v[92] - v[88] * v[101];
+   v[98] = v[87] * v[102] + v[86] * v[71];
+   v[103] = v[66] + v[75] * v[84] - v[80] * v[40] + v[98];
+   v[104] = v[45] + v[46] * v[47] - v[48] * v[50] + v[58] + v[54] * v[63] - v[64] * v[59] + v[65] * v[97] + v[67] * v[103];
+   v[39] = 2.1299 * (v[39] - (0.1279 * v[56] - 0.0073 * v[41]));
+   v[105] = 2.1299 * (v[31] - 0.0073 * v[48]);
+   v[28] = 1.6563 * (v[28] - (0. - 0.1097 * v[57]));
+   v[106] = 1.6563 * (v[31] - -0.0266 * v[64]);
+   v[34] = 1.725 * (v[34] - (-0.0001 * v[74] - 0.0882 * v[77]));
+   v[71] = v[86] * v[102] + v[89] * v[71];
+   v[102] = v[34] + v[82] * v[40] - v[75] * v[81] + v[71];
+   v[107] = v[28] + v[64] * v[106] - v[62] * v[63] + v[102];
+   v[5] = 1.6563 * (v[5] - (0.1097 * v[51] - -0.0266 * v[76]));
+   v[103] = v[70] * v[97] + v[65] * v[103];
+   v[97] = v[5] + v[62] * v[59] - v[54] * v[106] + v[103];
+   v[108] = v[53] * v[107] + v[52] * v[97];
+   v[109] = v[39] + v[42] * v[50] - v[46] * v[105] + v[108];
+   v[2] = 2.6615 * (v[2] - (0.1432 * x[18] - 0.0072 * v[6]));
+   v[110] = 2.6615 * (v[30] - (0.0072 * v[11] - -0.0001 * x[10]));
+   v[37] = 2.3311 * (v[37] - (0. - 0.1165 * v[19]));
+   v[111] = 2.3311 * (v[30] - 0.0014 * v[26]);
+   v[36] = 2.1299 * (v[36] - (0. - 0.1279 * v[44]));
+   v[97] = v[52] * v[107] + v[55] * v[97];
+   v[107] = v[36] + v[48] * v[105] - v[42] * v[47] + v[97];
+   v[112] = v[37] + v[26] * v[111] - v[24] * v[25] + v[107];
+   v[38] = 2.3311 * (v[38] - (0.1165 * v[14] - 0.0014 * v[43]));
+   v[113] = v[33] * v[104] + v[27] * v[109];
+   v[114] = v[38] + v[24] * v[21] - v[17] * v[111] + v[113];
+   v[115] = v[16] * v[112] + v[15] * v[114];
+   y[0] = 14.1132740382166 * v[0] + 2.5587 * v[0] + v[1] * (v[9] + x[10] * v[10] - v[11] * v[13] + v[20] + v[17] * v[25] - v[26] * v[21] + v[27] * v[104] + v[29] * v[109]) + v[3] * (v[2] + v[7] * v[13] - x[10] * v[110] + v[115]);
+   v[35] = 2.6615 * (v[35] - (-0.0001 * v[6] - 0.1432 * v[8]));
+   v[109] = 0.0112 * v[11] + 0.1432 * v[13] - 0.0072 * v[110];
+   v[104] = -0.0021 * v[7] + 0.0111 * x[10] + -0.0001 * v[110] - 0.1432 * v[10];
+   v[0] = 0.0047 * v[26] + 0.1165 * v[21] - 0.0014 * v[111];
+   v[116] = -0.0001 * v[24] + 0.0045 * v[17] + 0. - 0.1165 * v[25];
+   v[117] = 0.0084 * v[48] + 0.1279 * v[50] - 0.0073 * v[105];
+   v[118] = -0.0016 * v[42] + 0.0082 * v[46] + 0. - 0.1279 * v[47];
+   v[119] = 0.0035 * v[64] + 0.1097 * v[59] - -0.0266 * v[106];
+   v[120] = -0.0003 * v[62] + 0.003 * v[54] + 0. - 0.1097 * v[63];
+   v[121] = 0.0042 * v[82] + 0.0882 * v[84] - 0.0009 * v[40];
+   v[122] = -0.0001 * v[75] + 0.0042 * v[80] + -0.0001 * v[40] - 0.0882 * v[81];
+   v[123] = -7.13880643315862e-06 * v[95] + -1.06784081544829e-07 * v[88] + 0.0048039668366271 * v[91] + 0.0784930179310345 * v[92] - -5.38427586206903e-05 * v[101];
+   v[124] = 3.42663388011041e-06 * v[95] + 0.0036214202394477 * v[88] + -1.06784081544829e-07 * v[91] + -0.00143825103448276 * v[101] - 0.0784930179310345 * v[96];
+   y[7] = 0.00608383002729097 * v[99] + 3.42663388011041e-06 * v[85] + -7.13880643315862e-06 * v[90] + -5.38427586206903e-05 * v[72] - -0.00143825103448276 * v[100] + v[88] * v[123] - v[91] * v[124] + v[93] * v[96] - v[94] * v[92];
+   v[125] = 0.0018 * v[74] + -0.0001 * v[78] + 0.0009 * v[66] - -0.0001 * v[34] + v[80] * v[121] - v[82] * v[122] + v[83] * v[81] - v[69] * v[84] + y[7];
+   v[126] = 0.0018 * v[75] + -0.0001 * v[80] + 0.0009 * v[81] - -0.0001 * v[84];
+   v[127] = 0.00608383002729097 * v[95] + 3.42663388011041e-06 * v[88] + -7.13880643315862e-06 * v[91] + -5.38427586206903e-05 * v[96] - -0.00143825103448276 * v[92];
+   v[123] = 3.42663388011041e-06 * v[99] + 0.0036214202394477 * v[85] + -1.06784081544829e-07 * v[90] + -0.00143825103448276 * v[73] - 0.0784930179310345 * v[72] + v[91] * v[127] - v[95] * v[123] + v[94] * v[101] - v[68] * v[96];
+   v[127] = -7.13880643315862e-06 * v[99] + -1.06784081544829e-07 * v[85] + 0.0048039668366271 * v[90] + 0.0784930179310345 * v[100] - -5.38427586206903e-05 * v[73] + v[95] * v[124] - v[88] * v[127] + v[68] * v[92] - v[93] * v[101];
+   v[122] = 0.0042 * v[77] + 0.0882 * v[34] - 0.0009 * v[79] + v[75] * v[122] - v[80] * v[126] + v[68] * v[84] - v[83] * v[40] + v[87] * v[123] + v[86] * v[127] + 0.1385 * v[71];
+   y[5] = 0.0016 * v[76] + -0.0003 * v[51] + -0.0266 * v[5] + v[54] * v[119] - v[64] * v[120] + v[60] * v[63] - v[61] * v[59] + v[65] * v[125] + v[67] * v[122];
+   v[67] = 0.0024 * v[41] + -0.0016 * v[56] + 0.0073 * v[39] + v[46] * v[117] - v[48] * v[118] + v[49] * v[47] - v[32] * v[50] + y[5];
+   v[71] = 0.0024 * v[42] + -0.0016 * v[46] + 0.0073 * v[47];
+   v[34] = 0.0016 * v[62] + -0.0003 * v[54] + -0.0266 * v[63];
+   y[6] = -0.0001 * v[74] + 0.0042 * v[78] + -0.0001 * v[79] - 0.0882 * v[66] + v[82] * v[126] - v[75] * v[121] + v[69] * v[40] - v[68] * v[81] + v[86] * v[123] + v[89] * v[127] + 0. - 0.1385 * v[98];
+   v[119] = -0.0003 * v[76] + 0.003 * v[51] + 0. - 0.1097 * v[5] + v[64] * v[34] - v[62] * v[119] + v[61] * v[106] - v[31] * v[63] + y[6] + 0. - 0.1245 * v[103];
+   v[34] = 0.0035 * v[57] + 0.1097 * v[28] - -0.0266 * v[58] + v[62] * v[120] - v[54] * v[34] + v[31] * v[59] - v[60] * v[106] + v[70] * v[125] + v[65] * v[122] + 0.1245 * v[102];
+   v[118] = 0.0084 * v[44] + 0.1279 * v[36] - 0.0073 * v[45] + v[42] * v[118] - v[46] * v[71] + v[31] * v[50] - v[49] * v[105] + v[53] * v[119] + v[52] * v[34] + 0.197 * v[97];
+   y[3] = 0.0019 * v[43] + -0.0001 * v[14] + 0.0014 * v[38] + v[17] * v[0] - v[26] * v[116] + v[22] * v[25] - v[23] * v[21] + v[27] * v[67] + v[29] * v[118];
+   v[29] = 0.0028 * v[7] + -0.0021 * x[10] + 0.0072 * v[10] - -0.0001 * v[13];
+   v[97] = 0.0019 * v[24] + -0.0001 * v[17] + 0.0014 * v[25];
+   y[4] = -0.0016 * v[41] + 0.0082 * v[56] + 0. - 0.1279 * v[39] + v[48] * v[71] - v[42] * v[117] + v[32] * v[105] - v[31] * v[47] + v[52] * v[119] + v[55] * v[34] + 0. - 0.197 * v[108];
+   v[0] = -0.0001 * v[43] + 0.0045 * v[14] + 0. - 0.1165 * v[38] + v[26] * v[97] - v[24] * v[0] + v[23] * v[111] - v[30] * v[25] + y[4] + 0. - 0.133 * v[113];
+   v[97] = 0.0047 * v[19] + 0.1165 * v[37] - 0.0014 * v[20] + v[24] * v[116] - v[17] * v[97] + v[30] * v[21] - v[22] * v[111] + v[33] * v[67] + v[27] * v[118] + 0.133 * v[107];
+   v[114] = v[15] * v[112] + v[18] * v[114];
+   y[1] = 0.0087 * x[17] + 0.0927 * 2.5587 * (0. - (0. - 0.0927 * x[17])) - -0.0056 * 2.5587 * (0. - -0.0056 * x[17]) + v[1] * (0.0028 * v[6] + -0.0021 * x[18] + 0.0072 * v[2] - -0.0001 * v[35] + x[10] * v[109] - v[11] * v[104] + v[12] * v[10] - v[4] * v[13] + y[3]) + v[3] * (0.0112 * v[8] + 0.1432 * v[35] - 0.0072 * v[9] + v[7] * v[104] - x[10] * v[29] + v[30] * v[13] - v[12] * v[110] + v[16] * v[0] + v[15] * v[97] + 0.219 * v[114]) + 0.117 * (v[35] + v[11] * v[110] - v[7] * v[10] + v[114]);
+   y[2] = -0.0021 * v[6] + 0.0111 * x[18] + -0.0001 * v[9] - 0.1432 * v[2] + v[11] * v[29] - v[7] * v[109] + v[4] * v[110] - v[30] * v[10] + v[15] * v[0] + v[18] * v[97] + 0. - 0.219 * v[115];
+
+            return y;
+        }
+
+        static inline auto interpolate(const Configuration &a_in, const Configuration &b_in, float t) -> Configuration
+        {
+            std::array<float, 20> v;
+            alignas(FloatVectorAlignment)
+                std::array<float, std::max<std::size_t>(24, Configuration::num_scalars_rounded)> y;
+            const auto a = a_in.to_array();
+            const auto b = b_in.to_array();
+            const float T = optimal_time(a_in, b_in);
+               v[0] = 1. / T;
+   v[1] = v[0] * v[0];
+   v[2] = v[1] * v[0];
+   v[3] = b[0] - a[0] - T * a[8];
+   v[4] = b[8] - a[8];
+   v[5] = -2. * v[2] * v[3] + v[1] * v[4];
+   v[6] = t * T;
+   v[4] = 3. * v[1] * v[3] - v[0] * v[4];
+   y[0] = ((v[5] * v[6] + v[4]) * v[6] + a[8]) * v[6] + a[0];
+   v[3] = b[1] - a[1] - T * a[9];
+   v[7] = b[9] - a[9];
+   v[8] = -2. * v[2] * v[3] + v[1] * v[7];
+   v[7] = 3. * v[1] * v[3] - v[0] * v[7];
+   y[1] = ((v[8] * v[6] + v[7]) * v[6] + a[9]) * v[6] + a[1];
+   v[3] = b[2] - a[2] - T * a[10];
+   v[9] = b[10] - a[10];
+   v[10] = -2. * v[2] * v[3] + v[1] * v[9];
+   v[9] = 3. * v[1] * v[3] - v[0] * v[9];
+   y[2] = ((v[10] * v[6] + v[9]) * v[6] + a[10]) * v[6] + a[2];
+   v[3] = b[3] - a[3] - T * a[11];
+   v[11] = b[11] - a[11];
+   v[12] = -2. * v[2] * v[3] + v[1] * v[11];
+   v[11] = 3. * v[1] * v[3] - v[0] * v[11];
+   y[3] = ((v[12] * v[6] + v[11]) * v[6] + a[11]) * v[6] + a[3];
+   v[3] = b[4] - a[4] - T * a[12];
+   v[13] = b[12] - a[12];
+   v[14] = -2. * v[2] * v[3] + v[1] * v[13];
+   v[13] = 3. * v[1] * v[3] - v[0] * v[13];
+   y[4] = ((v[14] * v[6] + v[13]) * v[6] + a[12]) * v[6] + a[4];
+   v[3] = b[5] - a[5] - T * a[13];
+   v[15] = b[13] - a[13];
+   v[16] = -2. * v[2] * v[3] + v[1] * v[15];
+   v[15] = 3. * v[1] * v[3] - v[0] * v[15];
+   y[5] = ((v[16] * v[6] + v[15]) * v[6] + a[13]) * v[6] + a[5];
+   v[3] = b[6] - a[6] - T * a[14];
+   v[17] = b[14] - a[14];
+   v[18] = -2. * v[2] * v[3] + v[1] * v[17];
+   v[17] = 3. * v[1] * v[3] - v[0] * v[17];
+   y[6] = ((v[18] * v[6] + v[17]) * v[6] + a[14]) * v[6] + a[6];
+   v[3] = b[7] - a[7] - T * a[15];
+   v[19] = b[15] - a[15];
+   v[2] = -2. * v[2] * v[3] + v[1] * v[19];
+   v[19] = 3. * v[1] * v[3] - v[0] * v[19];
+   y[7] = ((v[2] * v[6] + v[19]) * v[6] + a[15]) * v[6] + a[7];
+   y[8] = (3. * v[5] * v[6] + 2. * v[4]) * v[6] + a[8];
+   y[9] = (3. * v[8] * v[6] + 2. * v[7]) * v[6] + a[9];
+   y[10] = (3. * v[10] * v[6] + 2. * v[9]) * v[6] + a[10];
+   y[11] = (3. * v[12] * v[6] + 2. * v[11]) * v[6] + a[11];
+   y[12] = (3. * v[14] * v[6] + 2. * v[13]) * v[6] + a[12];
+   y[13] = (3. * v[16] * v[6] + 2. * v[15]) * v[6] + a[13];
+   y[14] = (3. * v[18] * v[6] + 2. * v[17]) * v[6] + a[14];
+   y[15] = (3. * v[2] * v[6] + 2. * v[19]) * v[6] + a[15];
+   y[16] = 6. * v[5] * v[6] + 2. * v[4];
+   y[17] = 6. * v[8] * v[6] + 2. * v[7];
+   y[18] = 6. * v[10] * v[6] + 2. * v[9];
+   y[19] = 6. * v[12] * v[6] + 2. * v[11];
+   y[20] = 6. * v[14] * v[6] + 2. * v[13];
+   y[21] = 6. * v[16] * v[6] + 2. * v[15];
+   y[22] = 6. * v[18] * v[6] + 2. * v[17];
+   y[23] = 6. * v[2] * v[6] + 2. * v[19];
+
+            return Configuration(y.data());
+        }
+
+        template <std::size_t rake>
+        static inline void interpolate_block(
+            const Configuration &a,
+            const Configuration &b,
+            const FloatVector<rake> &t,
+            ConfigurationBlock<rake> &out) noexcept
+        {
+            using V = FloatVector<rake, 1>;
+            const V T = V::fill(optimal_time(a, b));
+            std::array<V, 20> v;
+               v[0] = 1. / T;
+   v[1] = v[0] * v[0];
+   v[2] = v[1] * v[0];
+   v[3] = b.broadcast(0) - a.broadcast(0) - T * a.broadcast(8);
+   v[4] = b.broadcast(8) - a.broadcast(8);
+   v[5] = -2. * v[2] * v[3] + v[1] * v[4];
+   v[6] = t * T;
+   v[4] = 3. * v[1] * v[3] - v[0] * v[4];
+   out[0] = ((v[5] * v[6] + v[4]) * v[6] + a.broadcast(8)) * v[6] + a.broadcast(0);
+   v[3] = b.broadcast(1) - a.broadcast(1) - T * a.broadcast(9);
+   v[7] = b.broadcast(9) - a.broadcast(9);
+   v[8] = -2. * v[2] * v[3] + v[1] * v[7];
+   v[7] = 3. * v[1] * v[3] - v[0] * v[7];
+   out[1] = ((v[8] * v[6] + v[7]) * v[6] + a.broadcast(9)) * v[6] + a.broadcast(1);
+   v[3] = b.broadcast(2) - a.broadcast(2) - T * a.broadcast(10);
+   v[9] = b.broadcast(10) - a.broadcast(10);
+   v[10] = -2. * v[2] * v[3] + v[1] * v[9];
+   v[9] = 3. * v[1] * v[3] - v[0] * v[9];
+   out[2] = ((v[10] * v[6] + v[9]) * v[6] + a.broadcast(10)) * v[6] + a.broadcast(2);
+   v[3] = b.broadcast(3) - a.broadcast(3) - T * a.broadcast(11);
+   v[11] = b.broadcast(11) - a.broadcast(11);
+   v[12] = -2. * v[2] * v[3] + v[1] * v[11];
+   v[11] = 3. * v[1] * v[3] - v[0] * v[11];
+   out[3] = ((v[12] * v[6] + v[11]) * v[6] + a.broadcast(11)) * v[6] + a.broadcast(3);
+   v[3] = b.broadcast(4) - a.broadcast(4) - T * a.broadcast(12);
+   v[13] = b.broadcast(12) - a.broadcast(12);
+   v[14] = -2. * v[2] * v[3] + v[1] * v[13];
+   v[13] = 3. * v[1] * v[3] - v[0] * v[13];
+   out[4] = ((v[14] * v[6] + v[13]) * v[6] + a.broadcast(12)) * v[6] + a.broadcast(4);
+   v[3] = b.broadcast(5) - a.broadcast(5) - T * a.broadcast(13);
+   v[15] = b.broadcast(13) - a.broadcast(13);
+   v[16] = -2. * v[2] * v[3] + v[1] * v[15];
+   v[15] = 3. * v[1] * v[3] - v[0] * v[15];
+   out[5] = ((v[16] * v[6] + v[15]) * v[6] + a.broadcast(13)) * v[6] + a.broadcast(5);
+   v[3] = b.broadcast(6) - a.broadcast(6) - T * a.broadcast(14);
+   v[17] = b.broadcast(14) - a.broadcast(14);
+   v[18] = -2. * v[2] * v[3] + v[1] * v[17];
+   v[17] = 3. * v[1] * v[3] - v[0] * v[17];
+   out[6] = ((v[18] * v[6] + v[17]) * v[6] + a.broadcast(14)) * v[6] + a.broadcast(6);
+   v[3] = b.broadcast(7) - a.broadcast(7) - T * a.broadcast(15);
+   v[19] = b.broadcast(15) - a.broadcast(15);
+   v[2] = -2. * v[2] * v[3] + v[1] * v[19];
+   v[19] = 3. * v[1] * v[3] - v[0] * v[19];
+   out[7] = ((v[2] * v[6] + v[19]) * v[6] + a.broadcast(15)) * v[6] + a.broadcast(7);
+   out[8] = (3. * v[5] * v[6] + 2. * v[4]) * v[6] + a.broadcast(8);
+   out[9] = (3. * v[8] * v[6] + 2. * v[7]) * v[6] + a.broadcast(9);
+   out[10] = (3. * v[10] * v[6] + 2. * v[9]) * v[6] + a.broadcast(10);
+   out[11] = (3. * v[12] * v[6] + 2. * v[11]) * v[6] + a.broadcast(11);
+   out[12] = (3. * v[14] * v[6] + 2. * v[13]) * v[6] + a.broadcast(12);
+   out[13] = (3. * v[16] * v[6] + 2. * v[15]) * v[6] + a.broadcast(13);
+   out[14] = (3. * v[18] * v[6] + 2. * v[17]) * v[6] + a.broadcast(14);
+   out[15] = (3. * v[2] * v[6] + 2. * v[19]) * v[6] + a.broadcast(15);
+   out[16] = 6. * v[5] * v[6] + 2. * v[4];
+   out[17] = 6. * v[8] * v[6] + 2. * v[7];
+   out[18] = 6. * v[10] * v[6] + 2. * v[9];
+   out[19] = 6. * v[12] * v[6] + 2. * v[11];
+   out[20] = 6. * v[14] * v[6] + 2. * v[13];
+   out[21] = 6. * v[16] * v[6] + 2. * v[15];
+   out[22] = 6. * v[18] * v[6] + 2. * v[17];
+   out[23] = 6. * v[2] * v[6] + 2. * v[19];
+
+        }
+
+        // Position/velocity bounds on rows 0..2n-1 and torque limits via RNEA on all 3n rows.
+        // Cubic edges can overshoot bounds mid-path even when both endpoints are valid.
+        template <std::size_t rake>
+        static inline bool limits_check(const ConfigurationBlock<rake> &x) noexcept
+        {
+            if (not ((x[0] >= 0.0).all() and (x[0] <= 0.3861500024795532).all()))
+            {
+                return false;
+            }
+            if (not ((x[1] >= -1.6055999994277954).all() and (x[1] <= 1.6055999994277954).all()))
+            {
+                return false;
+            }
+            if (not ((x[2] >= -1.2209999561309814).all() and (x[2] <= 1.5180000066757202).all()))
+            {
+                return false;
+            }
+            if (not ((x[3] >= -3.141590118408203).all() and (x[3] <= 3.141590118408203).all()))
+            {
+                return false;
+            }
+            if (not ((x[4] >= -2.250999927520752).all() and (x[4] <= 2.250999927520752).all()))
+            {
+                return false;
+            }
+            if (not ((x[5] >= -3.141590118408203).all() and (x[5] <= 3.141590118408203).all()))
+            {
+                return false;
+            }
+            if (not ((x[6] >= -2.1600000858306885).all() and (x[6] <= 2.1600000858306885).all()))
+            {
+                return false;
+            }
+            if (not ((x[7] >= -3.141590118408203).all() and (x[7] <= 3.141590118408203).all()))
+            {
+                return false;
+            }
+            if (not ((x[8] >= -0.10000000149011612).all() and (x[8] <= 0.10000000149011612).all()))
+            {
+                return false;
+            }
+            if (not ((x[9] >= -1.25600004196167).all() and (x[9] <= 1.25600004196167).all()))
+            {
+                return false;
+            }
+            if (not ((x[10] >= -1.4539999961853027).all() and (x[10] <= 1.4539999961853027).all()))
+            {
+                return false;
+            }
+            if (not ((x[11] >= -1.5709999799728394).all() and (x[11] <= 1.5709999799728394).all()))
+            {
+                return false;
+            }
+            if (not ((x[12] >= -1.5210000276565552).all() and (x[12] <= 1.5210000276565552).all()))
+            {
+                return false;
+            }
+            if (not ((x[13] >= -1.5709999799728394).all() and (x[13] <= 1.5709999799728394).all()))
+            {
+                return false;
+            }
+            if (not ((x[14] >= -2.2679998874664307).all() and (x[14] <= 2.2679998874664307).all()))
+            {
+                return false;
+            }
+            if (not ((x[15] >= -2.2679998874664307).all() and (x[15] <= 2.2679998874664307).all()))
+            {
+                return false;
+            }
+            
+
+            std::array<FloatVector<rake, 1>, 128> v;
+            std::array<FloatVector<rake, 1>, flat_dimension> tau;
+               v[0] = 9.81 + x[16];
+   v[1] = - sin(x[2]);
+   v[2] = - x[10];
+   v[3] = cos(x[2]);
+   v[4] = v[3] * x[8];
+   v[5] = v[2] * v[4] + v[1] * v[0];
+   v[6] = - x[10];
+   v[7] = v[1] * x[9];
+   v[8] = (- v[6]) * v[7] + v[3] * x[17];
+   v[9] = 2.6615 * (v[5] - (0.0072 * v[8] - -0.0001 * x[18]));
+   v[10] = 2.6615 * (v[4] - (0.1432 * x[10] - 0.0072 * v[7]));
+   v[11] = v[3] * x[9];
+   v[12] = 0. - (0. - 0.117 * x[9]);
+   v[13] = 2.6615 * (v[12] - (-0.0001 * v[7] - 0.1432 * v[11]));
+   v[14] = - x[11];
+   v[15] = cos(x[3]);
+   v[16] = sin(x[3]);
+   v[17] = v[15] * x[10] + v[16] * v[11];
+   v[18] = - v[16];
+   v[19] = v[14] * v[17] + v[18] * x[18] + v[15] * v[8];
+   v[20] = 2.3311 * (v[5] - 0.0014 * v[19]);
+   v[21] = v[12] - (0. - 0.219 * v[11]);
+   v[22] = v[4] - 0.219 * x[10];
+   v[23] = v[18] * v[21] + v[15] * v[22];
+   v[24] = x[11] + v[7];
+   v[25] = 2.3311 * (v[23] - (0.1165 * v[17] - 0.0014 * v[24]));
+   v[26] = v[18] * x[10] + v[15] * v[11];
+   v[22] = v[15] * v[21] + v[16] * v[22];
+   v[21] = 2.3311 * (v[22] - (0. - 0.1165 * v[26]));
+   v[27] = cos(x[4]);
+   v[28] = - x[12];
+   v[29] = sin(x[4]);
+   v[30] = v[1] * x[8];
+   v[31] = v[23] - 0.133 * v[17];
+   v[32] = v[29] * v[30] + v[27] * v[31];
+   v[33] = - v[29];
+   v[34] = - x[11];
+   v[35] = 0. - (0. - 0.117 * x[17]);
+   v[36] = v[35] - (0. - 0.219 * v[8]);
+   v[2] = (- v[2]) * v[30] + v[3] * v[0];
+   v[37] = v[2] - 0.219 * x[18];
+   v[38] = v[34] * v[22] + v[18] * v[36] + v[15] * v[37];
+   v[14] = (- v[14]) * v[26] + v[15] * x[18] + v[16] * v[8];
+   v[39] = v[38] - 0.133 * v[14];
+   v[40] = v[28] * v[32] + v[27] * v[5] + v[33] * v[39];
+   v[41] = - x[12];
+   v[42] = v[27] * v[24] + v[33] * v[26];
+   v[6] = v[6] * v[11] + v[1] * x[17];
+   v[43] = x[19] + v[6];
+   v[44] = (- v[41]) * v[42] + v[29] * v[43] + v[27] * v[19];
+   v[45] = 2.1299 * (v[40] - 0.0073 * v[44]);
+   v[46] = x[12] + v[17];
+   v[47] = 2.1299 * (v[32] - (0.1279 * v[46] - 0.0073 * v[42]));
+   v[48] = v[29] * v[24] + v[27] * v[26];
+   v[49] = v[22] - (0. - 0.133 * v[26]);
+   v[50] = 2.1299 * (v[49] - (0. - 0.1279 * v[48]));
+   v[51] = - x[13];
+   v[52] = cos(x[5]);
+   v[53] = sin(x[5]);
+   v[54] = v[52] * v[46] + v[53] * v[48];
+   v[55] = - v[53];
+   v[56] = x[20] + v[14];
+   v[57] = v[51] * v[54] + v[55] * v[56] + v[52] * v[44];
+   v[58] = 1.6563 * (v[40] - -0.0266 * v[57]);
+   v[59] = v[49] - (0. - 0.197 * v[48]);
+   v[60] = v[32] - 0.197 * v[46];
+   v[61] = v[55] * v[59] + v[52] * v[60];
+   v[62] = x[13] + v[42];
+   v[63] = 1.6563 * (v[61] - (0.1097 * v[54] - -0.0266 * v[62]));
+   v[64] = v[55] * v[46] + v[52] * v[48];
+   v[60] = v[52] * v[59] + v[53] * v[60];
+   v[59] = 1.6563 * (v[60] - (0. - 0.1097 * v[64]));
+   v[65] = cos(x[6]);
+   v[66] = - x[14];
+   v[67] = sin(x[6]);
+   v[31] = v[27] * v[30] + v[33] * v[31];
+   v[68] = v[61] - 0.1245 * v[54];
+   v[69] = v[67] * v[31] + v[65] * v[68];
+   v[70] = - v[67];
+   v[71] = - x[13];
+   v[37] = (- v[34]) * v[23] + v[15] * v[36] + v[16] * v[37];
+   v[36] = v[37] - (0. - 0.133 * v[19]);
+   v[34] = v[36] - (0. - 0.197 * v[44]);
+   v[39] = (- v[28]) * v[31] + v[29] * v[5] + v[27] * v[39];
+   v[28] = v[39] - 0.197 * v[56];
+   v[5] = v[71] * v[60] + v[55] * v[34] + v[52] * v[28];
+   v[51] = (- v[51]) * v[64] + v[52] * v[56] + v[53] * v[44];
+   v[72] = v[5] - 0.1245 * v[51];
+   v[73] = v[66] * v[69] + v[65] * v[40] + v[70] * v[72];
+   v[74] = - x[14];
+   v[75] = v[65] * v[62] + v[70] * v[64];
+   v[41] = v[41] * v[48] + v[27] * v[43] + v[33] * v[19];
+   v[76] = x[21] + v[41];
+   v[77] = (- v[74]) * v[75] + v[67] * v[76] + v[65] * v[57];
+   v[78] = x[22] + v[51];
+   v[79] = 1.725 * (v[73] - (0.0009 * v[77] - -0.0001 * v[78]));
+   v[80] = x[14] + v[54];
+   v[81] = 1.725 * (v[69] - (0.0882 * v[80] - 0.0009 * v[75]));
+   v[82] = v[67] * v[62] + v[65] * v[64];
+   v[83] = v[60] - (0. - 0.1245 * v[64]);
+   v[84] = 1.725 * (v[83] - (-0.0001 * v[75] - 0.0882 * v[82]));
+   v[85] = - x[15];
+   v[86] = cos(x[7]);
+   v[87] = sin(x[7]);
+   v[88] = v[86] * v[80] + v[87] * v[82];
+   v[89] = - v[87];
+   v[90] = v[85] * v[88] + v[89] * v[78] + v[86] * v[77];
+   v[91] = v[89] * v[80] + v[86] * v[82];
+   v[85] = (- v[85]) * v[91] + v[86] * v[78] + v[87] * v[77];
+   v[73] = 1.8125 * (v[73] - (-5.38427586206903e-05 * v[90] - -0.00143825103448276 * v[85]));
+   v[92] = v[83] - (0. - 0.1385 * v[82]);
+   v[93] = v[69] - 0.1385 * v[80];
+   v[94] = v[89] * v[92] + v[86] * v[93];
+   v[95] = x[15] + v[75];
+   v[96] = 1.8125 * (v[94] - (0.0784930179310345 * v[88] - -5.38427586206903e-05 * v[95]));
+   v[93] = v[86] * v[92] + v[87] * v[93];
+   v[92] = 1.8125 * (v[93] - (-0.00143825103448276 * v[95] - 0.0784930179310345 * v[91]));
+   v[97] = v[79] + v[80] * v[81] - v[82] * v[84] + v[73] + v[88] * v[96] - v[91] * v[92];
+   v[68] = v[65] * v[31] + v[70] * v[68];
+   v[72] = (- v[66]) * v[68] + v[67] * v[40] + v[65] * v[72];
+   v[74] = v[74] * v[82] + v[65] * v[76] + v[70] * v[57];
+   v[66] = 1.725 * (v[72] - (0.0882 * v[78] - 0.0009 * v[74]));
+   v[40] = 1.725 * (v[68] - (0.0009 * v[82] - -0.0001 * v[80]));
+   v[98] = - x[15];
+   v[28] = (- v[71]) * v[61] + v[52] * v[34] + v[53] * v[28];
+   v[34] = v[28] - (0. - 0.1245 * v[57]);
+   v[71] = v[34] - (0. - 0.1385 * v[77]);
+   v[72] = v[72] - 0.1385 * v[78];
+   v[99] = x[23] + v[74];
+   v[100] = 1.8125 * ((- v[98]) * v[94] + v[86] * v[71] + v[87] * v[72] - (-0.00143825103448276 * v[99] - 0.0784930179310345 * v[90]));
+   v[101] = 1.8125 * (v[68] - (-5.38427586206903e-05 * v[91] - -0.00143825103448276 * v[88]));
+   v[102] = v[100] + v[91] * v[101] - v[95] * v[96];
+   v[72] = 1.8125 * (v[98] * v[93] + v[89] * v[71] + v[86] * v[72] - (0.0784930179310345 * v[85] - -5.38427586206903e-05 * v[99]));
+   v[71] = v[72] + v[95] * v[92] - v[88] * v[101];
+   v[98] = v[87] * v[102] + v[86] * v[71];
+   v[103] = v[66] + v[75] * v[84] - v[80] * v[40] + v[98];
+   v[104] = v[45] + v[46] * v[47] - v[48] * v[50] + v[58] + v[54] * v[63] - v[64] * v[59] + v[65] * v[97] + v[67] * v[103];
+   v[39] = 2.1299 * (v[39] - (0.1279 * v[56] - 0.0073 * v[41]));
+   v[105] = 2.1299 * (v[31] - 0.0073 * v[48]);
+   v[28] = 1.6563 * (v[28] - (0. - 0.1097 * v[57]));
+   v[106] = 1.6563 * (v[31] - -0.0266 * v[64]);
+   v[34] = 1.725 * (v[34] - (-0.0001 * v[74] - 0.0882 * v[77]));
+   v[71] = v[86] * v[102] + v[89] * v[71];
+   v[102] = v[34] + v[82] * v[40] - v[75] * v[81] + v[71];
+   v[107] = v[28] + v[64] * v[106] - v[62] * v[63] + v[102];
+   v[5] = 1.6563 * (v[5] - (0.1097 * v[51] - -0.0266 * v[76]));
+   v[103] = v[70] * v[97] + v[65] * v[103];
+   v[97] = v[5] + v[62] * v[59] - v[54] * v[106] + v[103];
+   v[108] = v[53] * v[107] + v[52] * v[97];
+   v[109] = v[39] + v[42] * v[50] - v[46] * v[105] + v[108];
+   v[2] = 2.6615 * (v[2] - (0.1432 * x[18] - 0.0072 * v[6]));
+   v[110] = 2.6615 * (v[30] - (0.0072 * v[11] - -0.0001 * x[10]));
+   v[37] = 2.3311 * (v[37] - (0. - 0.1165 * v[19]));
+   v[111] = 2.3311 * (v[30] - 0.0014 * v[26]);
+   v[36] = 2.1299 * (v[36] - (0. - 0.1279 * v[44]));
+   v[97] = v[52] * v[107] + v[55] * v[97];
+   v[107] = v[36] + v[48] * v[105] - v[42] * v[47] + v[97];
+   v[112] = v[37] + v[26] * v[111] - v[24] * v[25] + v[107];
+   v[38] = 2.3311 * (v[38] - (0.1165 * v[14] - 0.0014 * v[43]));
+   v[113] = v[33] * v[104] + v[27] * v[109];
+   v[114] = v[38] + v[24] * v[21] - v[17] * v[111] + v[113];
+   v[115] = v[16] * v[112] + v[15] * v[114];
+   tau[0] = 14.1132740382166 * v[0] + 2.5587 * v[0] + v[1] * (v[9] + x[10] * v[10] - v[11] * v[13] + v[20] + v[17] * v[25] - v[26] * v[21] + v[27] * v[104] + v[29] * v[109]) + v[3] * (v[2] + v[7] * v[13] - x[10] * v[110] + v[115]);
+   v[35] = 2.6615 * (v[35] - (-0.0001 * v[6] - 0.1432 * v[8]));
+   v[109] = 0.0112 * v[11] + 0.1432 * v[13] - 0.0072 * v[110];
+   v[104] = -0.0021 * v[7] + 0.0111 * x[10] + -0.0001 * v[110] - 0.1432 * v[10];
+   v[0] = 0.0047 * v[26] + 0.1165 * v[21] - 0.0014 * v[111];
+   v[116] = -0.0001 * v[24] + 0.0045 * v[17] + 0. - 0.1165 * v[25];
+   v[117] = 0.0084 * v[48] + 0.1279 * v[50] - 0.0073 * v[105];
+   v[118] = -0.0016 * v[42] + 0.0082 * v[46] + 0. - 0.1279 * v[47];
+   v[119] = 0.0035 * v[64] + 0.1097 * v[59] - -0.0266 * v[106];
+   v[120] = -0.0003 * v[62] + 0.003 * v[54] + 0. - 0.1097 * v[63];
+   v[121] = 0.0042 * v[82] + 0.0882 * v[84] - 0.0009 * v[40];
+   v[122] = -0.0001 * v[75] + 0.0042 * v[80] + -0.0001 * v[40] - 0.0882 * v[81];
+   v[123] = -7.13880643315862e-06 * v[95] + -1.06784081544829e-07 * v[88] + 0.0048039668366271 * v[91] + 0.0784930179310345 * v[92] - -5.38427586206903e-05 * v[101];
+   v[124] = 3.42663388011041e-06 * v[95] + 0.0036214202394477 * v[88] + -1.06784081544829e-07 * v[91] + -0.00143825103448276 * v[101] - 0.0784930179310345 * v[96];
+   tau[7] = 0.00608383002729097 * v[99] + 3.42663388011041e-06 * v[85] + -7.13880643315862e-06 * v[90] + -5.38427586206903e-05 * v[72] - -0.00143825103448276 * v[100] + v[88] * v[123] - v[91] * v[124] + v[93] * v[96] - v[94] * v[92];
+   v[125] = 0.0018 * v[74] + -0.0001 * v[78] + 0.0009 * v[66] - -0.0001 * v[34] + v[80] * v[121] - v[82] * v[122] + v[83] * v[81] - v[69] * v[84] + tau[7];
+   v[126] = 0.0018 * v[75] + -0.0001 * v[80] + 0.0009 * v[81] - -0.0001 * v[84];
+   v[127] = 0.00608383002729097 * v[95] + 3.42663388011041e-06 * v[88] + -7.13880643315862e-06 * v[91] + -5.38427586206903e-05 * v[96] - -0.00143825103448276 * v[92];
+   v[123] = 3.42663388011041e-06 * v[99] + 0.0036214202394477 * v[85] + -1.06784081544829e-07 * v[90] + -0.00143825103448276 * v[73] - 0.0784930179310345 * v[72] + v[91] * v[127] - v[95] * v[123] + v[94] * v[101] - v[68] * v[96];
+   v[127] = -7.13880643315862e-06 * v[99] + -1.06784081544829e-07 * v[85] + 0.0048039668366271 * v[90] + 0.0784930179310345 * v[100] - -5.38427586206903e-05 * v[73] + v[95] * v[124] - v[88] * v[127] + v[68] * v[92] - v[93] * v[101];
+   v[122] = 0.0042 * v[77] + 0.0882 * v[34] - 0.0009 * v[79] + v[75] * v[122] - v[80] * v[126] + v[68] * v[84] - v[83] * v[40] + v[87] * v[123] + v[86] * v[127] + 0.1385 * v[71];
+   tau[5] = 0.0016 * v[76] + -0.0003 * v[51] + -0.0266 * v[5] + v[54] * v[119] - v[64] * v[120] + v[60] * v[63] - v[61] * v[59] + v[65] * v[125] + v[67] * v[122];
+   v[67] = 0.0024 * v[41] + -0.0016 * v[56] + 0.0073 * v[39] + v[46] * v[117] - v[48] * v[118] + v[49] * v[47] - v[32] * v[50] + tau[5];
+   v[71] = 0.0024 * v[42] + -0.0016 * v[46] + 0.0073 * v[47];
+   v[34] = 0.0016 * v[62] + -0.0003 * v[54] + -0.0266 * v[63];
+   tau[6] = -0.0001 * v[74] + 0.0042 * v[78] + -0.0001 * v[79] - 0.0882 * v[66] + v[82] * v[126] - v[75] * v[121] + v[69] * v[40] - v[68] * v[81] + v[86] * v[123] + v[89] * v[127] + 0. - 0.1385 * v[98];
+   v[119] = -0.0003 * v[76] + 0.003 * v[51] + 0. - 0.1097 * v[5] + v[64] * v[34] - v[62] * v[119] + v[61] * v[106] - v[31] * v[63] + tau[6] + 0. - 0.1245 * v[103];
+   v[34] = 0.0035 * v[57] + 0.1097 * v[28] - -0.0266 * v[58] + v[62] * v[120] - v[54] * v[34] + v[31] * v[59] - v[60] * v[106] + v[70] * v[125] + v[65] * v[122] + 0.1245 * v[102];
+   v[118] = 0.0084 * v[44] + 0.1279 * v[36] - 0.0073 * v[45] + v[42] * v[118] - v[46] * v[71] + v[31] * v[50] - v[49] * v[105] + v[53] * v[119] + v[52] * v[34] + 0.197 * v[97];
+   tau[3] = 0.0019 * v[43] + -0.0001 * v[14] + 0.0014 * v[38] + v[17] * v[0] - v[26] * v[116] + v[22] * v[25] - v[23] * v[21] + v[27] * v[67] + v[29] * v[118];
+   v[29] = 0.0028 * v[7] + -0.0021 * x[10] + 0.0072 * v[10] - -0.0001 * v[13];
+   v[97] = 0.0019 * v[24] + -0.0001 * v[17] + 0.0014 * v[25];
+   tau[4] = -0.0016 * v[41] + 0.0082 * v[56] + 0. - 0.1279 * v[39] + v[48] * v[71] - v[42] * v[117] + v[32] * v[105] - v[31] * v[47] + v[52] * v[119] + v[55] * v[34] + 0. - 0.197 * v[108];
+   v[0] = -0.0001 * v[43] + 0.0045 * v[14] + 0. - 0.1165 * v[38] + v[26] * v[97] - v[24] * v[0] + v[23] * v[111] - v[30] * v[25] + tau[4] + 0. - 0.133 * v[113];
+   v[97] = 0.0047 * v[19] + 0.1165 * v[37] - 0.0014 * v[20] + v[24] * v[116] - v[17] * v[97] + v[30] * v[21] - v[22] * v[111] + v[33] * v[67] + v[27] * v[118] + 0.133 * v[107];
+   v[114] = v[15] * v[112] + v[18] * v[114];
+   tau[1] = 0.0087 * x[17] + 0.0927 * 2.5587 * (0. - (0. - 0.0927 * x[17])) - -0.0056 * 2.5587 * (0. - -0.0056 * x[17]) + v[1] * (0.0028 * v[6] + -0.0021 * x[18] + 0.0072 * v[2] - -0.0001 * v[35] + x[10] * v[109] - v[11] * v[104] + v[12] * v[10] - v[4] * v[13] + tau[3]) + v[3] * (0.0112 * v[8] + 0.1432 * v[35] - 0.0072 * v[9] + v[7] * v[104] - x[10] * v[29] + v[30] * v[13] - v[12] * v[110] + v[16] * v[0] + v[15] * v[97] + 0.219 * v[114]) + 0.117 * (v[35] + v[11] * v[110] - v[7] * v[10] + v[114]);
+   tau[2] = -0.0021 * v[6] + 0.0111 * x[18] + -0.0001 * v[9] - 0.1432 * v[2] + v[11] * v[29] - v[7] * v[109] + v[4] * v[110] - v[30] * v[10] + v[15] * v[0] + v[18] * v[97] + 0. - 0.219 * v[115];
+
+
+            if ((tau[0].abs() > 450.0).any())
+            {
+                return false;
+            }
+            if ((tau[1].abs() > 33.81999969482422).any())
+            {
+                return false;
+            }
+            if ((tau[2].abs() > 131.75999450683594).any())
+            {
+                return false;
+            }
+            if ((tau[3].abs() > 76.94000244140625).any())
+            {
+                return false;
+            }
+            if ((tau[4].abs() > 66.18000030517578).any())
+            {
+                return false;
+            }
+            if ((tau[5].abs() > 29.350000381469727).any())
+            {
+                return false;
+            }
+            if ((tau[6].abs() > 25.700000762939453).any())
+            {
+                return false;
+            }
+            if ((tau[7].abs() > 7.360000133514404).any())
+            {
+                return false;
+            }
+            
+
+            return true;
+        }
+
+        // The FK/CC kernels live on the ambient robot: a z-block stacks (y, yd, ydd), so
+        // positions are rows 0..flat_dimension-1 and the ambient kernels read them in place.
+        template <std::size_t rake>
+        static inline void sphere_fk(const ConfigurationBlock<rake> &x, Spheres<rake> &out) noexcept
+        {
+            Ambient::sphere_fk<rake>(x, out);
+        }
+
+        using Debug = Ambient::Debug;
+
+        template <std::size_t rake>
+            static inline auto fkcc_debug(
+                const vamp::collision::Environment<FloatVector<rake>> &environment,
+                const ConfigurationBlock<rake> &x) noexcept -> Debug
+        {
+            return Ambient::fkcc_debug<rake>(environment, x);
+        }
+
+        template <std::size_t rake>
+            static inline bool fkcc(
+                const vamp::collision::Environment<FloatVector<rake>> &environment,
+                const ConfigurationBlock<rake> &x) noexcept
+        {
+            return limits_check<rake>(x) and Ambient::fkcc<rake>(environment, x);
+        }
+
+        template <std::size_t rake>
+        static inline bool fkcc_attach(
+            const vamp::collision::Environment<FloatVector<rake>> &environment,
+            const ConfigurationBlock<rake> &x) noexcept
+        {
+            return limits_check<rake>(x) and Ambient::fkcc_attach<rake>(environment, x);
+        }
+
+        static inline auto eefk(const std::array<float, dimension> &x) noexcept -> Eigen::Isometry3f
+        {
+            std::array<float, flat_dimension> q;
+            std::copy_n(x.begin(), flat_dimension, q.begin());
+            return Ambient::eefk(q);
+        }
+    };
 
     
 };

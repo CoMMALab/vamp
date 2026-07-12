@@ -11,7 +11,7 @@ Start and goal must lie on the constraint manifold: the planners raise ValueErro
 otherwise, so this script projects them first with the module's project() helper.
 
 With --flask, the panda examples (line, plane) plan kinodynamically instead: the
-chart-LQMT planner on vamp.panda_flask steers rest-to-rest (q, qdot) states along
+chart-LQMT planner on vamp.panda.flask steers rest-to-rest (q, qdot) states along
 time-optimal cubics on the constraint manifold. Constraints are still built from the
 ambient panda submodule; the executed trajectory is reconstructed with lift_edge.
 """
@@ -198,7 +198,7 @@ def main(
             raise ValueError("--flask is only available for the panda examples (line, plane)")
         kwargs.setdefault("max_iterations", 50000)
         kwargs.setdefault("max_samples", 50000)
-        robot_name = "panda_flask"
+        robot_name = "panda.flask"
 
     (module, planner_func, plan_settings,
      simp_settings) = vamp.configure_robot_and_planner_with_kwargs(robot_name, planner, **kwargs)
@@ -213,8 +213,9 @@ def main(
     constraint_settings = vamp.ConstraintSettings()
     constraint_settings.max_iterations = 10
 
-    # Constraints always come from the ambient (geometric) robot's submodule.
-    ambient = vamp.panda if flask else module
+    # Constraints always come from the ambient (geometric) robot's submodule; a flask
+    # robot is a nested submodule of its ambient parent.
+    ambient = getattr(vamp, robot_name.partition(".")[0])
     start_seed, goal_seed, constraints, e = problem(ambient)
     n_q = len(start_seed)
 

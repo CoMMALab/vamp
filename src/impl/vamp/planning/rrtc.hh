@@ -1,8 +1,10 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 
 #include <vamp/collision/environment.hh>
+#include <vamp/planning/local_planner.hh>
 #include <vamp/planning/nn.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/validate.hh>
@@ -20,22 +22,26 @@ namespace vamp::planning
         static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
 
+        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution>>
         inline static auto solve(
             const Configuration &start,
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const RRTCSettings &settings,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr rng,
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
         {
-            return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
+            return solve(start, std::vector<Configuration>{goal}, environment, settings, rng, lp);
         }
 
+        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution>>
         inline static auto solve(
             const Configuration &start,
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
             const RRTCSettings &settings,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr rng,
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
         {
             PlanningResult<Robot> result;
 
@@ -55,11 +61,19 @@ namespace vamp::planning
 
             auto start_time = std::chrono::steady_clock::now();
 
+            constexpr auto unbounded = [] { return std::numeric_limits<float>::infinity(); };
+
             for (const auto &goal : goals)
             {
-                if (validate_motion<Robot, rake, resolution>(start, goal, environment))
+                const auto direct = lp.connect_within(
+                    start, goal, environment, unbounded, std::numeric_limits<std::size_t>::max());
+                if (direct.status == SteerStatus::Reached)
                 {
                     result.path.emplace_back(start);
+                    for (const auto &c : direct.waypoints)
+                    {
+                        result.path.emplace_back(c);
+                    }
                     result.path.emplace_back(goal);
                     result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
                     result.iterations = 0;
@@ -93,6 +107,23 @@ namespace vamp::planning
                 free_index++;
             }
 
+            // Insert one waypoint into tree_a; nullopt when the sample limit is hit.
+            const auto add_node =
+                [&](const Configuration &c, std::size_t parent) -> std::optional<std::size_t>
+            {
+                if (free_index >= settings.max_samples)
+                {
+                    return std::nullopt;
+                }
+
+                float *ptr = buffer_index(free_index);
+                c.to_array(ptr);
+                tree_a->insert(NNNode<Robot>{free_index, Robot::nn_key(ptr)});
+                parents[free_index] = parent;
+                radii[free_index] = std::numeric_limits<float>::max();
+                return free_index++;
+            };
+
             while (iter++ < settings.max_iterations and free_index < settings.max_samples)
             {
                 float asize = tree_a->size();
@@ -125,42 +156,35 @@ namespace vamp::planning
 
                 const auto nearest_configuration = Configuration(buffer_index(nearest_node.index));
 
-                // Edges are executed from start to goal: goal-tree edges run child -> parent, so
-                // steer and validate along the local path in that direction (identical for
-                // symmetric interpolation).
-                const bool reach = nearest_distance < settings.range;
-                const float step = settings.range / nearest_distance;
-                const auto new_configuration =
-                    (reach)          ? temp :
-                    (tree_a_is_start) ? Robot::interpolate(nearest_configuration, temp, step) :
-                                        Robot::interpolate(temp, nearest_configuration, 1.F - step);
+                // Edges are executed from start to goal: goal-tree edges run child -> parent,
+                // so the local planner steers and validates along the local path in that
+                // direction (identical for symmetric interpolation).
+                const auto extension = lp.steer(
+                    nearest_configuration,
+                    temp,
+                    nearest_distance,
+                    settings.range,
+                    tree_a_is_start,
+                    environment);
 
-                const bool extend_valid =
-                    (tree_a_is_start) ?
-                        validate_motion<Robot, rake, resolution>(
-                            nearest_configuration, new_configuration, environment) :
-                        validate_motion<Robot, rake, resolution>(
-                            new_configuration, nearest_configuration, environment);
-
-                if (extend_valid)
+                if (extension.status != SteerStatus::Trapped)
                 {
-                    float *new_configuration_index = buffer_index(free_index);
-                    new_configuration.to_array(new_configuration_index);
-                    tree_a->insert(NNNode<Robot>{free_index, Robot::nn_key(new_configuration_index)});
-
-                    parents[free_index] = nearest_node.index;
-                    radii[free_index] = std::numeric_limits<float>::max();
-
-                    free_index++;
+                    const auto [frontier_index, extend_truncated] =
+                        insert_chain<Robot>(extension.waypoints, nearest_node.index, add_node);
 
                     if (settings.dynamic_domain and nearest_radius != std::numeric_limits<float>::max())
                     {
                         radii[nearest_node.index] *= (1 + settings.alpha);
                     }
 
+                    if (extend_truncated)
+                    {
+                        continue;
+                    }
+
                     // Extend to goal tree
                     const auto other_nearest =
-                        tree_b->nearest(Robot::nn_key(new_configuration_index));
+                        tree_b->nearest(Robot::nn_key(buffer_index(frontier_index)));
                     if (not other_nearest)
                     {
                         continue;
@@ -169,49 +193,45 @@ namespace vamp::planning
                     const auto &[other_nearest_node, other_nearest_distance] = *other_nearest;
                     const auto other_nearest_configuration = Configuration(buffer_index(other_nearest_node.index));
 
-                    const std::size_t n_extensions = std::ceil(other_nearest_distance / settings.range);
+                    const std::size_t n_extensions =
+                        std::ceil(LocalPlanner::connect_slack * other_nearest_distance / settings.range);
 
                     std::size_t i_extension = 0;
                     bool connected = false;
-                    auto prior = new_configuration;
+                    Configuration prior = extension.frontier();
+                    std::size_t prior_index = frontier_index;
                     while (not connected and i_extension < n_extensions and
                            free_index < settings.max_samples)
                     {
-                        auto next = other_nearest_configuration;
                         const float remaining =
                             Robot::distance(prior, other_nearest_configuration);
-                        connected =
+                        const bool final_step =
                             (i_extension == n_extensions - 1) or (remaining <= settings.range);
-                        if (not connected)
-                        {
-                            const float step = settings.range / remaining;
-                            next = (tree_a_is_start) ?
-                                       Robot::interpolate(prior, other_nearest_configuration, step) :
-                                       Robot::interpolate(
-                                           other_nearest_configuration, prior, 1.F - step);
-                        }
 
-                        const bool step_valid =
-                            (tree_a_is_start) ?
-                                validate_motion<Robot, rake, resolution>(prior, next, environment) :
-                                validate_motion<Robot, rake, resolution>(next, prior, environment);
+                        const auto step = lp.steer(
+                            prior,
+                            other_nearest_configuration,
+                            remaining,
+                            (final_step) ? std::numeric_limits<float>::max() : settings.range,
+                            tree_a_is_start,
+                            environment);
 
-                        if (not step_valid)
+                        if (step.status == SteerStatus::Trapped)
                         {
-                            connected = false;
                             break;
                         }
 
-                        float *next_index = buffer_index(free_index);
-                        next.to_array(next_index);
-                        tree_a->insert(NNNode<Robot>{free_index, Robot::nn_key(next_index)});
-                        parents[free_index] = free_index - 1;
-                        radii[free_index] = std::numeric_limits<float>::max();
+                        const auto [step_index, step_truncated] =
+                            insert_chain<Robot>(step.waypoints, prior_index, add_node);
+                        if (step_truncated)
+                        {
+                            break;
+                        }
 
-                        free_index++;
-
+                        connected = (step.status == SteerStatus::Reached);
                         i_extension++;
-                        prior = next;
+                        prior = step.frontier();
+                        prior_index = step_index;
                     }
 
                     if (connected)

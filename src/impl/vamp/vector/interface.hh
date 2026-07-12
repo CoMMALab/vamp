@@ -1167,6 +1167,10 @@ namespace vamp
                 data.data() + idx));
         }
 
+        // NOTE: Viewing rows in place as a distinct Vector type violates strict aliasing;
+        // GCC 16 at -O2 dead-store-eliminates whole-Vector writes whose only later reads are
+        // through these row references. VAMP must be compiled with -fno-strict-aliasing
+        // (applied via the CMake interface target).
         [[nodiscard]] inline constexpr auto row(std::size_t idx) noexcept -> RowT &
         {
             return *reinterpret_cast<RowT *>(

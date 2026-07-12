@@ -18,6 +18,8 @@ __all__ = [
     "GRRTStarSettings",
     "SimplifySettings",
     "SimplifyRoutine",
+    "ProjMethod",
+    "ConstraintSettings",
     "filter_pointcloud",
     ]
 
@@ -44,6 +46,8 @@ from ._core import AORRTCSettings as AORRTCSettings
 from ._core import GRRTStarSettings as GRRTStarSettings
 from ._core import SimplifyRoutine as SimplifyRoutine
 from ._core import SimplifySettings as SimplifySettings
+from ._core import ProjMethod as ProjMethod
+from ._core import ConstraintSettings as ConstraintSettings
 from ._core import filter_pointcloud as filter_pointcloud
 
 if hasattr(_core._core_ext, "jit"):

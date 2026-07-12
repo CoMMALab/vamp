@@ -28,6 +28,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <vector>
 
@@ -35,6 +36,7 @@
 
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/cost.hh>
+#include <vamp/planning/local_planner.hh>
 #include <vamp/planning/nn.hh>
 #include <vamp/planning/phs.hh>
 #include <vamp/planning/plan.hh>
@@ -56,22 +58,26 @@ namespace vamp::planning
         using NNNodeType = NNNode<Robot>;
         using NNTree = NN<Robot>;
 
+        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution>>
         inline static auto solve(
             const Configuration &start,
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const GRRTStarSettings &settings,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr rng,
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
         {
-            return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
+            return solve(start, std::vector<Configuration>{goal}, environment, settings, rng, lp);
         }
 
+        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution>>
         inline static auto solve(
             const Configuration &start,
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
             const GRRTStarSettings &settings,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr rng,
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
         {
             PlanningResult<Robot> result;
 
@@ -308,6 +314,38 @@ namespace vamp::planning
             auto *tree_a = &goal_tree;
             auto *tree_b = &start_tree;
 
+            // Directed cost of a tree edge from parent to child: start-tree edges execute
+            // parent -> child, goal-tree edges child -> parent.
+            const auto chain_edge_cost =
+                [&tree_a_is_start](const Configuration &parent, const Configuration &child) -> float
+            {
+                return (tree_a_is_start) ? planning::cost<Robot>(parent, child) :
+                                           planning::cost<Robot>(child, parent);
+            };
+
+            // Insert one waypoint into tree_a with its accumulated directed cost and full
+            // node bookkeeping; nullopt when the sample limit is hit.
+            const auto add_node =
+                [&](const Configuration &c, std::size_t parent) -> std::optional<std::size_t>
+            {
+                if (free_index >= settings.max_samples)
+                {
+                    return std::nullopt;
+                }
+
+                float *ptr = buffer_index(free_index);
+                c.to_array(ptr);
+                tree_a->insert(NNNodeType{free_index, Robot::nn_key(ptr)});
+                parents[free_index] = parent;
+                costs[free_index] =
+                    costs[parent] + chain_edge_cost(Configuration(buffer_index(parent)), c);
+                radii[free_index] = std::numeric_limits<float>::max();
+                in_start_tree[free_index] = tree_a_is_start ? 1 : 0;
+                pruned[free_index] = 0;
+                children[parent].push_back(free_index);
+                return free_index++;
+            };
+
             std::size_t iter = 0;
             std::vector<std::pair<NNNodeType, float>> neighbors;
             neighbors.reserve(settings.max_samples);
@@ -375,57 +413,58 @@ namespace vamp::planning
 
                 const auto nearest_configuration = Configuration(buffer_index(nearest_node.index));
 
-                // Edges are executed from start to goal: goal-tree edges run child -> parent, so
-                // steer and validate along the local path in that direction (identical for
-                // symmetric interpolation).
-                const bool reach = nearest_distance < settings.range;
-                const float step = settings.range / nearest_distance;
-                const auto new_configuration =
-                    (reach)          ? temp :
-                    (tree_a_is_start) ? Robot::interpolate(nearest_configuration, temp, step) :
-                                        Robot::interpolate(temp, nearest_configuration, 1.F - step);
-
-                // Directed edge cost, mirroring the extend_valid ternary below
-                float new_cost =
-                    costs[nearest_node.index] +
-                    ((tree_a_is_start) ?
-                         planning::cost<Robot>(nearest_configuration, new_configuration) :
-                         planning::cost<Robot>(new_configuration, nearest_configuration));
-                std::size_t best_parent = nearest_node.index;
+                const std::size_t nearest_index = nearest_node.index;
 
                 // Cost gate on the new state BEFORE the collision check (mirrors OMPL
                 // GreedyRRTstar): reject an extension that cannot improve the current best
                 // before paying for the motion-validity check.
-                if (has_solution)
+                float new_cost = 0.F;
+                const auto gate = [&](const Configuration &candidate) -> bool
                 {
+                    // Directed edge cost, mirroring the steer direction
+                    new_cost =
+                        costs[nearest_index] + chain_edge_cost(nearest_configuration, candidate);
+
+                    if (not has_solution)
+                    {
+                        return true;
+                    }
+
                     float h_hat;
                     if (tree_a_is_start)
                     {
                         h_hat = std::numeric_limits<float>::max();
                         for (const auto &g : goals)
                         {
-                            h_hat = std::min(h_hat, planning::cost<Robot>(new_configuration, g));
+                            h_hat = std::min(h_hat, planning::cost<Robot>(candidate, g));
                         }
                     }
                     else
                     {
-                        h_hat = planning::cost<Robot>(start, new_configuration);
+                        h_hat = planning::cost<Robot>(start, candidate);
                     }
-                    if (new_cost + h_hat >= best_cost)
-                    {
-                        continue;
-                    }
+
+                    return new_cost + h_hat < best_cost;
+                };
+
+                // Edges are executed from start to goal: goal-tree edges run child -> parent, so
+                // steer and validate along the local path in that direction (identical for
+                // symmetric interpolation).
+                const auto extension = lp.steer(
+                    nearest_configuration,
+                    temp,
+                    nearest_distance,
+                    settings.range,
+                    tree_a_is_start,
+                    environment,
+                    gate);
+
+                if (extension.status == SteerStatus::Rejected)
+                {
+                    continue;
                 }
 
-                // Validate extension edge (collision check)
-                const bool extend_valid =
-                    (tree_a_is_start) ?
-                        validate_motion<Robot, rake, resolution>(
-                            nearest_configuration, new_configuration, environment) :
-                        validate_motion<Robot, rake, resolution>(
-                            new_configuration, nearest_configuration, environment);
-
-                if (not extend_valid)
+                if (extension.status == SteerStatus::Trapped)
                 {
                     if (settings.dynamic_domain)
                     {
@@ -443,12 +482,29 @@ namespace vamp::planning
                     continue;
                 }
 
+                std::size_t best_parent = nearest_node.index;
+                const auto &waypoints = extension.waypoints;
+
+                // For a projected chain, the gate-computed cost (direct edge to the frontier)
+                // is only a gating heuristic; the first tree node is waypoints.front()
+                if constexpr (LocalPlanner::projecting)
+                {
+                    if (waypoints.size() > 1)
+                    {
+                        new_cost = costs[nearest_node.index] +
+                                   chain_edge_cost(nearest_configuration, waypoints.front());
+                    }
+                }
+
                 // Write config to buffer once (before both parent selection and node addition)
                 float *new_config_ptr = buffer_index(free_index);
-                new_configuration.to_array(new_config_ptr);
+                waypoints.front().to_array(new_config_ptr);
 
-                // RRT* parent selection and rewiring (skip until first solution if delay_rewiring)
-                bool do_rewire = not settings.delay_rewiring or has_solution;
+                // RRT* parent selection and rewiring (skip until first solution if
+                // delay_rewiring; disabled entirely for projecting local planners, whose tree
+                // edges are projected chains that cannot be re-parented)
+                const bool do_rewire =
+                    (not LocalPlanner::projecting) and (not settings.delay_rewiring or has_solution);
 
                 if (do_rewire)
                 {
@@ -483,9 +539,7 @@ namespace vamp::planning
                         if constexpr (has_cost_v<Robot>)
                         {
                             const auto nbr_config = Configuration(buffer_index(nbr_node.index));
-                            edge = (tree_a_is_start) ?
-                                       planning::cost<Robot>(nbr_config, new_configuration) :
-                                       planning::cost<Robot>(new_configuration, nbr_config);
+                            edge = chain_edge_cost(nbr_config, extension.frontier());
                         }
                         neighbor_edges.emplace_back(nbr_node, nbr_dist, edge);
                     }
@@ -511,13 +565,8 @@ namespace vamp::planning
                             if (settings.use_k_nearest or nbr_dist < settings.range)
                             {
                                 const auto nbr_config = Configuration(buffer_index(nbr_node.index));
-                                const bool parent_valid =
-                                    (tree_a_is_start) ?
-                                        validate_motion<Robot, rake, resolution>(
-                                            nbr_config, new_configuration, environment) :
-                                        validate_motion<Robot, rake, resolution>(
-                                            new_configuration, nbr_config, environment);
-                                if (parent_valid)
+                                if (lp.validate(
+                                        nbr_config, extension.frontier(), environment, tree_a_is_start))
                                 {
                                     new_cost = candidate_cost;
                                     best_parent = nbr_node.index;
@@ -534,13 +583,8 @@ namespace vamp::planning
                             if (candidate_cost < new_cost)
                             {
                                 const auto nbr_config = Configuration(buffer_index(nbr_node.index));
-                                const bool parent_valid =
-                                    (tree_a_is_start) ?
-                                        validate_motion<Robot, rake, resolution>(
-                                            nbr_config, new_configuration, environment) :
-                                        validate_motion<Robot, rake, resolution>(
-                                            new_configuration, nbr_config, environment);
-                                if (parent_valid)
+                                if (lp.validate(
+                                        nbr_config, extension.frontier(), environment, tree_a_is_start))
                                 {
                                     new_cost = candidate_cost;
                                     best_parent = nbr_node.index;
@@ -586,9 +630,7 @@ namespace vamp::planning
                         if constexpr (has_cost_v<Robot>)
                         {
                             const auto nbr_config = Configuration(buffer_index(nbr_node.index));
-                            rewire_edge_cost = (tree_a_is_start) ?
-                                                   planning::cost<Robot>(new_configuration, nbr_config) :
-                                                   planning::cost<Robot>(nbr_config, new_configuration);
+                            rewire_edge_cost = chain_edge_cost(extension.frontier(), nbr_config);
                         }
 
                         float nbr_new_cost = new_cost + rewire_edge_cost;
@@ -598,12 +640,8 @@ namespace vamp::planning
                             if (settings.use_k_nearest or nbr_dist < settings.range)
                             {
                                 const auto nbr_config = Configuration(buffer_index(nbr_node.index));
-                                motion_valid =
-                                    (tree_a_is_start) ?
-                                        validate_motion<Robot, rake, resolution>(
-                                            new_configuration, nbr_config, environment) :
-                                        validate_motion<Robot, rake, resolution>(
-                                            nbr_config, new_configuration, environment);
+                                motion_valid = lp.validate(
+                                    extension.frontier(), nbr_config, environment, tree_a_is_start);
                             }
                             else
                             {
@@ -633,13 +671,24 @@ namespace vamp::planning
                     }
                 }
 
+                // Insert the remainder of the chain, each waypoint parented on the previous
+                const auto [frontier_index, extend_truncated] =
+                    insert_chain(waypoints.begin() + 1, waypoints.end(), new_node_index, add_node);
+
+                if (extend_truncated)
+                {
+                    continue;
+                }
+
+                new_cost = costs[frontier_index];
+
                 // Connect to other tree
                 if (tree_b->size() == 0)
                 {
                     continue;
                 }
 
-                auto other_result = tree_b->nearest(Robot::nn_key(new_config_ptr));
+                auto other_result = tree_b->nearest(Robot::nn_key(buffer_index(frontier_index)));
                 if (not other_result)
                 {
                     continue;
@@ -654,9 +703,7 @@ namespace vamp::planning
                 if constexpr (has_cost_v<Robot>)
                 {
                     connection_edge =
-                        (tree_a_is_start) ?
-                            planning::cost<Robot>(new_configuration, other_nearest_configuration) :
-                            planning::cost<Robot>(other_nearest_configuration, new_configuration);
+                        chain_edge_cost(extension.frontier(), other_nearest_configuration);
                 }
 
                 float connection_cost = new_cost + connection_edge + costs[other_nearest_node.index];
@@ -667,51 +714,44 @@ namespace vamp::planning
 
                 // Extend incrementally toward other tree
                 const std::size_t n_extensions = std::max(
-                    static_cast<std::size_t>(std::ceil(other_nearest_distance / settings.range)),
+                    static_cast<std::size_t>(std::ceil(
+                        LocalPlanner::connect_slack * other_nearest_distance / settings.range)),
                     static_cast<std::size_t>(1));
 
                 std::size_t i_extension = 0;
                 bool connected = false;
-                auto prior = new_configuration;
+                Configuration prior = extension.frontier();
+                std::size_t prior_index = frontier_index;
                 while (not connected and i_extension < n_extensions and free_index < settings.max_samples)
                 {
-                    auto next = other_nearest_configuration;
                     const float remaining = Robot::distance(prior, other_nearest_configuration);
-                    connected = (i_extension == n_extensions - 1) or (remaining <= settings.range);
-                    if (not connected)
-                    {
-                        const float step = settings.range / remaining;
-                        next = (tree_a_is_start) ?
-                                   Robot::interpolate(prior, other_nearest_configuration, step) :
-                                   Robot::interpolate(other_nearest_configuration, prior, 1.F - step);
-                    }
+                    const bool final_step =
+                        (i_extension == n_extensions - 1) or (remaining <= settings.range);
 
-                    const bool step_valid =
-                        (tree_a_is_start) ?
-                            validate_motion<Robot, rake, resolution>(prior, next, environment) :
-                            validate_motion<Robot, rake, resolution>(next, prior, environment);
+                    const auto step = lp.steer(
+                        prior,
+                        other_nearest_configuration,
+                        remaining,
+                        (final_step) ? std::numeric_limits<float>::max() : settings.range,
+                        tree_a_is_start,
+                        environment);
 
-                    if (not step_valid)
+                    if (step.status == SteerStatus::Trapped)
                     {
-                        connected = false;
                         break;
                     }
 
-                    float *next_ptr = buffer_index(free_index);
-                    next.to_array(next_ptr);
-                    tree_a->insert(NNNodeType{free_index, Robot::nn_key(next_ptr)});
-                    parents[free_index] = free_index - 1;
-                    costs[free_index] = costs[free_index - 1] +
-                                        ((tree_a_is_start) ? planning::cost<Robot>(prior, next) :
-                                                             planning::cost<Robot>(next, prior));
-                    radii[free_index] = std::numeric_limits<float>::max();
-                    in_start_tree[free_index] = tree_a_is_start ? 1 : 0;
-                    pruned[free_index] = 0;
-                    children[free_index - 1].push_back(free_index);
+                    const auto [step_index, step_truncated] =
+                        insert_chain<Robot>(step.waypoints, prior_index, add_node);
+                    if (step_truncated)
+                    {
+                        break;
+                    }
 
-                    free_index++;
+                    connected = (step.status == SteerStatus::Reached);
                     i_extension++;
-                    prior = next;
+                    prior = step.frontier();
+                    prior_index = step_index;
                 }
 
                 if (connected)

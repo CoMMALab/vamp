@@ -23,6 +23,7 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       ur5_flask
       panda
       panda_flask
+      bimanual_panda
       fetch
       fetch_flask
       baxter
@@ -34,6 +35,7 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       UR5Flask
       Panda
       PandaFlask
+      BimanualPanda
       Fetch
       FetchFlask
       Baxter

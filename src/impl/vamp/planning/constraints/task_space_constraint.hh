@@ -44,6 +44,7 @@ namespace vamp::planning::constraint
                 {
                     input.lb[i * 6 + j] = Row::fill(lower[i][j]);
                     input.ub[i * 6 + j] = Row::fill(upper[i][j]);
+                    tight_rows[i * 6 + j] = (upper[i][j] - lower[i][j]) < tight_row_width;
                 }
             }
         }
@@ -95,6 +96,40 @@ namespace vamp::planning::constraint
             }
 
             integrate_step<Robot, rake>(q, gradient, alpha);
+        }
+
+        auto n_rows() const noexcept -> std::size_t final
+        {
+            return err_size;
+        }
+
+        void active_rows(bool *rows) const noexcept final
+        {
+            for (auto i = 0U; i < err_size; ++i)
+            {
+                rows[i] = tight_rows[i];
+            }
+        }
+
+        void error_jacobian(const Block &q, std::size_t lane, float *err, float *jac)
+            const noexcept final
+        {
+            input.q = q;
+            Robot::template tsr_error<rake>(input, solve);
+
+            for (auto i = 0U; i < err_size; ++i)
+            {
+                // Same SIMD min/max hinge as squared_error: NaN from the log map at
+                // exactly-satisfied orientations masks to zero.
+                const auto hinged = (solve.err[i] - input.lb[i]).min(0.F) +
+                                    (solve.err[i] - input.ub[i]).max(0.F);
+                err[i] = hinged[{0, lane}];
+            }
+
+            for (auto i = 0U; i < jac_size; ++i)
+            {
+                jac[i] = solve.jac[{i, lane}];
+            }
         }
 
     private:
@@ -159,5 +194,6 @@ namespace vamp::planning::constraint
 
         mutable Input input;
         mutable Solve solve;
+        std::array<bool, err_size> tight_rows{};
     };
 }  // namespace vamp::planning::constraint

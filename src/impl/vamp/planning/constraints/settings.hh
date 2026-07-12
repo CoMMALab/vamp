@@ -33,4 +33,36 @@ namespace vamp::planning::constraint
         // Emit every waypoint of a projected chain from steer, not just the frontier.
         bool emit_all_waypoints = true;
     };
+
+    // Knobs for chart construction and chart-LQMT edge validation (ChartLocalPlanner).
+    struct ChartSettings
+    {
+        // Maximum ambient displacement between a lifted sample and its chart pre-image:
+        // bounds how far a chart is trusted before an edge is rejected.
+        float eps_chart = 0.25F;
+
+        // Consecutive-lifted-sample jump guard multiplier: the allowed jump between
+        // adjacent lifted samples is cont_factor * max(chart step, 1e-3), rejecting lifts
+        // the projection tears apart.
+        float cont_factor = 4.F;
+
+        // Position/velocity tolerances for an exact connect to count as attained. TSR
+        // bounds define a slab, not a zero-thickness manifold: on-constraint states can
+        // differ by the bound width along the normal space, so the position tolerance
+        // must cover the widest manifold-defining bound. The velocity tolerance is
+        // speed-relative: tol * (1 + |target velocity|).
+        float reached_pos_tol = 5e-2F;
+        float reached_vel_tol = 5e-2F;
+
+        // Chart retargeting iterations for exact connects: u_f += B^T (q_t - psi(u_f)),
+        // whose fixed point lifts exactly onto the target.
+        std::size_t shoot_iters = 4;
+
+        // Cap on lifted collision-check samples per edge (rounded down to a multiple of
+        // the SIMD width).
+        std::size_t max_edge_samples = 512;
+
+        // Relative singular-value cutoff for the rank of the stacked active-row Jacobian.
+        float rank_tolerance = 1e-4F;
+    };
 }  // namespace vamp::planning::constraint

@@ -12,6 +12,9 @@
 #include <vamp/collision/validity.hh>
 #include <vamp/planning/aorrtc.hh>
 #include <vamp/planning/constraints/bimanual_task_space_constraint.hh>
+#include <vamp/planning/constraints/chart_local_planner.hh>
+#include <vamp/planning/constraints/closed_loop_constraint.hh>
+#include <vamp/planning/constraints/com_constraint.hh>
 #include <vamp/planning/constraints/constraint.hh>
 #include <vamp/planning/constraints/constraint_set.hh>
 #include <vamp/planning/constraints/local_planner.hh>
@@ -59,6 +62,36 @@ VAMP_DEFINE_HAS_METHOD(set_highs)
 VAMP_DEFINE_HAS_METHOD(set_radius)
 VAMP_DEFINE_HAS_METHOD(flask)
 VAMP_DEFINE_HAS_METHOD(n_eef)
+VAMP_DEFINE_HAS_METHOD(n_closed_loops)
+
+// Robots with generated center-of-mass kinematics declare `static constexpr bool has_com`.
+template <typename T, typename = void>
+struct robot_has_com : std::false_type
+{
+};
+
+template <typename T>
+struct robot_has_com<T, std::void_t<decltype(T::has_com)>> : std::true_type
+{
+};
+
+template <typename T>
+constexpr bool robot_has_com_v = robot_has_com<T>::value;
+
+// Nested-type analogue of VAMP_DEFINE_HAS_METHOD: flask z-robots that declare an ambient
+// position-space sibling (using Ambient = ...) get chart-based constrained planning bound.
+template <typename T, typename = void>
+struct has_ambient : std::false_type
+{
+};
+
+template <typename T>
+struct has_ambient<T, std::void_t<typename T::Ambient>> : std::true_type
+{
+};
+
+template <typename T>
+constexpr bool has_ambient_v = has_ambient<T>::value;
 
 namespace vamp::binding
 {
@@ -485,6 +518,203 @@ namespace vamp::binding
         }
     };
 
+    // Chart-based constrained planning for flask z-robots with an ambient sibling.
+    // Kept separate from StaticRobotTraits: member declarations here reference
+    // typename Robot::Ambient, which would hard-error at class instantiation for
+    // robots without one. Only referenced inside if constexpr (has_ambient_v<Robot>).
+    template <typename Robot, typename Input>
+    struct ChartRobotTraits
+    {
+        using Base = StaticRobotTraits<Robot, Input>;
+        using Ambient = typename Robot::Ambient;
+
+        using Cfg = typename Base::Cfg;
+        using Pth = typename Base::Pth;
+        using Path = typename Base::Path;
+        using PlanningResult = typename Base::PlanningResult;
+        using Sampler = typename Base::Sampler;
+        using Env = typename Base::Env;
+        using EnvVec = typename Base::EnvVec;
+        using Configuration = typename Robot::Configuration;
+
+        template <vamp::planning::Planner P>
+        using PlannerT = typename Base::template PlannerT<P>;
+
+        using ChartLP = vamp::planning::constraint::ChartLocalPlanner<Robot, rake, Robot::resolution>;
+        using AmbientConstraintT = vamp::planning::constraint::Constraint<Ambient, rake>;
+        using AmbientConstraintVec = std::vector<std::shared_ptr<const AmbientConstraintT>>;
+        using AmbientConstraintSetT = vamp::planning::constraint::ConstraintSet<Ambient, rake>;
+        using ConstraintSettings = vamp::planning::constraint::ConstraintSettings;
+        using ChartSettings = vamp::planning::constraint::ChartSettings;
+
+        static auto make_lp(
+            AmbientConstraintVec constraints,
+            const ConstraintSettings &cs,
+            const ChartSettings &chs) -> ChartLP
+        {
+            return ChartLP(AmbientConstraintSetT(std::move(constraints), cs), chs);
+        }
+
+        static void check_on_manifold(const ChartLP &lp, const Configuration &z, const char *what)
+        {
+            if (not lp.satisfied(z))
+            {
+                throw std::invalid_argument(
+                    std::string(what) +
+                    " state violates the constraints; project it first with project()");
+            }
+        }
+
+        template <vamp::planning::Planner P, typename Settings>
+        static auto solve_single_chart(
+            const Cfg &start,
+            const Cfg &goal,
+            const Env &env,
+            const Settings &s,
+            std::shared_ptr<Sampler> rng,
+            AmbientConstraintVec constraints,
+            const ConstraintSettings &cs,
+            const ChartSettings &chs) -> PlanningResult
+        {
+            if (constraints.empty())
+            {
+                return Base::template solve_single<P, Settings>(start, goal, env, s, rng);
+            }
+
+            const auto lp = make_lp(std::move(constraints), cs, chs);
+            const auto start_c = Input::to(start);
+            const auto goal_c = Input::to(goal);
+            check_on_manifold(lp, start_c, "start");
+            check_on_manifold(lp, goal_c, "goal");
+            return PlannerT<P>::solve(start_c, goal_c, EnvVec(env), s, rng, lp);
+        }
+
+        template <vamp::planning::Planner P, typename Settings>
+        static auto solve_multi_chart(
+            const Cfg &start,
+            const Pth &goals,
+            const Env &env,
+            const Settings &s,
+            std::shared_ptr<Sampler> rng,
+            AmbientConstraintVec constraints,
+            const ConstraintSettings &cs,
+            const ChartSettings &chs) -> PlanningResult
+        {
+            if (constraints.empty())
+            {
+                return Base::template solve_multi<P, Settings>(start, goals, env, s, rng);
+            }
+
+            const auto lp = make_lp(std::move(constraints), cs, chs);
+            const auto start_c = Input::to(start);
+            check_on_manifold(lp, start_c, "start");
+
+            std::vector<Configuration> goals_v;
+            goals_v.reserve(goals.size());
+            for (const auto &g : goals)
+            {
+                goals_v.emplace_back(Input::to(g));
+                check_on_manifold(lp, goals_v.back(), "goal");
+            }
+
+            return PlannerT<P>::solve(start_c, goals_v, EnvVec(env), s, rng, lp);
+        }
+
+        static auto simplify_chart(
+            const Path &p,
+            const Env &env,
+            const vamp::planning::SimplifySettings &settings,
+            std::shared_ptr<Sampler> rng,
+            AmbientConstraintVec constraints,
+            const ConstraintSettings &cs,
+            const ChartSettings &chs) -> PlanningResult
+        {
+            if (constraints.empty())
+            {
+                return Base::simplify(p, env, settings, rng);
+            }
+
+            const auto lp = make_lp(std::move(constraints), cs, chs);
+            for (std::size_t i = 0; i < p.size(); ++i)
+            {
+                if (not lp.satisfied(p[i]))
+                {
+                    throw std::invalid_argument(
+                        "path state " + std::to_string(i) +
+                        " violates the constraints; simplify requires an on-manifold path");
+                }
+            }
+
+            return vamp::planning::simplify<Robot, rake, Robot::resolution>(
+                p, EnvVec(env), settings, rng, lp);
+        }
+
+        static auto chart_project(
+            const Cfg &c,
+            AmbientConstraintVec constraints,
+            const ConstraintSettings &cs,
+            const ChartSettings &chs) -> Cfg
+        {
+            const auto lp = make_lp(std::move(constraints), cs, chs);
+            auto z = Input::to(c);
+            if (not lp.project(z))
+            {
+                throw std::invalid_argument("projection onto the constraint manifold did not converge");
+            }
+
+            return Input::from(z);
+        }
+
+        static auto
+        chart_satisfied(const Cfg &c, AmbientConstraintVec constraints, const ConstraintSettings &cs)
+            -> bool
+        {
+            return make_lp(std::move(constraints), cs, {}).satisfied(Input::to(c));
+        }
+
+        static auto debug_chart(
+            const Cfg &c,
+            AmbientConstraintVec constraints,
+            const ConstraintSettings &cs,
+            const ChartSettings &chs) -> std::vector<std::array<float, Ambient::dimension>>
+        {
+            return make_lp(std::move(constraints), cs, chs).debug_chart(Input::to(c));
+        }
+
+        static auto lift_edge(
+            const Cfg &from,
+            const Cfg &target,
+            AmbientConstraintVec constraints,
+            bool forward,
+            std::size_t n_samples,
+            const ConstraintSettings &cs,
+            const ChartSettings &chs)
+            -> std::tuple<std::vector<Cfg>, std::vector<float>, float, float>
+        {
+            const auto lp = make_lp(std::move(constraints), cs, chs);
+
+            std::vector<Configuration> states;
+            std::vector<float> errors;
+            float duration = 0.F, cost = 0.F;
+            if (not lp.debug_lift_edge(
+                    Input::to(from), Input::to(target), forward, n_samples, states, errors, duration, cost))
+            {
+                throw std::invalid_argument(
+                    "edge lift failed: no chart at the from state, a lift diverged, or the "
+                    "time-optimal solve failed");
+            }
+
+            std::vector<Cfg> out;
+            out.reserve(states.size());
+            for (const auto &s : states)
+            {
+                out.emplace_back(Input::from(s));
+            }
+
+            return {std::move(out), std::move(errors), duration, cost};
+        }
+    };
+
     template <typename Robot, typename Input>
     inline void bind_flask_methods(nanobind::module_ &submodule)
     {
@@ -583,15 +813,10 @@ namespace vamp::binding
         bind_robot_methods<TA>(submodule);
         bind_robot_methods<TC>(submodule);
 
-        if constexpr (has_n_eef_v<Robot>)
+        if constexpr (has_n_eef_v<Robot> or has_n_closed_loops_v<Robot> or robot_has_com_v<Robot>)
         {
             namespace vc = vamp::planning::constraint;
             using ConstraintT = vc::Constraint<Robot, rake>;
-            using TSC = vc::TaskSpaceConstraint<Robot, rake>;
-            using Transform = typename TSC::Transform;
-            using Bound = typename TSC::Bound;
-
-            submodule.def("n_eef", []() { return Robot::n_eef; });
 
             nb::class_<ConstraintT>(
                 submodule,
@@ -600,62 +825,102 @@ namespace vamp::binding
                 "state and are not thread-safe: do not share one instance across concurrent "
                 "planning calls.");
 
-            auto tsc_k =
-                nb::class_<TSC, ConstraintT>(
-                    submodule,
-                    "TaskSpaceConstraint",
-                    "Task Space Region constraint: for each end-effector, the pose of an offset "
-                    "frame (eef_to_offset, in the end-effector frame) must lie within "
-                    "[lower, upper] se(3) bounds of a reference frame (world_to_reference, in "
-                    "the world frame). Transforms are (qw, qx, qy, qz, x, y, z).")
-                    .def(
-                        nb::init<
-                            const std::array<Transform, Robot::n_eef> &,
-                            const std::array<Transform, Robot::n_eef> &,
-                            const std::array<Bound, Robot::n_eef> &,
-                            const std::array<Bound, Robot::n_eef> &>(),
+            if constexpr (has_n_eef_v<Robot>)
+            {
+                using TSC = vc::TaskSpaceConstraint<Robot, rake>;
+                using Transform = typename TSC::Transform;
+                using Bound = typename TSC::Bound;
+
+                submodule.def("n_eef", []() { return Robot::n_eef; });
+
+                auto tsc_k =
+                    nb::class_<TSC, ConstraintT>(
+                        submodule,
+                        "TaskSpaceConstraint",
+                        "Task Space Region constraint: for each end-effector, the pose of an "
+                        "offset frame (eef_to_offset, in the end-effector frame) must lie within "
+                        "[lower, upper] se(3) bounds of a reference frame (world_to_reference, in "
+                        "the world frame). Transforms are (qw, qx, qy, qz, x, y, z).")
+                        .def(
+                            nb::init<
+                                const std::array<Transform, Robot::n_eef> &,
+                                const std::array<Transform, Robot::n_eef> &,
+                                const std::array<Bound, Robot::n_eef> &,
+                                const std::array<Bound, Robot::n_eef> &>(),
+                            "eef_to_offset"_a,
+                            "world_to_reference"_a,
+                            "lower"_a,
+                            "upper"_a);
+
+                if constexpr (Robot::n_eef == 1)
+                {
+                    tsc_k.def(
+                        "__init__",
+                        [](TSC *t,
+                           const Transform &eef_to_offset,
+                           const Transform &world_to_reference,
+                           const Bound &lower,
+                           const Bound &upper) {
+                            new (t) TSC(
+                                std::array<Transform, 1>{eef_to_offset},
+                                std::array<Transform, 1>{world_to_reference},
+                                std::array<Bound, 1>{lower},
+                                std::array<Bound, 1>{upper});
+                        },
                         "eef_to_offset"_a,
                         "world_to_reference"_a,
                         "lower"_a,
-                        "upper"_a);
+                        "upper"_a,
+                        "Single end-effector convenience constructor: unwrapped transforms and "
+                        "bounds.");
+                }
 
-            if constexpr (Robot::n_eef == 1)
-            {
-                tsc_k.def(
-                    "__init__",
-                    [](TSC *t,
-                       const Transform &eef_to_offset,
-                       const Transform &world_to_reference,
-                       const Bound &lower,
-                       const Bound &upper) {
-                        new (t) TSC(
-                            std::array<Transform, 1>{eef_to_offset},
-                            std::array<Transform, 1>{world_to_reference},
-                            std::array<Bound, 1>{lower},
-                            std::array<Bound, 1>{upper});
-                    },
-                    "eef_to_offset"_a,
-                    "world_to_reference"_a,
-                    "lower"_a,
-                    "upper"_a,
-                    "Single end-effector convenience constructor: unwrapped transforms and bounds.");
+                if constexpr (Robot::n_eef >= 2)
+                {
+                    using BTSC = vc::BimanualTaskSpaceConstraint<Robot, rake>;
+                    nb::class_<BTSC, ConstraintT>(
+                        submodule,
+                        "BimanualTaskSpaceConstraint",
+                        "Relative pose constraint between two end-effectors: the pose of "
+                        "end-effector 1 in the frame of end-effector 0 must lie within "
+                        "[lower, upper] se(3) bounds of right_in_left. Transforms are "
+                        "(qw, qx, qy, qz, x, y, z).")
+                        .def(
+                            nb::init<const Transform &, const Bound &, const Bound &>(),
+                            "right_in_left"_a,
+                            "lower"_a,
+                            "upper"_a);
+                }
             }
 
-            if constexpr (Robot::n_eef >= 2)
+            if constexpr (has_n_closed_loops_v<Robot>)
             {
-                using BTSC = vc::BimanualTaskSpaceConstraint<Robot, rake>;
-                nb::class_<BTSC, ConstraintT>(
+                using CLC = vc::ClosedLoopConstraint<Robot, rake>;
+
+                submodule.def("n_closed_loops", []() { return Robot::n_closed_loops; });
+
+                nb::class_<CLC, ConstraintT>(
                     submodule,
-                    "BimanualTaskSpaceConstraint",
-                    "Relative pose constraint between two end-effectors: the pose of "
-                    "end-effector 1 in the frame of end-effector 0 must lie within "
-                    "[lower, upper] se(3) bounds of right_in_left. Transforms are "
-                    "(qw, qx, qy, qz, x, y, z).")
+                    "ClosedLoopConstraint",
+                    "Loop-closure constraint: each cut kinematic loop of the robot contributes "
+                    "one equality row keeping the distance between its cut frames at the "
+                    "loop's fixed length.")
+                    .def(nb::init<>());
+            }
+
+            if constexpr (robot_has_com_v<Robot>)
+            {
+                using CMC = vc::CoMConstraint<Robot, rake>;
+
+                nb::class_<CMC, ConstraintT>(
+                    submodule,
+                    "CoMConstraint",
+                    "Support-polygon constraint on the center of mass: the xy projection of "
+                    "the CoM (in the robot's CoM reference frame) must lie inside the convex "
+                    "polygon given by its vertices in counterclockwise order.")
                     .def(
-                        nb::init<const Transform &, const Bound &, const Bound &>(),
-                        "right_in_left"_a,
-                        "lower"_a,
-                        "upper"_a);
+                        nb::init<const std::vector<typename CMC::Vertex> &>(),
+                        "polygon"_a);
             }
 
             bind_constraint_methods<TA>(submodule);
@@ -675,6 +940,18 @@ namespace vamp::binding
 
             bind_flask_methods<Robot, NA>(submodule);
             bind_flask_methods<Robot, CA>(submodule);
+
+            if constexpr (has_ambient_v<Robot>)
+            {
+                submodule.def(
+                    "ambient",
+                    []() { return std::string(Robot::Ambient::name); },
+                    "Name of the ambient position-space sibling robot whose constraints this "
+                    "z-robot plans with.");
+
+                bind_chart_methods<ChartRobotTraits<Robot, NA>>(submodule);
+                bind_chart_methods<ChartRobotTraits<Robot, CA>>(submodule);
+            }
 
             using XType = nanobind::
                 ndarray<FloatT, nanobind::numpy, nanobind::shape<3 * n_q>, nanobind::device::cpu>;

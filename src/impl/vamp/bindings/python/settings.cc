@@ -161,6 +161,16 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("perturbation_scale", &vc::ConstraintSettings::perturbation_scale)
         .def_rw("emit_all_waypoints", &vc::ConstraintSettings::emit_all_waypoints);
 
+    nb::class_<vc::ChartSettings>(pymodule, "ChartSettings")
+        .def(nb::init<>())
+        .def_rw("eps_chart", &vc::ChartSettings::eps_chart)
+        .def_rw("cont_factor", &vc::ChartSettings::cont_factor)
+        .def_rw("reached_pos_tol", &vc::ChartSettings::reached_pos_tol)
+        .def_rw("reached_vel_tol", &vc::ChartSettings::reached_vel_tol)
+        .def_rw("shoot_iters", &vc::ChartSettings::shoot_iters)
+        .def_rw("max_edge_samples", &vc::ChartSettings::max_edge_samples)
+        .def_rw("rank_tolerance", &vc::ChartSettings::rank_tolerance);
+
     nb::class_<vp::SimplifySettings>(pymodule, "SimplifySettings")
         .def(nb::init<>())
         .def_rw("max_iterations", &vp::SimplifySettings::max_iterations)

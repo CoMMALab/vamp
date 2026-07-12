@@ -49,8 +49,8 @@ cmake.build-type = "Release"
 [tool.scikit-build.cmake.define]
 VAMP_LTO = "OFF"
 VAMP_BUILD_JIT = "OFF"
-VAMP_ROBOT_MODULES = "ur5;panda;fetch;panda_flask"
-VAMP_ROBOT_STRUCTS = "UR5;Panda;Fetch;PandaFlask"
+VAMP_ROBOT_MODULES = "ur5;panda;fetch;panda_flask;bimanual_panda;r2c6"
+VAMP_ROBOT_STRUCTS = "UR5;Panda;Fetch;PandaFlask;BimanualPanda;R2c6"
 
 [[tool.scikit-build.overrides]]
 if.env.VAMP_BUILD_JIT = "ON"

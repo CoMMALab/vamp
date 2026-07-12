@@ -3,6 +3,7 @@
 #include <vamp/collision/environment.hh>
 #include <vamp/collision/shapes.hh>
 #include <vamp/planning/aorrtc_settings.hh>
+#include <vamp/planning/constraints/settings.hh>
 #include <vamp/planning/grrtstar_settings.hh>
 #include <vamp/planning/planner.hh>
 #include <vamp/planning/rrtc_settings.hh>
@@ -46,6 +47,75 @@ namespace vamp::binding
             "settings"_a,
             "sampler"_a,
             doc.c_str());
+    }
+
+    template <typename Traits, vp_::Planner P, typename Settings, typename Target>
+    inline void register_constrained_planner(Target &t, const char *name)
+    {
+        const auto doc =
+            std::string("Plan using ") + name + " subject to manifold constraints. Raises " +
+            "ValueError if the start or a goal violates the constraints; project them first.";
+        t.def(
+            name,
+            &Traits::template solve_single_constrained<P, Settings>,
+            "start"_a,
+            "goal"_a,
+            "environment"_a,
+            "settings"_a,
+            "sampler"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            doc.c_str());
+        t.def(
+            name,
+            &Traits::template solve_multi_constrained<P, Settings>,
+            "start"_a,
+            "goal"_a,
+            "environment"_a,
+            "settings"_a,
+            "sampler"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            doc.c_str());
+    }
+
+    // Constraint-aware overloads on the same entry points as the unconstrained API: the
+    // extra required `constraints` argument selects them. PRM and FCIT do not use the local
+    // planner, so they have no constrained form.
+    template <typename Traits, typename Target>
+    inline void bind_constraint_methods(Target &t)
+    {
+        t.def(
+            "project",
+            &Traits::constraint_project,
+            "configuration"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "Project a configuration onto the constraint manifold. Raises ValueError if the "
+            "projection does not converge.");
+        t.def(
+            "satisfied",
+            &Traits::constraint_satisfied,
+            "configuration"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "Whether a configuration satisfies every constraint within tolerance.");
+        t.def(
+            "simplify",
+            &Traits::simplify_constrained,
+            "path"_a,
+            "environment"_a,
+            "settings"_a,
+            "sampler"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "Simplification heuristics restricted to the constraint manifold. Raises ValueError "
+            "if any path state violates the constraints.");
+
+        register_constrained_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
+        register_constrained_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");
+        register_constrained_planner<Traits, vp_::Planner::GRRTSTAR, vp_::GRRTStarSettings>(
+            t, "grrtstar");
     }
 
     template <typename Traits, typename Target>
@@ -128,7 +198,15 @@ namespace vamp::binding
             .def("__len__", &P::size, "Return the number of waypoints in the path.")
             .def(
                 "__getitem__",
-                [](const P &p, std::size_t i) { return Traits::path_get(p, i); },
+                [](const P &p, std::size_t i)
+                {
+                    if (i >= p.size())
+                    {
+                        throw nb_::index_error();
+                    }
+
+                    return Traits::path_get(p, i);
+                },
                 "Get the i-th configuration in the path.")
             .def("cost", &P::cost, "Compute the total path length (by the l2-norm) of the path.")
             .def(

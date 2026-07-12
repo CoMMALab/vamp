@@ -60,6 +60,11 @@ add_library(vamp_cpp INTERFACE)
 # Set required C++ standard for the library
 target_compile_features(vamp_cpp INTERFACE cxx_std_17)
 
+# vamp::Vector aliases rows in place as smaller Vector types via reinterpret_cast
+# (vector/interface.hh row()), which violates strict aliasing; GCC 16 -O2 dead-store
+# eliminates whole-Vector writes because of it. Propagate the flag to all consumers.
+target_compile_options(vamp_cpp INTERFACE -fno-strict-aliasing)
+
 target_include_directories(vamp_cpp
     INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/impl>

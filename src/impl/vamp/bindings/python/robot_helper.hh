@@ -1,6 +1,8 @@
 #pragma once
 
 #include <algorithm>
+#include <stdexcept>
+#include <string>
 
 #include <vamp/bindings/python/api_binder.hh>
 #include <vamp/bindings/python/array_helpers.hh>
@@ -9,6 +11,12 @@
 #include <vamp/collision/sphere_sphere.hh>
 #include <vamp/collision/validity.hh>
 #include <vamp/planning/aorrtc.hh>
+#include <vamp/planning/constraints/bimanual_task_space_constraint.hh>
+#include <vamp/planning/constraints/constraint.hh>
+#include <vamp/planning/constraints/constraint_set.hh>
+#include <vamp/planning/constraints/local_planner.hh>
+#include <vamp/planning/constraints/settings.hh>
+#include <vamp/planning/constraints/task_space_constraint.hh>
 #include <vamp/planning/fcit.hh>
 #include <vamp/planning/grrtstar.hh>
 #include <vamp/planning/phs.hh>
@@ -50,6 +58,7 @@ VAMP_DEFINE_HAS_METHOD(set_lows)
 VAMP_DEFINE_HAS_METHOD(set_highs)
 VAMP_DEFINE_HAS_METHOD(set_radius)
 VAMP_DEFINE_HAS_METHOD(flask)
+VAMP_DEFINE_HAS_METHOD(n_eef)
 
 namespace vamp::binding
 {
@@ -203,6 +212,125 @@ namespace vamp::binding
             std::shared_ptr<Sampler> rng) -> PlanningResult
         {
             return vamp::planning::simplify<Robot, rake, Robot::resolution>(p, EnvVec(env), settings, rng);
+        }
+
+        // Constraint-aware variants. These members are only instantiated when referenced,
+        // so robots without generated constraint support never touch them.
+        using ConstraintT = vamp::planning::constraint::Constraint<Robot, rake>;
+        using ConstraintVec = std::vector<std::shared_ptr<const ConstraintT>>;
+        using ConstraintSetT = vamp::planning::constraint::ConstraintSet<Robot, rake>;
+        using ConstrainedLP =
+            vamp::planning::constraint::ConstrainedLocalPlanner<Robot, rake, Robot::resolution>;
+        using ConstraintSettings = vamp::planning::constraint::ConstraintSettings;
+
+        static void check_on_manifold(const ConstrainedLP &lp, const Configuration &q, const char *what)
+        {
+            if (not lp.satisfied(q))
+            {
+                throw std::invalid_argument(
+                    std::string(what) +
+                    " configuration violates the constraints; project it first with project()");
+            }
+        }
+
+        template <vamp::planning::Planner P, typename Settings>
+        static auto solve_single_constrained(
+            const Cfg &start,
+            const Cfg &goal,
+            const Env &env,
+            const Settings &s,
+            std::shared_ptr<Sampler> rng,
+            ConstraintVec constraints,
+            const ConstraintSettings &cs) -> PlanningResult
+        {
+            if (constraints.empty())
+            {
+                return solve_single<P, Settings>(start, goal, env, s, rng);
+            }
+
+            const ConstrainedLP lp(ConstraintSetT(std::move(constraints), cs));
+            const auto start_c = Input::to(start);
+            const auto goal_c = Input::to(goal);
+            check_on_manifold(lp, start_c, "start");
+            check_on_manifold(lp, goal_c, "goal");
+            return PlannerT<P>::solve(start_c, goal_c, EnvVec(env), s, rng, lp);
+        }
+
+        template <vamp::planning::Planner P, typename Settings>
+        static auto solve_multi_constrained(
+            const Cfg &start,
+            const Pth &goals,
+            const Env &env,
+            const Settings &s,
+            std::shared_ptr<Sampler> rng,
+            ConstraintVec constraints,
+            const ConstraintSettings &cs) -> PlanningResult
+        {
+            if (constraints.empty())
+            {
+                return solve_multi<P, Settings>(start, goals, env, s, rng);
+            }
+
+            const ConstrainedLP lp(ConstraintSetT(std::move(constraints), cs));
+            const auto start_c = Input::to(start);
+            check_on_manifold(lp, start_c, "start");
+
+            std::vector<Configuration> goals_v;
+            goals_v.reserve(goals.size());
+            for (const auto &g : goals)
+            {
+                goals_v.emplace_back(Input::to(g));
+                check_on_manifold(lp, goals_v.back(), "goal");
+            }
+
+            return PlannerT<P>::solve(start_c, goals_v, EnvVec(env), s, rng, lp);
+        }
+
+        static auto simplify_constrained(
+            const Path &p,
+            const Env &env,
+            const vamp::planning::SimplifySettings &settings,
+            std::shared_ptr<Sampler> rng,
+            ConstraintVec constraints,
+            const ConstraintSettings &cs) -> PlanningResult
+        {
+            if (constraints.empty())
+            {
+                return simplify(p, env, settings, rng);
+            }
+
+            const ConstrainedLP lp(ConstraintSetT(std::move(constraints), cs));
+            for (std::size_t i = 0; i < p.size(); ++i)
+            {
+                if (not lp.satisfied(p[i]))
+                {
+                    throw std::invalid_argument(
+                        "path state " + std::to_string(i) +
+                        " violates the constraints; simplify requires an on-manifold path");
+                }
+            }
+
+            return vamp::planning::simplify<Robot, rake, Robot::resolution>(
+                p, EnvVec(env), settings, rng, lp);
+        }
+
+        static auto constraint_project(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs)
+            -> Cfg
+        {
+            const ConstraintSetT set(std::move(constraints), cs);
+            auto q = Input::to(c);
+            if (not set.project(q))
+            {
+                throw std::invalid_argument("projection onto the constraint manifold did not converge");
+            }
+
+            return Input::from(q);
+        }
+
+        static auto
+        constraint_satisfied(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs) -> bool
+        {
+            return ConstraintSetT(std::move(constraints), cs).satisfied(Input::to(c));
         }
 
         static auto fk(const Cfg &c) -> std::vector<vamp::collision::Sphere<float>>
@@ -454,6 +582,85 @@ namespace vamp::binding
 
         bind_robot_methods<TA>(submodule);
         bind_robot_methods<TC>(submodule);
+
+        if constexpr (has_n_eef_v<Robot>)
+        {
+            namespace vc = vamp::planning::constraint;
+            using ConstraintT = vc::Constraint<Robot, rake>;
+            using TSC = vc::TaskSpaceConstraint<Robot, rake>;
+            using Transform = typename TSC::Transform;
+            using Bound = typename TSC::Bound;
+
+            submodule.def("n_eef", []() { return Robot::n_eef; });
+
+            nb::class_<ConstraintT>(
+                submodule,
+                "Constraint",
+                "Manifold constraint over robot configurations. Constraints cache per-evaluation "
+                "state and are not thread-safe: do not share one instance across concurrent "
+                "planning calls.");
+
+            auto tsc_k =
+                nb::class_<TSC, ConstraintT>(
+                    submodule,
+                    "TaskSpaceConstraint",
+                    "Task Space Region constraint: for each end-effector, the pose of an offset "
+                    "frame (eef_to_offset, in the end-effector frame) must lie within "
+                    "[lower, upper] se(3) bounds of a reference frame (world_to_reference, in "
+                    "the world frame). Transforms are (qw, qx, qy, qz, x, y, z).")
+                    .def(
+                        nb::init<
+                            const std::array<Transform, Robot::n_eef> &,
+                            const std::array<Transform, Robot::n_eef> &,
+                            const std::array<Bound, Robot::n_eef> &,
+                            const std::array<Bound, Robot::n_eef> &>(),
+                        "eef_to_offset"_a,
+                        "world_to_reference"_a,
+                        "lower"_a,
+                        "upper"_a);
+
+            if constexpr (Robot::n_eef == 1)
+            {
+                tsc_k.def(
+                    "__init__",
+                    [](TSC *t,
+                       const Transform &eef_to_offset,
+                       const Transform &world_to_reference,
+                       const Bound &lower,
+                       const Bound &upper) {
+                        new (t) TSC(
+                            std::array<Transform, 1>{eef_to_offset},
+                            std::array<Transform, 1>{world_to_reference},
+                            std::array<Bound, 1>{lower},
+                            std::array<Bound, 1>{upper});
+                    },
+                    "eef_to_offset"_a,
+                    "world_to_reference"_a,
+                    "lower"_a,
+                    "upper"_a,
+                    "Single end-effector convenience constructor: unwrapped transforms and bounds.");
+            }
+
+            if constexpr (Robot::n_eef >= 2)
+            {
+                using BTSC = vc::BimanualTaskSpaceConstraint<Robot, rake>;
+                nb::class_<BTSC, ConstraintT>(
+                    submodule,
+                    "BimanualTaskSpaceConstraint",
+                    "Relative pose constraint between two end-effectors: the pose of "
+                    "end-effector 1 in the frame of end-effector 0 must lie within "
+                    "[lower, upper] se(3) bounds of right_in_left. Transforms are "
+                    "(qw, qx, qy, qz, x, y, z).")
+                    .def(
+                        nb::init<const Transform &, const Bound &, const Bound &>(),
+                        "right_in_left"_a,
+                        "lower"_a,
+                        "upper"_a);
+            }
+
+            bind_constraint_methods<TA>(submodule);
+            bind_constraint_methods<TC>(submodule);
+        }
 
         if constexpr (has_flask_v<Robot>)
         {

@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-#include <vamp/planning/constraints/phase_constraint.hh>
+#include <vamp/planning/constraints/phase/phase_constraint.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning::constraint

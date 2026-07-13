@@ -228,6 +228,7 @@ def main(
     if retime:
         (path_module, _, _, flask_simp_settings) = vamp.configure_robot_and_planner_with_kwargs(
             f"{robot_name}.flask", planner, **kwargs)
+        flask_simp_settings.operations = vf.RETIME_OPERATIONS
     if kinodynamic and rho is not None:
         path_module.set_rho(rho)
 

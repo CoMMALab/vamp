@@ -42074,7 +42074,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[256],
         static constexpr std::size_t n_spheres = 59;
         static constexpr float min_radius = 0.012000000104308128;
         static constexpr float max_radius = 0.07999999821186066;
-        static constexpr std::size_t resolution = 32;
+        static constexpr std::size_t resolution = 64;
         static constexpr bool euclidean = false;
         static constexpr bool flask = true;
         static constexpr std::array<std::size_t, 0> so3_offsets = {};

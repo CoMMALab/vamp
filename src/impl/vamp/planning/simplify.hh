@@ -330,8 +330,9 @@ namespace vamp::planning
     //
     // Changing v_i does NOT preserve validity: the two adjacent cubics reshape even though q_i
     // is fixed, so intermediate collisions can appear. Each accepted trial (a) clamps v_i to
-    // the joint velocity limits and (b) revalidates both incident edges. No-op for robots
-    // without Robot::cost_grad.
+    // the joint velocity limits, (b) for projecting local planners is projected back onto the
+    // manifold (tangent-projecting its velocity), and (c) revalidates both incident edges.
+    // No-op for robots without Robot::cost_grad.
     template <typename Robot, std::size_t rake, std::size_t resolution, typename LocalPlanner>
     inline static auto velopt_path(
         Path<Robot> &path,
@@ -409,6 +410,18 @@ namespace vamp::planning
                             buf[n + j] = std::clamp(v_new, -v_lim, v_lim);
                         }
                         Configuration trial(buf.data());
+                        if constexpr (LocalPlanner::projecting)
+                        {
+                            // Raw gradient steps have velocity components normal to the
+                            // constraint manifold, and chart edges tangent-project their
+                            // arrival velocity — an unprojected trial can never be attained,
+                            // so validation would reject every step.
+                            if (not lp.project(trial))
+                            {
+                                alpha *= 0.5F;
+                                continue;
+                            }
+                        }
                         const float trial_cost =
                             planning::cost<Robot>(prev, trial) + planning::cost<Robot>(trial, next);
                         if (trial_cost < best_cost and lp.validate(prev, trial, environment) and
@@ -441,152 +454,6 @@ namespace vamp::planning
             }
 
             return any_changed;
-        }
-    }
-
-    // Trajectory polish (iLQR-flavored): simultaneous steepest-descent update of all interior
-    // waypoints in (q, v) using analytical C_loc gradients from Robot::cost_grad. Each iteration
-    //   1. Computes edge grads once (2n-dim per endpoint, envelope-theorem exact at T*).
-    //   2. Sums per-interior-vertex grads = grad_b(edge left) + grad_a(edge right).
-    //   3. Backtracks alpha over a full-path candidate that clamps every waypoint to joint /
-    //      velocity limits, checks total-cost improvement, then revalidates every edge.
-    // Unlike VELOPT this moves q as well, so the two adjacent cubics reshape entirely; the
-    // whole-path revalidation is what buys correctness. No-op for robots without cost_grad.
-    template <typename Robot, std::size_t rake, std::size_t resolution, typename LocalPlanner>
-    inline static auto polish_path(
-        Path<Robot> &path,
-        const collision::Environment<FloatVector<rake>> &environment,
-        const PolishSettings &settings,
-        const LocalPlanner &lp) -> bool
-    {
-        if constexpr (not has_cost_grad_v<Robot>)
-        {
-            (void)path;
-            (void)environment;
-            (void)settings;
-            (void)lp;
-            return false;
-        }
-        else
-        {
-            if (path.size() < 3)
-            {
-                return false;
-            }
-
-            constexpr std::size_t n = Robot::flat_dimension;
-            constexpr std::size_t dim = 2 * n;
-            using Configuration = typename Robot::Configuration;
-
-            bool changed = false;
-
-            for (std::size_t step = 0; step < settings.max_steps; ++step)
-            {
-                const std::size_t N = path.size();
-                if (N < 3)
-                {
-                    break;
-                }
-
-                // Edge grads and current cost
-                using EdgeGrad = decltype(Robot::cost_grad(path[0], path[1]));
-                std::vector<EdgeGrad> edge_grads;
-                edge_grads.reserve(N - 1);
-                float total_cost = 0.F;
-                for (std::size_t i = 0; i + 1 < N; ++i)
-                {
-                    edge_grads.push_back(Robot::cost_grad(path[i], path[i + 1]));
-                    total_cost += edge_grads.back().cost;
-                }
-
-                // Per-interior-vertex grad (2n each)
-                std::vector<std::array<float, dim>> gradv(N);
-                float grad_norm2 = 0.F;
-                for (std::size_t i = 1; i + 1 < N; ++i)
-                {
-                    for (std::size_t j = 0; j < dim; ++j)
-                    {
-                        const float gi =
-                            edge_grads[i - 1].grad_b[j] + edge_grads[i].grad_a[j];
-                        gradv[i][j] = gi;
-                        grad_norm2 += gi * gi;
-                    }
-                }
-                if (grad_norm2 < 1e-16F)
-                {
-                    break;
-                }
-
-                // Backtracking line search over the whole path
-                float alpha = settings.initial_step;
-                bool accepted = false;
-                Path<Robot> trial;
-                trial.reserve(N);
-                for (std::size_t ls = 0; ls < settings.line_search_max; ++ls)
-                {
-                    trial.clear();
-                    trial.emplace_back(path.front());
-                    for (std::size_t i = 1; i + 1 < N; ++i)
-                    {
-                        alignas(FloatVectorAlignment) std::array<
-                            float, Configuration::num_scalars_rounded>
-                            buf{};
-                        const auto cur_arr = path[i].to_array();
-                        for (std::size_t j = 0; j < dim; ++j)
-                        {
-                            buf[j] = cur_arr[j] - alpha * gradv[i][j];
-                        }
-                        Configuration z(buf.data());
-                        Robot::descale_configuration(z);
-                        z = z.clamp(0.F, 1.F);
-                        Robot::scale_configuration(z);
-                        trial.emplace_back(z);
-                    }
-                    trial.emplace_back(path.back());
-
-                    float trial_cost = 0.F;
-                    for (std::size_t i = 0; i + 1 < N; ++i)
-                    {
-                        trial_cost += planning::cost<Robot>(trial[i], trial[i + 1]);
-                    }
-
-                    if (trial_cost < total_cost)
-                    {
-                        bool all_valid = true;
-                        for (std::size_t i = 0; i + 1 < N; ++i)
-                        {
-                            if (not lp.validate(trial[i], trial[i + 1], environment))
-                            {
-                                all_valid = false;
-                                break;
-                            }
-                        }
-                        if (all_valid)
-                        {
-                            const float improvement = (total_cost - trial_cost) / total_cost;
-                            for (std::size_t i = 1; i + 1 < N; ++i)
-                            {
-                                path[i] = trial[i];
-                            }
-                            changed = true;
-                            accepted = true;
-                            if (improvement < settings.min_improvement)
-                            {
-                                return changed;
-                            }
-                            break;
-                        }
-                    }
-                    alpha *= 0.5F;
-                }
-
-                if (not accepted)
-                {
-                    break;
-                }
-            }
-
-            return changed;
         }
     }
 
@@ -684,9 +551,6 @@ namespace vamp::planning
                 case VELOPT:
                     return velopt_path<Robot, rake, resolution>(
                         result.path, environment, settings.velopt, lp);
-                case POLISH:
-                    return polish_path<Robot, rake, resolution>(
-                        result.path, environment, settings.polish, lp);
             }
 
             return false;
@@ -746,11 +610,6 @@ namespace vamp::planning
                     break;
                 }
             }
-        }
-
-        if (settings.polish_at_end)
-        {
-            run(POLISH);
         }
 
         result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);

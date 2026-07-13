@@ -6,7 +6,7 @@
 #include <vector>
 
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/constraints/phase_constraint_set.hh>
+#include <vamp/planning/constraints/phase/phase_constraint_set.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/vector.hh>
 

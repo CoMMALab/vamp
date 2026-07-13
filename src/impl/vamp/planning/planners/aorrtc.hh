@@ -6,15 +6,15 @@
 #include <optional>
 
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/aox_nn.hh>
+#include <vamp/planning/planners/aox_nn.hh>
 #include <vamp/planning/cost.hh>
 #include <vamp/planning/local_planner.hh>
 #include <vamp/planning/phs.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/simplify.hh>
 #include <vamp/planning/validate.hh>
-#include <vamp/planning/aorrtc_settings.hh>
-#include <vamp/planning/rrtc.hh>
+#include <vamp/planning/planners/aorrtc_settings.hh>
+#include <vamp/planning/planners/rrtc.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
 #include <vamp/vector.hh>

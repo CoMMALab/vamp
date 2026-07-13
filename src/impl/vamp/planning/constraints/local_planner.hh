@@ -7,7 +7,7 @@
 #include <vector>
 
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/constraints/constraint_set.hh>
+#include <vamp/planning/constraints/manifold/constraint_set.hh>
 #include <vamp/planning/constraints/utils.hh>
 #include <vamp/planning/cost.hh>
 #include <vamp/planning/local_planner.hh>

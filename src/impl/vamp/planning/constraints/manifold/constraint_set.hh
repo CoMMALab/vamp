@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-#include <vamp/planning/constraints/constraint.hh>
+#include <vamp/planning/constraints/manifold/constraint.hh>
 #include <vamp/planning/constraints/settings.hh>
 #include <vamp/vector.hh>
 

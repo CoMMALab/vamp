@@ -51,6 +51,7 @@ def main(
     if retime:
         (plan_module, planner_func, plan_settings,
          simp_settings) = vamp.configure_robot_and_planner_with_kwargs(base_robot, planner, **kwargs)
+        flask_simp_settings.operations = flask.RETIME_OPERATIONS
 
     velocity_limits = np.array(flask_module.velocity_limits())
     effort_limits = np.array(flask_module.effort_limits())
@@ -137,6 +138,7 @@ def main(
                 collided = not all(
                     geo_module.validate(qi.astype(np.float32), env) for qi in q
                     )
+                max_jerk, rms_jerk, max_accel_jump = flask.jerk_metrics(flask_module, flask_path)
 
                 trial_result.update(
                     {
@@ -149,6 +151,9 @@ def main(
                         'collision_risk': float(collided),
                         'max_velocity_ratio': float(np.max(np.abs(qd) / velocity_limits)),
                         'max_effort_ratio': float(np.max(np.abs(tau) / effort_limits)),
+                        'max_jerk': max_jerk,
+                        'rms_jerk': rms_jerk,
+                        'max_accel_jump': max_accel_jump,
                         }
                     )
 
@@ -218,6 +223,15 @@ def main(
     print(
         f"Max velocity / effort limit ratio over all trajectories: "
         f"{df['max_velocity_ratio'].max():.3f} / {df['max_effort_ratio'].max():.3f}"
+        )
+    print(
+        f"Max |jerk| (rad/s^3): median {df['max_jerk'].median():.1f}, "
+        f"p95 {df['max_jerk'].quantile(0.95):.1f}, max {df['max_jerk'].max():.1f}; "
+        f"RMS jerk median {df['rms_jerk'].median():.1f}"
+        )
+    print(
+        f"Junction accel jump (rad/s^2): median {df['max_accel_jump'].median():.2f}, "
+        f"p95 {df['max_accel_jump'].quantile(0.95):.2f}, max {df['max_accel_jump'].max():.2f}"
         )
     print(
         f"Solved / Valid / Total # Problems: {valid_problems - failed_problems} / {valid_problems} / {total_problems}"

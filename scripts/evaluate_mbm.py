@@ -1,14 +1,12 @@
-import pickle
 import time
-from tabulate import tabulate
 from tqdm import tqdm
-from pathlib import Path
 import numpy as np
 import pandas as pd
 from typing import Union, List
 
 from fire import Fire
 import vamp
+from vamp import mbm
 from vamp import pointcloud as vpc
 
 
@@ -31,22 +29,7 @@ def main(
     if robot not in vamp.robots:
         raise RuntimeError(f"Robot {robot} does not exist in VAMP!")
 
-    problems_dir = Path(__file__).parent.parent / 'resources' / robot / 'problems'
-    with open(problems_dir.parent / dataset, 'rb') as f:
-        problems = pickle.load(f)
-
-    problem_names = list(problems['problems'].keys())
-    if isinstance(problem, str):
-        problem = [problem]
-
-    if not problem:
-        problem = problem_names
-    else:
-        for problem_name in problem:
-            if problem_name not in problem_names:
-                raise RuntimeError(
-                    f"Problem `{problem_name}` not available! Available problems: {problem_names}"
-                    )
+    problems, problem = mbm.load_problems(robot, dataset, problem)
 
     (vamp_module, planner_func, plan_settings,
      simp_settings) = vamp.configure_robot_and_planner_with_kwargs(robot, planner, **kwargs)
@@ -59,7 +42,7 @@ def main(
 
     tick = time.perf_counter()
     results = []
-    for name, pset in problems['problems'].items():
+    for name, pset in problems.items():
         if name not in problem:
             continue
 
@@ -142,65 +125,30 @@ def main(
 
     df["total_time"] = df["total_time"].dt.microseconds
 
-    # Get summary statistics
-    time_stats = df[[
-        "planning_time",
-        "simplification_time",
-        "total_time",
-        "planning_iterations",
-        "avg_time_per_iteration",
-        ]].describe(percentiles = [0.25, 0.5, 0.75, 0.95])
-    time_stats.drop(index = ["count"], inplace = True)
-
-    cost_stats = df[[
-        "initial_path_cost",
-        "simplified_path_cost",
-        ]].describe(percentiles = [0.25, 0.5, 0.75, 0.95])
-    cost_stats.drop(index = ["count"], inplace = True)
-
-    if pointcloud:
-        pointcloud_stats = df[[
-            "filter_time",
-            "capt_build_time",
-            "total_build_and_plan_time",
-            ]].describe(percentiles = [0.25, 0.5, 0.75, 0.95])
-        pointcloud_stats.drop(index = ["count"], inplace = True)
-
-    print()
-    print(
-        tabulate(
-            time_stats,
-            headers = [
-                'Planning Time (μs)',
-                'Simplification Time (μs)',
-                'Total Time (μs)',
-                'Planning Iters.',
-                'Time per Iter. (μs)',
-                ],
-            tablefmt = 'github'
-            )
+    mbm.print_stats_table(
+        df, {
+            'planning_time': 'Planning Time (μs)',
+            'simplification_time': 'Simplification Time (μs)',
+            'total_time': 'Total Time (μs)',
+            'planning_iterations': 'Planning Iters.',
+            'avg_time_per_iteration': 'Time per Iter. (μs)',
+            }
         )
 
-    print(
-        tabulate(
-            cost_stats, headers = [
-                ' Initial Cost (L2)',
-                '    Simplified Cost (L2)',
-                ], tablefmt = 'github'
-            )
+    mbm.print_stats_table(
+        df, {
+            'initial_path_cost': ' Initial Cost (L2)',
+            'simplified_path_cost': '    Simplified Cost (L2)',
+            }
         )
 
     if pointcloud:
-        print(
-            tabulate(
-                pointcloud_stats,
-                headers = [
-                    '  Filter Time (ms)',
-                    '    CAPT Build Time (ms)',
-                    'Total Time (ms)',
-                    ],
-                tablefmt = 'github'
-                )
+        mbm.print_stats_table(
+            df, {
+                'filter_time': '  Filter Time (ms)',
+                'capt_build_time': '    CAPT Build Time (ms)',
+                'total_build_and_plan_time': 'Total Time (ms)',
+                }
             )
 
     print(

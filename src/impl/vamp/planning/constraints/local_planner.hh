@@ -18,30 +18,23 @@ namespace vamp::planning::constraint
 {
     // Perturbation multipliers 0, -0.25, +0.25, -0.5, +0.5, ...: index 0 is unperturbed so
     // one lane always aims exactly at the steer target.
-    template <std::size_t I>
-    inline constexpr auto stddev_sample() -> float
+    template <std::size_t n>
+    inline constexpr auto generate_stddev_samples() -> std::array<float, n>
     {
-        if constexpr (I == 0)
+        std::array<float, n> samples{};
+        for (std::size_t i = 1; i < n; ++i)
         {
-            return 0.F;
+            const auto magnitude = static_cast<float>((i + 1) / 2) * 0.25F;
+            samples[i] = (i % 2 == 1) ? -magnitude : magnitude;
         }
-        else
-        {
-            const auto magnitude = static_cast<float>((I + 1) / 2) * 0.25F;
-            return (I % 2 == 1) ? -magnitude : magnitude;
-        }
-    }
 
-    template <std::size_t n, std::size_t... I>
-    inline constexpr auto generate_stddev_samples(std::index_sequence<I...>) -> std::array<float, n>
-    {
-        return {stddev_sample<I>()...};
+        return samples;
     }
 
     template <std::size_t n>
     struct StdDevSamples
     {
-        inline static constexpr auto samples = generate_stddev_samples<n>(std::make_index_sequence<n>());
+        inline static constexpr auto samples = generate_stddev_samples<n>();
     };
 
     // Local planner over a constraint manifold: local paths are geodesic approximations

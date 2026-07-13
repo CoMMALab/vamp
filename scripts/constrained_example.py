@@ -14,6 +14,11 @@ With --flask, the examples plan kinodynamically instead: the chart-LQMT planner 
 the robot's flask submodule steers rest-to-rest (q, qdot) states along time-optimal
 cubics on the constraint manifold. Constraints are still built from the ambient
 submodule; the executed trajectory is reconstructed with lift_edge.
+
+With --retime, the examples plan geometrically as usual and then retime the path on
+the flask sibling: waypoints are lifted to rest states and the flask simplify's
+C_loc shortcutting (validated chart-LQMT edges on the manifold) blends the
+stop-at-every-waypoint lift into flowing motion.
 """
 
 from pathlib import Path
@@ -22,6 +27,7 @@ import time
 import numpy as np
 import vamp
 from vamp import flask as vf
+from vamp import transformations as tr
 from fire import Fire
 
 # Sphere cage for the plane example (from the original constrained-planning demos).
@@ -91,25 +97,11 @@ def lift_path(module, path, constraints, constraint_settings, chart_settings):
     return np.array(dense, dtype=np.float32), np.array(times), max_err, total_T, max_miss
 
 
-def quat_from_matrix(m):
-    t = np.trace(m)
-    if t > 0:
-        s = np.sqrt(t + 1.0) * 2
-        return [0.25 * s, (m[2, 1] - m[1, 2]) / s, (m[0, 2] - m[2, 0]) / s, (m[1, 0] - m[0, 1]) / s]
-    i = int(np.argmax(np.diag(m)))
-    j, k = (i + 1) % 3, (i + 2) % 3
-    s = np.sqrt(m[i, i] - m[j, j] - m[k, k] + 1.0) * 2
-    q = [0.0] * 4
-    q[0] = (m[k, j] - m[j, k]) / s
-    q[1 + i] = 0.25 * s
-    q[1 + j] = (m[j, i] + m[i, j]) / s
-    q[1 + k] = (m[k, i] + m[i, k]) / s
-    return q
-
-
 def pose_to_transform(pose):
     """4x4 matrix -> (qw, qx, qy, qz, x, y, z)."""
-    return [*quat_from_matrix(np.array(pose)[:3, :3]), *np.array(pose)[:3, 3]]
+    pose = np.asarray(pose)
+    x, y, z, w = tr.quaternion_from_matrix(pose)
+    return [w, x, y, z, *pose[:3, 3]]
 
 
 def line_problem(module):
@@ -199,18 +191,22 @@ def main(
     planner: str = "rrtc",  # One of rrtc, aorrtc, grrtstar.
     range_: float = 0.5,  # Planner range; constrained steps should stay small.
     flask: bool = False,  # Plan kinodynamically on the manifold with the chart-LQMT planner.
-    rho: float | None = None,  # LQMT time weight in C = rho * T + int |u|^2 (flask only).
-    max_kinetic_energy: float | None = None,  # Phase gate: kinetic energy cap in J (flask only).
-    max_eef_speed: float | None = None,  # Phase gate: end-effector speed cap in m/s (flask only).
+    retime: bool = False,  # Plan geometrically, then retime on the flask sibling.
+    rho: float | None = None,  # LQMT time weight in C = rho * T + int |u|^2 (flask/retime).
+    max_kinetic_energy: float | None = None,  # Phase gate: kinetic energy cap in J (flask/retime).
+    max_eef_speed: float | None = None,  # Phase gate: end-effector speed cap in m/s (flask/retime).
     sample_energy: float | None = None,  # Shape sampled kinetic energy to [0, cap] J (flask only).
     visualize: bool = False,
     **kwargs,
 ):
     robot_name, problem, urdf = PROBLEMS[mode]
-    if rho is not None and not flask:
-        raise ValueError("--rho only applies to the chart-LQMT planner; pass --flask")
-    if (max_kinetic_energy is not None or max_eef_speed is not None) and not flask:
-        raise ValueError("phase gates only apply to the chart-LQMT planner; pass --flask")
+    if flask and retime:
+        raise ValueError("--flask already plans kinodynamically; --retime retimes a geometric plan")
+    kinodynamic = flask or retime
+    if rho is not None and not kinodynamic:
+        raise ValueError("--rho only applies to the chart-LQMT machinery; pass --flask or --retime")
+    if (max_kinetic_energy is not None or max_eef_speed is not None) and not kinodynamic:
+        raise ValueError("phase gates only apply to the chart-LQMT machinery; pass --flask or --retime")
     if sample_energy is not None and not flask:
         raise ValueError("--sample_energy only applies to the chart-LQMT planner; pass --flask")
     if flask:
@@ -225,8 +221,15 @@ def main(
 
     (module, planner_func, plan_settings,
      simp_settings) = vamp.configure_robot_and_planner_with_kwargs(robot_name, planner, **kwargs)
-    if rho is not None:
-        module.set_rho(rho)
+
+    # The module that owns the final path: with --retime the flask sibling (whose simplify
+    # retimes the geometric plan); otherwise the planning module itself.
+    path_module, flask_simp_settings = module, simp_settings
+    if retime:
+        (path_module, _, _, flask_simp_settings) = vamp.configure_robot_and_planner_with_kwargs(
+            f"{robot_name}.flask", planner, **kwargs)
+    if kinodynamic and rho is not None:
+        path_module.set_rho(rho)
 
     if planner == "rrtc" or planner == "grrtstar":
         plan_settings.range = range_
@@ -253,16 +256,22 @@ def main(
     n_q = len(start_seed)
 
     chart_kwargs = {}
-    if flask:
+    if kinodynamic:
         chart_kwargs["chart_settings"] = vamp.ChartSettings()
-        start_seed, goal_seed = vf.rest_state(start_seed), vf.rest_state(goal_seed)
-        gates = vf.phase_constraints(module, max_kinetic_energy, max_eef_speed)
+        gates = vf.phase_constraints(path_module, max_kinetic_energy, max_eef_speed)
         if gates:
             chart_kwargs["phase_constraints"] = gates
 
+    # The geometric pipeline in retime mode takes no chart kwargs; only flask planning
+    # and the retiming simplify do.
+    plan_chart_kwargs = chart_kwargs if flask else {}
+
+    if flask:
+        start_seed, goal_seed = vf.rest_state(start_seed), vf.rest_state(goal_seed)
+
     # Strict start/goal policy: seeds must be projected onto the manifold explicitly.
-    start = module.project(start_seed, constraints, constraint_settings, **chart_kwargs)
-    goal = module.project(goal_seed, constraints, constraint_settings, **chart_kwargs)
+    start = module.project(start_seed, constraints, constraint_settings, **plan_chart_kwargs)
+    goal = module.project(goal_seed, constraints, constraint_settings, **plan_chart_kwargs)
 
     for name, q in (("start", start), ("goal", goal)):
         if not module.validate(q, e):
@@ -274,7 +283,7 @@ def main(
     elapsed = time.perf_counter()
     result = planner_func(
         start, goal, e, plan_settings, sampler,
-        constraints=constraints, constraint_settings=constraint_settings, **chart_kwargs)
+        constraints=constraints, constraint_settings=constraint_settings, **plan_chart_kwargs)
     elapsed = time.perf_counter() - elapsed
 
     if not result.solved:
@@ -282,31 +291,49 @@ def main(
 
     simple = module.simplify(
         result.path, e, simp_settings, sampler,
-        constraints=constraints, constraint_settings=constraint_settings, **chart_kwargs)
+        constraints=constraints, constraint_settings=constraint_settings, **plan_chart_kwargs)
 
     path = simple.path
-    on_manifold = all(
-        module.satisfied(path[i], constraints, constraint_settings) for i in range(len(path)))
 
-    print(f"{mode} with {planner}{' (flask)' if flask else ''}: solved in {elapsed * 1e3:.1f} ms")
+    tag = " (flask)" if flask else " (retime)" if retime else ""
+    print(f"{mode} with {planner}{tag}: solved in {elapsed * 1e3:.1f} ms")
     print(f"path: {len(result.path)} -> {len(path)} states, "
           f"cost {result.path.cost():.4f} -> {path.cost():.4f}")
+
+    if retime:
+        # Retime on the flask sibling: lift the geometric waypoints to rest states and
+        # let the flask simplify's C_loc shortcutting blend the stops into flowing
+        # motion. Shortcut edges are chart-LQMT cubics validated on the manifold.
+        lifted = vf.lift(path_module, path)
+        rest_cost = lifted.cost()
+        retime_elapsed = time.perf_counter()
+        flask_simple = path_module.simplify(
+            lifted, e, flask_simp_settings, path_module.halton(),
+            constraints=constraints, constraint_settings=constraint_settings, **chart_kwargs)
+        retime_elapsed = time.perf_counter() - retime_elapsed
+
+        path = flask_simple.path
+        print(f"retime: {len(lifted)} -> {len(path)} states, "
+              f"cost {rest_cost:.4f} -> {path.cost():.4f}, in {retime_elapsed * 1e3:.1f} ms")
+
+    on_manifold = all(
+        path_module.satisfied(path[i], constraints, constraint_settings) for i in range(len(path)))
     print(f"all waypoints on manifold: {on_manifold}")
 
     dense = dense_t = None
-    if flask:
+    if kinodynamic:
         dense, dense_t, max_err, total_T, max_miss = lift_path(
-            module, path, constraints, constraint_settings, chart_kwargs["chart_settings"])
+            path_module, path, constraints, constraint_settings, chart_kwargs["chart_settings"])
         vmax = np.abs(dense[:, n_q:]).max(axis=0)
-        vel_ratio = float((vmax / np.array(module.velocity_limits())).max())
+        vel_ratio = float((vmax / np.array(path_module.velocity_limits())).max())
         print(f"trajectory: {total_T:.2f} s over {len(path) - 1} segments, "
               f"max constraint dist^2 {max_err ** 2:.2e}, max velocity ratio {vel_ratio:.2f}, "
               f"max endpoint miss {max_miss:.2e}")
         if "phase_constraints" in chart_kwargs:
             # Enforcement is at the planner's validation samples, so uniformly-resampled
             # lift samples may peak slightly between them.
-            max_ke = max(float(module.kinetic_energy(z)) for z in dense)
-            max_ee = max(vf.max_eef_speed(module, z) for z in dense)
+            max_ke = max(float(path_module.kinetic_energy(z)) for z in dense)
+            max_ee = max(vf.max_eef_speed(path_module, z) for z in dense)
             ke_cap = f" (cap {max_kinetic_energy:g} J)" if max_kinetic_energy is not None else ""
             ee_cap = f" (cap {max_eef_speed:g} m/s)" if max_eef_speed is not None else ""
             print(f"phase: max kinetic energy {max_ke:.3f} J{ke_cap}, "
@@ -371,7 +398,7 @@ def main(
         # chains); flask paths are lifted to the executed trajectory. Either way, no
         # interpolation: linear interpolation leaves the manifold.
         # numpy() is a read-only view and the bindings only take writable arrays, so copy.
-        waypoints = dense[:, :n_q] if flask else path.numpy().copy()
+        waypoints = dense[:, :n_q] if kinodynamic else path.numpy().copy()
 
         if mode != "bimanual":
             # End-effector positions along the path; these should all lie on the constraint.
@@ -383,7 +410,7 @@ def main(
 
         # Playback schedule: flask trajectories replay on the lifted wall-clock timing;
         # geometric paths carry no timing, so they step at a constant rate.
-        play_times = dense_t if flask else np.arange(len(waypoints)) / PLAYBACK_FPS
+        play_times = dense_t if kinodynamic else np.arange(len(waypoints)) / PLAYBACK_FPS
         period = play_times[-1] + 1.0  # Hold the goal pose for a beat before looping.
 
         print(f"visualization at http://localhost:{server.get_port()}; ctrl-c to exit")

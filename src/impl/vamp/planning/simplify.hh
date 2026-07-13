@@ -1,7 +1,6 @@
 #pragma once
 
 #include <limits>
-#include <map>
 
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/cost.hh>
@@ -86,12 +85,19 @@ namespace vamp::planning
             return false;
         }
 
-        // Projected subdivision midpoints bend off the chords and can lengthen the path even
-        // when every later midpoint move is cost-nonincreasing, so snapshot the input and
-        // revert the whole pass if it does not pay off.
+        // Subdivided edges inherit validity from the edge they split only when
+        // interpolation is a straight line and midpoints stay on it: projection bends
+        // midpoints off their validated chords, and non-euclidean robots (flask)
+        // re-solve each half edge as its own steering problem (own T*), so the halves
+        // are different curves than the validated whole.
+        constexpr bool preserves_edges = Robot::euclidean and not LocalPlanner::projecting;
+
+        // Subdivision can also lengthen the path even when every later midpoint move is
+        // cost-nonincreasing, so snapshot the input and revert the whole pass if it
+        // does not pay off.
         [[maybe_unused]] Path<Robot> original;
         [[maybe_unused]] float original_cost = 0.F;
-        if constexpr (LocalPlanner::projecting)
+        if constexpr (not preserves_edges)
         {
             original = path;
             original_cost = path.cost();
@@ -100,11 +106,9 @@ namespace vamp::planning
         bool changed = false;
         for (auto step = 0U; step < settings.max_steps; ++step)
         {
-            // Subdivision midpoints must lie on the constraint manifold, and projection
-            // bends them off their validated chords, so the subdivided edges do not
-            // inherit validity from the edges they split; bail out (reverting this step's
-            // subdivision) unless every midpoint projects and every new edge revalidates.
-            if constexpr (LocalPlanner::projecting)
+            // Bail out (reverting this step's subdivision) unless every midpoint
+            // projects and every new edge revalidates.
+            if constexpr (not preserves_edges)
             {
                 auto backup = path;
                 path.subdivide();
@@ -156,7 +160,7 @@ namespace vamp::planning
             }
         }
 
-        if constexpr (LocalPlanner::projecting)
+        if constexpr (not preserves_edges)
         {
             if (path.cost() > original_cost)
             {
@@ -658,51 +662,34 @@ namespace vamp::planning
 
         PlanningResult<Robot> result;
 
-        const auto bspline = [&result, &environment, settings, &lp]()
+        const auto run = [&](SimplifyRoutine op) -> bool
         {
-            return smooth_bspline<Robot, rake, resolution>(
-                result.path, environment, settings.bspline, lp);
-        };
-        const auto reduce = [&result, &environment, settings, rng, &lp]()
-        {
-            return reduce_path_vertices<Robot, rake, resolution>(
-                result.path, environment, settings.reduce, rng, lp);
-        };
-        const auto shortcut = [&result, &environment, settings, &lp]()
-        {
-            return shortcut_path<Robot, rake, resolution>(
-                result.path, environment, settings.shortcut, lp);
-        };
-        const auto perturb = [&result, &environment, settings, rng, &lp]()
-        {
-            return perturb_path<Robot, rake, resolution>(
-                result.path, environment, settings.perturb, rng, lp);
-        };
-        const auto velopt = [&result, &environment, settings, &lp]()
-        {
-            return velopt_path<Robot, rake, resolution>(
-                result.path, environment, settings.velopt, lp);
-        };
-        const auto polish = [&result, &environment, settings, &lp]()
-        {
-            return polish_path<Robot, rake, resolution>(
-                result.path, environment, settings.polish, lp);
-        };
+            switch (op)
+            {
+                case BSPLINE:
+                    return smooth_bspline<Robot, rake, resolution>(
+                        result.path, environment, settings.bspline, lp);
+                case REDUCE:
+                    return reduce_path_vertices<Robot, rake, resolution>(
+                        result.path, environment, settings.reduce, rng, lp);
+                case SHORTCUT:
+                    return shortcut_path<Robot, rake, resolution>(
+                        result.path, environment, settings.shortcut, lp);
+                case PERTURB:
+                    return perturb_path<Robot, rake, resolution>(
+                        result.path, environment, settings.perturb, rng, lp);
+                case INTERP:
+                    return interpolate_and_project<Robot>(
+                        result.path, settings.interpolate, environment, lp);
+                case VELOPT:
+                    return velopt_path<Robot, rake, resolution>(
+                        result.path, environment, settings.velopt, lp);
+                case POLISH:
+                    return polish_path<Robot, rake, resolution>(
+                        result.path, environment, settings.polish, lp);
+            }
 
-        const auto interpolate = [&result, &environment, settings, &lp]()
-        {
-            return interpolate_and_project<Robot>(
-                result.path, settings.interpolate, environment, lp);
-        };
-
-        const std::map<SimplifyRoutine, std::function<bool()>> operations = {
-            {BSPLINE, bspline},
-            {REDUCE, reduce},
-            {SHORTCUT, shortcut},
-            {PERTURB, perturb},
-            {INTERP, interpolate},
-            {VELOPT, velopt},
-            {POLISH, polish},
+            return false;
         };
 
         // Check if the direct local path from start to goal is valid; the cost budget
@@ -751,7 +738,7 @@ namespace vamp::planning
                 bool any = false;
                 for (const auto &op : settings.operations)
                 {
-                    any |= operations.find(op)->second();
+                    any |= run(op);
                 }
 
                 if (not any)
@@ -763,7 +750,7 @@ namespace vamp::planning
 
         if (settings.polish_at_end)
         {
-            polish();
+            run(POLISH);
         }
 
         result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);

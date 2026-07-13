@@ -1,15 +1,23 @@
-import pickle
+"""Evaluate flask kinodynamic planning on MBM. Two pipelines share the metrics,
+so the tables are directly comparable:
+
+- Direct (default): plan and simplify with the flask robot itself, from rest
+  states, entirely in phase space.
+- Plan-then-retime (--retime): plan with the ambient geometric parent, simplify,
+  lift the path to flask rest states (vamp.flask.lift), then retime it with the
+  flask robot's own simplify -- shortcut states sampled along segment interiors
+  carry the LQMT cubic's velocities, so accepted shortcuts (validated at full
+  resolution, scored by C_loc) blend waypoint stops into flowing motion."""
+
 import time
-from tabulate import tabulate
 from tqdm import tqdm
-from pathlib import Path
 import numpy as np
 import pandas as pd
 from typing import Union, List
 
 from fire import Fire
 import vamp
-from vamp import flask
+from vamp import flask, mbm
 
 
 def main(
@@ -21,9 +29,10 @@ def main(
     sampler: str = "halton",               # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     print_failures: bool = False,          # Print out failures and invalid problems
+    retime: bool = False,                  # Plan with the ambient geometric parent, then retime
     samples_per_segment: int = 64,         # Trajectory samples per segment for post-hoc checks
     rho: Union[float, None] = None,        # Override the LQMT cost weight rho for this robot
-    sample_energy: Union[float, None] = None,  # Shape sampled kinetic energy to [0, cap] J
+    sample_energy: Union[float, None] = None,  # Shape sampled kinetic energy to [0, cap] J (direct only)
     **kwargs,
     ):
 
@@ -31,32 +40,25 @@ def main(
     # post-hoc collision checks. The flask robot is its nested submodule.
     base_robot, geo_module = flask.parse_flask_robot(robot, rho)
 
-    problems_dir = Path(__file__).parent.parent / 'resources' / base_robot / 'problems'
-    with open(problems_dir.parent / dataset, 'rb') as f:
-        problems = pickle.load(f)
+    problems, problem = mbm.load_problems(base_robot, dataset, problem)
 
-    problem_names = list(problems['problems'].keys())
-    if isinstance(problem, str):
-        problem = [problem]
+    (flask_module, planner_func, plan_settings,
+     flask_simp_settings) = vamp.configure_robot_and_planner_with_kwargs(robot, planner, **kwargs)
 
-    if not problem:
-        problem = problem_names
-    else:
-        for problem_name in problem:
-            if problem_name not in problem_names:
-                raise RuntimeError(
-                    f"Problem `{problem_name}` not available! Available problems: {problem_names}"
-                    )
+    # With --retime the ambient parent plans and simplifies the geometric path; the
+    # flask sibling only retimes the lifted path with its own simplifier.
+    plan_module, simp_settings = flask_module, flask_simp_settings
+    if retime:
+        (plan_module, planner_func, plan_settings,
+         simp_settings) = vamp.configure_robot_and_planner_with_kwargs(base_robot, planner, **kwargs)
 
-    (vamp_module, planner_func, plan_settings,
-     simp_settings) = vamp.configure_robot_and_planner_with_kwargs(robot, planner, **kwargs)
+    velocity_limits = np.array(flask_module.velocity_limits())
+    effort_limits = np.array(flask_module.effort_limits())
 
-    velocity_limits = np.array(vamp_module.velocity_limits())
-    effort_limits = np.array(vamp_module.effort_limits())
-
-    sampler = getattr(vamp_module, sampler)()
-    if sample_energy is not None:
-        sampler = vamp_module.ke_shaped(sampler, float(sample_energy))
+    plan_sampler = getattr(plan_module, sampler)()
+    flask_sampler = getattr(flask_module, sampler)() if retime else None
+    if sample_energy is not None and not retime:
+        plan_sampler = flask_module.ke_shaped(plan_sampler, float(sample_energy))
 
     total_problems = 0
     valid_problems = 0
@@ -64,13 +66,15 @@ def main(
 
     tick = time.perf_counter()
     results = []
-    for name, pset in problems['problems'].items():
+    for name, pset in problems.items():
         if name not in problem:
             continue
 
         failures = []
         invalids = []
-        print(f"Evaluating {robot} on {name}: ")
+        retime_failures = []
+        tag = f"{robot} (retime after {base_robot} {planner})" if retime else robot
+        print(f"Evaluating {tag} on {name}: ")
         for i, data in tqdm(enumerate(pset)):
             total_problems += 1
 
@@ -82,42 +86,63 @@ def main(
 
             env = vamp.problem_dict_to_vamp(data)
 
-            start = flask.rest_state(data['start'])
-            goals = [flask.rest_state(goal) for goal in data['goals']]
+            if retime:
+                start = np.asarray(data['start'], dtype = np.float32)
+                goals = [np.asarray(goal, dtype = np.float32) for goal in data['goals']]
+            else:
+                start = flask.rest_state(data['start'])
+                goals = [flask.rest_state(goal) for goal in data['goals']]
 
-            sampler.reset()
-            sampler.skip(skip_rng_iterations)
+            plan_sampler.reset()
+            plan_sampler.skip(skip_rng_iterations)
+            if retime:
+                flask_sampler.reset()
+                flask_sampler.skip(skip_rng_iterations)
+
             for _ in range(trials):
-                result = planner_func(start, goals, env, plan_settings, sampler)
+                result = planner_func(start, goals, env, plan_settings, plan_sampler)
                 if not result.solved:
                     failures.append(i)
                     break
 
-                simple = vamp_module.simplify(result.path, env, simp_settings, sampler)
+                simple = plan_module.simplify(result.path, env, simp_settings, plan_sampler)
 
                 trial_result = vamp.results_to_dict(result, simple)
 
+                flask_path = simple.path
+                if retime:
+                    retime_tick = time.perf_counter()
+                    lifted = flask.lift(flask_module, simple.path)
+                    rest_duration = float(np.sum(flask.segment_times(flask_module, lifted)))
+                    flask_simple = flask_module.simplify(
+                        lifted, env, flask_simp_settings, flask_sampler)
+                    retime_time = time.perf_counter() - retime_tick
+
+                    flask_path = flask_simple.path
+                    retime_valid = flask_path.validate(env)
+                    if not retime_valid:
+                        retime_failures.append(i)
+
+                    trial_result.update(
+                        {
+                            'retime_time': pd.Timedelta(seconds = retime_time),
+                            'retime_valid': float(retime_valid),
+                            'rest_duration': rest_duration,
+                            }
+                        )
+
                 # Post-hoc trajectory checks: densely resample the cubic trajectory and
                 # verify collision-freedom (geometric twin) and dynamic limits
-                t, q, qd, _, tau = flask.densify(vamp_module, simple.path, samples_per_segment)
+                t, q, qd, _, tau = flask.densify(flask_module, flask_path, samples_per_segment)
                 collided = not all(
                     geo_module.validate(qi.astype(np.float32), env) for qi in q
-                    )
-
-                path_cost = float(
-                    sum(
-                        vamp_module.cost(
-                            np.asarray(simple.path[k], np.float32),
-                            np.asarray(simple.path[k + 1], np.float32),
-                            ) for k in range(len(simple.path) - 1)
-                        )
                     )
 
                 trial_result.update(
                     {
                         'problem': name,
                         'trajectory_duration': t[-1],
-                        'trajectory_cost': path_cost,
+                        'trajectory_cost': flask.path_cost(flask_module, flask_path),
                         'trajectory_length': float(
                             np.sum(np.linalg.norm(np.diff(q, axis = 0), axis = 1))
                             ),
@@ -138,64 +163,60 @@ def main(
             if failures:
                 print(f"  Failed on {failures}")
 
+            if retime_failures:
+                print(f"  Retime invalid on {retime_failures}")
+
     tock = time.perf_counter()
 
     df = pd.DataFrame.from_dict(results)
 
     # Convert to milliseconds to match the FLASK paper's tables
-    for field in ["planning_time", "simplification_time", "total_time"]:
-        df[field] = df[field].dt.total_seconds() * 1e3
+    time_fields = ["planning_time", "simplification_time", "total_time"]
+    if retime:
+        time_fields.append("retime_time")
+    mbm.to_milliseconds(df, time_fields)
 
-    percentiles = [0.25, 0.5, 0.75, 0.95]
     paper_metrics = {
         'total_time': 'Total planning time (ms)',
         'trajectory_length': 'Final traj. length (rad)',
         'trajectory_duration': 'Trajectory duration (s)',
-        'trajectory_cost': 'Trajectory cost (C_loc)',
-        'collision_risk': 'Collision risk',
         }
+    time_columns = {
+        'planning_time': 'Planning Time (ms)',
+        'simplification_time': 'Simplification Time (ms)',
+        }
+    if retime:
+        # Pipeline total: geometric plan + simplify + lift + flask simplify
+        df["total_time"] = df["total_time"] + df["retime_time"]
+        paper_metrics['rest_duration'] = 'Stop-at-waypoints dur. (s)'
+        time_columns['retime_time'] = 'Retime Time (ms)'
 
-    def describe(sub: pd.DataFrame) -> pd.DataFrame:
-        stats = sub[list(paper_metrics)].describe(percentiles = percentiles)
-        stats = stats.drop(index = ["count", "min", "max"]).T
-        stats.index = [paper_metrics[m] for m in stats.index]
-        return stats
-
-    for name in problem:
-        sub = df[df['problem'] == name]
-        if sub.empty:
-            continue
-
-        print(f"\n{name} ({len(sub)} trials)")
-        print(tabulate(describe(sub), headers = 'keys', tablefmt = 'github', floatfmt = '.2f'))
-
-    print(f"\nAll environments ({len(df)} trials)")
-    print(tabulate(describe(df), headers = 'keys', tablefmt = 'github', floatfmt = '.2f'))
-
-    time_stats = df[[
-        "planning_time",
-        "simplification_time",
-        "total_time",
-        "planning_iterations",
-        ]].describe(percentiles = percentiles)
-    time_stats.drop(index = ["count"], inplace = True)
-
-    print()
-    print(
-        tabulate(
-            time_stats,
-            headers = [
-                'Planning Time (ms)',
-                'Simplification Time (ms)',
-                'Total Time (ms)',
-                'Planning Iters.',
-                ],
-            tablefmt = 'github'
-            )
+    paper_metrics.update(
+        {
+            'trajectory_cost': 'Trajectory cost (C_loc)',
+            'collision_risk': 'Collision risk',
+            }
+        )
+    time_columns.update(
+        {
+            'total_time': 'Total Time (ms)',
+            'planning_iterations': 'Planning Iters.',
+            }
         )
 
+    mbm.print_metric_tables(df, problem, paper_metrics)
+    mbm.print_stats_table(df, time_columns)
+
+    print()
+    if retime:
+        speedup = df['rest_duration'] / df['trajectory_duration']
+        print(f"Retime valid: {int(df['retime_valid'].sum())} / {len(df)}")
+        print(
+            f"Duration speedup over stop-at-waypoints: "
+            f"median {speedup.median():.2f}x, min {speedup.min():.2f}x, max {speedup.max():.2f}x"
+            )
     print(
-        f"\nMax velocity / effort limit ratio over all trajectories: "
+        f"Max velocity / effort limit ratio over all trajectories: "
         f"{df['max_velocity_ratio'].max():.3f} / {df['max_effort_ratio'].max():.3f}"
         )
     print(

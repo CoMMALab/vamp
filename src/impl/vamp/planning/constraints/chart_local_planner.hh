@@ -296,16 +296,16 @@ namespace vamp::planning::constraint
             return rows;
         }
 
-        // Debug: densify the exact edge from -> target through the same chart/LQMT/lift
-        // machinery, without any validation. Emits n_samples lifted states at uniform
-        // times in [0, T] (velocities in the execution frame, tangent-projected at each
-        // sample's own chart) and each sample's stacked hinged constraint error norm.
-        // Samples run in chart time from `from`; backward edges are executed by
+        // Reconstruct the executed trajectory of the edge from -> target through the same
+        // chart/LQMT/lift machinery, without any validation. Emits n_samples lifted states
+        // at uniform times in [0, T] (velocities in the execution frame, tangent-projected
+        // at each sample's own chart) and each sample's stacked hinged constraint error
+        // norm. Samples run in chart time from `from`; backward edges are executed by
         // traversing them in reverse. A trivial (no-motion) edge emits the single lifted
         // from-state. False only when no chart exists at `from`, the initial chart target
         // cannot be lifted, or the time-optimal solve fails; per-sample lift failures
         // degrade to best-effort samples instead (see emit below).
-        inline auto debug_lift_edge(
+        inline auto lift_edge(
             const Configuration &from,
             const Configuration &target,
             bool forward,

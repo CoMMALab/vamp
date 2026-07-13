@@ -183,21 +183,7 @@ namespace vamp::planning::constraint
         };
 
         // Input layout of the generated solvers: d(err)/dq (2 x dim, row-major), then err (2).
-        struct Solve
-        {
-            FloatVector<rake, jac_size> jac;
-            FloatVector<rake, err_size> err;
-
-            auto operator[](std::size_t index) noexcept -> Row &
-            {
-                return (index < jac_size) ? jac[index] : err[index - jac_size];
-            }
-
-            auto operator[](std::size_t index) const noexcept -> Row
-            {
-                return (index < jac_size) ? jac[index] : err[index - jac_size];
-            }
-        };
+        using Solve = SolveBuffer<rake, err_size, jac_size>;
 
         // Per-edge (nx, ny, ax, ay): unit outward normal and edge origin.
         std::vector<std::array<float, 4>> edges;

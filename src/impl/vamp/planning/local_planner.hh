@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <vamp/collision/environment.hh>
+#include <vamp/planning/constraints/phase_constraint_set.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/vector.hh>
 
@@ -17,16 +18,6 @@ namespace vamp::planning
         Trapped,   // no progress: the first step of the local path was invalid
         Advanced,  // moved toward the target but did not reach it
         Reached,   // the target configuration was attained
-    };
-
-    // Default gate: accept every candidate.
-    struct AlwaysTrue
-    {
-        template <typename T>
-        constexpr auto operator()(const T &) const noexcept -> bool
-        {
-            return true;
-        }
     };
 
     // Result of a local-planner extension: a status plus the accepted waypoints of the local
@@ -93,12 +84,26 @@ namespace vamp::planning
     // context may contract FMAs differently, which can shift results by 1 ULP).
     // Constrained local planners instead project candidates onto a constraint manifold
     // and return the whole projected waypoint chain, which planners insert as a chain of
-    // tree nodes.
+    // tree nodes. An optional PhaseConstraintSet (flask robots) gates every validated
+    // sample block and shapes steer targets toward phase feasibility.
     template <typename Robot, std::size_t rake, std::size_t resolution>
     struct UnconstrainedLocalPlanner
     {
         using Configuration = typename Robot::Configuration;
         using Environment = collision::Environment<FloatVector<rake>>;
+
+        UnconstrainedLocalPlanner() = default;
+
+        // Phase-gated variant (flask robots): every sample block of a validated motion must
+        // satisfy the gates, and steer targets are shaped toward phase feasibility. The
+        // default-constructed (empty) set adds no work.
+        explicit UnconstrainedLocalPlanner(
+            constraint::PhaseConstraintSet<Robot, rake> phase_constraint_set) noexcept
+          : phase_constraints(std::move(phase_constraint_set))
+        {
+        }
+
+        constraint::PhaseConstraintSet<Robot, rake> phase_constraints;
 
         // True if configurations must be projected to remain valid (e.g. onto a constraint
         // manifold): planners must lp.project() any configuration they synthesize
@@ -117,8 +122,19 @@ namespace vamp::planning
             const Environment &e,
             bool forward = true) const noexcept -> bool
         {
-            return (forward) ? validate_motion<Robot, rake, resolution>(a, b, e) :
-                               validate_motion<Robot, rake, resolution>(b, a, e);
+            const Configuration &start = (forward) ? a : b;
+            const Configuration &goal = (forward) ? b : a;
+
+            if (phase_constraints.empty())
+            {
+                return validate_motion<Robot, rake, resolution>(start, goal, e);
+            }
+
+            return validate_motion<Robot, rake, resolution>(
+                start,
+                goal,
+                e,
+                [this](const auto &block) { return phase_constraints.satisfied_block(block); });
         }
 
         // Admit the local path a -> b only if it is valid, has fewer interior waypoints than
@@ -157,11 +173,33 @@ namespace vamp::planning
         {
             chain_.clear();
 
+            // Shape the target toward phase feasibility: gate kernels are homogeneous in qd,
+            // so scaling the velocity half (rows dimension / 2 onward of a flask state
+            // [q; qd]) restores feasibility. The scale is exactly 1 on feasible
+            // targets, so stored nodes are unchanged; `distance` still refers to the
+            // unscaled target, and the per-block gate in validate remains the soundness
+            // mechanism.
+            Configuration steer_target = target;
+            if (not phase_constraints.empty())
+            {
+                const float s = phase_constraints.velocity_scale(target);
+                if (s < 1.F)
+                {
+                    auto buf = target.to_array();
+                    for (auto i = Robot::dimension / 2; i < Robot::dimension; ++i)
+                    {
+                        buf[i] *= s;
+                    }
+
+                    steer_target = Configuration(buf.data());
+                }
+            }
+
             const bool reach = distance < range;
             const float step = range / distance;
-            const auto next = (reach)    ? target :
-                              (forward)  ? Robot::interpolate(from, target, step) :
-                                           Robot::interpolate(target, from, 1.F - step);
+            const auto next = (reach)    ? steer_target :
+                              (forward)  ? Robot::interpolate(from, steer_target, step) :
+                                           Robot::interpolate(steer_target, from, 1.F - step);
 
             if (not gate(next))
             {
@@ -184,10 +222,11 @@ namespace vamp::planning
             return true;
         }
 
-        // Whether a configuration satisfies the constraint within tolerance (trivially true).
-        inline auto satisfied(const Configuration &) const noexcept -> bool
+        // Whether a configuration satisfies the constraint: no manifold here, so only the
+        // phase gates apply (trivially true when the set is empty).
+        inline auto satisfied(const Configuration &z) const noexcept -> bool
         {
-            return true;
+            return phase_constraints.satisfied(z);
         }
 
     private:

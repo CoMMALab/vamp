@@ -10,10 +10,10 @@ entry points (rrtc, aorrtc, grrtstar) and simplify:
 Start and goal must lie on the constraint manifold: the planners raise ValueError
 otherwise, so this script projects them first with the module's project() helper.
 
-With --flask, the panda examples (line, plane) plan kinodynamically instead: the
-chart-LQMT planner on vamp.panda.flask steers rest-to-rest (q, qdot) states along
-time-optimal cubics on the constraint manifold. Constraints are still built from the
-ambient panda submodule; the executed trajectory is reconstructed with lift_edge.
+With --flask, the examples plan kinodynamically instead: the chart-LQMT planner on
+the robot's flask submodule steers rest-to-rest (q, qdot) states along time-optimal
+cubics on the constraint manifold. Constraints are still built from the ambient
+submodule; the executed trajectory is reconstructed with lift_edge.
 """
 
 from pathlib import Path
@@ -21,6 +21,7 @@ import time
 
 import numpy as np
 import vamp
+from vamp import flask as vf
 from fire import Fire
 
 # Sphere cage for the plane example (from the original constrained-planning demos).
@@ -48,10 +49,6 @@ PLANE_POSE = [0.0, 0.707107, 0.0, 0.707107, 0.354, 0.7, 0.243]
 
 # Playback rate for geometric (non-flask) paths, which carry no timing.
 PLAYBACK_FPS = 30.0
-
-
-def rest_state(q):
-    return np.concatenate([q, np.zeros_like(q)]).astype(np.float32)
 
 
 def lift_path(module, path, constraints, constraint_settings, chart_settings):
@@ -151,17 +148,29 @@ def plane_problem(module):
     return start_seed, goal_seed, [tsr], e
 
 
+# Shelf for the bimanual example: two boards, a center divider, and the ground
+# (center, full extents).
+BIMANUAL_SHELF = [
+    ([0.5, 0.0, 0.2], [0.3, 3.0, 0.014]),
+    ([0.5, 0.0, 0.4], [0.3, 3.0, 0.014]),
+    ([0.5, 0.0, 0.3], [0.3, 0.01, 0.15]),
+    ([0.0, 0.0, -0.2], [5.0, 5.0, 0.2]),
+]
+
+
 def bimanual_problem(module):
     # The right end-effector holds a fixed transform relative to the left, as if both
     # arms grasp one rigid object.
+    # Both seeds keep >5cm clearance from the shelf: the object starts held low in
+    # front of the shelf and ends held above the top board.
     start_seed = np.array(
-        [-1.362, 1.319, 1.064, -2.486, 0.518, 2.481, -1.459,
-         1.327, 1.260, -1.048, -2.481, -0.644, 2.444, -0.011],
+        [-1.388458, 1.789655, 0.526891, -2.779171, -0.986079, 3.079894, -0.75567,
+         1.630401, 0.982874, -0.542026, -2.682339, -0.376891, 2.048735, 0.422199],
         dtype=np.float32,
     )
     goal_seed = np.array(
-        [-2.143, 0.395, 2.249, -2.043, 1.320, 1.772, -0.697,
-         1.359, 1.320, -2.092, -2.138, -0.140, 2.437, -1.547],
+        [-2.118829, 0.419675, 2.249477, -2.045575, 1.324726, 1.762167, -0.726496,
+         1.423746, 1.290487, -2.148522, -2.168713, -0.143205, 2.446808, -1.55776],
         dtype=np.float32,
     )
 
@@ -171,7 +180,11 @@ def bimanual_problem(module):
         [0.001] * 6,
     )
 
-    return start_seed, goal_seed, [relative], vamp.Environment()
+    e = vamp.Environment()
+    for center, extents in BIMANUAL_SHELF:
+        e.add_cuboid(vamp.Cuboid(center, [0.0, 0.0, 0.0], [x / 2.0 for x in extents]))
+
+    return start_seed, goal_seed, [relative], e
 
 
 PROBLEMS = {
@@ -187,18 +200,28 @@ def main(
     range_: float = 0.5,  # Planner range; constrained steps should stay small.
     flask: bool = False,  # Plan kinodynamically on the manifold with the chart-LQMT planner.
     rho: float | None = None,  # LQMT time weight in C = rho * T + int |u|^2 (flask only).
+    max_kinetic_energy: float | None = None,  # Phase gate: kinetic energy cap in J (flask only).
+    max_eef_speed: float | None = None,  # Phase gate: end-effector speed cap in m/s (flask only).
+    sample_energy: float | None = None,  # Shape sampled kinetic energy to [0, cap] J (flask only).
     visualize: bool = False,
     **kwargs,
 ):
     robot_name, problem, urdf = PROBLEMS[mode]
     if rho is not None and not flask:
         raise ValueError("--rho only applies to the chart-LQMT planner; pass --flask")
+    if (max_kinetic_energy is not None or max_eef_speed is not None) and not flask:
+        raise ValueError("phase gates only apply to the chart-LQMT planner; pass --flask")
+    if sample_energy is not None and not flask:
+        raise ValueError("--sample_energy only applies to the chart-LQMT planner; pass --flask")
     if flask:
-        if robot_name != "panda":
-            raise ValueError("--flask is only available for the panda examples (line, plane)")
         kwargs.setdefault("max_iterations", 50000)
         kwargs.setdefault("max_samples", 50000)
-        robot_name = "panda.flask"
+        robot_name = f"{robot_name}.flask"
+        if mode == "bimanual" and max_kinetic_energy is None:
+            # Unbounded sampled velocities make LQMT steer arcs sweep wide and clip
+            # the shelf boards; a kinetic-energy gate rest-biases steers enough to
+            # thread the below->above passage (unsolvable without it).
+            max_kinetic_energy = 1.0
 
     (module, planner_func, plan_settings,
      simp_settings) = vamp.configure_robot_and_planner_with_kwargs(robot_name, planner, **kwargs)
@@ -209,6 +232,16 @@ def main(
         plan_settings.range = range_
     elif planner == "aorrtc":
         plan_settings.rrtc.range = range_
+
+    if flask:
+        # Flat z-space sample distances dwarf the geometric dynamic-domain radius
+        # default (4.0), which starves the trees after the first trapped chart steer.
+        if planner == "rrtc":
+            plan_settings.radius = 8.0
+        elif planner == "grrtstar":
+            plan_settings.dd_radius = 8.0
+        elif planner == "aorrtc":
+            plan_settings.rrtc.radius = 8.0
 
     constraint_settings = vamp.ConstraintSettings()
     constraint_settings.max_iterations = 10
@@ -222,7 +255,10 @@ def main(
     chart_kwargs = {}
     if flask:
         chart_kwargs["chart_settings"] = vamp.ChartSettings()
-        start_seed, goal_seed = rest_state(start_seed), rest_state(goal_seed)
+        start_seed, goal_seed = vf.rest_state(start_seed), vf.rest_state(goal_seed)
+        gates = vf.phase_constraints(module, max_kinetic_energy, max_eef_speed)
+        if gates:
+            chart_kwargs["phase_constraints"] = gates
 
     # Strict start/goal policy: seeds must be projected onto the manifold explicitly.
     start = module.project(start_seed, constraints, constraint_settings, **chart_kwargs)
@@ -233,6 +269,8 @@ def main(
             raise RuntimeError(f"projected {name} configuration is in collision")
 
     sampler = module.halton()
+    if sample_energy is not None:
+        sampler = module.ke_shaped(sampler, float(sample_energy))
     elapsed = time.perf_counter()
     result = planner_func(
         start, goal, e, plan_settings, sampler,
@@ -264,6 +302,15 @@ def main(
         print(f"trajectory: {total_T:.2f} s over {len(path) - 1} segments, "
               f"max constraint dist^2 {max_err ** 2:.2e}, max velocity ratio {vel_ratio:.2f}, "
               f"max endpoint miss {max_miss:.2e}")
+        if "phase_constraints" in chart_kwargs:
+            # Enforcement is at the planner's validation samples, so uniformly-resampled
+            # lift samples may peak slightly between them.
+            max_ke = max(float(module.kinetic_energy(z)) for z in dense)
+            max_ee = max(vf.max_eef_speed(module, z) for z in dense)
+            ke_cap = f" (cap {max_kinetic_energy:g} J)" if max_kinetic_energy is not None else ""
+            ee_cap = f" (cap {max_eef_speed:g} m/s)" if max_eef_speed is not None else ""
+            print(f"phase: max kinetic energy {max_ke:.3f} J{ke_cap}, "
+                  f"max EEF speed {max_ee:.3f} m/s{ee_cap}")
 
     if visualize:
         from viser import transforms as tf
@@ -279,6 +326,16 @@ def main(
                 [s.position for s in e.spheres],
                 [s.r for s in e.spheres],
                 prefix="/environment/sphere",
+            )
+
+        for i, c in enumerate(e.cuboids + e.z_aligned_cuboids):
+            axes = np.array([[getattr(c, f"axis_{j}_{k}") for j in (1, 2, 3)] for k in "xyz"])
+            server.scene.add_box(
+                f"/environment/cuboid_{i}",
+                color=(160, 160, 160),
+                dimensions=tuple(2.0 * getattr(c, f"axis_{j}_r") for j in (1, 2, 3)),
+                wxyz=tf.SO3.from_matrix(axes).wxyz,
+                position=np.array([c.x, c.y, c.z]),
             )
 
         if mode == "line":
@@ -329,7 +386,7 @@ def main(
         play_times = dense_t if flask else np.arange(len(waypoints)) / PLAYBACK_FPS
         period = play_times[-1] + 1.0  # Hold the goal pose for a beat before looping.
 
-        print("visualization at http://localhost:8080; ctrl-c to exit")
+        print(f"visualization at http://localhost:{server.get_port()}; ctrl-c to exit")
         t0 = time.perf_counter()
         was_playing = True
         while True:

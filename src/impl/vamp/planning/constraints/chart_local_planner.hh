@@ -11,9 +11,11 @@
 
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/constraints/constraint_set.hh>
+#include <vamp/planning/constraints/phase_constraint_set.hh>
 #include <vamp/planning/constraints/settings.hh>
 #include <vamp/planning/flask.hh>
 #include <vamp/planning/local_planner.hh>
+#include <vamp/planning/validate.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning::constraint
@@ -69,8 +71,10 @@ namespace vamp::planning::constraint
 
         explicit ChartLocalPlanner(
             ConstraintSet<Ambient, rake> constraint_set,
-            ChartSettings chart_settings = {}) noexcept
+            ChartSettings chart_settings = {},
+            PhaseConstraintSet<ZRobot, rake> phase_constraint_set = {}) noexcept
           : constraints(std::move(constraint_set))
+          , phase_constraints(std::move(phase_constraint_set))
           , settings(chart_settings)
           , m_rows_(constraints.total_rows())
           , active_(std::make_unique<bool[]>(m_rows_))
@@ -165,6 +169,22 @@ namespace vamp::planning::constraint
             split(from, q0, v0);
             split(target, qt, vt);
 
+            // Shape the target toward phase feasibility: gate kernels are homogeneous in
+            // qd, so scaling the velocity half restores feasibility exactly. The scale is
+            // exactly 1 on feasible targets (stored nodes are unchanged); the per-sample
+            // gate in make_edge remains the soundness mechanism.
+            if (not phase_constraints.empty())
+            {
+                const float s = phase_constraints.velocity_scale(target);
+                if (s < 1.F)
+                {
+                    for (auto i = 0U; i < d; ++i)
+                    {
+                        vt[i] *= s;
+                    }
+                }
+            }
+
             Edge edge;
             const auto status =
                 make_edge(q0, v0, qt, vt, range, forward, e, std::forward<Gate>(gate), edge);
@@ -203,7 +223,8 @@ namespace vamp::planning::constraint
         }
 
         // Project a state onto the manifold: position by constraint projection, velocity
-        // into the tangent space at the projected position.
+        // into the tangent space at the projected position, then scaled into the phase-
+        // feasible set (gate kernels are homogeneous in qd, so scaling always reaches it).
         inline auto project(Configuration &z) const noexcept -> bool
         {
             std::array<float, d> q, v;
@@ -228,15 +249,33 @@ namespace vamp::planning::constraint
             }
 
             z = join(q, tangent_project(chart, v));
+
+            if (not phase_constraints.empty())
+            {
+                const float s = phase_constraints.velocity_scale(z);
+                if (s < 1.F)
+                {
+                    std::array<float, d> qp, vp;
+                    split(z, qp, vp);
+                    for (auto i = 0U; i < d; ++i)
+                    {
+                        vp[i] *= s;
+                    }
+
+                    z = join(qp, vp);
+                }
+            }
+
             return true;
         }
 
-        // Whether a state's position satisfies every constraint within tolerance.
+        // Whether a state's position satisfies every manifold constraint within tolerance
+        // and the state passes every phase gate.
         inline auto satisfied(const Configuration &z) const noexcept -> bool
         {
             std::array<float, d> q, v;
             split(z, q, v);
-            return constraints.satisfied(AmbientConfiguration(q));
+            return constraints.satisfied(AmbientConfiguration(q)) and phase_constraints.satisfied(z);
         }
 
         // Debug: the orthonormal tangent-space basis at a state's position, as nc rows of
@@ -263,7 +302,9 @@ namespace vamp::planning::constraint
         // sample's own chart) and each sample's stacked hinged constraint error norm.
         // Samples run in chart time from `from`; backward edges are executed by
         // traversing them in reverse. A trivial (no-motion) edge emits the single lifted
-        // from-state. False when no chart exists, a lift diverges, or the solve fails.
+        // from-state. False only when no chart exists at `from`, the initial chart target
+        // cannot be lifted, or the time-optimal solve fails; per-sample lift failures
+        // degrade to best-effort samples instead (see emit below).
         inline auto debug_lift_edge(
             const Configuration &from,
             const Configuration &target,
@@ -293,85 +334,32 @@ namespace vamp::planning::constraint
             const std::size_t nc = chart.nc;
 
             std::array<float, d> ud0{}, uf{}, udf{};
-            for (auto c = 0U; c < nc; ++c)
-            {
-                float a = 0.F, b = 0.F, e = 0.F;
-                for (auto j = 0U; j < d; ++j)
-                {
-                    a += chart.basis[c][j] * v0[j];
-                    b += chart.basis[c][j] * (qt[j] - q0[j]);
-                    e += chart.basis[c][j] * vt[j];
-                }
+            chart_boundary(chart, sign, v0, qt, vt, ud0, uf, udf);
 
-                ud0[c] = sign * a;
-                uf[c] = b;
-                udf[c] = sign * e;
-            }
-
-            // Chart retargeting toward the exact target, as in make_edge
             std::array<float, d> q_pre;
-            for (auto it = 0U; it < settings.shoot_iters; ++it)
+            bool lifted = false;
+            if (not retarget<true>(chart, qt, uf, q_pre, lifted))
             {
-                auto q_amb = q0;
-                for (auto c = 0U; c < nc; ++c)
-                {
-                    for (auto j = 0U; j < d; ++j)
-                    {
-                        q_amb[j] += chart.basis[c][j] * uf[c];
-                    }
-                }
-
-                if (not lift_point(q_amb, q_pre))
-                {
-                    return false;
-                }
-
-                float delta2 = 0.F;
-                for (auto c = 0U; c < nc; ++c)
-                {
-                    float dot = 0.F;
-                    for (auto j = 0U; j < d; ++j)
-                    {
-                        dot += chart.basis[c][j] * (qt[j] - q_pre[j]);
-                    }
-
-                    uf[c] += dot;
-                    delta2 += dot * dot;
-                }
-
-                if (delta2 < 1e-10F)
-                {
-                    break;
-                }
+                return false;
             }
 
-            double v00 = 0., v0f = 0., vff = 0., dyv0 = 0., dyvf = 0., dy2 = 0.;
-            for (auto c = 0U; c < nc; ++c)
-            {
-                v00 += static_cast<double>(ud0[c]) * ud0[c];
-                v0f += static_cast<double>(ud0[c]) * udf[c];
-                vff += static_cast<double>(udf[c]) * udf[c];
-                dyv0 += static_cast<double>(uf[c]) * ud0[c];
-                dyvf += static_cast<double>(uf[c]) * udf[c];
-                dy2 += static_cast<double>(uf[c]) * uf[c];
-            }
+            const auto s = lqmt_scalars(nc, ud0, uf, udf);
 
+            // Best-effort per-sample lift: a sample whose projection misses the caller's
+            // budget (or has no chart for the velocity pushforward) is emitted
+            // unprojected, its residual visible in the error norms, rather than failing
+            // the whole replay of a known-valid edge.
             const auto emit = [&](const std::array<float, d> &q_amb,
-                                  const std::array<float, d> &v_amb) -> bool
+                                  const std::array<float, d> &v_amb)
             {
                 std::array<float, d> q_lift;
                 if (not lift_point(q_amb, q_lift))
                 {
-                    return false;
+                    q_lift = q_amb;
                 }
 
                 const auto chart_t = make_chart(q_lift);
-                if (not chart_t.valid)
-                {
-                    return false;
-                }
-
-                auto v_lift = tangent_project(chart_t, v_amb);
+                auto v_lift = chart_t.valid ? tangent_project(chart_t, v_amb) : v_amb;
                 for (auto dim = 0U; dim < d; ++dim)
                 {
                     v_lift[dim] *= sign;
@@ -389,16 +377,16 @@ namespace vamp::planning::constraint
 
                 states.emplace_back(join(q_lift, v_lift));
                 errors.emplace_back(std::sqrt(e2));
-                return true;
             };
 
-            if (dy2 < 1e-10 and v00 + vff < 1e-10)
+            if (s.trivial())
             {
-                return emit(q0, v0);
+                emit(q0, v0);
+                return true;
             }
 
-            const auto sol =
-                flask::solve_scalars(v00, v0f, vff, dyv0, dyvf, dy2, static_cast<double>(ZRobot::rho));
+            const auto sol = flask::solve_scalars(
+                s.v00, s.v0f, s.vff, s.dyv0, s.dyvf, s.dy2, static_cast<double>(ZRobot::rho));
             const float T = sol.time;
             if (not (T > 0.F) or not std::isfinite(sol.cost))
             {
@@ -409,13 +397,7 @@ namespace vamp::planning::constraint
             cost = sol.cost;
 
             std::array<float, d> a3{}, a2{};
-            for (auto c = 0U; c < nc; ++c)
-            {
-                const float d1 = uf[c] - T * ud0[c];
-                const float d2 = udf[c] - ud0[c];
-                a3[c] = (-2.F * d1 + T * d2) / (T * T * T);
-                a2[c] = (3.F * d1 - T * d2) / (T * T);
-            }
+            cubic_coefficients(nc, ud0, uf, udf, T, a3, a2);
 
             const std::size_t n = std::max<std::size_t>(n_samples, 2);
             states.reserve(n);
@@ -436,16 +418,14 @@ namespace vamp::planning::constraint
                     }
                 }
 
-                if (not emit(q_amb, v_amb))
-                {
-                    return false;
-                }
+                emit(q_amb, v_amb);
             }
 
             return true;
         }
 
         ConstraintSet<Ambient, rake> constraints;
+        PhaseConstraintSet<ZRobot, rake> phase_constraints;
         ChartSettings settings;
 
     private:
@@ -476,6 +456,18 @@ namespace vamp::planning::constraint
             std::array<float, d> vf{};  // terminal chart velocity, execution frame
             bool reach = false;         // chart target within range: exact shooting applied
             bool trivial = false;       // zero-length edge (target at the chart center, at rest)
+        };
+
+        // LQMT boundary scalars in chart coordinates (dimension-free).
+        struct LQMTScalars
+        {
+            double v00 = 0., v0f = 0., vff = 0., dyv0 = 0., dyvf = 0., dy2 = 0.;
+
+            // Zero-length edge (target at the chart center, at rest).
+            auto trivial() const noexcept -> bool
+            {
+                return dy2 < 1e-10 and v00 + vff < 1e-10;
+            }
         };
 
         inline static auto broadcast(const std::array<float, d> &q) noexcept -> AmbientBlock
@@ -681,6 +673,154 @@ namespace vamp::planning::constraint
             return true;
         }
 
+        // psi(u) = q0 + B u: the ambient pre-image of chart coordinates u.
+        inline static auto chart_point(const Chart &chart, const std::array<float, d> &u) noexcept
+            -> std::array<float, d>
+        {
+            auto q_amb = chart.q0;
+            for (auto c = 0U; c < chart.nc; ++c)
+            {
+                for (auto j = 0U; j < d; ++j)
+                {
+                    q_amb[j] += chart.basis[c][j] * u[c];
+                }
+            }
+
+            return q_amb;
+        }
+
+        // Boundary data of an edge in chart coordinates, execution frame (time-reversed
+        // when backward: the cubic always starts at the chart center).
+        inline static void chart_boundary(
+            const Chart &chart,
+            float sign,
+            const std::array<float, d> &v0,
+            const std::array<float, d> &qt,
+            const std::array<float, d> &vt,
+            std::array<float, d> &ud0,
+            std::array<float, d> &uf,
+            std::array<float, d> &udf) noexcept
+        {
+            for (auto c = 0U; c < chart.nc; ++c)
+            {
+                float a = 0.F, b = 0.F, e = 0.F;
+                for (auto j = 0U; j < d; ++j)
+                {
+                    a += chart.basis[c][j] * v0[j];
+                    b += chart.basis[c][j] * (qt[j] - chart.q0[j]);
+                    e += chart.basis[c][j] * vt[j];
+                }
+
+                ud0[c] = sign * a;
+                uf[c] = b;
+                udf[c] = sign * e;
+            }
+        }
+
+        // Chart retargeting toward the exact target: iterate u_f += B^T (q_t - psi(u_f)),
+        // whose fixed point lifts exactly onto the target; `lifted` reports whether q_pre
+        // holds a successful lift. Strict mode (make_edge) fails on any diverged lift.
+        // Best-effort mode (debug replay -- the caller judges the endpoint miss) verifies
+        // the final target with one extra lift and falls back to the last liftable target
+        // on divergence, failing only if the initial target is unliftable.
+        template <bool best_effort>
+        auto retarget(
+            const Chart &chart,
+            const std::array<float, d> &qt,
+            std::array<float, d> &uf,
+            std::array<float, d> &q_pre,
+            bool &lifted) const noexcept -> bool
+        {
+            auto uf_good = uf;
+            const std::size_t last = settings.shoot_iters;
+            for (auto it = 0U; it < last + best_effort; ++it)
+            {
+                if (not lift_point(chart_point(chart, uf), q_pre))
+                {
+                    if constexpr (best_effort)
+                    {
+                        if (lifted)
+                        {
+                            uf = uf_good;
+                            return true;
+                        }
+                    }
+
+                    return false;
+                }
+
+                lifted = true;
+                if constexpr (best_effort)
+                {
+                    uf_good = uf;
+                    if (it == last)
+                    {
+                        break;
+                    }
+                }
+
+                float delta2 = 0.F;
+                for (auto c = 0U; c < chart.nc; ++c)
+                {
+                    float dot = 0.F;
+                    for (auto j = 0U; j < d; ++j)
+                    {
+                        dot += chart.basis[c][j] * (qt[j] - q_pre[j]);
+                    }
+
+                    uf[c] += dot;
+                    delta2 += dot * dot;
+                }
+
+                if (delta2 < 1e-10F)
+                {
+                    break;
+                }
+            }
+
+            return true;
+        }
+
+        inline static auto lqmt_scalars(
+            std::size_t nc,
+            const std::array<float, d> &ud0,
+            const std::array<float, d> &uf,
+            const std::array<float, d> &udf) noexcept -> LQMTScalars
+        {
+            LQMTScalars s;
+            for (auto c = 0U; c < nc; ++c)
+            {
+                s.v00 += static_cast<double>(ud0[c]) * ud0[c];
+                s.v0f += static_cast<double>(ud0[c]) * udf[c];
+                s.vff += static_cast<double>(udf[c]) * udf[c];
+                s.dyv0 += static_cast<double>(uf[c]) * ud0[c];
+                s.dyvf += static_cast<double>(uf[c]) * udf[c];
+                s.dy2 += static_cast<double>(uf[c]) * uf[c];
+            }
+
+            return s;
+        }
+
+        // Cubic coefficients u(t) = a3 t^3 + a2 t^2 + ud0 t (u(0) = 0) hitting (uf, udf)
+        // at time T.
+        inline static void cubic_coefficients(
+            std::size_t nc,
+            const std::array<float, d> &ud0,
+            const std::array<float, d> &uf,
+            const std::array<float, d> &udf,
+            float T,
+            std::array<float, d> &a3,
+            std::array<float, d> &a2) noexcept
+        {
+            for (auto c = 0U; c < nc; ++c)
+            {
+                const float d1 = uf[c] - T * ud0[c];
+                const float d2 = udf[c] - ud0[c];
+                a3[c] = (-2.F * d1 + T * d2) / (T * T * T);
+                a2[c] = (3.F * d1 - T * d2) / (T * T);
+            }
+        }
+
         // The stored (and physically executed) arrival velocity of an edge. The lift's
         // pushforward is the tangent projector at the arrival point, so the raw
         // chart-frame terminal velocity carries a curvature-order normal seam that
@@ -762,23 +902,8 @@ namespace vamp::planning::constraint
             const float sign = (forward) ? 1.F : -1.F;
             const std::size_t nc = chart.nc;
 
-            // Boundary data in chart coordinates, execution frame (time-reversed when
-            // backward: the cubic always starts at the chart center)
             std::array<float, d> ud0{}, uf{}, udf{};
-            for (auto c = 0U; c < nc; ++c)
-            {
-                float a = 0.F, b = 0.F, e = 0.F;
-                for (auto j = 0U; j < d; ++j)
-                {
-                    a += chart.basis[c][j] * v0_in[j];
-                    b += chart.basis[c][j] * (qt[j] - q0[j]);
-                    e += chart.basis[c][j] * vt_in[j];
-                }
-
-                ud0[c] = sign * a;
-                uf[c] = b;
-                udf[c] = sign * e;
-            }
+            chart_boundary(chart, sign, v0_in, qt, vt_in, ud0, uf, udf);
 
             float norm2 = 0.F;
             for (auto c = 0U; c < nc; ++c)
@@ -798,59 +923,13 @@ namespace vamp::planning::constraint
 
             std::array<float, d> q_pre = q0;
             bool have_pre = false;
-            if (out.reach)
+            if (out.reach and not retarget<false>(chart, qt, uf, q_pre, have_pre))
             {
-                // Chart retargeting: iterate u_f += B^T (q_t - psi(u_f))
-                for (auto it = 0U; it < settings.shoot_iters; ++it)
-                {
-                    auto q_amb = q0;
-                    for (auto c = 0U; c < nc; ++c)
-                    {
-                        for (auto j = 0U; j < d; ++j)
-                        {
-                            q_amb[j] += chart.basis[c][j] * uf[c];
-                        }
-                    }
-
-                    if (not lift_point(q_amb, q_pre))
-                    {
-                        return EdgeStatus::Invalid;
-                    }
-
-                    have_pre = true;
-                    float delta2 = 0.F;
-                    for (auto c = 0U; c < nc; ++c)
-                    {
-                        float dot = 0.F;
-                        for (auto j = 0U; j < d; ++j)
-                        {
-                            dot += chart.basis[c][j] * (qt[j] - q_pre[j]);
-                        }
-
-                        uf[c] += dot;
-                        delta2 += dot * dot;
-                    }
-
-                    if (delta2 < 1e-10F)
-                    {
-                        break;
-                    }
-                }
+                return EdgeStatus::Invalid;
             }
 
-            // LQMT in chart coordinates (dimension-free scalars)
-            double v00 = 0., v0f = 0., vff = 0., dyv0 = 0., dyvf = 0., dy2 = 0.;
-            for (auto c = 0U; c < nc; ++c)
-            {
-                v00 += static_cast<double>(ud0[c]) * ud0[c];
-                v0f += static_cast<double>(ud0[c]) * udf[c];
-                vff += static_cast<double>(udf[c]) * udf[c];
-                dyv0 += static_cast<double>(uf[c]) * ud0[c];
-                dyvf += static_cast<double>(uf[c]) * udf[c];
-                dy2 += static_cast<double>(uf[c]) * uf[c];
-            }
-
-            if (dy2 < 1e-10 and v00 + vff < 1e-10)
+            const auto s = lqmt_scalars(nc, ud0, uf, udf);
+            if (s.trivial())
             {
                 out.T = 0.F;
                 out.cost = 0.F;
@@ -860,23 +939,16 @@ namespace vamp::planning::constraint
                 return EdgeStatus::Valid;
             }
 
-            const auto sol =
-                flask::solve_scalars(v00, v0f, vff, dyv0, dyvf, dy2, static_cast<double>(ZRobot::rho));
+            const auto sol = flask::solve_scalars(
+                s.v00, s.v0f, s.vff, s.dyv0, s.dyvf, s.dy2, static_cast<double>(ZRobot::rho));
             const float T = sol.time;
             if (not (T > 0.F) or not std::isfinite(sol.cost))
             {
                 return EdgeStatus::Invalid;
             }
 
-            // Cubic coefficients u(t) = a3 t^3 + a2 t^2 + ud0 t (u(0) = 0)
             std::array<float, d> a3{}, a2{};
-            for (auto c = 0U; c < nc; ++c)
-            {
-                const float d1 = uf[c] - T * ud0[c];
-                const float d2 = udf[c] - ud0[c];
-                a3[c] = (-2.F * d1 + T * d2) / (T * T * T);
-                a2[c] = (3.F * d1 - T * d2) / (T * T);
-            }
+            cubic_coefficients(nc, ud0, uf, udf, T, a3, a2);
 
             const auto terminal_v = [&](std::array<float, d> &v_out)
             {
@@ -896,21 +968,9 @@ namespace vamp::planning::constraint
             // Cost-gate on the candidate frontier before paying for batch validation.
             if constexpr (not std::is_same_v<std::decay_t<Gate>, AlwaysTrue>)
             {
-                if (not have_pre)
+                if (not have_pre and not lift_point(chart_point(chart, uf), q_pre))
                 {
-                    auto q_amb = q0;
-                    for (auto c = 0U; c < nc; ++c)
-                    {
-                        for (auto j = 0U; j < d; ++j)
-                        {
-                            q_amb[j] += chart.basis[c][j] * uf[c];
-                        }
-                    }
-
-                    if (not lift_point(q_amb, q_pre))
-                    {
-                        return EdgeStatus::Invalid;
-                    }
+                    return EdgeStatus::Invalid;
                 }
 
                 std::array<float, d> v_pre;
@@ -922,8 +982,8 @@ namespace vamp::planning::constraint
             }
 
             // Time samples: chart path-length heuristic at the collision resolution
-            const float L =
-                static_cast<float>(std::sqrt(dy2) + 0.25 * T * (std::sqrt(v00) + std::sqrt(vff)));
+            const float L = static_cast<float>(
+                std::sqrt(s.dy2) + 0.25 * T * (std::sqrt(s.v00) + std::sqrt(s.vff)));
             std::size_t n_total = static_cast<std::size_t>(
                 std::max(std::ceil(L * static_cast<float>(resolution)), static_cast<float>(rake)));
             n_total = std::min(n_total, std::max(settings.max_edge_samples, rake));
@@ -1063,13 +1123,20 @@ namespace vamp::planning::constraint
                     }
                 }
 
+                ZBlock zblock(zarr);
+
+                // Phase gates on the execution-frame samples: every lane's velocity rows
+                // are already tangent-projected at their own lifted points above, so the
+                // gates judge the executed velocities. One batched kernel evaluation
+                // serves all lanes.
+                if (not phase_constraints.empty() and not phase_constraints.satisfied_block(zblock))
+                {
+                    return EdgeStatus::Invalid;
+                }
+
                 // Fused z-robot check: position/velocity bounds, RNEA torque limits, and
                 // sphere collision in one pass over the (y, yd, ydd) block.
-                ZBlock zblock(zarr);
-                const bool valid = (environment.attachments) ?
-                                       ZRobot::template fkcc_attach<rake>(environment, zblock) :
-                                       ZRobot::template fkcc<rake>(environment, zblock);
-                if (not valid)
+                if (not fkcc_block<ZRobot, rake>(environment, zblock))
                 {
                     return EdgeStatus::Invalid;
                 }

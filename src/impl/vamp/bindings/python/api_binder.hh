@@ -25,58 +25,64 @@ namespace vamp::binding
     namespace vp_ = vamp::planning;
     using namespace nb_::literals;
 
+    // Every planner entry point is a single-goal/multi-goal overload pair on the same
+    // name, sharing the leading arguments and docstring; the family-specific trailing
+    // nanobind args (constraints etc.) select the overload family.
+    template <typename Target, typename Single, typename Multi, typename... Extra>
+    inline void register_planner_pair(
+        Target &t,
+        const char *name,
+        const std::string &doc,
+        Single single,
+        Multi multi,
+        const Extra &...extra)
+    {
+        t.def(
+            name,
+            single,
+            "start"_a,
+            "goal"_a,
+            "environment"_a,
+            "settings"_a,
+            "sampler"_a,
+            extra...,
+            doc.c_str());
+        t.def(
+            name,
+            multi,
+            "start"_a,
+            "goal"_a,
+            "environment"_a,
+            "settings"_a,
+            "sampler"_a,
+            extra...,
+            doc.c_str());
+    }
+
     template <typename Traits, vp_::Planner P, typename Settings, typename Target>
     inline void register_planner(Target &t, const char *name)
     {
-        const auto doc = std::string("Plan using ") + name + ".";
-        t.def(
+        register_planner_pair(
+            t,
             name,
+            std::string("Plan using ") + name + ".",
             &Traits::template solve_single<P, Settings>,
-            "start"_a,
-            "goal"_a,
-            "environment"_a,
-            "settings"_a,
-            "sampler"_a,
-            doc.c_str());
-        t.def(
-            name,
-            &Traits::template solve_multi<P, Settings>,
-            "start"_a,
-            "goal"_a,
-            "environment"_a,
-            "settings"_a,
-            "sampler"_a,
-            doc.c_str());
+            &Traits::template solve_multi<P, Settings>);
     }
 
     template <typename Traits, vp_::Planner P, typename Settings, typename Target>
     inline void register_constrained_planner(Target &t, const char *name)
     {
-        const auto doc =
-            std::string("Plan using ") + name + " subject to manifold constraints. Raises " +
-            "ValueError if the start or a goal violates the constraints; project them first.";
-        t.def(
+        register_planner_pair(
+            t,
             name,
+            std::string("Plan using ") + name +
+                " subject to manifold constraints. Raises ValueError if the start or a goal "
+                "violates the constraints; project them first.",
             &Traits::template solve_single_constrained<P, Settings>,
-            "start"_a,
-            "goal"_a,
-            "environment"_a,
-            "settings"_a,
-            "sampler"_a,
-            "constraints"_a,
-            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
-            doc.c_str());
-        t.def(
-            name,
             &Traits::template solve_multi_constrained<P, Settings>,
-            "start"_a,
-            "goal"_a,
-            "environment"_a,
-            "settings"_a,
-            "sampler"_a,
             "constraints"_a,
-            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
-            doc.c_str());
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{});
     }
 
     // Constraint-aware overloads on the same entry points as the unconstrained API: the
@@ -119,40 +125,73 @@ namespace vamp::binding
     }
 
     template <typename Traits, vp_::Planner P, typename Settings, typename Target>
+    inline void register_phase_planner(Target &t, const char *name)
+    {
+        register_planner_pair(
+            t,
+            name,
+            std::string("Plan using ") + name +
+                " subject to phase (state-velocity) gates. Raises ValueError if the start or a "
+                "goal violates the gates; scale their velocities by velocity_scale() first.",
+            &Traits::template solve_single_phase<P, Settings>,
+            &Traits::template solve_multi_phase<P, Settings>,
+            "phase_constraints"_a);
+    }
+
+    // Phase-gated overloads on the same entry points as the unconstrained API: the extra
+    // required `phase_constraints` argument selects them. PRM and FCIT do not use the local
+    // planner, so they have no phase-gated form.
+    template <typename Traits, typename Target>
+    inline void bind_phase_methods(Target &t)
+    {
+        t.def(
+            "satisfied",
+            &Traits::phase_satisfied,
+            "state"_a,
+            "phase_constraints"_a,
+            "Whether a (q, qdot) state satisfies every phase gate.");
+        t.def(
+            "velocity_scale",
+            &Traits::phase_velocity_scale,
+            "state"_a,
+            "phase_constraints"_a,
+            "Largest s in (0, 1] such that scaling the state's velocity half by s satisfies "
+            "every phase gate; exactly 1 on feasible states.");
+        t.def(
+            "simplify",
+            &Traits::simplify_phase,
+            "path"_a,
+            "environment"_a,
+            "settings"_a,
+            "sampler"_a,
+            "phase_constraints"_a,
+            "Simplification heuristics with every validated motion gated by the phase "
+            "constraints. Raises ValueError if any path state violates the gates.");
+
+        register_phase_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
+        register_phase_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");
+        register_phase_planner<Traits, vp_::Planner::GRRTSTAR, vp_::GRRTStarSettings>(t, "grrtstar");
+    }
+
+    template <typename Traits, vp_::Planner P, typename Settings, typename Target>
     inline void register_chart_planner(Target &t, const char *name)
     {
-        const auto doc =
-            std::string("Plan using ") + name + " on the constraint manifold via chart-local " +
-            "time-optimal steering. States are (q, qdot) over the ambient robot; constraints " +
-            "come from the ambient robot's submodule. Raises ValueError if the start or a goal " +
-            "violates the constraints; project them first with project(). Goal attainment is " +
-            "slab-aware: an edge reaches its target when position is within " +
-            "chart_settings.reached_pos_tol and velocity within reached_vel_tol scaled by " +
-            "(1 + target speed).";
-        t.def(
+        register_planner_pair(
+            t,
             name,
+            std::string("Plan using ") + name +
+                " on the constraint manifold via chart-local time-optimal steering. States are "
+                "(q, qdot) over the ambient robot; constraints come from the ambient robot's "
+                "submodule. Raises ValueError if the start or a goal violates the constraints; "
+                "project them first with project(). Goal attainment is slab-aware: an edge "
+                "reaches its target when position is within chart_settings.reached_pos_tol and "
+                "velocity within reached_vel_tol scaled by (1 + target speed).",
             &Traits::template solve_single_chart<P, Settings>,
-            "start"_a,
-            "goal"_a,
-            "environment"_a,
-            "settings"_a,
-            "sampler"_a,
-            "constraints"_a,
-            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
-            "chart_settings"_a = vamp::planning::constraint::ChartSettings{},
-            doc.c_str());
-        t.def(
-            name,
             &Traits::template solve_multi_chart<P, Settings>,
-            "start"_a,
-            "goal"_a,
-            "environment"_a,
-            "settings"_a,
-            "sampler"_a,
             "constraints"_a,
             "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "chart_settings"_a = vamp::planning::constraint::ChartSettings{},
-            doc.c_str());
+            "phase_constraints"_a = typename Traits::PhaseConstraintVec{});
     }
 
     // Chart-constrained overloads on the same entry points as the unconstrained z-robot
@@ -168,16 +207,20 @@ namespace vamp::binding
             "constraints"_a,
             "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "chart_settings"_a = vamp::planning::constraint::ChartSettings{},
+            "phase_constraints"_a = typename Traits::PhaseConstraintVec{},
             "Project a (q, qdot) state onto the constraint manifold: position by constraint "
-            "projection, velocity into the tangent space at the projected position. Raises "
-            "ValueError if the projection does not converge.");
+            "projection, velocity into the tangent space at the projected position (then "
+            "scaled to satisfy any phase gates). Raises ValueError if the projection does "
+            "not converge.");
         t.def(
             "satisfied",
             &Traits::chart_satisfied,
             "state"_a,
             "constraints"_a,
             "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
-            "Whether a state's position satisfies every constraint within tolerance.");
+            "phase_constraints"_a = typename Traits::PhaseConstraintVec{},
+            "Whether a state's position satisfies every constraint within tolerance and its "
+            "velocity every phase gate.");
         t.def(
             "simplify",
             &Traits::simplify_chart,
@@ -188,6 +231,7 @@ namespace vamp::binding
             "constraints"_a,
             "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "chart_settings"_a = vamp::planning::constraint::ChartSettings{},
+            "phase_constraints"_a = typename Traits::PhaseConstraintVec{},
             "Simplification heuristics restricted to the constraint manifold. Raises ValueError "
             "if any path state violates the constraints.");
         t.def(

@@ -196,7 +196,7 @@ namespace vamp::planning::constraint
                 next_block[j] = next.broadcast(j);
             }
 
-            if (not fkcc(next_block, e))
+            if (not fkcc_block<Robot, rake>(e, next_block))
             {
                 return {SteerStatus::Trapped, chain_};
             }
@@ -235,12 +235,6 @@ namespace vamp::planning::constraint
 
     private:
         mutable std::vector<Configuration> chain_;
-
-        inline static auto fkcc(const Block &block, const Environment &e) noexcept -> bool
-        {
-            return (e.attachments) ? Robot::template fkcc_attach<rake>(e, block) :
-                                     Robot::template fkcc<rake>(e, block);
-        }
 
         // Trace the constrained local path a -> b: project the rake-lane discretization of
         // the chord onto the manifold, require continuity (adjacent lanes within twice the
@@ -296,7 +290,7 @@ namespace vamp::planning::constraint
                 max_gap2 = std::max(max_gap2, gap2);
             }
 
-            if (not fkcc(block, e))
+            if (not fkcc_block<Robot, rake>(e, block))
             {
                 return false;
             }
@@ -349,7 +343,7 @@ namespace vamp::planning::constraint
                     return false;
                 }
 
-                if (not fkcc(projected, e))
+                if (not fkcc_block<Robot, rake>(e, projected))
                 {
                     return false;
                 }

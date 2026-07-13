@@ -130,35 +130,7 @@ namespace vamp::planning::constraint
                 return true;
             }
 
-            const auto tolerance = Row::fill(settings_.tolerance);
-            const auto stall = Row::fill(stall_epsilon2);
-            const auto threshold = Row::fill(4.F * max_distance * max_distance);
-            const auto start = q;
-            Block prev;
-
-            auto dist = squared_error(q);
-            for (std::size_t i = 0;
-                 i < settings_.max_iterations and not dist.test_all_less_equal(tolerance);
-                 ++i)
-            {
-                prev = q;
-                step_in_place(q);
-                dist = squared_error(q);
-
-                const auto step_dist = squared_distance(q, prev);
-                if (step_dist.test_all_less_equal(stall))
-                {
-                    break;
-                }
-
-                if (step_dist.test_any_greater_equal(threshold) or
-                    squared_distance(q, start).test_any_greater_equal(threshold))
-                {
-                    break;
-                }
-            }
-
-            return dist.test_all_less_equal(tolerance);
+            return descend<true>(q, max_distance).test_all_less_equal(Row::fill(settings_.tolerance));
         }
 
         // Project lanes of q until any lane lands on the manifold. Returns the first
@@ -171,42 +143,12 @@ namespace vamp::planning::constraint
                 return 0;
             }
 
-            const auto tolerance = Row::fill(settings_.tolerance);
-            const auto stall = Row::fill(stall_epsilon2);
-            const auto threshold = Row::fill(4.F * max_distance * max_distance + 1e-6F);
-            const auto start = q;
-            Block prev;
-
-            auto dist = squared_error(q);
-            for (std::size_t i = 0;
-                 i < settings_.max_iterations and not dist.test_any_less_equal(tolerance);
-                 ++i)
+            const auto dist = descend<false>(q, max_distance);
+            for (auto lane = 0U; lane < rake; ++lane)
             {
-                prev = q;
-                step_in_place(q);
-                dist = squared_error(q);
-
-                const auto step_dist = squared_distance(q, prev);
-                if (step_dist.test_all_less_equal(stall))  // all lanes stalled
+                if (dist[{0, lane}] <= settings_.tolerance)
                 {
-                    break;
-                }
-
-                if (step_dist.test_all_greater_equal(threshold) or
-                    squared_distance(q, start).test_all_greater_equal(threshold))
-                {
-                    break;
-                }
-            }
-
-            if (dist.test_any_less_equal(tolerance))
-            {
-                for (auto lane = 0U; lane < rake; ++lane)
-                {
-                    if (dist[{0, lane}] <= settings_.tolerance)
-                    {
-                        return static_cast<int>(lane);
-                    }
+                    return static_cast<int>(lane);
                 }
             }
 
@@ -279,6 +221,74 @@ namespace vamp::planning::constraint
             {
                 block[i] = q.broadcast(i);
             }
+        }
+
+        // Shared descent loop of project_all()/project_any(), returning the final per-lane
+        // squared errors. Iterates until the convergence test passes (`all` lanes vs. any
+        // lane within tolerance), every lane stalls, or the drift guard trips -- any lane
+        // for all-mode (one runaway lane already fails it), every lane for any-mode (one
+        // live lane may still converge; its threshold is padded so the tiny step lengths
+        // steer passes as max_distance don't trip the guard on the first iteration).
+        template <bool all>
+        auto descend(Block &q, float max_distance) const noexcept -> Row
+        {
+            const auto tolerance = Row::fill(settings_.tolerance);
+            const auto stall = Row::fill(stall_epsilon2);
+
+            float threshold2 = 4.F * max_distance * max_distance;
+            if constexpr (not all)
+            {
+                threshold2 += 1e-6F;
+            }
+            const auto threshold = Row::fill(threshold2);
+
+            const auto converged = [&tolerance](const Row &d)
+            {
+                if constexpr (all)
+                {
+                    return d.test_all_less_equal(tolerance);
+                }
+                else
+                {
+                    return d.test_any_less_equal(tolerance);
+                }
+            };
+
+            const auto drifted = [&threshold](const Row &d2)
+            {
+                if constexpr (all)
+                {
+                    return d2.test_any_greater_equal(threshold);
+                }
+                else
+                {
+                    return d2.test_all_greater_equal(threshold);
+                }
+            };
+
+            const auto start = q;
+            Block prev;
+
+            auto dist = squared_error(q);
+            for (std::size_t i = 0; i < settings_.max_iterations and not converged(dist); ++i)
+            {
+                prev = q;
+                step_in_place(q);
+                dist = squared_error(q);
+
+                const auto step_dist = squared_distance(q, prev);
+                if (step_dist.test_all_less_equal(stall))  // every lane stalled
+                {
+                    break;
+                }
+
+                if (drifted(step_dist) or drifted(squared_distance(q, start)))
+                {
+                    break;
+                }
+            }
+
+            return dist;
         }
 
         std::vector<Ptr> constraints_;

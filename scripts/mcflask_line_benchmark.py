@@ -29,6 +29,7 @@ import time
 import numpy as np
 
 import vamp
+from vamp import flask
 
 LINES = [(0.0, 0.35), (0.25, 0.5), (-0.2, 0.45)]  # (y0, z0), line along world x
 N_PAIRS = 4
@@ -37,6 +38,14 @@ N_RUNS = 10
 LINE_CLEARANCE = 0.22
 OBS_RADIUS = 0.12
 SEED = 17
+
+# Phase-capped configuration: one set of caps for the phase-gated chart runs. The gates
+# bound execution-frame kinetic energy and EEF linear speed; enforcement is at the
+# planner's validation samples, so uniformly-resampled lift samples may peak slightly
+# between them.
+KE_CAP = 1.0  # joules
+EE_SPEED_CAP = 0.5  # m/s
+PHASE_RATIO_TOL = 1.05
 
 
 def make_line_constraint(pa, y0, z0):
@@ -71,21 +80,22 @@ def line_point_distance(p, y0, z0):
     return float(np.hypot(p[1] - y0, p[2] - z0))
 
 
-def rest_state(q):
-    return np.concatenate([q, np.zeros_like(q)]).astype(np.float32)
-
-
 def lift_path(pf, path, constraints, chs, pos_tol):
     """Lift every edge of a z-path; per edge pick the direction whose endpoints match.
 
     Goal-tree edges live in the chart of their far endpoint, so a forward lift from
     path[i] may not reconstruct them; the backward lift from path[i+1] does.
-    Returns (max hinged error, max |v| per joint, total duration, n samples).
+    Lifted samples carry execution-frame velocities, so the kinetic energy and
+    end-effector speed measured on them are the execution-frame quantities the phase
+    gates bound. Returns (max hinged error, max |v| per joint, total duration,
+    n samples, max kinetic energy, max EEF speed).
     """
     max_err = 0.0
     vmax_seen = None
     total_T = 0.0
     n_total = 0
+    max_ke = 0.0
+    max_ee = 0.0
     for i in range(len(path) - 1):
         a = np.asarray(path[i])
         b = np.asarray(path[i + 1])
@@ -109,7 +119,11 @@ def lift_path(pf, path, constraints, chs, pos_tol):
         vmax_seen = vm if vmax_seen is None else np.maximum(vmax_seen, vm)
         total_T += float(T)
         n_total += len(states)
-    return max_err, vmax_seen, total_T, n_total
+        for st in states:
+            sa = np.array(st, dtype=np.float32)
+            max_ke = max(max_ke, float(pf.kinetic_energy(sa)))
+            max_ee = max(max_ee, flask.max_eef_speed(pf, sa))
+    return max_err, vmax_seen, total_T, n_total, max_ke, max_ee
 
 
 def main():
@@ -125,6 +139,8 @@ def main():
 
     chs = vamp.ChartSettings()
     chs.eps_chart = 0.5
+
+    phase_gates = flask.phase_constraints(pf, KE_CAP, EE_SPEED_CAP)
 
     gsettings = vamp.RRTCSettings()
     gsettings.range = 0.5
@@ -166,7 +182,7 @@ def main():
                 pairs.append((qs, qg))
 
         for pair_idx, (qs, qg) in enumerate(pairs):
-            zs, zg = rest_state(qs), rest_state(qg)
+            zs, zg = flask.rest_state(qs), flask.rest_state(qg)
             for n_obs in OBSTACLE_LEVELS:
                 env = vamp.Environment()
                 added = 0
@@ -202,15 +218,43 @@ def main():
                 if best is not None:
                     lifted = lift_path(pf, best.path, constraints, chs, chs.reached_pos_tol)
                     if lifted is not None:
-                        max_err, vmax_seen, total_T, n_samp = lifted
+                        max_err, vmax_seen, total_T, n_samp, max_ke, max_ee = lifted
                         row["chart_duration_s"] = total_T
                         row["chart_segments"] = len(best.path) - 1
                         row["chart_max_constraint_dist2"] = max_err * max_err
                         row["chart_max_vel_ratio"] = float((vmax_seen / vlim).max())
+                        row["chart_max_ke"] = max_ke
+                        row["chart_max_ee_speed"] = max_ee
                         row["chart_goal_err"] = float(
                             np.linalg.norm(np.asarray(best.path[len(best.path) - 1])[:7] - qg))
                     else:
                         row["chart_lift_failed"] = True
+
+                # --- chart-LQMT with phase gates (capped config) ---
+                times, succ = [], 0
+                best = None
+                for k in range(N_RUNS):
+                    sampler = pf.halton()
+                    sampler.skip(7919 * k)
+                    res = pf.rrtc(
+                        zs, zg, env, settings, sampler, constraints,
+                        chart_settings=chs, phase_constraints=phase_gates)
+                    if res.solved:
+                        succ += 1
+                        times.append(res.nanoseconds / 1e6)
+                        if best is None or len(res.path) < len(best.path):
+                            best = res
+                row["phase_success"] = succ / N_RUNS
+                row["phase_ms_median"] = float(np.median(times)) if times else None
+                if best is not None:
+                    lifted = lift_path(pf, best.path, constraints, chs, chs.reached_pos_tol)
+                    if lifted is not None:
+                        _, _, total_T, _, max_ke, max_ee = lifted
+                        row["phase_duration_s"] = total_T
+                        row["phase_max_ke_ratio"] = max_ke / KE_CAP
+                        row["phase_max_ee_ratio"] = max_ee / EE_SPEED_CAP
+                    else:
+                        row["phase_lift_failed"] = True
 
                 # --- geometric constrained RRTC baseline ---
                 times, succ = [], 0
@@ -237,6 +281,9 @@ def main():
                     f"{row.get('chart_ms_median') or float('nan'):8.2f}ms "
                     f"dur {row.get('chart_duration_s', float('nan')):6.2f}s "
                     f"cdist2 {row.get('chart_max_constraint_dist2', float('nan')):.2e} | "
+                    f"phase {row['phase_success']:.0%} "
+                    f"ke {row.get('phase_max_ke_ratio', float('nan')):.2f} "
+                    f"ee {row.get('phase_max_ee_ratio', float('nan')):.2f} | "
                     f"geo {row['geo_success']:.0%} "
                     f"{row.get('geo_ms_median') or float('nan'):8.2f}ms",
                     flush=True,
@@ -278,6 +325,26 @@ def main():
     print(f"lift recon: {lift_fail} paths failed edge reconstruction "
           f"{'OK' if lift_fail == 0 else 'FAIL'}")
     print(f"vel ratio:  max {max(vr):.2f} {'OK' if vr and max(vr) <= 1.0 else 'FAIL'}")
+
+    # phase-gated verdicts (capped config); uncapped maxima reported for cap tuning
+    uncapped_ke = [r["chart_max_ke"] for r in results if "chart_max_ke" in r]
+    uncapped_ee = [r["chart_max_ee_speed"] for r in results if "chart_max_ee_speed" in r]
+    p_succ = np.mean([r["phase_success"] for r in results])
+    p_med = np.median([r["phase_ms_median"] for r in results if r["phase_ms_median"]])
+    p_ke = [r["phase_max_ke_ratio"] for r in results if "phase_max_ke_ratio" in r]
+    p_ee = [r["phase_max_ee_ratio"] for r in results if "phase_max_ee_ratio" in r]
+    p_lift_fail = sum(1 for r in results if r.get("phase_lift_failed"))
+    print(f"\n=== PHASE GATES (KE cap {KE_CAP} J, EEF speed cap {EE_SPEED_CAP} m/s) ===")
+    print(f"uncapped:   max KE {max(uncapped_ke):.2f} J median {np.median(uncapped_ke):.2f} J | "
+          f"max EEF {max(uncapped_ee):.2f} m/s median {np.median(uncapped_ee):.2f} m/s")
+    print(f"success:    {p_succ:.1%} {'OK' if p_succ >= 0.92 else 'FAIL'}")
+    print(f"median:     {p_med:.2f} ms {'OK' if p_med <= 5.0 else 'FAIL'}")
+    print(f"KE ratio:   max {max(p_ke):.3f} "
+          f"{'OK' if p_ke and max(p_ke) <= PHASE_RATIO_TOL else 'FAIL'}")
+    print(f"EEF ratio:  max {max(p_ee):.3f} "
+          f"{'OK' if p_ee and max(p_ee) <= PHASE_RATIO_TOL else 'FAIL'}")
+    print(f"lift recon: {p_lift_fail} phase paths failed edge reconstruction "
+          f"{'OK' if p_lift_fail == 0 else 'FAIL'}")
 
 
 if __name__ == "__main__":

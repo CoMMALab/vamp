@@ -1,6 +1,9 @@
 #pragma once
 
+#include <array>
+
 #include <vamp/planning/constraints/settings.hh>
+#include <vamp/planning/constraints/utils.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning::constraint
@@ -60,6 +63,126 @@ namespace vamp::planning::constraint
         {
             evaluate_error_jacobian(q);
             extract_error_jacobian(lane, err, jac);
+        }
+    };
+
+    // Output layout of the generated error kernels and input layout of the generated
+    // solvers: the Jacobian d(err)/dq (row-major), then the error.
+    template <std::size_t rake, std::size_t err_size, std::size_t jac_size>
+    struct SolveBuffer
+    {
+        FloatVector<rake, jac_size> jac;
+        FloatVector<rake, err_size> err;
+
+        auto operator[](std::size_t index) noexcept -> FloatVector<rake, 1> &
+        {
+            return (index < jac_size) ? jac[index] : err[index - jac_size];
+        }
+
+        auto operator[](std::size_t index) const noexcept -> FloatVector<rake, 1>
+        {
+            return (index < jac_size) ? jac[index] : err[index - jac_size];
+        }
+    };
+
+    // Shared machinery of bounded task-space (TSR-style) constraints, whose rows are pose
+    // errors hinged against [lb, ub] bounds. The derived constraint supplies, as private
+    // members visible through `friend Base`:
+    //   - a mutable `input` with the generated kernel's operator[] layout, holding `q` and
+    //     per-row `lb`/`ub` bound rows (filled, with `tight_rows`, by its constructor);
+    //   - run_kernel(): evaluate the error/Jacobian kernel of `input` into `solve`;
+    //   - solve_step(gradient, method): dispatch to the generated projection solvers.
+    template <typename Derived, typename Robot, std::size_t rake, std::size_t err_size_>
+    struct HingedTSRConstraint : Constraint<Robot, rake>
+    {
+        using Block = typename Robot::template ConfigurationBlock<rake>;
+        using Row = FloatVector<rake, 1>;
+
+        static constexpr std::size_t err_size = err_size_;
+        static constexpr std::size_t jac_size = err_size * Robot::dimension;
+
+        auto squared_error(const Block &q) const noexcept -> Row final
+        {
+            derived().input.q = q;
+            derived().run_kernel();
+
+            for (auto i = 0U; i < err_size; ++i)
+            {
+                solve.err[i] = (solve.err[i] - derived().input.lb[i]).min(0.F) +
+                               (solve.err[i] - derived().input.ub[i]).max(0.F);
+
+                // The hinge is flat inside the bounds, so satisfied rows must drop out of
+                // the Jacobian too: keeping them turns the LM solve's zero-residual rows
+                // into "hold this pose value" equality constraints that block projection.
+                const auto active = solve.err[i] != 0.F;
+                for (auto j = 0U; j < Robot::dimension; ++j)
+                {
+                    solve.jac[i * Robot::dimension + j] =
+                        active & solve.jac[i * Robot::dimension + j];
+                }
+            }
+
+            auto d = solve.err[0] * solve.err[0];
+            for (auto i = 1U; i < err_size; ++i)
+            {
+                d = d + solve.err[i] * solve.err[i];
+            }
+
+            return d;
+        }
+
+        void step(Block &q, ProjMethod method, float alpha) const noexcept final
+        {
+            Block gradient;
+            derived().solve_step(gradient, method);
+            integrate_step<Robot, rake>(q, gradient, alpha);
+        }
+
+        auto n_rows() const noexcept -> std::size_t final
+        {
+            return err_size;
+        }
+
+        void active_rows(bool *rows) const noexcept final
+        {
+            for (auto i = 0U; i < err_size; ++i)
+            {
+                rows[i] = tight_rows[i];
+            }
+        }
+
+        void evaluate_error_jacobian(const Block &q) const noexcept final
+        {
+            derived().input.q = q;
+            derived().run_kernel();
+        }
+
+        void extract_error_jacobian(std::size_t lane, float *err, float *jac)
+            const noexcept final
+        {
+            for (auto i = 0U; i < err_size; ++i)
+            {
+                // Same SIMD min/max hinge as squared_error: NaN from the log map at
+                // exactly-satisfied orientations masks to zero.
+                const auto hinged = (solve.err[i] - derived().input.lb[i]).min(0.F) +
+                                    (solve.err[i] - derived().input.ub[i]).max(0.F);
+                err[i] = hinged[{0, lane}];
+            }
+
+            for (auto i = 0U; i < jac_size; ++i)
+            {
+                jac[i] = solve.jac[{i, lane}];
+            }
+        }
+
+    protected:
+        mutable SolveBuffer<rake, err_size, jac_size> solve;
+        std::array<bool, err_size> tight_rows{};
+
+    private:
+        auto derived() const noexcept -> const Derived &
+        {
+            return static_cast<const Derived &>(*this);
         }
     };
 }  // namespace vamp::planning::constraint

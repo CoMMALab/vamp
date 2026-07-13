@@ -143,9 +143,9 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
     simp_settings = SimplifySettings()
     if robot_name.endswith(".flask"):
         # Two rounds of BSPLINE -> VELOPT -> REDUCE. Each round subdivides, tunes the new
-        # midpoints' velocities against C_loc, then removes redundant vertices. Empirically
-        # wins on panda cage rho=64 (C_loc 240.5 vs 253 for one round; 3+ rounds show
-        # diminishing returns). Front SHORTCUT gets ~3% cheap cleanup up front.
+        # midpoints' velocities against C_loc, then removes redundant vertices. Front
+        # SHORTCUT gets ~3% cheap cleanup up front. Trailing PERTURB halves densified
+        # collision risk (3.0% -> 1.4% on full MBM) at -0.2% cost and +4% time.
         simp_settings.operations = [
             SimplifyRoutine.SHORTCUT,
             SimplifyRoutine.BSPLINE,
@@ -154,6 +154,7 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
             SimplifyRoutine.BSPLINE,
             SimplifyRoutine.VELOPT,
             SimplifyRoutine.REDUCE,
+            SimplifyRoutine.PERTURB,
         ]
 
     for k, v in kwargs.items():
@@ -166,7 +167,7 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
 
                 setattr(simp_settings, sk, v)
 
-        subs = ["reduce", "shortcut", "bspline", "perturb"]
+        subs = ["reduce", "shortcut", "bspline", "perturb", "velopt"]
         for sub in subs:
             if sub not in k:
                 continue

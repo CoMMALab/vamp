@@ -11,6 +11,20 @@ from typing import Any, List, Optional, Tuple
 import numpy as np
 from numpy.typing import NDArray
 
+from ._core import SimplifyRoutine
+
+# Simplify schedule for retiming lifted geometric paths. Lifted paths are dense
+# rest-state chains, so a second BSPLINE round before VELOPT beats the direct
+# default: on full MBM it matches its cost while cutting densified collision
+# risk (1.9% vs 4.6%) and time (see 2026-07 sweep).
+RETIME_OPERATIONS = [
+    SimplifyRoutine.SHORTCUT,
+    SimplifyRoutine.BSPLINE,
+    SimplifyRoutine.BSPLINE,
+    SimplifyRoutine.VELOPT,
+    SimplifyRoutine.REDUCE,
+]
+
 
 def rest_state(q: Any) -> NDArray[np.float32]:
     """Lift a configuration q to the rest flat state z = (q, 0)."""
@@ -129,6 +143,39 @@ def densify(
         np.array(qdds, dtype=np.float64),
         np.array(taus, dtype=np.float64),
     )
+
+
+def jerk_metrics(robot_module: Any, path: Any) -> Tuple[float, float, float]:
+    """Jerk statistics of a flask path's cubic trajectory.
+
+    Each LQMT cubic has constant jerk (qdd is linear in t) and acceleration is
+    discontinuous at interior waypoints (impulsive jerk). Returns
+    (max_jerk, rms_jerk, max_accel_jump): largest per-joint |jerk| (rad/s^3),
+    time-weighted RMS of the jerk vector norm, and largest per-joint
+    acceleration discontinuity at a junction (rad/s^2).
+    """
+    waypoints = [np.asarray(path[i], dtype=np.float32) for i in range(len(path))]
+    if len(waypoints) < 2:
+        raise ValueError("path must have at least two waypoints")
+
+    max_jerk = 0.0
+    rms_num = 0.0
+    total_time = 0.0
+    max_jump = 0.0
+    previous_end_qdd = None
+    for a, b in zip(waypoints[:-1], waypoints[1:]):
+        T = robot_module.optimal_time(a, b)
+        _, _, qdd0 = robot_module.eval(a, b, T, 0.0)
+        _, _, qdd1 = robot_module.eval(a, b, T, 1.0)
+        jerk = (np.asarray(qdd1) - np.asarray(qdd0)) / T
+        max_jerk = max(max_jerk, float(np.max(np.abs(jerk))))
+        rms_num += T * float(np.dot(jerk, jerk))
+        total_time += T
+        if previous_end_qdd is not None:
+            max_jump = max(max_jump, float(np.max(np.abs(np.asarray(qdd0) - previous_end_qdd))))
+        previous_end_qdd = np.asarray(qdd1)
+
+    return max_jerk, float(np.sqrt(rms_num / total_time)), max_jump
 
 
 def path_length(robot_module: Any, path: Any, samples_per_segment: int = 64) -> float:

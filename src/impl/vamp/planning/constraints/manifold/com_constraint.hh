@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <vector>
 
-#include <vamp/planning/constraints/constraint.hh>
+#include <vamp/planning/constraints/manifold/constraint.hh>
 #include <vamp/planning/constraints/utils.hh>
 #include <vamp/vector.hh>
 

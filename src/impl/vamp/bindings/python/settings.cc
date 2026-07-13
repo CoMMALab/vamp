@@ -1,10 +1,10 @@
 #include <vamp_python_init.hh>
 
 #include <vamp/planning/constraints/settings.hh>
-#include <vamp/planning/roadmap.hh>
-#include <vamp/planning/rrtc_settings.hh>
-#include <vamp/planning/aorrtc_settings.hh>
-#include <vamp/planning/grrtstar_settings.hh>
+#include <vamp/planning/planners/roadmap.hh>
+#include <vamp/planning/planners/rrtc_settings.hh>
+#include <vamp/planning/planners/aorrtc_settings.hh>
+#include <vamp/planning/planners/grrtstar_settings.hh>
 #include <vamp/planning/simplify_settings.hh>
 
 #include <nanobind/stl/vector.h>
@@ -109,7 +109,6 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .value("PERTURB", vp::SimplifyRoutine::PERTURB)
         .value("INTERP", vp::SimplifyRoutine::INTERP)
         .value("VELOPT", vp::SimplifyRoutine::VELOPT)
-        .value("POLISH", vp::SimplifyRoutine::POLISH)
         .export_values();
 
     nb::class_<vp::BSplineSettings>(pymodule, "BSplineSettings")
@@ -139,13 +138,6 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("line_search_max", &vp::VeloptSettings::line_search_max)
         .def_rw("initial_step", &vp::VeloptSettings::initial_step)
         .def_rw("min_improvement", &vp::VeloptSettings::min_improvement);
-
-    nb::class_<vp::PolishSettings>(pymodule, "PolishSettings")
-        .def(nb::init<>())
-        .def_rw("max_steps", &vp::PolishSettings::max_steps)
-        .def_rw("line_search_max", &vp::PolishSettings::line_search_max)
-        .def_rw("initial_step", &vp::PolishSettings::initial_step)
-        .def_rw("min_improvement", &vp::PolishSettings::min_improvement);
 
     nb::enum_<vc::ProjMethod>(pymodule, "ProjMethod")
         .value("InnerLM", vc::ProjMethod::InnerLM)
@@ -180,7 +172,5 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("shortcut", &vp::SimplifySettings::shortcut)
         .def_rw("perturb", &vp::SimplifySettings::perturb)
         .def_rw("bspline", &vp::SimplifySettings::bspline)
-        .def_rw("velopt", &vp::SimplifySettings::velopt)
-        .def_rw("polish", &vp::SimplifySettings::polish)
-        .def_rw("polish_at_end", &vp::SimplifySettings::polish_at_end);
+        .def_rw("velopt", &vp::SimplifySettings::velopt);
 }

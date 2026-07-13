@@ -841,7 +841,7 @@ namespace vamp::binding
             std::vector<Configuration> states;
             std::vector<float> errors;
             float duration = 0.F, cost = 0.F;
-            if (not lp.debug_lift_edge(
+            if (not lp.lift_edge(
                     Input::to(from), Input::to(target), forward, n_samples, states, errors, duration, cost))
             {
                 throw std::invalid_argument(

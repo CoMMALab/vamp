@@ -135,3 +135,31 @@ def path_length(robot_module: Any, path: Any, samples_per_segment: int = 64) -> 
     """Arc length in configuration space (rad) of the cubic path through q."""
     _, q, _, _, _ = densify(robot_module, path, samples_per_segment)
     return float(np.sum(np.linalg.norm(np.diff(q, axis=0), axis=1)))
+
+
+def lift(robot_module: Any, path: Any) -> Any:
+    """Lift a geometric path to a flask Path of rest states z = (q, 0).
+
+    A rest-to-rest LQMT segment is a smooth-step along the straight line, so the
+    lifted path traces the geometric path exactly (stop-at-every-waypoint).
+    Consecutive duplicate configurations are dropped. Retiming is then just the
+    flask robot's simplify: shortcut states sampled along segment interiors carry
+    the cubic's nonzero velocities, so accepted shortcuts (validated at full
+    resolution, scored by the LQMT cost C_loc) blend waypoint stops into flowing
+    motion.
+    """
+    lifted = robot_module.Path()
+    previous = None
+    for i in range(len(path)):
+        q = np.asarray(path[i], dtype=np.float32)
+        if previous is not None and np.array_equal(q, previous):
+            continue
+        lifted.append(rest_state(q))
+        previous = q
+    return lifted
+
+
+def path_cost(robot_module: Any, path: Any) -> float:
+    """Total LQMT cost of a flask path (sum of segment costs C(z_i -> z_{i+1}))."""
+    waypoints = [np.asarray(path[i], dtype=np.float32) for i in range(len(path))]
+    return float(sum(robot_module.cost(a, b) for a, b in zip(waypoints[:-1], waypoints[1:])))

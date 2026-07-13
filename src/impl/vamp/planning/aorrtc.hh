@@ -8,7 +8,6 @@
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/aox_nn.hh>
 #include <vamp/planning/cost.hh>
-#include <vamp/planning/flask_informed.hh>
 #include <vamp/planning/local_planner.hh>
 #include <vamp/planning/phs.hh>
 #include <vamp/planning/plan.hh>
@@ -534,20 +533,13 @@ namespace vamp::planning
                 best_possible_cost = std::min(best_possible_cost, planning::cost<Robot>(start, goal));
             }
 
-            // Informed sampler: PHS (L2) for Euclidean-cost robots; time-informed envelope for
-            // cost robots (flask). Both keyed by the single-goal best_path_cost.
+            // Informed sampler: PHS keyed by the single-goal best_path_cost. Disabled for
+            // cost robots (flask): the L2 spheroid is not admissible for C_loc.
             typename rng::RNG<Robot>::Ptr informed_rng;
             std::function<void(float)> update_informed_bound = [](float) {};
-            if (settings.use_phs and goals.size() == 1)
+            if constexpr (not has_cost_v<Robot>)
             {
-                if constexpr (has_cost_v<Robot>)
-                {
-                    auto flask_rng = std::make_shared<FlaskInformedRNG<Robot>>(start, goals[0], rng);
-                    flask_rng->set_cost_bound(best_path_cost);
-                    informed_rng = flask_rng;
-                    update_informed_bound = [flask_rng](float c) { flask_rng->set_cost_bound(c); };
-                }
-                else
+                if (settings.use_phs and goals.size() == 1)
                 {
                     ProlateHyperspheroid<Robot> phs(start, goals[0]);
                     phs.set_transverse_diameter(best_path_cost);

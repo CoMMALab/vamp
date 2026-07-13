@@ -23,21 +23,13 @@ def main(
     print_failures: bool = False,          # Print out failures and invalid problems
     samples_per_segment: int = 64,         # Trajectory samples per segment for post-hoc checks
     rho: Union[float, None] = None,        # Override the LQMT cost weight rho for this robot
+    sample_energy: Union[float, None] = None,  # Shape sampled kinetic energy to [0, cap] J
     **kwargs,
     ):
 
-    if not robot.endswith(".flask"):
-        raise RuntimeError(f"Robot {robot} is not a flask robot!")
-
     # Ambient geometric parent: shares the URDF/sphere model; used for problems and
     # post-hoc collision checks. The flask robot is its nested submodule.
-    base_robot = robot[:-len(".flask")]
-    if base_robot not in vamp.robots:
-        raise RuntimeError(f"Robot {base_robot} does not exist in VAMP!")
-    geo_module = getattr(vamp, base_robot)
-
-    if rho is not None:
-        geo_module.flask.set_rho(float(rho))
+    base_robot, geo_module = flask.parse_flask_robot(robot, rho)
 
     problems_dir = Path(__file__).parent.parent / 'resources' / base_robot / 'problems'
     with open(problems_dir.parent / dataset, 'rb') as f:
@@ -59,16 +51,12 @@ def main(
     (vamp_module, planner_func, plan_settings,
      simp_settings) = vamp.configure_robot_and_planner_with_kwargs(robot, planner, **kwargs)
 
-    n_q = vamp_module.flat_dimension()
     velocity_limits = np.array(vamp_module.velocity_limits())
     effort_limits = np.array(vamp_module.effort_limits())
 
-    def lift(q):
-        """Lift a configuration q to the rest flat state z = (q, 0)."""
-        return np.concatenate([np.asarray(q, dtype = np.float32),
-                               np.zeros(n_q, dtype = np.float32)])
-
     sampler = getattr(vamp_module, sampler)()
+    if sample_energy is not None:
+        sampler = vamp_module.ke_shaped(sampler, float(sample_energy))
 
     total_problems = 0
     valid_problems = 0
@@ -94,8 +82,8 @@ def main(
 
             env = vamp.problem_dict_to_vamp(data)
 
-            start = lift(data['start'])
-            goals = [lift(goal) for goal in data['goals']]
+            start = flask.rest_state(data['start'])
+            goals = [flask.rest_state(goal) for goal in data['goals']]
 
             sampler.reset()
             sampler.skip(skip_rng_iterations)

@@ -6,10 +6,70 @@ reconstruct the time-parameterized trajectory from a planned path of
 z waypoints using the per-robot bindings (optimal_time, eval, torques).
 """
 
-from typing import Any, Tuple
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
+
+
+def rest_state(q: Any) -> NDArray[np.float32]:
+    """Lift a configuration q to the rest flat state z = (q, 0)."""
+    q = np.asarray(q, dtype=np.float32)
+    return np.concatenate([q, np.zeros_like(q)])
+
+
+def parse_flask_robot(robot: str, rho: Optional[float] = None) -> Tuple[str, Any]:
+    """Resolve a "<base>.flask" robot name to (base name, ambient geometric module).
+
+    The flask robot is a nested submodule of its ambient geometric parent, which
+    shares the URDF/sphere model. Optionally overrides the flask sibling's LQMT
+    cost weight rho.
+    """
+    import vamp
+
+    if not robot.endswith(".flask"):
+        raise RuntimeError(f"Robot {robot} is not a flask robot!")
+
+    base_robot = robot[: -len(".flask")]
+    if base_robot not in vamp.robots:
+        raise RuntimeError(f"Robot {base_robot} does not exist in VAMP!")
+    geo_module = getattr(vamp, base_robot)
+
+    if rho is not None:
+        geo_module.flask.set_rho(float(rho))
+
+    return base_robot, geo_module
+
+
+def phase_constraints(
+    robot_module: Any,
+    max_kinetic_energy: Optional[float] = None,
+    max_eef_speed: Optional[float] = None,
+) -> List[Any]:
+    """Phase gates for the given caps; empty when no cap is given.
+
+    Raises RuntimeError if a cap is requested but the robot was not generated
+    with the corresponding phase-constraint kernel.
+    """
+    gates = []
+    for cap, kernel in (
+        (max_kinetic_energy, "KineticEnergyConstraint"),
+        (max_eef_speed, "EEFSpeedConstraint"),
+    ):
+        if cap is None:
+            continue
+        if not hasattr(robot_module, kernel):
+            raise RuntimeError(f"Robot {robot_module.__name__} has no {kernel} kernel!")
+        gates.append(getattr(robot_module, kernel)(float(cap)))
+
+    return gates
+
+
+def max_eef_speed(robot_module: Any, z: Any) -> float:
+    """Largest per-end-effector linear speed of a flat state z (the quantity the
+    EEF-speed phase gate caps: each end-effector's speed separately)."""
+    v = robot_module.eef_velocity(np.asarray(z, dtype=np.float32))
+    return float(np.linalg.norm(np.reshape(v, (-1, 3)), axis=1).max())
 
 
 def segment_times(robot_module: Any, path: Any) -> NDArray[np.float64]:

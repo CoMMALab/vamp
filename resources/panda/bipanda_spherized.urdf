@@ -618,7 +618,6 @@
 		<child link="left_panda_rightfinger"/>
 		<origin rpy="0 0 0" xyz="0 -0.065 0.0584"/>
 		<axis xyz="0 -1 0"/>
-		<mimic joint="left_panda_finger_joint1"/>
 	</joint>
 	<joint name="left_panda_grasptarget_hand" type="fixed">
 		<parent link="left_panda_hand"/>
@@ -1238,7 +1237,6 @@
 		<child link="right_panda_rightfinger"/>
 		<origin rpy="0 0 0" xyz="0 -0.065 0.0584"/>
 		<axis xyz="0 -1 0"/>
-		<mimic joint="right_panda_finger_joint1"/>
 	</joint>
 	<joint name="right_panda_grasptarget_hand" type="fixed">
 		<parent link="right_panda_hand"/>

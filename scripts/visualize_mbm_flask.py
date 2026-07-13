@@ -21,21 +21,15 @@ def main(
     display_object_names: bool = False,    # Display object names over geometry
     fps: float = 60.0,                     # Animation frames per second of trajectory time
     rho: Union[float, None] = None,        # Override the LQMT cost weight rho for this robot
+    max_kinetic_energy: Union[float, None] = None,    # Phase gate: kinetic energy cap (J)
+    max_eef_speed: Union[float, None] = None,         # Phase gate: end-effector speed cap (m/s)
+    sample_energy: Union[float, None] = None,         # Shape sampled kinetic energy to [0, cap] J
     **kwargs,
     ):
 
-    if not robot.endswith(".flask"):
-        raise RuntimeError(f"Robot {robot} is not a flask robot!")
-
     # Ambient geometric parent: shares the URDF/sphere model; used for problems and
     # state display. The flask robot is its nested submodule.
-    base_robot = robot[:-len(".flask")]
-    if base_robot not in vamp.robots:
-        raise RuntimeError(f"Robot {base_robot} does not exist in VAMP!")
-    geo_module = getattr(vamp, base_robot)
-
-    if rho is not None:
-        geo_module.flask.set_rho(float(rho))
+    base_robot, geo_module = flask.parse_flask_robot(robot, rho)
 
     robot_dir = Path(__file__).parent.parent / 'resources' / base_robot
     with open(robot_dir / dataset, 'rb') as f:
@@ -51,10 +45,8 @@ def main(
     velocity_limits = np.array(vamp_module.velocity_limits())
     effort_limits = np.array(vamp_module.effort_limits())
 
-    def lift(q):
-        """Lift a configuration q to the rest flat state z = (q, 0)."""
-        return np.concatenate([np.asarray(q, dtype = np.float32),
-                               np.zeros(n_q, dtype = np.float32)])
+    phase_constraints = flask.phase_constraints(vamp_module, max_kinetic_energy, max_eef_speed)
+    phase_kwargs = {"phase_constraints": phase_constraints} if phase_constraints else {}
 
     if not problem:
         problem = list(data['problems'].keys())[0]
@@ -78,10 +70,15 @@ Existing problems: {list(data['problems'].keys())}"""
     valid = problem_data['valid']
 
     sampler = getattr(vamp_module, sampler_name)()
+    if sample_energy is not None:
+        sampler = vamp_module.ke_shaped(sampler, float(sample_energy))
     sampler.skip(skip_rng_iterations)
 
     if valid:
-        result = planner_func(lift(start), [lift(goal) for goal in goals], env, plan_settings, sampler)
+        result = planner_func(
+            flask.rest_state(start), [flask.rest_state(goal) for goal in goals],
+            env, plan_settings, sampler, **phase_kwargs
+            )
         solved = result.solved
     else:
         print("Problem is invalid!")
@@ -89,7 +86,7 @@ Existing problems: {list(data['problems'].keys())}"""
 
     if valid and solved:
         print("Solved problem!")
-        simplify = vamp_module.simplify(result.path, env, simp_settings, sampler)
+        simplify = vamp_module.simplify(result.path, env, simp_settings, sampler, **phase_kwargs)
 
         stats = vamp.results_to_dict(result, simplify)
 
@@ -115,6 +112,19 @@ Trajectory Duration: {t[-1]:5.3f}s
  Max Velocity Ratio: {np.max(np.abs(qd) / velocity_limits):5.3f}
    Max Effort Ratio: {np.max(np.abs(tau) / effort_limits):5.3f}"""
             )
+
+        if phase_constraints:
+            # Enforcement is at the planner's validation samples, so densified samples
+            # between them may peak slightly above the caps.
+            zs = np.hstack([q, qd]).astype(np.float32)
+            max_ke = max(float(vamp_module.kinetic_energy(z)) for z in zs)
+            max_ee = max(flask.max_eef_speed(vamp_module, z) for z in zs)
+            ke_cap = f" (cap {max_kinetic_energy:g}J)" if max_kinetic_energy is not None else ""
+            ee_cap = f" (cap {max_eef_speed:g}m/s)" if max_eef_speed is not None else ""
+            print(
+                f" Max Kinetic Energy: {max_ke:5.3f}J{ke_cap}\n"
+                f"      Max EEF Speed: {max_ee:5.3f}m/s{ee_cap}"
+                )
 
         # Resample uniformly in time so playback speed follows the velocity profile
         frames = np.arange(0.0, t[-1], 1.0 / fps)

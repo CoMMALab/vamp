@@ -17,11 +17,16 @@
 #include <vamp/planning/constraints/com_constraint.hh>
 #include <vamp/planning/constraints/constraint.hh>
 #include <vamp/planning/constraints/constraint_set.hh>
+#include <vamp/planning/constraints/eef_speed_constraint.hh>
+#include <vamp/planning/constraints/kinetic_energy_constraint.hh>
 #include <vamp/planning/constraints/local_planner.hh>
+#include <vamp/planning/constraints/phase_constraint.hh>
+#include <vamp/planning/constraints/phase_constraint_set.hh>
 #include <vamp/planning/constraints/settings.hh>
 #include <vamp/planning/constraints/task_space_constraint.hh>
 #include <vamp/planning/fcit.hh>
 #include <vamp/planning/grrtstar.hh>
+#include <vamp/planning/local_planner.hh>
 #include <vamp/planning/phs.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/planner.hh>
@@ -33,6 +38,7 @@
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/random/halton.hh>
+#include <vamp/random/ke_shaped.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
 #include <vamp/vector.hh>
@@ -63,6 +69,8 @@ VAMP_DEFINE_HAS_METHOD(set_radius)
 VAMP_DEFINE_HAS_METHOD(flask)
 VAMP_DEFINE_HAS_METHOD(n_eef)
 VAMP_DEFINE_HAS_METHOD(n_closed_loops)
+VAMP_DEFINE_HAS_METHOD(kinetic_energy)
+VAMP_DEFINE_HAS_METHOD(n_end_effectors)
 
 // Robots with generated center-of-mass kinematics declare `static constexpr bool has_com`.
 template <typename T, typename = void>
@@ -117,62 +125,63 @@ namespace vamp::binding
 
     static constexpr const std::size_t rake = vamp::FloatVectorWidth;
 
-    template <typename Robot>
-    struct NDArrayInput
+    // Conversions shared by the two Python input adapters, written against the derived
+    // adapter's array().
+    template <typename Robot, typename Derived>
+    struct InputOps
     {
-        using Type = nanobind::
-            ndarray<FloatT, nanobind::numpy, nanobind::shape<Robot::dimension>, nanobind::device::cpu>;
-
         using Configuration = typename Robot::Configuration;
         using ConfigurationArray = typename Robot::ConfigurationArray;
         template <std::size_t r>
         using ConfigurationBlock = typename Robot::template ConfigurationBlock<r>;
 
-        inline static auto from(const Configuration &c) -> Type
-        {
-            auto c_arr = c.to_array();
-            return make_ndarray<Type, 1>(c_arr.data(), {Robot::dimension});
-        }
-
+        template <typename Type>
         inline static auto to(const Type &a) -> Configuration
         {
-            return Configuration(array(a));
+            return Configuration(Derived::array(a));
         }
 
-        inline static auto array(const Type &a) -> ConfigurationArray
-        {
-            ConfigurationArray c;
-            std::vector<float> scratch;
-            const auto *ptr = as_flat_1d(a, Robot::dimension, scratch, "configuration");
-            std::memcpy(c.data(), ptr, Robot::dimension * sizeof(float));
-            return c;
-        }
-
-        template <std::size_t r>
+        template <std::size_t r, typename Type>
         inline static auto block(const Type &a) -> ConfigurationBlock<r>
         {
+            const auto &arr = Derived::array(a);
             ConfigurationBlock<r> out;
-            std::vector<float> scratch;
-            const auto *ptr = as_flat_1d(a, Robot::dimension, scratch, "configuration");
             for (auto i = 0U; i < Robot::dimension; ++i)
             {
-                out[i] = ptr[i];
+                out[i] = arr[i];
             }
             return out;
         }
     };
 
     template <typename Robot>
-    struct ArrayInput
+    struct NDArrayInput : InputOps<Robot, NDArrayInput<Robot>>
+    {
+        using Type = nanobind::
+            ndarray<FloatT, nanobind::numpy, nanobind::shape<Robot::dimension>, nanobind::device::cpu>;
+
+        inline static auto from(const typename Robot::Configuration &c) -> Type
+        {
+            auto c_arr = c.to_array();
+            return make_ndarray<Type, 1>(c_arr.data(), {Robot::dimension});
+        }
+
+        inline static auto array(const Type &a) -> typename Robot::ConfigurationArray
+        {
+            typename Robot::ConfigurationArray c;
+            std::vector<float> scratch;
+            const auto *ptr = as_flat_1d(a, Robot::dimension, scratch, "configuration");
+            std::memcpy(c.data(), ptr, Robot::dimension * sizeof(float));
+            return c;
+        }
+    };
+
+    template <typename Robot>
+    struct ArrayInput : InputOps<Robot, ArrayInput<Robot>>
     {
         using Type = typename Robot::ConfigurationArray;
 
-        using Configuration = typename Robot::Configuration;
-        using ConfigurationArray = typename Robot::ConfigurationArray;
-        template <std::size_t r>
-        using ConfigurationBlock = typename Robot::template ConfigurationBlock<r>;
-
-        inline static auto from(const Configuration &c) -> Type
+        inline static auto from(const typename Robot::Configuration &c) -> Type
         {
             Type a;
             auto c_arr = c.to_array();
@@ -183,25 +192,9 @@ namespace vamp::binding
             return a;
         }
 
-        inline static auto to(const Type &a) -> Configuration
-        {
-            return Configuration(a);
-        }
-
-        inline static auto array(const Type &a) -> ConfigurationArray
+        inline static auto array(const Type &a) -> const Type &
         {
             return a;
-        }
-
-        template <std::size_t r>
-        inline static auto block(const Type &a) -> ConfigurationBlock<r>
-        {
-            ConfigurationBlock<r> out;
-            for (auto i = 0U; i < Robot::dimension; ++i)
-            {
-                out[i] = a[i];
-            }
-            return out;
         }
     };
 
@@ -264,6 +257,82 @@ namespace vamp::binding
             return vamp::planning::simplify<Robot, rake, Robot::resolution>(p, EnvVec(env), settings, rng);
         }
 
+        // Shared skeleton of the constrained/phase/chart planner entry points: convert
+        // inputs, enforce per-state feasibility with the family's remedy message, and
+        // dispatch to the local-planner-aware solver. Callers handle their empty-set
+        // fallbacks before building an LP.
+        template <typename LP>
+        static void
+        check_feasible(const LP &lp, const Configuration &q, const char *what, const char *message)
+        {
+            if (not lp.satisfied(q))
+            {
+                throw std::invalid_argument(std::string(what) + message);
+            }
+        }
+
+        template <vamp::planning::Planner P, typename Settings, typename LP>
+        static auto solve_single_lp(
+            const Cfg &start,
+            const Cfg &goal,
+            const Env &env,
+            const Settings &s,
+            std::shared_ptr<Sampler> rng,
+            const LP &lp,
+            const char *message) -> PlanningResult
+        {
+            const auto start_c = Input::to(start);
+            const auto goal_c = Input::to(goal);
+            check_feasible(lp, start_c, "start", message);
+            check_feasible(lp, goal_c, "goal", message);
+            return PlannerT<P>::solve(start_c, goal_c, EnvVec(env), s, rng, lp);
+        }
+
+        template <vamp::planning::Planner P, typename Settings, typename LP>
+        static auto solve_multi_lp(
+            const Cfg &start,
+            const Pth &goals,
+            const Env &env,
+            const Settings &s,
+            std::shared_ptr<Sampler> rng,
+            const LP &lp,
+            const char *message) -> PlanningResult
+        {
+            const auto start_c = Input::to(start);
+            check_feasible(lp, start_c, "start", message);
+
+            std::vector<Configuration> goals_v;
+            goals_v.reserve(goals.size());
+            for (const auto &g : goals)
+            {
+                goals_v.emplace_back(Input::to(g));
+                check_feasible(lp, goals_v.back(), "goal", message);
+            }
+
+            return PlannerT<P>::solve(start_c, goals_v, EnvVec(env), s, rng, lp);
+        }
+
+        template <typename LP>
+        static auto simplify_lp(
+            const Path &p,
+            const Env &env,
+            const vamp::planning::SimplifySettings &settings,
+            std::shared_ptr<Sampler> rng,
+            const LP &lp,
+            const char *message) -> PlanningResult
+        {
+            for (std::size_t i = 0; i < p.size(); ++i)
+            {
+                if (not lp.satisfied(p[i]))
+                {
+                    throw std::invalid_argument("path state " + std::to_string(i) + message);
+                }
+            }
+
+            return vamp::planning::simplify<Robot, rake, Robot::resolution>(
+                p, EnvVec(env), settings, rng, lp);
+        }
+
         // Constraint-aware variants. These members are only instantiated when referenced,
         // so robots without generated constraint support never touch them.
         using ConstraintT = vamp::planning::constraint::Constraint<Robot, rake>;
@@ -273,15 +342,10 @@ namespace vamp::binding
             vamp::planning::constraint::ConstrainedLocalPlanner<Robot, rake, Robot::resolution>;
         using ConstraintSettings = vamp::planning::constraint::ConstraintSettings;
 
-        static void check_on_manifold(const ConstrainedLP &lp, const Configuration &q, const char *what)
-        {
-            if (not lp.satisfied(q))
-            {
-                throw std::invalid_argument(
-                    std::string(what) +
-                    " configuration violates the constraints; project it first with project()");
-            }
-        }
+        static constexpr const char *manifold_message =
+            " configuration violates the constraints; project it first with project()";
+        static constexpr const char *manifold_simplify_message =
+            " violates the constraints; simplify requires an on-manifold path";
 
         template <vamp::planning::Planner P, typename Settings>
         static auto solve_single_constrained(
@@ -298,12 +362,14 @@ namespace vamp::binding
                 return solve_single<P, Settings>(start, goal, env, s, rng);
             }
 
-            const ConstrainedLP lp(ConstraintSetT(std::move(constraints), cs));
-            const auto start_c = Input::to(start);
-            const auto goal_c = Input::to(goal);
-            check_on_manifold(lp, start_c, "start");
-            check_on_manifold(lp, goal_c, "goal");
-            return PlannerT<P>::solve(start_c, goal_c, EnvVec(env), s, rng, lp);
+            return solve_single_lp<P>(
+                start,
+                goal,
+                env,
+                s,
+                rng,
+                ConstrainedLP(ConstraintSetT(std::move(constraints), cs)),
+                manifold_message);
         }
 
         template <vamp::planning::Planner P, typename Settings>
@@ -321,19 +387,14 @@ namespace vamp::binding
                 return solve_multi<P, Settings>(start, goals, env, s, rng);
             }
 
-            const ConstrainedLP lp(ConstraintSetT(std::move(constraints), cs));
-            const auto start_c = Input::to(start);
-            check_on_manifold(lp, start_c, "start");
-
-            std::vector<Configuration> goals_v;
-            goals_v.reserve(goals.size());
-            for (const auto &g : goals)
-            {
-                goals_v.emplace_back(Input::to(g));
-                check_on_manifold(lp, goals_v.back(), "goal");
-            }
-
-            return PlannerT<P>::solve(start_c, goals_v, EnvVec(env), s, rng, lp);
+            return solve_multi_lp<P>(
+                start,
+                goals,
+                env,
+                s,
+                rng,
+                ConstrainedLP(ConstraintSetT(std::move(constraints), cs)),
+                manifold_message);
         }
 
         static auto simplify_constrained(
@@ -349,19 +410,13 @@ namespace vamp::binding
                 return simplify(p, env, settings, rng);
             }
 
-            const ConstrainedLP lp(ConstraintSetT(std::move(constraints), cs));
-            for (std::size_t i = 0; i < p.size(); ++i)
-            {
-                if (not lp.satisfied(p[i]))
-                {
-                    throw std::invalid_argument(
-                        "path state " + std::to_string(i) +
-                        " violates the constraints; simplify requires an on-manifold path");
-                }
-            }
-
-            return vamp::planning::simplify<Robot, rake, Robot::resolution>(
-                p, EnvVec(env), settings, rng, lp);
+            return simplify_lp(
+                p,
+                env,
+                settings,
+                rng,
+                ConstrainedLP(ConstraintSetT(std::move(constraints), cs)),
+                manifold_simplify_message);
         }
 
         static auto constraint_project(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs)
@@ -381,6 +436,80 @@ namespace vamp::binding
         constraint_satisfied(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs) -> bool
         {
             return ConstraintSetT(std::move(constraints), cs).satisfied(Input::to(c));
+        }
+
+        // Phase-gate variants (flask robots): like the constraint-aware variants above,
+        // these members are only instantiated when referenced.
+        using PhaseConstraintT = vamp::planning::constraint::PhaseConstraint<Robot, rake>;
+        using PhaseConstraintVec = std::vector<std::shared_ptr<const PhaseConstraintT>>;
+        using PhaseSetT = vamp::planning::constraint::PhaseConstraintSet<Robot, rake>;
+        using PhaseLP = vamp::planning::UnconstrainedLocalPlanner<Robot, rake, Robot::resolution>;
+
+        static constexpr const char *phase_message =
+            " state violates the phase constraints; scale its velocity by velocity_scale() first";
+        static constexpr const char *phase_simplify_message =
+            " violates the phase constraints; simplify requires a phase-feasible path";
+
+        template <vamp::planning::Planner P, typename Settings>
+        static auto solve_single_phase(
+            const Cfg &start,
+            const Cfg &goal,
+            const Env &env,
+            const Settings &s,
+            std::shared_ptr<Sampler> rng,
+            PhaseConstraintVec phase_constraints) -> PlanningResult
+        {
+            if (phase_constraints.empty())
+            {
+                return solve_single<P, Settings>(start, goal, env, s, rng);
+            }
+
+            return solve_single_lp<P>(
+                start, goal, env, s, rng, PhaseLP(PhaseSetT(std::move(phase_constraints))), phase_message);
+        }
+
+        template <vamp::planning::Planner P, typename Settings>
+        static auto solve_multi_phase(
+            const Cfg &start,
+            const Pth &goals,
+            const Env &env,
+            const Settings &s,
+            std::shared_ptr<Sampler> rng,
+            PhaseConstraintVec phase_constraints) -> PlanningResult
+        {
+            if (phase_constraints.empty())
+            {
+                return solve_multi<P, Settings>(start, goals, env, s, rng);
+            }
+
+            return solve_multi_lp<P>(
+                start, goals, env, s, rng, PhaseLP(PhaseSetT(std::move(phase_constraints))), phase_message);
+        }
+
+        static auto simplify_phase(
+            const Path &p,
+            const Env &env,
+            const vamp::planning::SimplifySettings &settings,
+            std::shared_ptr<Sampler> rng,
+            PhaseConstraintVec phase_constraints) -> PlanningResult
+        {
+            if (phase_constraints.empty())
+            {
+                return simplify(p, env, settings, rng);
+            }
+
+            return simplify_lp(
+                p, env, settings, rng, PhaseLP(PhaseSetT(std::move(phase_constraints))), phase_simplify_message);
+        }
+
+        static auto phase_satisfied(const Cfg &c, PhaseConstraintVec phase_constraints) -> bool
+        {
+            return PhaseSetT(std::move(phase_constraints)).satisfied(Input::to(c));
+        }
+
+        static auto phase_velocity_scale(const Cfg &c, PhaseConstraintVec phase_constraints) -> float
+        {
+            return PhaseSetT(std::move(phase_constraints)).velocity_scale(Input::to(c));
         }
 
         static auto fk(const Cfg &c) -> std::vector<vamp::collision::Sphere<float>>
@@ -563,24 +692,23 @@ namespace vamp::binding
         using AmbientConstraintSetT = vamp::planning::constraint::ConstraintSet<Ambient, rake>;
         using ConstraintSettings = vamp::planning::constraint::ConstraintSettings;
         using ChartSettings = vamp::planning::constraint::ChartSettings;
+        using PhaseConstraintVec = typename Base::PhaseConstraintVec;
+        using PhaseSetT = typename Base::PhaseSetT;
 
         static auto make_lp(
             AmbientConstraintVec constraints,
             const ConstraintSettings &cs,
-            const ChartSettings &chs) -> ChartLP
+            const ChartSettings &chs,
+            PhaseConstraintVec phase_constraints = {}) -> ChartLP
         {
-            return ChartLP(AmbientConstraintSetT(std::move(constraints), cs), chs);
+            return ChartLP(
+                AmbientConstraintSetT(std::move(constraints), cs),
+                chs,
+                PhaseSetT(std::move(phase_constraints)));
         }
 
-        static void check_on_manifold(const ChartLP &lp, const Configuration &z, const char *what)
-        {
-            if (not lp.satisfied(z))
-            {
-                throw std::invalid_argument(
-                    std::string(what) +
-                    " state violates the constraints; project it first with project()");
-            }
-        }
+        static constexpr const char *chart_message =
+            " state violates the constraints; project it first with project()";
 
         template <vamp::planning::Planner P, typename Settings>
         static auto solve_single_chart(
@@ -591,19 +719,23 @@ namespace vamp::binding
             std::shared_ptr<Sampler> rng,
             AmbientConstraintVec constraints,
             const ConstraintSettings &cs,
-            const ChartSettings &chs) -> PlanningResult
+            const ChartSettings &chs,
+            PhaseConstraintVec phase_constraints) -> PlanningResult
         {
             if (constraints.empty())
             {
-                return Base::template solve_single<P, Settings>(start, goal, env, s, rng);
+                return Base::template solve_single_phase<P, Settings>(
+                    start, goal, env, s, rng, std::move(phase_constraints));
             }
 
-            const auto lp = make_lp(std::move(constraints), cs, chs);
-            const auto start_c = Input::to(start);
-            const auto goal_c = Input::to(goal);
-            check_on_manifold(lp, start_c, "start");
-            check_on_manifold(lp, goal_c, "goal");
-            return PlannerT<P>::solve(start_c, goal_c, EnvVec(env), s, rng, lp);
+            return Base::template solve_single_lp<P>(
+                start,
+                goal,
+                env,
+                s,
+                rng,
+                make_lp(std::move(constraints), cs, chs, std::move(phase_constraints)),
+                chart_message);
         }
 
         template <vamp::planning::Planner P, typename Settings>
@@ -615,26 +747,23 @@ namespace vamp::binding
             std::shared_ptr<Sampler> rng,
             AmbientConstraintVec constraints,
             const ConstraintSettings &cs,
-            const ChartSettings &chs) -> PlanningResult
+            const ChartSettings &chs,
+            PhaseConstraintVec phase_constraints) -> PlanningResult
         {
             if (constraints.empty())
             {
-                return Base::template solve_multi<P, Settings>(start, goals, env, s, rng);
+                return Base::template solve_multi_phase<P, Settings>(
+                    start, goals, env, s, rng, std::move(phase_constraints));
             }
 
-            const auto lp = make_lp(std::move(constraints), cs, chs);
-            const auto start_c = Input::to(start);
-            check_on_manifold(lp, start_c, "start");
-
-            std::vector<Configuration> goals_v;
-            goals_v.reserve(goals.size());
-            for (const auto &g : goals)
-            {
-                goals_v.emplace_back(Input::to(g));
-                check_on_manifold(lp, goals_v.back(), "goal");
-            }
-
-            return PlannerT<P>::solve(start_c, goals_v, EnvVec(env), s, rng, lp);
+            return Base::template solve_multi_lp<P>(
+                start,
+                goals,
+                env,
+                s,
+                rng,
+                make_lp(std::move(constraints), cs, chs, std::move(phase_constraints)),
+                chart_message);
         }
 
         static auto simplify_chart(
@@ -644,35 +773,31 @@ namespace vamp::binding
             std::shared_ptr<Sampler> rng,
             AmbientConstraintVec constraints,
             const ConstraintSettings &cs,
-            const ChartSettings &chs) -> PlanningResult
+            const ChartSettings &chs,
+            PhaseConstraintVec phase_constraints) -> PlanningResult
         {
             if (constraints.empty())
             {
-                return Base::simplify(p, env, settings, rng);
+                return Base::simplify_phase(p, env, settings, rng, std::move(phase_constraints));
             }
 
-            const auto lp = make_lp(std::move(constraints), cs, chs);
-            for (std::size_t i = 0; i < p.size(); ++i)
-            {
-                if (not lp.satisfied(p[i]))
-                {
-                    throw std::invalid_argument(
-                        "path state " + std::to_string(i) +
-                        " violates the constraints; simplify requires an on-manifold path");
-                }
-            }
-
-            return vamp::planning::simplify<Robot, rake, Robot::resolution>(
-                p, EnvVec(env), settings, rng, lp);
+            return Base::simplify_lp(
+                p,
+                env,
+                settings,
+                rng,
+                make_lp(std::move(constraints), cs, chs, std::move(phase_constraints)),
+                Base::manifold_simplify_message);
         }
 
         static auto chart_project(
             const Cfg &c,
             AmbientConstraintVec constraints,
             const ConstraintSettings &cs,
-            const ChartSettings &chs) -> Cfg
+            const ChartSettings &chs,
+            PhaseConstraintVec phase_constraints) -> Cfg
         {
-            const auto lp = make_lp(std::move(constraints), cs, chs);
+            const auto lp = make_lp(std::move(constraints), cs, chs, std::move(phase_constraints));
             auto z = Input::to(c);
             if (not lp.project(z))
             {
@@ -682,11 +807,14 @@ namespace vamp::binding
             return Input::from(z);
         }
 
-        static auto
-        chart_satisfied(const Cfg &c, AmbientConstraintVec constraints, const ConstraintSettings &cs)
-            -> bool
+        static auto chart_satisfied(
+            const Cfg &c,
+            AmbientConstraintVec constraints,
+            const ConstraintSettings &cs,
+            PhaseConstraintVec phase_constraints) -> bool
         {
-            return make_lp(std::move(constraints), cs, {}).satisfied(Input::to(c));
+            return make_lp(std::move(constraints), cs, {}, std::move(phase_constraints))
+                .satisfied(Input::to(c));
         }
 
         static auto debug_chart(
@@ -957,6 +1085,76 @@ namespace vamp::binding
 
             bind_flask_methods<Robot, NA>(submodule);
             bind_flask_methods<Robot, CA>(submodule);
+
+            // Phase gates need the robot's generated dynamics kernels; only regenerated
+            // flask robots have them.
+            if constexpr (has_kinetic_energy_v<Robot> or has_n_end_effectors_v<Robot>)
+            {
+                namespace vc = vamp::planning::constraint;
+                using PhaseConstraintT = vc::PhaseConstraint<Robot, rake>;
+
+                nb::class_<PhaseConstraintT>(
+                    submodule,
+                    "PhaseConstraint",
+                    "Phase-space inequality gate g(q, qdot) <= 0 over flat states. Constraints "
+                    "cache per-evaluation state and are not thread-safe: do not share one "
+                    "instance across concurrent planning calls.");
+
+                if constexpr (has_kinetic_energy_v<Robot>)
+                {
+                    using KEC = vc::KineticEnergyConstraint<Robot, rake>;
+                    nb::class_<KEC, PhaseConstraintT>(
+                        submodule,
+                        "KineticEnergyConstraint",
+                        "Bounds the robot's total kinetic energy: "
+                        "(1/2) qdot^T M(q) qdot <= max_energy.")
+                        .def(nb::init<float>(), "max_energy"_a);
+
+                    submodule.def(
+                        "kinetic_energy",
+                        [](const std::array<float, Robot::dimension> &x)
+                        { return Robot::kinetic_energy(x); },
+                        "state"_a,
+                        "Total kinetic energy (1/2) qdot^T M(q) qdot of a flat state (q, qdot).");
+
+                    submodule.def(
+                        "ke_shaped",
+                        [](std::shared_ptr<vamp::rng::RNG<Robot>> sampler, float max_energy)
+                            -> std::shared_ptr<vamp::rng::RNG<Robot>>
+                        {
+                            return std::make_shared<vamp::rng::KineticEnergyShaped<Robot>>(
+                                std::move(sampler), max_energy);
+                        },
+                        "sampler"_a,
+                        "max_energy"_a,
+                        "Wrap a sampler so sample kinetic energy is uniform on [0, max_energy] "
+                        "instead of concentrated near the velocity-box maximum; rescales each "
+                        "sample's velocity block by the scalar kinetic-energy kernel.");
+                }
+
+                if constexpr (has_n_end_effectors_v<Robot>)
+                {
+                    using ESC = vc::EEFSpeedConstraint<Robot, rake>;
+                    nb::class_<ESC, PhaseConstraintT>(
+                        submodule,
+                        "EEFSpeedConstraint",
+                        "Bounds the workspace speed of every end-effector origin: "
+                        "||v_eef|| <= max_speed (linear velocity only).")
+                        .def(nb::init<float>(), "max_speed"_a);
+
+                    submodule.def("n_end_effectors", []() { return Robot::n_end_effectors; });
+                    submodule.def(
+                        "eef_velocity",
+                        [](const std::array<float, Robot::dimension> &x)
+                        { return Robot::eef_velocity(x); },
+                        "state"_a,
+                        "Linear workspace velocity (x, y, z per end effector) of a flat state "
+                        "(q, qdot).");
+                }
+
+                bind_phase_methods<TA>(submodule);
+                bind_phase_methods<TC>(submodule);
+            }
 
             if constexpr (has_ambient_v<Robot>)
             {

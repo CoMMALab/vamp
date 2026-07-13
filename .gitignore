@@ -1,7 +1,5 @@
 build/
-build-py/
-build_local/
-build-wasm/
+build*/
 .cache/
 compile_commands.json
 *.so

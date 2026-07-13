@@ -102,21 +102,7 @@ namespace vamp::planning::constraint
 
         // Output layout of closed_loop_error and input layout of the generated solvers: the
         // Jacobian d(err)/dq (row-major), then the error.
-        struct Solve
-        {
-            FloatVector<rake, jac_size> jac;
-            FloatVector<rake, err_size> err;
-
-            auto operator[](std::size_t index) noexcept -> Row &
-            {
-                return (index < jac_size) ? jac[index] : err[index - jac_size];
-            }
-
-            auto operator[](std::size_t index) const noexcept -> Row
-            {
-                return (index < jac_size) ? jac[index] : err[index - jac_size];
-            }
-        };
+        using Solve = SolveBuffer<rake, err_size, jac_size>;
 
         mutable Input input;
         mutable Solve solve;

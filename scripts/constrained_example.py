@@ -111,13 +111,14 @@ def lift_path(module, path, constraints, constraint_settings, chart_settings):
     are executed in reverse). The reconstruction shoots toward the recorded endpoint
     and stops once attained, so misses up to ~reached_pos_tol are inherent; beyond 2x
     the edge is considered unreconstructible. Returns (dense states, per-state times,
-    max constraint error, duration, max endpoint miss)."""
+    max constraint error, duration, per-edge endpoint misses, per-edge sample counts)."""
     n_q = len(path[0]) // 2
     dense = []
     times = []
     max_err = 0.0
     total_T = 0.0
-    max_miss = 0.0
+    misses = []
+    counts = []
     for i in range(len(path) - 1):
         a, b = np.asarray(path[i]), np.asarray(path[i + 1])
         best = None
@@ -141,8 +142,85 @@ def lift_path(module, path, constraints, constraint_settings, chart_settings):
         times.extend(total_T + np.linspace(0.0, float(T), len(states)))
         max_err = max(max_err, float(max(errs)))
         total_T += float(T)
-        max_miss = max(max_miss, miss)
-    return np.array(dense, dtype=np.float32), np.array(times), max_err, total_T, max_miss
+        misses.append(miss)
+        counts.append(len(states))
+    return np.array(dense, dtype=np.float32), np.array(times), max_err, total_T, misses, counts
+
+
+def heal_path(module, path, environment, constraints, constraint_settings, chart_settings):
+    """Close interior connection gaps by chaining executed arrivals in execution order.
+    A forward-replayable edge is lifted from the previous edge's (chained) executed
+    arrival toward the ORIGINAL stored waypoint and the arrival -- on-manifold
+    position, tangent-projected velocity -- adopted as the new waypoint: replaying it
+    shoots at its own arrival (an exactly attainable chart point), so that junction's
+    seam closes to numerical noise, and re-targeting the originals keeps every
+    per-edge miss at O(reached_pos_tol) rather than accumulating. A backward-only
+    edge (goal-tree orientation: its arc chains exactly at its EXIT waypoint and
+    shoots at its entry) cannot chain forward; instead its backward arc is verified
+    shooting at the true chained junction state, which collapses the two stacked
+    misses of opposite-orientation replay into the single shooting miss, and its exit
+    waypoint is kept exactly. The goal waypoint is never replaced: a fixed-chart arc
+    cannot land across a Pfaffian row normal, so a final miss remains and lift_path
+    reports it honestly (a backward goal edge instead lands exactly and carries the
+    miss at its entry). An accepted arc must arrive within 2x reached_pos_tol,
+    on-manifold, and collision-free at all samples; failing both directions, the edge
+    reverts to its original endpoints. Returns (healed waypoints, arrivals adopted,
+    backward edges verified, skip reasons)."""
+    n_q = len(path[0]) // 2
+    tol = 2.0 * chart_settings.reached_pos_tol
+    original = [np.asarray(path[i], dtype=np.float32) for i in range(len(path))]
+
+    def lift(frm, tgt, forward):
+        states, _, _, _ = module.lift_edge(
+            frm, tgt, constraints, forward=forward, n_samples=32,
+            constraint_settings=constraint_settings, chart_settings=chart_settings)
+        # The last emitted state is the shooting arrival near the lift's target,
+        # regardless of direction.
+        arrival = np.asarray(states[-1], dtype=np.float32)
+        miss = float(np.linalg.norm(arrival[:n_q] - np.asarray(tgt)[:n_q]))
+        if miss > tol:
+            return None, f"miss {miss:.2e} > 2x tol"
+        # Collision depends on position only; validating a full flask state sweeps a
+        # spurious to-itself LQMT loop from its velocity.
+        pos = np.array(states, dtype=np.float32)
+        pos[:, n_q:] = 0.0
+        if not all(module.validate(p, environment) for p in pos):
+            return None, "arc in collision"
+        return arrival, None
+
+    healed = [original[0]]
+    n_forward = n_backward = 0
+    reasons = []
+    for i in range(len(path) - 1):
+        tgt = original[i + 1]
+        last = i + 1 == len(path) - 1
+        try:
+            arrival, why_fwd = lift(healed[-1], tgt, forward=True)
+            if arrival is not None and not module.satisfied(
+                    arrival, constraints, constraint_settings):
+                arrival, why_fwd = None, "arrival off manifold"
+        except ValueError as exc:
+            arrival, why_fwd = None, f"lift failed ({exc})"
+        if arrival is not None:
+            healed.append(tgt if last else arrival)
+            n_forward += 0 if last else 1
+            continue
+        # Backward arc: lift from the stored exit waypoint, shooting at the chained
+        # junction state (states[-1] is the entry-side arrival in execution order).
+        try:
+            entry, why_bwd = lift(tgt, healed[-1], forward=False)
+        except ValueError as exc:
+            entry, why_bwd = None, f"lift failed ({exc})"
+        if entry is not None:
+            healed.append(tgt)
+            n_backward += 1
+            continue
+        # Both directions failed: revert this edge's start too, so the edge is the
+        # original (known replayable) one; that junction keeps its original seam.
+        healed[-1] = original[i]
+        healed.append(tgt)
+        reasons.append(f"edge {i}: forward {why_fwd}; backward {why_bwd}")
+    return healed, n_forward, n_backward, reasons
 
 
 def pose_to_transform(pose):
@@ -342,6 +420,7 @@ def main(
     max_kinetic_energy: float | None = None,  # Phase constraint: kinetic energy cap in J (flask/retime).
     max_eef_speed: float | None = None,  # Phase constraint: end-effector speed cap in m/s (flask/retime).
     sample_energy: float | None = None,  # Shape sampled kinetic energy to [0, cap] J (flask only).
+    heal: bool = False,  # Close interior connection gaps by chaining executed arrivals (flask/retime).
     holonomic: bool = False,  # Swap the screw's Pfaffian row for its holonomic representation (screw only).
     turn: float = 5.0,  # Total screw rotation in rad (screw only).
     visualize: bool = False,
@@ -353,7 +432,7 @@ def main(
         # rotation (a frozen-chart arc cannot land across the row normal), so the
         # knife's rapidly turning row needs shorter arcs for connects to attain the
         # tightened reached_pos_tol below.
-        range_ = 0.35 if mode == "knife" else 0.5
+        range_ = 0.1 if mode == "knife" else 0.5
     if mode == "screw":
         problem = partial(screw_problem, turn=turn)
     if flask and retime:
@@ -365,6 +444,8 @@ def main(
         raise ValueError("phase constraints only apply to the chart-LQMT machinery; pass --flask or --retime")
     if sample_energy is not None and not flask:
         raise ValueError("--sample_energy only applies to the chart-LQMT planner; pass --flask")
+    if heal and not kinodynamic:
+        raise ValueError("--heal only applies to the chart-LQMT machinery; pass --flask or --retime")
     if mode in ("screw", "knife") and not flask:
         raise ValueError(
             f"{mode} mode requires --flask: the Pfaffian coupling row restricts velocities "
@@ -557,19 +638,36 @@ def main(
         print(f"retime: {len(lifted)} -> {len(path)} states, "
               f"cost {rest_cost:.4f} -> {path.cost():.4f}, in {retime_elapsed * 1e3:.1f} ms")
 
+    if heal:
+        cs = chart_kwargs["chart_settings"]
+        _, _, _, _, misses_before, _ = lift_path(
+            path_module, path, constraints, constraint_settings, cs)
+        heal_elapsed = time.perf_counter()
+        path, n_forward, n_backward, reasons = heal_path(
+            path_module, path, e, constraints, constraint_settings, cs)
+        heal_elapsed = time.perf_counter() - heal_elapsed
+        print(f"heal: {n_forward} arrivals chained, {n_backward} backward edges "
+              f"re-shot at the chained junction, {len(reasons)} reverted, in "
+              f"{heal_elapsed * 1e3:.1f} ms")
+        print("  per-edge miss before: " + " ".join(f"{m:.1e}" for m in misses_before))
+        for reason in reasons:
+            print(f"  heal reverted -- {reason}")
+
     on_manifold = all(
         path_module.satisfied(path[i], constraints, constraint_settings) for i in range(len(path)))
     print(f"all waypoints on manifold: {on_manifold}")
 
     dense = dense_t = None
     if kinodynamic:
-        dense, dense_t, max_err, total_T, max_miss = lift_path(
+        dense, dense_t, max_err, total_T, misses, counts = lift_path(
             path_module, path, constraints, constraint_settings, chart_kwargs["chart_settings"])
         vmax = np.abs(dense[:, n_q:]).max(axis=0)
         vel_ratio = float((vmax / np.array(path_module.velocity_limits())).max())
         print(f"trajectory: {total_T:.2f} s over {len(path) - 1} segments, "
               f"max constraint dist^2 {max_err ** 2:.2e}, max velocity ratio {vel_ratio:.2f}, "
-              f"max endpoint miss {max_miss:.2e}")
+              f"max endpoint miss {max(misses):.2e}")
+        if heal:
+            print("  per-edge miss after:  " + " ".join(f"{m:.1e}" for m in misses))
         if mode == "screw":
             # Drift of the screw invariant along the executed trajectory: zero up to
             # per-sample tangent projection and chart tolerance for the Pfaffian row,
@@ -589,17 +687,23 @@ def main(
             # and the offset is earned by the heading swing. The unsigned total is
             # first-order arc wobble that largely cancels.
             poses = [np.array(ambient.eefk(q)) for q in dense[:, :n_q]]
-            slip = net = travel = 0.0
-            for a, b in zip(poses, poses[1:]):
+            # Sample pairs that straddle an edge junction are seam teleports (never
+            # executed, invisible to the slip tolerance); the rest is executed motion.
+            junctions = set(np.cumsum(counts[:-1]))
+            slip = net = travel = seam_net = 0.0
+            for j, (a, b) in enumerate(zip(poses, poses[1:])):
                 d_body = a[:3, :3].T @ (b[:3, 3] - a[:3, 3])
                 slip += abs(float(d_body[1]))
                 net += float(d_body[1])
                 travel += float(np.linalg.norm(d_body[:2]))
+                if j + 1 in junctions:
+                    seam_net += float(d_body[1])
             heading = np.unwrap([np.arctan2(p[1, 0], p[0, 0]) for p in poses])
             rel_end = np.linalg.inv(knife_reference) @ poses[-1]
             print(f"knife edge (Pfaffian row): lateral offset {rel_end[1, 3]:+.3f} m "
                   f"(target {KNIFE_OFFSET:+.3f}), net slip {net:+.2e} m "
-                  f"(unsigned {slip:.2e}) over {travel:.2f} m travel, "
+                  f"(executed {net - seam_net:+.2e}, seam teleports {seam_net:+.2e}; "
+                  f"unsigned {slip:.2e}) over {travel:.2f} m travel, "
                   f"heading swing {heading.max() - heading.min():.2f} rad")
         if "phase_constraints" in chart_kwargs:
             # Enforcement is at the planner's validation samples, so uniformly-resampled

@@ -41,6 +41,22 @@ namespace vamp::planning
                                            Robot::template fkcc<rake>(environment, block);
     }
 
+    // Collision-check a single configuration by broadcasting it across every rake lane
+    // and running the fused FK+CC kernel once.
+    template <typename Robot, std::size_t rake>
+    inline auto validate_configuration(
+        const typename Robot::Configuration &configuration,
+        const collision::Environment<FloatVector<rake>> &environment) noexcept -> bool
+    {
+        typename Robot::template ConfigurationBlock<rake> block;
+        for (auto i = 0U; i < Robot::dimension; ++i)
+        {
+            block[i] = configuration.broadcast(i);
+        }
+
+        return fkcc_block<Robot, rake>(environment, block);
+    }
+
     // `block_accept` is invoked on every interpolated sample block before the collision
     // check; returning false invalidates the motion. All rake lanes of every block are
     // legitimate samples of the motion (trailing batches backstep over earlier ones), so

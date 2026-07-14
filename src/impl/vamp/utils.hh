@@ -21,6 +21,21 @@
     template <typename T>                                                                                    \
     constexpr bool has_##method_name##_v = has_##method_name<T>::value;
 
+// Nested-type analogue of VAMP_DEFINE_HAS_METHOD: detects `typename T::type_name`.
+#define VAMP_DEFINE_HAS_TYPE(type_name)                                                                      \
+    template <typename T, typename = void>                                                                   \
+    struct has_type_##type_name : std::false_type                                                            \
+    {                                                                                                        \
+    };                                                                                                       \
+                                                                                                             \
+    template <typename T>                                                                                    \
+    struct has_type_##type_name<T, std::void_t<typename T::type_name>> : std::true_type                      \
+    {                                                                                                        \
+    };                                                                                                       \
+                                                                                                             \
+    template <typename T>                                                                                    \
+    constexpr bool has_type_##type_name##_v = has_type_##type_name<T>::value;
+
 namespace vamp::utils
 {
     inline constexpr auto round_size(std::size_t size, std::size_t block) noexcept -> std::size_t

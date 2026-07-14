@@ -37,7 +37,7 @@
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/cost.hh>
 #include <vamp/planning/local_planner.hh>
-#include <vamp/planning/nn.hh>
+#include <vamp/planning/nn/nn.hh>
 #include <vamp/planning/phs.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/planners/roadmap.hh>
@@ -716,7 +716,7 @@ namespace vamp::planning
                 // Extend incrementally toward other tree
                 const std::size_t n_extensions = std::max(
                     static_cast<std::size_t>(std::ceil(
-                        LocalPlanner::connect_slack * other_nearest_distance / settings.range)),
+                        lp.connect_slack * other_nearest_distance / settings.range)),
                     static_cast<std::size_t>(1));
 
                 std::size_t i_extension = 0;
@@ -832,6 +832,7 @@ namespace vamp::planning
             {
                 result.path = std::move(best_path);
                 result.cost = best_cost;
+                result.solved = true;
             }
 
             result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);

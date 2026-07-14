@@ -46,45 +46,24 @@ namespace vamp::wasm
 
         inline auto add_sphere(float x, float y, float z, float radius) -> void
         {
-            env.spheres.emplace_back(vamp::collision::factory::sphere::flat(x, y, z, radius));
-            env.sort();
+            env.add_sphere(vamp::collision::factory::sphere::flat(x, y, z, radius));
         }
 
         inline auto
         add_cuboid(float cx, float cy, float cz, float rx, float ry, float rz, float hx, float hy, float hz)
             -> void
         {
-            auto cuboid = vamp::collision::factory::cuboid::array(
+            env.add_cuboid(vamp::collision::factory::cuboid::array(
                 std::array<float, 3>{cx, cy, cz},
                 std::array<float, 3>{rx, ry, rz},
-                std::array<float, 3>{hx, hy, hz});
-
-            if (cuboid.axis_3_z == 1.f)
-            {
-                env.z_aligned_cuboids.emplace_back(cuboid);
-            }
-            else
-            {
-                env.cuboids.emplace_back(cuboid);
-            }
-            env.sort();
+                std::array<float, 3>{hx, hy, hz}));
         }
 
         inline auto add_capsule(float x1, float y1, float z1, float x2, float y2, float z2, float radius)
             -> void
         {
-            auto capsule = vamp::collision::factory::cylinder::endpoints::array(
-                std::array<float, 3>{x1, y1, z1}, std::array<float, 3>{x2, y2, z2}, radius);
-
-            if (capsule.xv == 0.f && capsule.yv == 0.f)
-            {
-                env.z_aligned_capsules.emplace_back(capsule);
-            }
-            else
-            {
-                env.capsules.emplace_back(capsule);
-            }
-            env.sort();
+            env.add_capsule(vamp::collision::factory::cylinder::endpoints::array(
+                std::array<float, 3>{x1, y1, z1}, std::array<float, 3>{x2, y2, z2}, radius));
         }
 
         inline auto clear() -> void
@@ -288,7 +267,7 @@ namespace vamp::wasm
         auto plan_result = vamp::planning::RRTC<Robot, vamp::FloatVectorWidth, Robot::resolution>::solve(
             js_array_to_config<Robot>(start), js_array_to_config<Robot>(goal), env_v, settings, rng.rng);
 
-        result.solved = !plan_result.path.empty();
+        result.solved = plan_result.solved;
         result.path = PathJS<Robot>(plan_result.path);
         result.nanoseconds = plan_result.nanoseconds;
         result.iterations = plan_result.iterations;
@@ -316,7 +295,7 @@ namespace vamp::wasm
         auto plan_result = vamp::planning::AORRTC<Robot, vamp::FloatVectorWidth, Robot::resolution>::solve(
             js_array_to_config<Robot>(start), js_array_to_config<Robot>(goal), env_v, settings, rng.rng);
 
-        result.solved = !plan_result.path.empty();
+        result.solved = plan_result.solved;
         result.path = PathJS<Robot>(plan_result.path);
         result.nanoseconds = plan_result.nanoseconds;
         result.iterations = plan_result.iterations;
@@ -338,7 +317,7 @@ namespace vamp::wasm
         auto simplify_result = vamp::planning::simplify<Robot, vamp::FloatVectorWidth, Robot::resolution>(
             path_js.path, env_v, settings, rng.rng);
 
-        result.solved = !simplify_result.path.empty();
+        result.solved = simplify_result.solved;
         result.path = PathJS<Robot>(simplify_result.path);
         result.nanoseconds = simplify_result.nanoseconds;
         result.iterations = simplify_result.iterations;

@@ -277,13 +277,14 @@ namespace vamp::jit
     struct DynamicPlanResult
     {
         std::shared_ptr<DynamicPath> path;
+        bool success{false};
         std::size_t iterations{0};
         std::uint64_t nanoseconds{0};
         std::vector<std::size_t> size;
 
         auto solved() const -> bool
         {
-            return path and path->waypoints.size() >= 2;
+            return success;
         }
     };
 
@@ -322,6 +323,7 @@ namespace vamp::jit
         auto meta = ops.result_meta(handle);
 
         DynamicPlanResult result;
+        result.success = meta.success != 0;
         result.iterations = meta.iterations;
         result.nanoseconds = meta.nanoseconds;
         result.path = std::make_shared<DynamicPath>(robot);

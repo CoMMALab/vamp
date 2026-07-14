@@ -1,12 +1,13 @@
 #pragma once
 
+#include <algorithm>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
 
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/planners/aox_nn.hh>
+#include <vamp/planning/nn/gnat.hh>
 #include <vamp/planning/cost.hh>
 #include <vamp/planning/local_planner.hh>
 #include <vamp/planning/phs.hh>
@@ -357,7 +358,7 @@ namespace vamp::planning
 
                     // Extend incrementally towards other tree
                     const std::size_t n_extensions = std::ceil(
-                        LocalPlanner::connect_slack * other_nearest_distance / rrtc_settings.range);
+                        lp.connect_slack * other_nearest_distance / rrtc_settings.range);
 
                     std::size_t i_extension = 0;
                     bool connected = false;
@@ -424,6 +425,7 @@ namespace vamp::planning
 
                         // Path is now in execution order; cost is directed-edge sum
                         result.cost = result.path.cost();
+                        result.solved = true;
                         break;
                     }
                 }
@@ -487,13 +489,13 @@ namespace vamp::planning
 
             // Update the settings for internal searches
             AORRTCSettings settings = settings_in;  // make a mutable copy
-            const std::size_t &max_samples = settings.max_samples;
-            const std::size_t &max_iterations = settings.max_iterations;
 
-            // Configure internal RRTC settings
+            // Cap the internal RRTC limits by the total budget without discarding
+            // user-set nested values. max_samples in particular must not exceed the
+            // top-level value: it bounds the AOX_RRTC buffer allocation below.
             RRTCSettings &rrtc_settings = settings.rrtc;
-            rrtc_settings.max_iterations = max_iterations;
-            rrtc_settings.max_samples = max_samples;
+            rrtc_settings.max_iterations = std::min(rrtc_settings.max_iterations, settings.max_iterations);
+            rrtc_settings.max_samples = std::min(rrtc_settings.max_samples, settings.max_samples);
 
             PlanningResult<Robot> result;
             float best_path_cost = std::numeric_limits<float>::max();
@@ -525,6 +527,7 @@ namespace vamp::planning
             // We have a new best solution
             PlanningResult<Robot> final_result;
             final_result.path = result.path;
+            final_result.solved = true;
             best_path_cost = result.path.cost();
 
             float best_possible_cost = std::numeric_limits<float>::max();
@@ -550,15 +553,18 @@ namespace vamp::planning
                 }
             }
 
-            AOX_RRTC instance(max_samples);
+            AOX_RRTC instance(settings.max_samples);
 
             // If we get close to straight line, just call it.
             // Also handles numerical issues with PHS when too close to straight line...
-            while (iters < max_iterations and (best_path_cost - best_possible_cost) > 1e-8)
+            while (iters < settings.max_iterations and (best_path_cost - best_possible_cost) > 1e-8)
             {
-                // Update internal maximum iterations
-                rrtc_settings.max_iterations =
-                    std::min(settings.max_iterations - iters, settings.max_internal_iterations);
+                // Update internal maximum iterations: remaining total budget, the per-search
+                // cap, and the user's nested RRTC limit
+                rrtc_settings.max_iterations = std::min(
+                    {settings_in.rrtc.max_iterations,
+                     settings.max_iterations - iters,
+                     settings.max_internal_iterations});
 
                 auto &sample_rng = informed_rng ? informed_rng : rng;
 

@@ -189,7 +189,7 @@ namespace vamp::planning
         const auto max_empty_steps = (not settings.max_empty_steps) ? path.size() : settings.max_empty_steps;
 
         bool result = false;
-        for (auto i = 0U, no_change = 0U; i < max_steps or no_change < max_empty_steps; ++i, ++no_change)
+        for (auto i = 0U, no_change = 0U; i < max_steps and no_change < max_empty_steps; ++i, ++no_change)
         {
             int initial_size = path.size();
             int max_n = initial_size - 1;
@@ -487,9 +487,8 @@ namespace vamp::planning
 
             for (auto attempt = 0U; attempt < settings.perturbation_attempts; ++attempt)
             {
-                auto perturbation = rng->next();
-                Robot::scale_configuration(perturbation);
-
+                // next() already returns a joint-space configuration; do not rescale it.
+                const auto perturbation = rng->next();
                 auto new_state = Robot::interpolate(perturb_state, perturbation, settings.range);
                 if (not lp.project(new_state))
                 {
@@ -575,6 +574,8 @@ namespace vamp::planning
                     result.path.emplace_back(c);
                 }
                 result.path.emplace_back(path.back());
+                result.solved = true;
+                result.cost = result.path.cost();
                 result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
                 return result;
             }
@@ -582,6 +583,8 @@ namespace vamp::planning
         else if (path.size() == 2)
         {
             result.path = path;
+            result.solved = true;
+            result.cost = result.path.cost();
             result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
             return result;
         }
@@ -612,6 +615,8 @@ namespace vamp::planning
             }
         }
 
+        result.solved = true;
+        result.cost = result.path.cost();
         result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
         return result;
     }

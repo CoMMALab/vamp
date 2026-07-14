@@ -3,10 +3,12 @@
 #include <chrono>
 #include <limits>
 #include <memory>
+#include <type_traits>
 
 #include <utility>
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/nn.hh>
+#include <vamp/planning/local_planner.hh>
+#include <vamp/planning/nn/nn.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/utils.hh>
 #include <vamp/planning/planners/roadmap.hh>
@@ -27,7 +29,6 @@ namespace vamp::planning
     struct PRM
     {
         using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
 
         inline static auto solve(
@@ -38,6 +39,25 @@ namespace vamp::planning
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
+        }
+
+        // Roadmap edges are straight lines: only the unconstrained local planner is
+        // supported. Constrained, phase, and chart planning require RRTC, AORRTC, or
+        // GRRTStar.
+        template <typename Goal, typename LocalPlanner>
+        inline static auto solve(
+            const Configuration &start,
+            const Goal &goal,
+            const collision::Environment<FloatVector<rake>> &environment,
+            const RoadmapSettings<NeighborParamsT> &settings,
+            typename RNG::Ptr rng,
+            const LocalPlanner &) noexcept -> PlanningResult<Robot>
+        {
+            static_assert(
+                std::is_same_v<LocalPlanner, UnconstrainedLocalPlanner<Robot, rake, resolution>>,
+                "PRM only supports the unconstrained local planner: constrained, phase, and "
+                "chart planning require RRTC, AORRTC, or GRRTStar");
+            return solve(start, goal, environment, settings, rng);
         }
 
         inline static auto solve(
@@ -60,6 +80,8 @@ namespace vamp::planning
                 {
                     result.path.emplace_back(start);
                     result.path.emplace_back(goal);
+                    result.solved = true;
+                    result.cost = result.path.cost();
                     result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
                     result.iterations = 0;
                     result.size.emplace_back(1);
@@ -71,7 +93,6 @@ namespace vamp::planning
 
             std::size_t iter = 0;
             std::vector<std::pair<NNNode<Robot>, float>> neighbors;
-            typename Robot::template ConfigurationBlock<rake> temp_block;
             auto states = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(
                 settings.max_samples * Configuration::num_scalars_rounded);
             // TODO: Is it better to just use arrays for these since we're reserving full capacity
@@ -108,17 +129,7 @@ namespace vamp::planning
             while (iter++ < settings.max_iterations and nodes.size() < settings.max_samples)
             {
                 auto temp = rng->next();
-                // TODO: This is a gross hack to get around the instruction cache issue...I realized
-                // that edge sampling, while valid, wastes too much effort with our current
-                // validation API
-
-                // Check sample validity
-                for (auto i = 0U; i < dimension; ++i)
-                {
-                    temp_block[i] = temp.broadcast(i);
-                }
-
-                if (not Robot::template fkcc<rake>(environment, temp_block))
+                if (not validate_configuration<Robot, rake>(temp, environment))
                 {
                     continue;
                 }
@@ -174,10 +185,11 @@ namespace vamp::planning
                     }
 
                     const auto &goal = goals[i - 1];
-                    auto parents = utils::astar<Robot>(nodes, start, goal, state_index);
+                    auto parents = utils::astar<Robot>(nodes, start, goal, state_index, i);
                     // NOTE: If the connected component check is correct, we can assume that a solution
                     // was found by A* when we've reached this point
-                    utils::recover_path<Robot>(std::move(parents), state_index, result.path);
+                    utils::recover_path<Robot>(parents.get(), state_index, result.path, i);
+                    result.solved = true;
                     result.cost = nodes[i].g;
                     result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
                     result.iterations = iter;
@@ -210,7 +222,6 @@ namespace vamp::planning
 
             std::size_t iter = 0;
             std::vector<std::pair<NNNode<Robot>, float>> neighbors;
-            typename Robot::template ConfigurationBlock<rake> temp_block;
             auto states = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(
                 settings.max_samples * Configuration::num_scalars_rounded);
             // TODO: Is it better to just use arrays for these since we're reserving full capacity
@@ -233,18 +244,7 @@ namespace vamp::planning
             while (iter++ < settings.max_iterations and nodes.size() < settings.max_samples)
             {
                 auto temp = rng->next();
-
-                // TODO: This is a gross hack to get around the instruction cache issue...I realized
-                // that edge sampling, while valid, wastes too much effort with our current
-                // validation API
-
-                // Check sample validity
-                for (auto i = 0U; i < dimension; ++i)
-                {
-                    temp_block[i] = temp.broadcast(i);
-                }
-
-                if (not Robot::template fkcc<rake>(environment, temp_block))
+                if (not validate_configuration<Robot, rake>(temp, environment))
                 {
                     continue;
                 }

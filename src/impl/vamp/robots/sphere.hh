@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vamp/vector.hh>
-#include <vamp/planning/nn.hh>
+#include <vamp/planning/nn/nn.hh>
 
 #include <Eigen/Geometry>
 #include <nigh/so3_space.hpp>

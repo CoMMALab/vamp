@@ -72,12 +72,12 @@ namespace vamp::planning
 
         inline auto measure() const noexcept -> float
         {
-            return phs_measure;
+            return measure_;
         }
 
         inline auto measure(float transverse_diameter_in) const noexcept -> float
         {
-            return phs_measure<dimension>(min_transverse_diameter, transverse_diameter_in);
+            return utils::phs_measure<dimension>(min_transverse_diameter, transverse_diameter_in);
         }
 
         inline auto get_min_transverse_diameter() const noexcept -> float
@@ -97,7 +97,7 @@ namespace vamp::planning
 
         float transverse_diameter{0.};
         float min_transverse_diameter;
-        float phs_measure;
+        float measure_;
 
         using EigenVector = Eigen::Vector<float, dimension>;
         using EigenMatrix = Eigen::Matrix<float, dimension, dimension>;
@@ -130,17 +130,16 @@ namespace vamp::planning
         }
 
         void update_transformation()
-
         {
-            const float conjugate_diamater = std::sqrt(
+            const float conjugate_diameter = std::sqrt(
                 transverse_diameter * transverse_diameter -
                 min_transverse_diameter * min_transverse_diameter);
 
-            EigenVector diag = EigenVector::Constant(0.5 * conjugate_diamater);
+            EigenVector diag = EigenVector::Constant(0.5 * conjugate_diameter);
             diag(0) = 0.5 * transverse_diameter;
 
             tf_world_from_ellipse = rot_world_from_ellipse * diag.asDiagonal();
-            phs_measure = utils::phs_measure<dimension>(min_transverse_diameter, transverse_diameter);
+            measure_ = utils::phs_measure<dimension>(min_transverse_diameter, transverse_diameter);
         }
     };
 

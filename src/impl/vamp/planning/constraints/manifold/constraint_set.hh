@@ -40,7 +40,7 @@ namespace vamp::planning::constraint
             return settings_;
         }
 
-        // Per-lane squared hinged error summed over all constraints. Caches each
+        // Per-lane squared violation error summed over all constraints. Caches each
         // constraint's Jacobian and error for step_in_place().
         auto squared_error(const Block &q) const noexcept -> Row
         {
@@ -76,7 +76,17 @@ namespace vamp::planning::constraint
             }
         }
 
-        // Stacked hinged error (total_rows() entries) and raw-error Jacobian (total_rows()
+        // Concatenated Pfaffian row flags (total_rows() entries), in constraint order.
+        void pfaffian_rows(bool *rows) const noexcept
+        {
+            for (const auto &c : constraints_)
+            {
+                c->pfaffian_rows(rows);
+                rows += c->n_rows();
+            }
+        }
+
+        // Stacked violation error (total_rows() entries) and raw-error Jacobian (total_rows()
         // x Robot::dimension, row-major) of one lane of q, in constraint order. The stacked
         // Jacobian's null space is the tangent space of the manifold the whole set defines.
         // Overwrites the constraints' squared_error() caches.

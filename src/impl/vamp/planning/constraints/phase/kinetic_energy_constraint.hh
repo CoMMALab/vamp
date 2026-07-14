@@ -9,9 +9,9 @@
 
 namespace vamp::planning::constraint
 {
-    // Phase gate bounding total kinetic energy: (1/2) qd^T M(q) qd <= max_energy, via the
-    // robot-generated kinetic_energy kernels. KE is homogeneous of degree 2 in qd, so the
-    // feasibility scale is sqrt(max_energy / KE).
+    // Phase constraint bounding total kinetic energy: (1/2) qd^T M(q) qd <= max_energy,
+    // via the robot-generated kinetic_energy kernels. KE is homogeneous of degree 2 in qd,
+    // so velocity_scale is sqrt(max_energy / KE).
     template <typename Robot, std::size_t rake>
     struct KineticEnergyConstraint final : PhaseConstraint<Robot, rake>
     {

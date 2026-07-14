@@ -15,7 +15,7 @@ namespace vamp::planning::constraint
 
     // Type-erased manifold constraint over a rake-wide block of configurations.
     //
-    // Implementations cache the Jacobian and hinged error of the last squared_error() call;
+    // Implementations cache the Jacobian and violation error of the last squared_error() call;
     // step() consumes that cache, so callers must call squared_error(q) before step(q, ...)
     // on the same q. This saves one full error/Jacobian evaluation per projection iteration,
     // since convergence checks already evaluate at the stepped configuration. Instances are
@@ -27,8 +27,8 @@ namespace vamp::planning::constraint
 
         virtual ~Constraint() = default;
 
-        // Per-lane squared hinged constraint error at q. Caches the Jacobian and hinged
-        // error for step().
+        // Per-lane squared constraint-violation error at q. Caches the Jacobian and
+        // violation error for step().
         virtual auto squared_error(const Block &q) const noexcept -> FloatVector<rake, 1> = 0;
 
         // One descent step in place, using the cache of the last squared_error() call.
@@ -41,6 +41,17 @@ namespace vamp::planning::constraint
         // than tight_row_width. Determined by the bounds alone, so configuration-independent.
         virtual void active_rows(bool *rows) const noexcept = 0;
 
+        // Pfaffian row flags (n_rows() entries): rows that restrict
+        // velocity direction only and carry no position error, so executed edges can
+        // drift along their normals (see ChartSettings::max_slip_fraction). Default: none.
+        virtual void pfaffian_rows(bool *rows) const noexcept
+        {
+            for (std::size_t i = 0, n = n_rows(); i < n; ++i)
+            {
+                rows[i] = false;
+            }
+        }
+
         // Run the error/Jacobian kernel on the whole block, caching every lane for
         // extract_error_jacobian(). One evaluation serves all rake lanes, so batch callers
         // (chart construction over a block of samples) pay the kernel once instead of per
@@ -48,11 +59,11 @@ namespace vamp::planning::constraint
         // step().
         virtual void evaluate_error_jacobian(const Block &q) const noexcept = 0;
 
-        // Hinged error (n_rows() entries) and *raw*-error Jacobian (n_rows() x
+        // Violation error (n_rows() entries) and *raw*-error Jacobian (n_rows() x
         // Robot::dimension, row-major) of one SIMD lane of the last
         // evaluate_error_jacobian() block, for tangent-space (chart) construction. The
         // hinge mask of squared_error() cannot apply to the Jacobian: on the manifold the
-        // hinged error vanishes, so masking would zero every row.
+        // violation error vanishes, so masking would zero every row.
         virtual void extract_error_jacobian(std::size_t lane, float *err, float *jac)
             const noexcept = 0;
 
@@ -164,9 +175,9 @@ namespace vamp::planning::constraint
             {
                 // Same SIMD min/max hinge as squared_error: NaN from the log map at
                 // exactly-satisfied orientations masks to zero.
-                const auto hinged = (solve.err[i] - derived().input.lb[i]).min(0.F) +
-                                    (solve.err[i] - derived().input.ub[i]).max(0.F);
-                err[i] = hinged[{0, lane}];
+                const auto violation = (solve.err[i] - derived().input.lb[i]).min(0.F) +
+                                       (solve.err[i] - derived().input.ub[i]).max(0.F);
+                err[i] = violation[{0, lane}];
             }
 
             for (auto i = 0U; i < jac_size; ++i)

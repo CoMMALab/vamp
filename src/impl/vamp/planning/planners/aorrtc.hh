@@ -323,7 +323,7 @@ namespace vamp::planning
                         radii[nearest_node.index] *= (1 + rrtc_settings.alpha);
                     }
 
-                    const auto [frontier_index, extend_truncated] =
+                    const auto [new_index, extend_truncated] =
                         insert_chain(waypoints.begin() + 1, waypoints.end(), free_index - 1, add_node);
 
                     if (extend_truncated)
@@ -331,7 +331,7 @@ namespace vamp::planning
                         continue;
                     }
 
-                    new_cost = costs[frontier_index];
+                    new_cost = costs[new_index];
 
                     // Extend to goal tree
 
@@ -345,7 +345,7 @@ namespace vamp::planning
                         find_nearest(
                             tree_b,
                             target_vert,
-                            extension.frontier(),
+                            extension.endpoint(),
                             max_cost - new_cost,
                             not tree_a_is_start);
 
@@ -361,7 +361,7 @@ namespace vamp::planning
 
                     std::size_t i_extension = 0;
                     bool connected = false;
-                    Configuration prior = extension.frontier();
+                    Configuration prior = extension.endpoint();
                     std::size_t prior_index = free_index - 1;
                     while (not connected and i_extension < n_extensions and
                            free_index < rrtc_settings.max_samples)
@@ -392,7 +392,7 @@ namespace vamp::planning
 
                         connected = (step.status == SteerStatus::Reached);
                         i_extension++;
-                        prior = step.frontier();
+                        prior = step.endpoint();
                         prior_index = step_index;
                     }
 

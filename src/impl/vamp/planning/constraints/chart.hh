@@ -106,13 +106,16 @@ namespace vamp::planning::constraint
           : rank_tolerance_(rank_tolerance)
           , m_rows_(constraints.total_rows())
           , active_(std::make_unique<bool[]>(m_rows_))
+          , pfaffian_(std::make_unique<bool[]>(m_rows_))
           , err_(m_rows_)
           , jac_(m_rows_ * d)
         {
             constraints.active_rows(active_.get());
+            constraints.pfaffian_rows(pfaffian_.get());
             for (auto i = 0U; i < m_rows_; ++i)
             {
                 n_active_ += active_[i];
+                n_pfaffian_ += pfaffian_[i];
             }
 
             if (n_active_ > 0)
@@ -132,6 +135,41 @@ namespace vamp::planning::constraint
         auto n_active() const noexcept -> std::size_t
         {
             return n_active_;
+        }
+
+        // Number of Pfaffian rows.
+        auto n_pfaffian() const noexcept -> std::size_t
+        {
+            return n_pfaffian_;
+        }
+
+        // Accumulated displacement of `chord` along the Pfaffian rows' normals:
+        // sum_r |row_r . chord| over the Pfaffian rows of a stacked Jacobian
+        // (layout as ConstraintSet::error_jacobian). Non-finite rows contribute nothing,
+        // matching the chart machinery's leniency toward NaN Jacobians on the manifold.
+        auto slip(const float *jac, const float *chord) const noexcept -> float
+        {
+            float s = 0.F;
+            for (auto r = 0U; r < m_rows_; ++r)
+            {
+                if (not pfaffian_[r])
+                {
+                    continue;
+                }
+
+                float dot = 0.F;
+                for (auto c = 0U; c < d; ++c)
+                {
+                    dot += jac[r * d + c] * chord[c];
+                }
+
+                if (std::isfinite(dot))
+                {
+                    s += std::abs(dot);
+                }
+            }
+
+            return s;
         }
 
         // Whether every chart-active row of a stacked Jacobian (layout as
@@ -261,7 +299,7 @@ namespace vamp::planning::constraint
             return chart;
         }
 
-        // Stacked hinged constraint error norm at q, over all rows (non-finite entries
+        // Stacked constraint-violation error norm at q, over all rows (non-finite entries
         // -- the traced rotation error is NaN exactly on the manifold -- are skipped).
         auto error_norm(
             const ConstraintSet<Ambient, rake> &constraints,
@@ -296,7 +334,9 @@ namespace vamp::planning::constraint
         float rank_tolerance_;
         std::size_t m_rows_;
         std::size_t n_active_ = 0;
+        std::size_t n_pfaffian_ = 0;
         std::unique_ptr<bool[]> active_;
+        std::unique_ptr<bool[]> pfaffian_;
         mutable std::vector<float> err_;
         mutable std::vector<float> jac_;
         mutable Eigen::MatrixXf jat_;  // stacked active-row Jacobian, transposed (d x n_active)

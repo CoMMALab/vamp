@@ -19,7 +19,7 @@ namespace vamp::planning::constraint
         // Step size along the projection gradient.
         float descend_rate = 1.F;
 
-        // Convergence threshold on the squared hinged constraint error.
+        // Convergence threshold on the squared constraint-violation error.
         float tolerance = 1e-6F;
 
         // Iteration cap for a single projection.
@@ -30,7 +30,7 @@ namespace vamp::planning::constraint
         // to converge wins.
         float perturbation_scale = 0.1F;
 
-        // Emit every waypoint of a projected chain from steer, not just the frontier.
+        // Emit every waypoint of a projected chain from steer, not just the endpoint.
         bool emit_all_waypoints = true;
     };
 
@@ -54,8 +54,8 @@ namespace vamp::planning::constraint
         float reached_pos_tol = 5e-2F;
         float reached_vel_tol = 5e-2F;
 
-        // Chart retargeting iterations for exact connects: u_f += B^T (q_t - psi(u_f)),
-        // whose fixed point lifts exactly onto the target.
+        // Shooting iterations for exact connects: u_f += B^T (q_t - psi(u_f)), whose
+        // fixed point lifts exactly onto the target.
         std::size_t shoot_iters = 4;
 
         // Cap on lifted collision-check samples per edge (rounded down to a multiple of
@@ -65,5 +65,18 @@ namespace vamp::planning::constraint
         // Relative cutoff on the pivoted-QR R diagonal for the rank of the stacked
         // active-row Jacobian.
         float rank_tolerance = 1e-4F;
+
+        // Per-edge slip tolerance: budget on the drift along Pfaffian row normals, as a
+        // fraction of the executed path length: sum_j |A(q_j) (q_j - q_{j-1})| over the
+        // executed samples must stay within max_slip_fraction of sum_j |q_j - q_{j-1}|.
+        // Those rows carry no position error for the per-sample projection to correct,
+        // so an arc in the chart fixed at the edge start slips along their normals to
+        // first order in the rows' rotation across the edge -- and cost shortcutting
+        // will exploit that slip in place of genuine steering unless it is bounded.
+        // Rows are unit-normalized, so the fraction never exceeds 1: values >= 1
+        // disable the bound. At 0.02 the net (signed) drift of a rapidly rotating row
+        // drops to projection-noise level while planning still connects; looser values
+        // leave shortcutting a proportional budget to cheat with.
+        float max_slip_fraction = 0.02F;
     };
 }  // namespace vamp::planning::constraint

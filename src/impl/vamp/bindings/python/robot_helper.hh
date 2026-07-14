@@ -17,6 +17,8 @@
 #include <vamp/planning/constraints/manifold/com_constraint.hh>
 #include <vamp/planning/constraints/manifold/constraint.hh>
 #include <vamp/planning/constraints/manifold/constraint_set.hh>
+#include <vamp/planning/constraints/manifold/lead_screw_constraint.hh>
+#include <vamp/planning/constraints/manifold/twist_constraint.hh>
 #include <vamp/planning/constraints/phase/eef_speed_constraint.hh>
 #include <vamp/planning/constraints/phase/kinetic_energy_constraint.hh>
 #include <vamp/planning/constraints/local_planner.hh>
@@ -85,6 +87,34 @@ struct robot_has_com<T, std::void_t<decltype(T::has_com)>> : std::true_type
 
 template <typename T>
 constexpr bool robot_has_com_v = robot_has_com<T>::value;
+
+// Robots with a generated lead-screw kernel declare `static constexpr bool has_lead_screw`.
+template <typename T, typename = void>
+struct robot_has_lead_screw : std::false_type
+{
+};
+
+template <typename T>
+struct robot_has_lead_screw<T, std::void_t<decltype(T::has_lead_screw)>> : std::true_type
+{
+};
+
+template <typename T>
+constexpr bool robot_has_lead_screw_v = robot_has_lead_screw<T>::value;
+
+// Robots with a generated twist-Jacobian kernel declare `static constexpr bool has_twist`.
+template <typename T, typename = void>
+struct robot_has_twist : std::false_type
+{
+};
+
+template <typename T>
+struct robot_has_twist<T, std::void_t<decltype(T::has_twist)>> : std::true_type
+{
+};
+
+template <typename T>
+constexpr bool robot_has_twist_v = robot_has_twist<T>::value;
 
 // Nested-type analogue of VAMP_DEFINE_HAS_METHOD: flask z-robots that declare an ambient
 // position-space sibling (using Ambient = ...) get chart-based constrained planning bound.
@@ -438,8 +468,8 @@ namespace vamp::binding
             return ConstraintSetT(std::move(constraints), cs).satisfied(Input::to(c));
         }
 
-        // Phase-gate variants (flask robots): like the constraint-aware variants above,
-        // these members are only instantiated when referenced.
+        // Phase-constraint variants (flask robots): like the constraint-aware variants
+        // above, these members are only instantiated when referenced.
         using PhaseConstraintT = vamp::planning::constraint::PhaseConstraint<Robot, rake>;
         using PhaseConstraintVec = std::vector<std::shared_ptr<const PhaseConstraintT>>;
         using PhaseSetT = vamp::planning::constraint::PhaseConstraintSet<Robot, rake>;
@@ -958,7 +988,9 @@ namespace vamp::binding
         bind_robot_methods<TA>(submodule);
         bind_robot_methods<TC>(submodule);
 
-        if constexpr (has_n_eef_v<Robot> or has_n_closed_loops_v<Robot> or robot_has_com_v<Robot>)
+        if constexpr (
+            has_n_eef_v<Robot> or has_n_closed_loops_v<Robot> or robot_has_com_v<Robot> or
+            robot_has_lead_screw_v<Robot> or robot_has_twist_v<Robot>)
         {
             namespace vc = vamp::planning::constraint;
             using ConstraintT = vc::Constraint<Robot, rake>;
@@ -1068,6 +1100,77 @@ namespace vamp::binding
                         "polygon"_a);
             }
 
+            if constexpr (robot_has_twist_v<Robot>)
+            {
+                using TWC = vc::TwistConstraint<Robot, rake, 1>;
+                using LSC = vc::LeadScrewConstraint<Robot, rake>;
+                using Transform = typename TWC::Transform;
+                using CoefficientRow = std::array<float, 6>;
+
+                nb::class_<TWC, ConstraintT>(
+                    submodule,
+                    "TwistConstraint",
+                    "Constant-coefficient Pfaffian velocity constraint over the end-effector "
+                    "twist: reference_coefficients . twist_ref + body_coefficients . "
+                    "twist_loc = 0, where twist_ref and twist_loc are the [linear; angular] "
+                    "twist of the offset end-effector frame (eef_to_offset, in the "
+                    "end-effector frame) expressed in the reference frame's axes "
+                    "(world_to_reference, in the world frame) and in the frame's own body "
+                    "axes. Transforms are (qw, qx, qy, qz, x, y, z). Contributes no position "
+                    "error, and is smooth for unbounded rotation.")
+                    .def(
+                        "__init__",
+                        [](TWC *t,
+                           const Transform &eef_to_offset,
+                           const Transform &world_to_reference,
+                           const CoefficientRow &reference_coefficients,
+                           const CoefficientRow &body_coefficients) {
+                            new (t) TWC(
+                                eef_to_offset,
+                                world_to_reference,
+                                typename TWC::Coefficients{reference_coefficients},
+                                typename TWC::Coefficients{body_coefficients});
+                        },
+                        "eef_to_offset"_a,
+                        "world_to_reference"_a,
+                        "reference_coefficients"_a,
+                        "body_coefficients"_a);
+
+                nb::class_<LSC, TWC>(
+                    submodule,
+                    "LeadScrewConstraint",
+                    "Pfaffian lead-screw coupling: velocities of an offset end-effector frame "
+                    "(eef_to_offset, in the end-effector frame) are restricted so translation "
+                    "along the reference frame's z-axis (world_to_reference, in the world "
+                    "frame) advances by pitch per full turn about it. Transforms are "
+                    "(qw, qx, qy, qz, x, y, z). Contributes no position error.")
+                    .def(
+                        nb::init<const Transform &, const Transform &, float>(),
+                        "eef_to_offset"_a,
+                        "world_to_reference"_a,
+                        "pitch"_a);
+            }
+
+            if constexpr (robot_has_lead_screw_v<Robot>)
+            {
+                using LSL = vc::LeadScrewLevelConstraint<Robot, rake>;
+                using Transform = typename LSL::Transform;
+
+                nb::class_<LSL, ConstraintT>(
+                    submodule,
+                    "LeadScrewLevelConstraint",
+                    "Holonomic form of the lead-screw coupling: pins the screw invariant "
+                    "h(q) = z-advance - (pitch / 2 pi) * rotation of the offset end-effector "
+                    "frame in the reference frame to a target level. Transforms are "
+                    "(qw, qx, qy, qz, x, y, z).")
+                    .def(
+                        nb::init<const Transform &, const Transform &, float, float>(),
+                        "eef_to_offset"_a,
+                        "world_to_reference"_a,
+                        "pitch"_a,
+                        "target"_a);
+            }
+
             bind_constraint_methods<TA>(submodule);
             bind_constraint_methods<TC>(submodule);
         }
@@ -1086,8 +1189,8 @@ namespace vamp::binding
             bind_flask_methods<Robot, NA>(submodule);
             bind_flask_methods<Robot, CA>(submodule);
 
-            // Phase gates need the robot's generated dynamics kernels; only regenerated
-            // flask robots have them.
+            // Phase constraints need the robot's generated dynamics kernels; only
+            // regenerated flask robots have them.
             if constexpr (has_kinetic_energy_v<Robot> or has_n_end_effectors_v<Robot>)
             {
                 namespace vc = vamp::planning::constraint;
@@ -1096,7 +1199,7 @@ namespace vamp::binding
                 nb::class_<PhaseConstraintT>(
                     submodule,
                     "PhaseConstraint",
-                    "Phase-space inequality gate g(q, qdot) <= 0 over flat states. Constraints "
+                    "Phase-space inequality constraint g(q, qdot) <= 0 over flat states. Constraints "
                     "cache per-evaluation state and are not thread-safe: do not share one "
                     "instance across concurrent planning calls.");
 

@@ -220,7 +220,7 @@ namespace vamp::planning
                 rebuild_tree(goal_tree, false);
             };
 
-            // PHS for informed sampling (single goal only; an L2 construction, so gated off for
+            // PHS for informed sampling (single goal only; an L2 construction, so disabled for
             // robots with a non-metric edge cost)
             bool has_solution = false;
             std::unique_ptr<ProlateHyperspheroid<Robot>> phs_ptr;
@@ -415,11 +415,11 @@ namespace vamp::planning
 
                 const std::size_t nearest_index = nearest_node.index;
 
-                // Cost gate on the new state BEFORE the collision check (mirrors OMPL
+                // Cost bound on the new state BEFORE the collision check (mirrors OMPL
                 // GreedyRRTstar): reject an extension that cannot improve the current best
                 // before paying for the motion-validity check.
                 float new_cost = 0.F;
-                const auto gate = [&](const Configuration &candidate) -> bool
+                const auto accept = [&](const Configuration &candidate) -> bool
                 {
                     // Directed edge cost, mirroring the steer direction
                     new_cost =
@@ -457,7 +457,7 @@ namespace vamp::planning
                     settings.range,
                     tree_a_is_start,
                     environment,
-                    gate);
+                    accept);
 
                 if (extension.status == SteerStatus::Rejected)
                 {
@@ -485,8 +485,9 @@ namespace vamp::planning
                 std::size_t best_parent = nearest_node.index;
                 const auto &waypoints = extension.waypoints;
 
-                // For a projected chain, the gate-computed cost (direct edge to the frontier)
-                // is only a gating heuristic; the first tree node is waypoints.front()
+                // For a projected chain, the accept-computed cost (direct edge to the
+                // candidate endpoint) is only a pruning heuristic; the first tree node is
+                // waypoints.front()
                 if constexpr (LocalPlanner::projecting)
                 {
                     if (waypoints.size() > 1)
@@ -539,7 +540,7 @@ namespace vamp::planning
                         if constexpr (has_cost_v<Robot>)
                         {
                             const auto nbr_config = Configuration(buffer_index(nbr_node.index));
-                            edge = chain_edge_cost(nbr_config, extension.frontier());
+                            edge = chain_edge_cost(nbr_config, extension.endpoint());
                         }
                         neighbor_edges.emplace_back(nbr_node, nbr_dist, edge);
                     }
@@ -566,7 +567,7 @@ namespace vamp::planning
                             {
                                 const auto nbr_config = Configuration(buffer_index(nbr_node.index));
                                 if (lp.validate(
-                                        nbr_config, extension.frontier(), environment, tree_a_is_start))
+                                        nbr_config, extension.endpoint(), environment, tree_a_is_start))
                                 {
                                     new_cost = candidate_cost;
                                     best_parent = nbr_node.index;
@@ -584,7 +585,7 @@ namespace vamp::planning
                             {
                                 const auto nbr_config = Configuration(buffer_index(nbr_node.index));
                                 if (lp.validate(
-                                        nbr_config, extension.frontier(), environment, tree_a_is_start))
+                                        nbr_config, extension.endpoint(), environment, tree_a_is_start))
                                 {
                                     new_cost = candidate_cost;
                                     best_parent = nbr_node.index;
@@ -630,7 +631,7 @@ namespace vamp::planning
                         if constexpr (has_cost_v<Robot>)
                         {
                             const auto nbr_config = Configuration(buffer_index(nbr_node.index));
-                            rewire_edge_cost = chain_edge_cost(extension.frontier(), nbr_config);
+                            rewire_edge_cost = chain_edge_cost(extension.endpoint(), nbr_config);
                         }
 
                         float nbr_new_cost = new_cost + rewire_edge_cost;
@@ -641,7 +642,7 @@ namespace vamp::planning
                             {
                                 const auto nbr_config = Configuration(buffer_index(nbr_node.index));
                                 motion_valid = lp.validate(
-                                    extension.frontier(), nbr_config, environment, tree_a_is_start);
+                                    extension.endpoint(), nbr_config, environment, tree_a_is_start);
                             }
                             else
                             {
@@ -672,7 +673,7 @@ namespace vamp::planning
                 }
 
                 // Insert the remainder of the chain, each waypoint parented on the previous
-                const auto [frontier_index, extend_truncated] =
+                const auto [new_index, extend_truncated] =
                     insert_chain(waypoints.begin() + 1, waypoints.end(), new_node_index, add_node);
 
                 if (extend_truncated)
@@ -680,7 +681,7 @@ namespace vamp::planning
                     continue;
                 }
 
-                new_cost = costs[frontier_index];
+                new_cost = costs[new_index];
 
                 // Connect to other tree
                 if (tree_b->size() == 0)
@@ -688,7 +689,7 @@ namespace vamp::planning
                     continue;
                 }
 
-                auto other_result = tree_b->nearest(Robot::nn_key(buffer_index(frontier_index)));
+                auto other_result = tree_b->nearest(Robot::nn_key(buffer_index(new_index)));
                 if (not other_result)
                 {
                     continue;
@@ -703,7 +704,7 @@ namespace vamp::planning
                 if constexpr (has_cost_v<Robot>)
                 {
                     connection_edge =
-                        chain_edge_cost(extension.frontier(), other_nearest_configuration);
+                        chain_edge_cost(extension.endpoint(), other_nearest_configuration);
                 }
 
                 float connection_cost = new_cost + connection_edge + costs[other_nearest_node.index];
@@ -720,8 +721,8 @@ namespace vamp::planning
 
                 std::size_t i_extension = 0;
                 bool connected = false;
-                Configuration prior = extension.frontier();
-                std::size_t prior_index = frontier_index;
+                Configuration prior = extension.endpoint();
+                std::size_t prior_index = new_index;
                 while (not connected and i_extension < n_extensions and free_index < settings.max_samples)
                 {
                     const float remaining = Robot::distance(prior, other_nearest_configuration);
@@ -750,7 +751,7 @@ namespace vamp::planning
 
                     connected = (step.status == SteerStatus::Reached);
                     i_extension++;
-                    prior = step.frontier();
+                    prior = step.endpoint();
                     prior_index = step_index;
                 }
 

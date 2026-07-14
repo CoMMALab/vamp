@@ -23,8 +23,8 @@ def main(
     fps: float = 60.0,                     # Animation frames per second of trajectory time
     rho: Union[float, None] = None,        # Override the LQMT cost weight rho for this robot
     retime: bool = False,                  # Plan with the ambient geometric parent, then retime
-    max_kinetic_energy: Union[float, None] = None,    # Phase gate: kinetic energy cap (J)
-    max_eef_speed: Union[float, None] = None,         # Phase gate: end-effector speed cap (m/s)
+    max_kinetic_energy: Union[float, None] = None,    # Phase constraint: kinetic energy cap (J)
+    max_eef_speed: Union[float, None] = None,         # Phase constraint: end-effector speed cap (m/s)
     sample_energy: Union[float, None] = None,         # Shape sampled kinetic energy to [0, cap] J
     **kwargs,
     ):

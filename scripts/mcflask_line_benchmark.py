@@ -17,8 +17,8 @@ adherence <= 1e-6 squared on 31/33, max velocity ratio 0.46.
 Velocity note: bounds are enforced on execution-frame velocities — each sample's
 chart-center-frame velocity is re-projected into the tangent space at its own
 lifted point before the limit check, matching the lift used at execution time —
-so the velocity ratio gate holds at any chart radius. (The prototype enforced
-chart-center-frame velocities only and hid the tangent seam with
+so the velocity ratio check holds at any chart radius. (The prototype enforced
+chart-center-frame velocities only and hid the tangent-space velocity error with
 velocity_scale=0.25, reporting 0.46.)
 """
 
@@ -39,7 +39,7 @@ LINE_CLEARANCE = 0.22
 OBS_RADIUS = 0.12
 SEED = 17
 
-# Phase-capped configuration: one set of caps for the phase-gated chart runs. The gates
+# Phase-capped configuration: one set of caps for the phase-constrained chart runs. The constraints
 # bound execution-frame kinetic energy and EEF linear speed; enforcement is at the
 # planner's validation samples, so uniformly-resampled lift samples may peak slightly
 # between them.
@@ -87,7 +87,7 @@ def lift_path(pf, path, constraints, chs, pos_tol):
     path[i] may not reconstruct them; the backward lift from path[i+1] does.
     Lifted samples carry execution-frame velocities, so the kinetic energy and
     end-effector speed measured on them are the execution-frame quantities the phase
-    gates bound. Returns (max hinged error, max |v| per joint, total duration,
+    constraints bound. Returns (max violation error, max |v| per joint, total duration,
     n samples, max kinetic energy, max EEF speed).
     """
     max_err = 0.0
@@ -140,7 +140,7 @@ def main():
     chs = vamp.ChartSettings()
     chs.eps_chart = 0.5
 
-    phase_gates = flask.phase_constraints(pf, KE_CAP, EE_SPEED_CAP)
+    phase_constraint_set = flask.phase_constraints(pf, KE_CAP, EE_SPEED_CAP)
 
     gsettings = vamp.RRTCSettings()
     gsettings.range = 0.5
@@ -230,7 +230,7 @@ def main():
                     else:
                         row["chart_lift_failed"] = True
 
-                # --- chart-LQMT with phase gates (capped config) ---
+                # --- chart-LQMT with phase constraints (capped config) ---
                 times, succ = [], 0
                 best = None
                 for k in range(N_RUNS):
@@ -238,7 +238,7 @@ def main():
                     sampler.skip(7919 * k)
                     res = pf.rrtc(
                         zs, zg, env, settings, sampler, constraints,
-                        chart_settings=chs, phase_constraints=phase_gates)
+                        chart_settings=chs, phase_constraints=phase_constraint_set)
                     if res.solved:
                         succ += 1
                         times.append(res.nanoseconds / 1e6)
@@ -326,7 +326,7 @@ def main():
           f"{'OK' if lift_fail == 0 else 'FAIL'}")
     print(f"vel ratio:  max {max(vr):.2f} {'OK' if vr and max(vr) <= 1.0 else 'FAIL'}")
 
-    # phase-gated verdicts (capped config); uncapped maxima reported for cap tuning
+    # phase-constrained verdicts (capped config); uncapped maxima reported for cap tuning
     uncapped_ke = [r["chart_max_ke"] for r in results if "chart_max_ke" in r]
     uncapped_ee = [r["chart_max_ee_speed"] for r in results if "chart_max_ee_speed" in r]
     p_succ = np.mean([r["phase_success"] for r in results])
@@ -334,7 +334,7 @@ def main():
     p_ke = [r["phase_max_ke_ratio"] for r in results if "phase_max_ke_ratio" in r]
     p_ee = [r["phase_max_ee_ratio"] for r in results if "phase_max_ee_ratio" in r]
     p_lift_fail = sum(1 for r in results if r.get("phase_lift_failed"))
-    print(f"\n=== PHASE GATES (KE cap {KE_CAP} J, EEF speed cap {EE_SPEED_CAP} m/s) ===")
+    print(f"\n=== PHASE CONSTRAINTS (KE cap {KE_CAP} J, EEF speed cap {EE_SPEED_CAP} m/s) ===")
     print(f"uncapped:   max KE {max(uncapped_ke):.2f} J median {np.median(uncapped_ke):.2f} J | "
           f"max EEF {max(uncapped_ee):.2f} m/s median {np.median(uncapped_ee):.2f} m/s")
     print(f"success:    {p_succ:.1%} {'OK' if p_succ >= 0.92 else 'FAIL'}")

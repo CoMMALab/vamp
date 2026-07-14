@@ -1,11 +1,13 @@
 """Fruit ninja demonstration on the Panda's chart-LQMT (flask) planner.
 
-Three spheres are thrown on ballistic arcs toward the Panda in rapid fire, each
-leaving the thrower's hand just before the previous one is cut. The arm must
-intersect each fruit at its designed hit time with a prescribed slicing velocity
-(the fastest swipe the arm can swing at that posture) to cut it.
+An endless stream of spheres is thrown on ballistic arcs toward the Panda in
+rapid fire, each leaving the thrower's hand while the arm is still swinging at
+the previous one. The arm must intersect each fruit at its designed hit time
+with a prescribed slicing velocity (the fastest swipe the arm can swing at that
+posture) to cut it. Planning runs continuously: while the arm executes the
+current cut, the next throw is sampled and its interception leg is planned.
 
-The throws are fixed up front; the planner has to match the flight times exactly:
+Each throw is fixed at sample time; the planner has to match its flight:
 
 - Cut states: for each fruit an ambient TSR projection places the end-effector at
   the nominal hit point (orientation free), the slice direction is chosen over
@@ -15,13 +17,14 @@ The throws are fixed up front; the planner has to match the flight times exactly
   swing, which favors tangential sweeps over the nearly-radial weak axis of the
   position Jacobian), and damped least-squares differential IK converts the
   slice vector into goal joint velocities.
-- Timed interception: each leg (rest -> cut 1 -> cut 2 -> cut 3) is planned with
-  the flask RRT-Connect and simplified, then the time/effort trade-off rho of the
-  LQMT cost C = rho T + integral |u|^2 is bisected until the leg's total optimal
-  time equals the flight-time gap to sub-millisecond residual. rho only reshapes
-  the timing of the arcs; the cut states' boundary velocities are untouched.
-- Fruits are targets only, not collision objects: the workspace is empty and the
-  planner is exercised purely for the timed kinodynamic connections.
+- Timed interception: each cut-to-cut leg is planned with the flask RRT-Connect
+  and simplified, then the time/effort trade-off rho of the LQMT cost
+  C = rho T + integral |u|^2 is bisected until the leg's total optimal time
+  equals the flight-time gap to sub-millisecond residual. rho only reshapes the
+  timing of the arcs; the cut states' boundary velocities are untouched.
+- Fruits are targets only, not collision objects, but the workspace holds static
+  sphere obstacles: every cut-to-cut leg is planned and simplified against them,
+  and sampled throws whose flight would pass through an obstacle are redrawn.
 
 A cut lands if the executed end-effector position at the executed hit time is
 inside the fruit and the slice-direction speed meets the prescription. Position
@@ -30,6 +33,9 @@ speed (~5 mm/ms); both are printed honestly.
 """
 
 from pathlib import Path
+import multiprocessing
+import queue
+import signal
 import time
 
 import numpy as np
@@ -44,25 +50,53 @@ FRUIT_RADIUS = 0.06
 
 # Fraction of the joint velocity limits the slicing joint velocity may use. The
 # slice direction is chosen at each hit posture to maximize the end-effector
-# speed achievable within it, so the prescribed speed is per-fruit. Beyond 0.8
-# the legs into and out of the cut stretch past ~1.1 s (the arc must wind a
-# near-limit boundary velocity up and back down without its interior overshoot
-# breaking the limits), forcing loftier throws for no visible extra snap.
-SLICE_HEADROOM = 0.8
+# speed achievable within it, so the prescribed speed is per-fruit. 0.9 is the
+# ceiling: the arcs into and out of the cut wind a near-limit boundary velocity
+# up and back down, and their interior Hermite overshoot already touches the
+# limits (executed joint ratio up to 1.00) — any higher executes past them.
+SLICE_HEADROOM = 0.9
 
-# Volley design: (launch time s, spawn point, nominal hit point, flight time s).
-# Rapid fire from one thrower standing 6 m out at hand height: ~7.3 m/s tosses at
-# ~54 degrees, apex ~3 m, each fruit leaving the hand just before the previous
-# cut so consecutive fruits overlap in the air. Flatter is not possible without
-# breaking the overlap: cut-to-cut legs that reverse a slice at SLICE_HEADROOM
-# of the joint velocity limits have a velocity-limited floor of ~1.15 s between
-# hits, and a fruit aloft that long drops g tau^2 / 2 = 8 m without the launch
-# lofting it back up.
-VOLLEY = [
-    (0.00, [6.0, -0.5, 1.2], [0.45, -0.3, 0.55], 1.3),
-    (1.25, [6.0, 0.0, 1.2], [0.55, 0.0, 0.65], 1.3),
-    (2.50, [6.0, 0.5, 1.2], [0.45, 0.3, 0.55], 1.3),
+# Throw stream: one thrower standing 6 m out at hand height keeps lobbing fruits
+# (~7.3 m/s tosses at ~54 degrees, apex ~3 m), each new fruit leaving the hand
+# while the arm swings at the previous one. Hit points are sampled from a box
+# spanning the arm's workspace; samples the cut-state IK cannot reach, or whose
+# legs cannot be planned or duration-matched, are redrawn. Consecutive hits are
+# spaced at least 1.4 s apart: cut-to-cut legs that reverse a slice at
+# SLICE_HEADROOM of the joint velocity limits have a velocity-limited floor of
+# ~1.25 s between nearby hits, more when the cuts sit far apart or the leg has
+# to detour around the obstacle cage.
+THROWER = np.array([6.0, 0.0, 1.2])
+SPAWN_SWAY = 0.5  # thrower sways up to +-0.5 m sideways between tosses
+FLIGHT = 1.3  # s each fruit spends in the air
+GAP_RANGE = (1.4, 2.0)  # s between consecutive hits
+HIT_LO = np.array([0.35, -0.55, 0.35])
+HIT_HI = np.array([0.65, 0.55, 0.80])
+
+# Static sphere obstacles the cut-to-cut sweeps must plan around: a center ball
+# in the middle of the hit box splitting the left/right halves of the
+# workspace, two low guards under the box where the hand dips on low cuts
+# (their tops sit below the lowest hit, so no pre-hit flight can clip them),
+# an overhead ball above the shoulder that side-to-side transits must duck
+# under (behind the box in x, so flights descending onto hits stay clear), and
+# two side balls shaving the box rims. Sampled throws whose flight would pass
+# through an obstacle are redrawn; cut debris falls through freely, like it
+# already does through the robot.
+OBSTACLES = [
+    ([0.50, 0.0, 0.575], 0.12),
+    ([0.50, -0.35, 0.15], 0.10),
+    ([0.50, 0.35, 0.15], 0.10),
+    ([0.15, 0.0, 1.05], 0.10),
+    ([0.40, -0.70, 0.55], 0.10),
+    ([0.40, 0.70, 0.55], 0.10),
 ]
+OBSTACLE_COLOR = [70, 90, 130]
+
+# Minimum surface distance (m) from a hit point to the nearest obstacle. The
+# wind-down after a cut needs free space around the hit: a cut committed right
+# against an obstacle plans fine INTO the cut but strands the stream on the way
+# out (measured: a cut 0.17 m from a surface connected <10% of departures even
+# at 15x the planning budget, stalling on collision-detour path shapes).
+HIT_CLEARANCE = 0.18
 
 FRUIT_COLORS = [[220, 30, 30], [240, 150, 30], [40, 170, 40]]
 
@@ -71,6 +105,12 @@ READY = np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785], dtype=np.float32
 
 # TSR position box half-width (m) for the cut-state IK; orientation is free.
 HIT_TOL = 0.005
+
+# Seconds of room a cut posture must have inside the joint position limits to
+# carry its slicing velocity through the hit. A posture pinned against a limit
+# with velocity into it strands the planner: the outgoing leg starts with that
+# same velocity, so every arc leaving the cut breaks the limit immediately.
+FLOW_TIME = 0.15
 
 # Log-rho bisection bracket and timing stop criterion for duration matching.
 # Outside the bracket the trees starve: below, velocity-limited arcs stretch too
@@ -82,6 +122,13 @@ IDENTITY = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 DENSE_DT = 1.0 / 240.0
 FRAME_DT = 1.0 / 60.0
+
+# Seconds of trajectory the planning process keeps buffered ahead of playback,
+# absorbing the occasional slow leg (resampled throws, stalled bisections).
+BUFFER_AHEAD = 5.0
+
+# Seconds a cut (gray) fruit keeps falling before it is recycled.
+FALL_TAIL = 0.75
 
 
 def pose_to_transform(pose):
@@ -113,6 +160,14 @@ class Throw:
         return self.v0 + GRAVITY * (t - self.launch)
 
 
+def flight_clear(throw):
+    """True if the fruit stays clear of every obstacle from spawn to hit."""
+    tau = np.linspace(0.0, throw.flight, int(throw.flight / DENSE_DT) + 1)
+    points = throw.spawn + np.outer(tau, throw.v0) + 0.5 * np.outer(tau * tau, GRAVITY)
+    return all(np.linalg.norm(points - center, axis=1).min() > radius + FRUIT_RADIUS
+               for center, radius in OBSTACLES)
+
+
 def unit_directions(n=2048):
     """Fibonacci-spiral sampling of the unit sphere."""
     i = np.arange(n)
@@ -138,8 +193,12 @@ def cut_state(ambient, environment, hit_point, limits, seed):
     maximize the end-effector speed achievable within SLICE_HEADROOM of the
     joint velocity limits at that posture (the fruit's own velocity is ignored:
     the swipe is as aggressive as the arm allows), and slicing joint velocity by
-    damped least-squares differential IK. Returns (q, qdot, slice direction,
-    prescribed speed, achieved end-effector velocity)."""
+    damped least-squares differential IK. The cut is a flow-through state, so
+    slice directions without FLOW_TIME of flow room (inside the joint position
+    limits and clear of the obstacles) are skipped for the next-fastest ones;
+    the projection is retried from READY when the warm seed fails. Returns
+    (q, qdot, slice direction, prescribed speed, achieved end-effector
+    velocity)."""
     target = np.eye(4)
     target[:3, 3] = hit_point
     tsr = ambient.TaskSpaceConstraint(
@@ -147,20 +206,47 @@ def cut_state(ambient, environment, hit_point, limits, seed):
         [-HIT_TOL] * 3 + [-3.2] * 3, [HIT_TOL] * 3 + [3.2] * 3)
     settings = vamp.ConstraintSettings()
     settings.max_iterations = 200
-    q = np.asarray(ambient.project(seed, [tsr], settings), dtype=np.float32)
-    if not ambient.validate(q, environment):
-        raise RuntimeError("cut configuration is in collision")
-
-    J = position_jacobian(ambient, q)
-    solve = np.linalg.inv(J @ J.T + 1e-6 * np.eye(3))
+    lower = np.array(ambient.lower_bounds())
+    upper = np.array(ambient.upper_bounds())
     directions = unit_directions()
-    qdot_per_speed = directions @ (J.T @ solve).T
-    demand = np.abs(qdot_per_speed / limits).max(axis=1)  # joint ratio per m/s
-    pick = int(np.argmin(demand))
-    speed = SLICE_HEADROOM / float(demand[pick])
-    d = directions[pick]
-    qdot = speed * qdot_per_speed[pick]
-    return q, qdot.astype(np.float32), d, speed, J @ qdot
+    for ik_seed in (seed, READY):
+        try:
+            q = np.asarray(ambient.project(ik_seed, [tsr], settings),
+                           dtype=np.float32)
+        except ValueError:
+            continue  # projection did not converge
+        reached = np.array(ambient.eefk(q))[:3, 3]
+        if np.linalg.norm(reached - hit_point) > np.sqrt(3.0) * HIT_TOL + 1e-4:
+            continue  # projection did not converge onto the hit point
+        if not ambient.validate(q, environment):
+            continue
+        J = position_jacobian(ambient, q)
+        solve = np.linalg.inv(J @ J.T + 1e-6 * np.eye(3))
+        qdot_per_speed = directions @ (J.T @ solve).T
+        demand = np.abs(qdot_per_speed / limits).max(axis=1)  # joint ratio per m/s
+        for pick in np.argsort(demand)[:512]:
+            speed = SLICE_HEADROOM / float(demand[pick])
+            d = directions[pick]
+            qdot = speed * qdot_per_speed[pick]
+            room = 0.05 + FLOW_TIME * np.abs(qdot)
+            if np.any(q - room < lower) or np.any(q + room > upper):
+                continue
+            # The legs into and out of the cut hug the straight flow-through
+            # line q + tau*qdot near the hit; a slice pointed into an obstacle
+            # strands the planner exactly like a pinned joint limit, so fall
+            # back to the next-fastest direction (usually the reverse swipe).
+            # The check is asymmetric: a blocked incoming side only fails this
+            # one sample (the leg into the cut cannot plan), so ~0.3 m of
+            # clearance is enough, but a blocked outgoing side poisons every
+            # leg AFTER the cut is committed, so the full wind-down line must
+            # be clear.
+            flow_in = min(FLOW_TIME, 0.3 / speed)
+            if not all(ambient.validate((q + tau * qdot).astype(np.float32),
+                                        environment)
+                       for tau in np.linspace(-flow_in, FLOW_TIME, 15)):
+                continue
+            return q, qdot.astype(np.float32), d, speed, J @ qdot
+    raise RuntimeError("no usable cut state at this hit point")
 
 
 def hermite_arc(z0, z1, T, dt=DENSE_DT):
@@ -241,14 +327,49 @@ def plan_leg(module, planner_func, plan_settings, simp_settings, environment,
             lo = mid  # Too slow: raise rho.
         else:
             hi = mid
+        if hi - lo < 3e-5:
+            # Bracket collapsed without converging: D(rho) is stuck on a path
+            # shape change, and further replans at ~the same rho are identical.
+            break
     path, duration, rho, n_raw = best
+    if abs(duration - target_duration) > TIMING_TOL:
+        # Simplified paths change shape between bisection steps, leaving
+        # D(rho) too noisy to converge on some legs (obstacle detours make
+        # this common). Retime the best path with its waypoints frozen: the
+        # total optimal time is then smooth and monotone in rho, so this
+        # bisection cannot stall. The retimed arcs differ slightly from the
+        # ones the planner validated, so the dense trajectory is re-checked
+        # by the caller before the leg is accepted.
+        lo, hi = np.log(RHO_BOUNDS[0]), np.log(RHO_BOUNDS[1])
+        for _ in range(60):
+            mid = 0.5 * (lo + hi)
+            module.set_rho(float(np.exp(mid)))
+            duration = sum(module.optimal_time(a, b) for a, b in zip(path, path[1:]))
+            if abs(duration - target_duration) < TIMING_TOL:
+                break
+            if duration > target_duration:
+                lo = mid
+            else:
+                hi = mid
+        rho = float(np.exp(mid))
+        if abs(duration - target_duration) > 10 * TIMING_TOL:
+            raise RuntimeError(
+                f"duration matching stalled: residual "
+                f"{abs(duration - target_duration) * 1e3:.1f} ms")
     return path, duration, rho, n_raw, iteration
 
 
-def main(visualize: bool = False):
+def main(visualize: bool = False, count: int = 0, seed: int = 0):
+    """count fruits are thrown (0 = endless); seed drives the throw stream."""
+    # Most legs connect quickly; a small budget rejects unplannable sampled
+    # throws cheaply, which is what keeps the stream ahead of real time. But
+    # weaving the obstacle cage sometimes genuinely needs more iterations, so
+    # when every cheap try fails the retry loop escalates to the big budget.
+    BUDGETS = (2000, 10000)
     (module, planner_func, plan_settings, simp_settings) = \
         vamp.configure_robot_and_planner_with_kwargs(
-            "panda.flask", "rrtc", max_iterations=50000, max_samples=50000)
+            "panda.flask", "rrtc",
+            max_iterations=BUDGETS[0], max_samples=BUDGETS[0])
     plan_settings.range = 0.5
     # Flat z-space sample distances dwarf the geometric dynamic-domain radius
     # default, which starves the trees after the first trapped steer.
@@ -256,123 +377,215 @@ def main(visualize: bool = False):
 
     ambient = vamp.panda
     environment = vamp.Environment()
+    for center, radius in OBSTACLES:
+        environment.add_sphere(vamp.Sphere(center, radius))
     limits = np.array(module.velocity_limits())
     n_q = len(READY)
+    rng = np.random.default_rng(seed)
 
-    throws = [Throw(*design) for design in VOLLEY]
+    def next_fruit(z_from, clock):
+        """Sample the next throw (hit point, spacing, thrower sway), synthesize
+        its cut state, and plan the duration-matched interception leg. A sampled
+        throw can be unreachable or its leg unplannable; resample a fresh one."""
+        failures = []
+        attempts = 0  # samples that survived the free geometric filters
+        for tries in range(1, 201):
+            if attempts >= 40:
+                break
+            gap = float(rng.uniform(*GAP_RANGE))
+            hit_point = rng.uniform(HIT_LO, HIT_HI)
+            if min(np.linalg.norm(hit_point - center) - radius
+                   for center, radius in OBSTACLES) < HIT_CLEARANCE:
+                continue
+            spawn = THROWER + np.array([0.0, rng.uniform(-SPAWN_SWAY, SPAWN_SWAY), 0.0])
+            throw = Throw(clock + gap - FLIGHT, spawn, hit_point, FLIGHT)
+            if not flight_clear(throw):
+                continue
+            attempts += 1
+            budget = BUDGETS[0] if attempts <= 20 else BUDGETS[1]
+            plan_settings.max_iterations = budget
+            plan_settings.max_samples = budget
+            try:
+                q, qdot, d, speed, ee_velocity = cut_state(
+                    ambient, environment, hit_point, limits[:n_q], z_from[:n_q])
+                z_to = np.concatenate([q, qdot])
+                path, duration, rho, n_raw, _ = plan_leg(
+                    module, planner_func, plan_settings, simp_settings,
+                    environment, z_from, z_to, gap)
+            except RuntimeError as failure:
+                failures.append(str(failure).split(":")[0])
+                continue
+            # Dense Hermite evaluation of the leg under its matched rho,
+            # appended to the one shared clock.
+            module.set_rho(rho)
+            qs, vs, ts = [], [], []
+            leg_clock = clock
+            for a, b in zip(path, path[1:]):
+                qq, vv, tt = hermite_arc(a, b, module.optimal_time(a, b))
+                qs.append(qq)
+                vs.append(vv)
+                ts.append(leg_clock + tt)
+                leg_clock = ts[-1][-1]
+            dense = (np.vstack(qs), np.vstack(vs), np.concatenate(ts))
+            # The executed trajectory is these dense arcs, not the exact ones
+            # the planner validated (retimed legs shift every arc's duration),
+            # so check what will actually run. Velocity gets a small allowance:
+            # interior Hermite overshoot already grazes the limits on legs the
+            # planner itself accepts.
+            if (np.abs(dense[1]) / limits[:n_q]).max() > 1.02 or not all(
+                    ambient.validate(qc, environment)
+                    for qc in dense[0].astype(np.float32)):
+                failures.append("executed trajectory failed validation")
+                continue
+            leg = (rho, n_raw, len(path), duration, gap, tries)
+            return throw, z_to, (d, speed, ee_velocity), leg, dense
+        counts = {m: failures.count(m) for m in dict.fromkeys(failures)}
+        raise RuntimeError(f"no plannable throw in {attempts} planning attempts: "
+                           + "; ".join(f"{m} x{c}" for m, c in counts.items()))
 
-    # Cut states, seeded by the previous fruit's hit configuration.
-    cuts = []
-    seed = READY
-    for throw in throws:
-        q, qdot, d, speed, ee_velocity = cut_state(
-            ambient, environment, throw.hit_point, limits[:n_q], seed)
-        cuts.append((np.concatenate([q, qdot]), d, speed, ee_velocity))
-        seed = q
-
-    # Timed legs: rest -> cut 1 -> cut 2 -> cut 3, each leg's duration bisected
-    # to the flight-time gap.
-    states = [vf.rest_state(READY)] + [np.asarray(z, dtype=np.float32) for z, _, _, _ in cuts]
-    gaps = np.diff([0.0] + [throw.hit_time for throw in throws])
-    legs = []
-    elapsed = time.perf_counter()
-    for z_from, z_to, gap in zip(states, states[1:], gaps):
-        legs.append(plan_leg(module, planner_func, plan_settings, simp_settings,
-                             environment, z_from, z_to, gap))
-    elapsed = time.perf_counter() - elapsed
-    print(f"fruit ninja: 3 legs planned and duration-matched in {elapsed * 1e3:.1f} ms")
-
-    # Executed trajectory: dense Hermite evaluation of every simplified edge under
-    # its optimal time, chained on one clock starting at the first launch.
-    dense_q, dense_v, dense_t = [], [], []
-    clock = 0.0
-    executed_hits = []
-    for path, duration, rho, n_raw, iterations in legs:
-        module.set_rho(rho)
-        for a, b in zip(path, path[1:]):
-            q, v, ts = hermite_arc(a, b, module.optimal_time(a, b))
-            dense_q.append(q)
-            dense_v.append(v)
-            dense_t.append(clock + ts)
-            clock = dense_t[-1][-1]
-        executed_hits.append(clock)
-    dense_q = np.vstack(dense_q)
-    dense_v = np.vstack(dense_v)
-    dense_t = np.concatenate(dense_t)
-
-    for i, ((path, duration, rho, n_raw, iterations), gap) in enumerate(zip(legs, gaps)):
-        print(f"leg {i + 1}: rho {rho:8.3f}, {n_raw} -> {len(path)} states, "
-              f"duration {duration:.4f} s (gap {gap:.4f}, "
-              f"residual {abs(duration - gap) * 1e3:.2f} ms, {iterations} bisections)")
-
-    vel_ratio = float((np.abs(dense_v) / limits[:n_q]).max())
-    print(f"trajectory: {dense_t[-1]:.3f} s, max joint velocity ratio {vel_ratio:.2f}")
-
-    n_cut = 0
-    for i, (throw, (z, d, speed, ee_velocity)) in enumerate(zip(throws, cuts)):
-        t_hit = executed_hits[i]
-        ee_position = np.array(ambient.eefk(z[:n_q]))[:3, 3]
+    def report(index, throw, z_to, slice_info, leg_info, dense):
+        d, speed, ee_velocity = slice_info
+        rho, n_raw, n_simple, duration, gap, tries = leg_info
+        t_hit = float(dense[2][-1])
+        ee_position = np.array(ambient.eefk(z_to[:n_q]))[:3, 3]
         miss = float(np.linalg.norm(ee_position - throw.position(t_hit)))
         along = float(ee_velocity @ d)
         cut = miss < FRUIT_RADIUS and along >= 0.9 * speed
-        n_cut += cut
-        print(f"fruit {i + 1}: hit at {t_hit:.4f} s (designed {throw.hit_time:.4f}), "
-              f"miss {miss * 1e3:.1f} mm (radius {FRUIT_RADIUS * 1e3:.0f}), "
-              f"slice speed {along:.3f} m/s (prescribed {speed:.3f}) "
-              f"-> {'CUT' if cut else 'MISS'}")
-    print(f"{n_cut}/3 fruits cut")
+        vel_ratio = float((np.abs(dense[1]) / limits[:n_q]).max())
+        sampled = f" [{tries} throws sampled]" if tries > 1 else ""
+        print(f"fruit {index}: leg rho {rho:8.3f}, {n_raw} -> {n_simple} states, "
+              f"duration {duration:.4f} s (gap {gap:.4f}, "
+              f"residual {abs(duration - gap) * 1e3:.2f} ms); "
+              f"hit at {t_hit:.3f} s, miss {miss * 1e3:.1f} mm, "
+              f"slice {along:.2f} m/s, joint ratio {vel_ratio:.2f} "
+              f"-> {'CUT' if cut else 'MISS'}{sampled}")
+        return cut, t_hit
 
-    if visualize:
-        from viser_utils import setup_viser_with_robot, add_spheres, add_trajectory
+    if not visualize:
+        z = np.asarray(vf.rest_state(READY), dtype=np.float32)
+        clock, index, cuts = 0.0, 0, 0
+        start = time.perf_counter()
+        while count == 0 or index < count:
+            index += 1
+            throw, z_to, slice_info, leg_info, dense = next_fruit(z, clock)
+            cut, clock = report(index, throw, z_to, slice_info, leg_info, dense)
+            cuts += cut
+            z = z_to
+        wall = time.perf_counter() - start
+        print(f"{cuts}/{index} fruits cut; {clock:.1f} s of motion planned "
+              f"in {wall:.1f} s wall ({clock / wall:.0f}x real time)")
+        return
 
-        robot_dir = Path(__file__).parents[1] / "resources" / "panda"
-        server, robot = setup_viser_with_robot(robot_dir, "panda_spherized.urdf")
-        robot.update_cfg(READY)
+    # The planner holds the GIL (measured: a leg's bisection blocks other
+    # threads for tens of milliseconds per step), so an in-process planner
+    # thread makes the render loop below stutter. Run planning in its own
+    # forked process instead, streaming finished legs back over a queue. Fork
+    # before the viser server exists so the child inherits no server threads.
+    context = multiprocessing.get_context("fork")
+    playhead = context.Value("d", 0.0)
+    planned = context.Queue()
 
-        # One shared clock: uniform frames sampling the executed arm trajectory
-        # (with a beat of tail to watch the last fruit fall away) and the fruits'
-        # ballistic arcs. Each fruit swaps from its colored sphere to a gray one
-        # at its cut time; hidden spheres are parked out of view.
-        frame_times = np.arange(0.0, dense_t[-1] + 0.75, FRAME_DT)
-        indices = np.clip(np.searchsorted(dense_t, frame_times), 0, len(dense_t) - 1)
-        waypoints = dense_q[indices]
+    def producer():
+        signal.signal(signal.SIGINT, signal.SIG_IGN)  # parent's ctrl-c cleans up
+        z = np.asarray(vf.rest_state(READY), dtype=np.float32)
+        clock, index, cuts = 0.0, 0, 0
+        while count == 0 or index < count:
+            if clock - playhead.value > BUFFER_AHEAD:
+                time.sleep(0.05)
+                continue
+            index += 1
+            throw, z_to, slice_info, leg_info, dense = next_fruit(z, clock)
+            cut, t_hit = report(index, throw, z_to, slice_info, leg_info, dense)
+            cuts += cut
+            planned.put((throw, t_hit, dense[2], dense[0]))
+            z, clock = z_to, t_hit
+        print(f"throw stream finished: {cuts}/{index} fruits cut")
 
-        hidden = np.array([0.0, 0.0, -50.0])
-        fruit_positions = []
-        for t in frame_times:
-            frame = []
-            for throw, t_hit in zip(throws, executed_hits):
-                p = throw.position(t)
-                frame.append(p if t < t_hit else hidden)
-                frame.append(hidden if t < t_hit else p)
-            fruit_positions.append(frame)
-        fruit_positions = np.array(fruit_positions)
+    producer_process = context.Process(target=producer, daemon=True)
+    producer_process.start()
 
-        handles = add_spheres(
-            server,
-            fruit_positions[0],
-            [FRUIT_RADIUS] * 6,
-            colors=[c for color in FRUIT_COLORS for c in (color, [120, 120, 120])],
-            prefix="/fruit",
-        )
+    from viser_utils import setup_viser_with_robot, add_spheres
 
-        slider = add_trajectory(server, waypoints, robot, handles, fruit_positions)
-        play = server.gui.add_checkbox("Play", initial_value=True)
-        period = frame_times[-1] + 1.0
+    robot_dir = Path(__file__).parents[1] / "resources" / "panda"
+    server, robot = setup_viser_with_robot(robot_dir, "panda_spherized.urdf")
+    robot.update_cfg(READY)
 
-        print(f"visualization at http://localhost:{server.get_port()}; ctrl-c to exit")
-        t0 = time.perf_counter()
-        was_playing = True
-        while True:
-            if play.value:
-                if not was_playing:  # Resume from wherever the slider was scrubbed to.
-                    t0 = time.perf_counter() - frame_times[int(slider.value)]
-                t = min((time.perf_counter() - t0) % period, frame_times[-1])
-                idx = int(np.searchsorted(frame_times, t, side="right") - 1)
-                if idx != int(slider.value):
-                    slider.value = idx  # Fires the slider callback, which moves everything.
-            was_playing = play.value
-            time.sleep(1.0 / 60.0)
+    # Fruits cycle through a fixed pool of colored/gray sphere pairs (colored
+    # while airborne, gray falling away after the cut). With hits >= 1.3 s apart
+    # and each fruit visible for flight + tail ~= 2 s, at most two fruits are on
+    # screen at once, so consecutive fruits never share a pool slot.
+    hidden = np.array([0.0, 0.0, -50.0])
+    handles = add_spheres(
+        server,
+        [hidden] * (2 * len(FRUIT_COLORS)),
+        [FRUIT_RADIUS] * (2 * len(FRUIT_COLORS)),
+        colors=[c for color in FRUIT_COLORS for c in (color, [120, 120, 120])],
+        prefix="/fruit",
+    )
+    pool = [(handles[2 * j], handles[2 * j + 1]) for j in range(len(FRUIT_COLORS))]
+
+    add_spheres(
+        server,
+        [center for center, _ in OBSTACLES],
+        [radius for _, radius in OBSTACLES],
+        colors=[OBSTACLE_COLOR] * len(OBSTACLES),
+        prefix="/obstacle",
+    )
+
+    segments = []  # contiguous (times, configs) chunks of the executed trajectory
+    active = []  # fruit records: throw, executed hit time, pool slot
+
+    play = server.gui.add_checkbox("Play", initial_value=True)
+    print(f"visualization at http://localhost:{server.get_port()}; ctrl-c to exit")
+
+    t0 = time.perf_counter()
+    t = 0.0
+    slot = 0
+    was_playing = True
+    while True:
+        try:  # Drain newly planned legs from the planner process.
+            while True:
+                throw, t_hit, times, configs = planned.get_nowait()
+                segments.append((times, configs))
+                active.append((throw, t_hit, slot % len(pool)))
+                slot += 1
+        except queue.Empty:
+            pass
+        if not segments:  # First leg still planning: hold the clock at zero.
+            t0 = time.perf_counter()
+            time.sleep(FRAME_DT)
+            continue
+        if play.value:
+            if not was_playing:  # Resume from wherever playback was paused.
+                t0 = time.perf_counter() - t
+            t = time.perf_counter() - t0
+            end = segments[-1][0][-1]
+            if t > end:  # Planner behind (or stream finished): hold here.
+                t0 += t - end
+                t = end
+            while len(segments) > 1 and segments[0][0][-1] < t - 1.0:
+                segments.pop(0)
+            while active and active[0][1] + FALL_TAIL + 0.5 < t:
+                active.pop(0)
+            config = None
+            for times, configs in segments:
+                if t <= times[-1]:
+                    config = configs[min(np.searchsorted(times, t), len(times) - 1)]
+                    break
+            playhead.value = t
+            if config is not None:
+                robot.update_cfg(config)
+            positions = {}
+            for throw, t_hit, slot_index in active:
+                if throw.launch <= t < t_hit:
+                    positions[(slot_index, 0)] = throw.position(t)
+                elif t_hit <= t <= t_hit + FALL_TAIL:
+                    positions[(slot_index, 1)] = throw.position(t)
+            for slot_index, pair in enumerate(pool):
+                for half, handle in enumerate(pair):
+                    handle.position = positions.get((slot_index, half), hidden)
+        was_playing = play.value
+        time.sleep(FRAME_DT)
 
 
 if __name__ == "__main__":

@@ -41,9 +41,15 @@ namespace vamp::planning::constraint
         }
 
         // Per-lane squared violation error summed over all constraints. Caches each
-        // constraint's Jacobian and error for step_in_place().
+        // constraint's Jacobian and error for step_in_place(). An empty set has zero
+        // error everywhere.
         auto squared_error(const Block &q) const noexcept -> Row
         {
+            if (empty())
+            {
+                return Row::fill(0.F);
+            }
+
             auto d = constraints_.front()->squared_error(q);
             for (auto it = std::next(constraints_.begin()); it != constraints_.end(); ++it)
             {

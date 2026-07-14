@@ -32,6 +32,17 @@ namespace vamp::planning::constraint
 
         // Emit every waypoint of a projected chain from steer, not just the endpoint.
         bool emit_all_waypoints = true;
+
+        // Multiplier on a connect loop's direct-path step budget: projection drift makes
+        // constrained connects wander, so allow extra steps before giving up.
+        float connect_slack = 2.F;
+
+        // Squared radius around the steer target within which the endpoint counts as
+        // Reached: projection rarely lands exactly on the target.
+        float reached_radius2 = 1e-2F;
+
+        // Squared tolerance for a traced chain to count as attaining its endpoint.
+        float endpoint_tolerance2 = 1e-6F;
     };
 
     // Knobs for chart construction and chart-LQMT edge validation (ChartLocalPlanner).

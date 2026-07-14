@@ -74,74 +74,41 @@ VAMP_DEFINE_HAS_METHOD(n_closed_loops)
 VAMP_DEFINE_HAS_METHOD(kinetic_energy)
 VAMP_DEFINE_HAS_METHOD(n_end_effectors)
 
-// Robots with generated center-of-mass kinematics declare `static constexpr bool has_com`.
-template <typename T, typename = void>
-struct robot_has_com : std::false_type
-{
-};
+// Robots with generated optional kinematics (center-of-mass, lead-screw, twist-Jacobian)
+// declare `static constexpr bool has_<kernel>`.
+#define VAMP_DEFINE_ROBOT_FLAG(flag)                                                                         \
+    template <typename T, typename = void>                                                                   \
+    struct robot_##flag : std::false_type                                                                    \
+    {                                                                                                        \
+    };                                                                                                       \
+                                                                                                             \
+    template <typename T>                                                                                    \
+    struct robot_##flag<T, std::void_t<decltype(T::flag)>> : std::true_type                                  \
+    {                                                                                                        \
+    };                                                                                                       \
+                                                                                                             \
+    template <typename T>                                                                                    \
+    constexpr bool robot_##flag##_v = robot_##flag<T>::value;
 
-template <typename T>
-struct robot_has_com<T, std::void_t<decltype(T::has_com)>> : std::true_type
-{
-};
+VAMP_DEFINE_ROBOT_FLAG(has_com)
+VAMP_DEFINE_ROBOT_FLAG(has_lead_screw)
+VAMP_DEFINE_ROBOT_FLAG(has_twist)
 
-template <typename T>
-constexpr bool robot_has_com_v = robot_has_com<T>::value;
+// Flask z-robots that declare an ambient position-space sibling (using Ambient = ...) get
+// chart-based constrained planning bound; robots generated with a FLASK block carry their
+// z-space sibling as a nested Flask struct.
+VAMP_DEFINE_HAS_TYPE(Ambient)
+VAMP_DEFINE_HAS_TYPE(Flask)
 
-// Robots with a generated lead-screw kernel declare `static constexpr bool has_lead_screw`.
-template <typename T, typename = void>
-struct robot_has_lead_screw : std::false_type
-{
-};
-
-template <typename T>
-struct robot_has_lead_screw<T, std::void_t<decltype(T::has_lead_screw)>> : std::true_type
-{
-};
-
-template <typename T>
-constexpr bool robot_has_lead_screw_v = robot_has_lead_screw<T>::value;
-
-// Robots with a generated twist-Jacobian kernel declare `static constexpr bool has_twist`.
-template <typename T, typename = void>
-struct robot_has_twist : std::false_type
-{
-};
-
-template <typename T>
-struct robot_has_twist<T, std::void_t<decltype(T::has_twist)>> : std::true_type
-{
-};
-
-template <typename T>
-constexpr bool robot_has_twist_v = robot_has_twist<T>::value;
-
-// Nested-type analogue of VAMP_DEFINE_HAS_METHOD: flask z-robots that declare an ambient
-// position-space sibling (using Ambient = ...) get chart-based constrained planning bound.
-template <typename T, typename = void>
-struct has_ambient : std::false_type
-{
-};
-
-template <typename T>
-struct has_ambient<T, std::void_t<typename T::Ambient>> : std::true_type
-{
-};
-
-template <typename T>
-constexpr bool has_ambient_v = has_ambient<T>::value;
-
-// Robots generated with a FLASK block carry their z-space sibling as a nested struct.
-template <typename T, typename = void>
+// The is_same check rejects the injected-class-name: for the nested Flask struct itself,
+// T::Flask names T, which would otherwise recurse init_robot forever.
+template <typename T, bool = has_type_Flask_v<T>>
 struct has_flask_robot : std::false_type
 {
 };
 
-// The is_same check rejects the injected-class-name: for the nested Flask struct itself,
-// T::Flask names T, which would otherwise recurse init_robot forever.
 template <typename T>
-struct has_flask_robot<T, std::void_t<typename T::Flask>>
-  : std::bool_constant<not std::is_same_v<typename T::Flask, T>>
+struct has_flask_robot<T, true> : std::bool_constant<not std::is_same_v<typename T::Flask, T>>
 {
 };
 
@@ -667,7 +634,7 @@ namespace vamp::binding
 
         static auto result_solved(const PlanningResult &r) -> bool
         {
-            return r.path.size() >= 2;
+            return r.solved;
         }
 
         static void sampler_skip(Sampler &s, std::size_t n)
@@ -697,7 +664,7 @@ namespace vamp::binding
     // Chart-based constrained planning for flask z-robots with an ambient sibling.
     // Kept separate from StaticRobotTraits: member declarations here reference
     // typename Robot::Ambient, which would hard-error at class instantiation for
-    // robots without one. Only referenced inside if constexpr (has_ambient_v<Robot>).
+    // robots without one. Only referenced inside if constexpr (has_type_Ambient_v<Robot>).
     template <typename Robot, typename Input>
     struct ChartRobotTraits
     {
@@ -1259,7 +1226,7 @@ namespace vamp::binding
                 bind_phase_methods<TC>(submodule);
             }
 
-            if constexpr (has_ambient_v<Robot>)
+            if constexpr (has_type_Ambient_v<Robot>)
             {
                 using Ambient = typename Robot::Ambient;
 

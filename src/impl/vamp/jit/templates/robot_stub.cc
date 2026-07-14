@@ -89,7 +89,7 @@ extern "C" vamp::jit::ffi::PlanResultMeta VAMP_JIT_FN_RESULT_META(const vamp::ji
 {
     const auto *w = reinterpret_cast<const vamp_jit_robot::WrappedResult *>(h);
     vamp::jit::ffi::PlanResultMeta m{};
-    m.success = w->inner.path.empty() ? 0 : 1;
+    m.success = w->inner.solved ? 1 : 0;
     m.dimension = vamp_jit_robot::R::dimension;
     m.waypoints = w->inner.path.size();
     m.nanoseconds = w->inner.nanoseconds;

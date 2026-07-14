@@ -3,7 +3,7 @@
 #include <limits>
 #include <vamp/planning/cost.hh>
 #include <vamp/planning/validate.hh>
-#include <vamp/planning/nn.hh>
+#include <vamp/planning/nn/nn.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning
@@ -176,6 +176,7 @@ namespace vamp::planning
     struct PlanningResult
     {
         Path<Robot> path;
+        bool solved{false};
         float cost{0.};
         std::size_t nanoseconds{0};
         std::size_t iterations{0};

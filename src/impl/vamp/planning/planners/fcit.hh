@@ -3,9 +3,11 @@
 #include <chrono>
 #include <limits>
 #include <memory>
+#include <type_traits>
 
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/nn.hh>
+#include <vamp/planning/local_planner.hh>
+#include <vamp/planning/nn/nn.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/utils.hh>
 #include <vamp/planning/planners/roadmap.hh>
@@ -66,7 +68,6 @@ namespace vamp::planning
     struct FCIT
     {
         using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
 
         inline static auto solve(
@@ -77,6 +78,25 @@ namespace vamp::planning
             typename RNG::Ptr &rng) noexcept -> PlanningResult<Robot>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
+        }
+
+        // Roadmap edges are straight lines: only the unconstrained local planner is
+        // supported. Constrained, phase, and chart planning require RRTC, AORRTC, or
+        // GRRTStar.
+        template <typename Goal, typename LocalPlanner>
+        inline static auto solve(
+            const Configuration &start,
+            const Goal &goal,
+            const collision::Environment<FloatVector<rake>> &environment,
+            const RoadmapSettings<NeighborParamsT> &settings,
+            typename RNG::Ptr &rng,
+            const LocalPlanner &) noexcept -> PlanningResult<Robot>
+        {
+            static_assert(
+                std::is_same_v<LocalPlanner, UnconstrainedLocalPlanner<Robot, rake, resolution>>,
+                "FCIT only supports the unconstrained local planner: constrained, phase, and "
+                "chart planning require RRTC, AORRTC, or GRRTStar");
+            return solve(start, goal, environment, settings, rng);
         }
 
         inline static auto solve(
@@ -92,7 +112,6 @@ namespace vamp::planning
             NN<Robot> roadmap;
 
             std::size_t iter = 0;
-            typename Robot::template ConfigurationBlock<rake> temp_block;
             auto states = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(
                 settings.max_samples * Configuration::num_scalars_rounded);
 
@@ -111,7 +130,8 @@ namespace vamp::planning
 
             float *start_state = state_index(start_index);
             start.to_array(start_state);
-            parents.emplace_back(std::numeric_limits<unsigned int>::max());
+            // recover_path convention: the root is its own parent.
+            parents.emplace_back(start_index);
             nodes.emplace_back(start_index, 0.0);
             roadmap.insert(NNNode<Robot>{start_index, Robot::nn_key(start_state)});
             auto &start_node = nodes[start_index];
@@ -130,6 +150,10 @@ namespace vamp::planning
             Configuration temp_config;
             Configuration temp_config_self;
             std::vector<QueueEdge> open_set;
+
+            // Goal nodes occupy indices [1, goals.size()]; reached ones have a parent.
+            const auto reached = [&parents](unsigned int goal_index) -> bool
+            { return parents[goal_index] != std::numeric_limits<unsigned int>::max(); };
 
             // Search until Initial Solution
             while (nodes.size() < settings.max_samples and iter++ < settings.max_iterations)
@@ -312,7 +336,19 @@ namespace vamp::planning
                 }
 
                 // If we have a solution and just want an initial solution, break
-                if (not settings.optimize and parents[1] != std::numeric_limits<unsigned int>::max())
+                const auto any_reached = [&]() -> bool
+                {
+                    for (auto i = 1U; i <= goals.size(); ++i)
+                    {
+                        if (reached(i))
+                        {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+
+                if (not settings.optimize and any_reached())
                 {
                     break;
                 }
@@ -321,14 +357,7 @@ namespace vamp::planning
                      new_samples < settings.batch_size and nodes.size() < settings.max_samples;)
                 {
                     auto rng_temp = rng->next();
-
-                    // Check sample validity
-                    for (auto i = 0U; i < dimension; ++i)
-                    {
-                        temp_block[i] = rng_temp.broadcast(i);
-                    }
-
-                    if (not Robot::template fkcc<rake>(environment, temp_block))
+                    if (not validate_configuration<Robot, rake>(rng_temp, environment))
                     {
                         continue;
                     }
@@ -346,8 +375,23 @@ namespace vamp::planning
                 }
             }
 
-            utils::recover_path<Robot>(parents, state_index, result.path);
-            result.cost = nodes[1].g;
+            // Recover from the cheapest reached goal, if any.
+            unsigned int best_goal = 0;
+            for (auto i = 1U; i <= goals.size(); ++i)
+            {
+                if (reached(i) and (best_goal == 0 or nodes[i].g < nodes[best_goal].g))
+                {
+                    best_goal = i;
+                }
+            }
+
+            if (best_goal != 0)
+            {
+                utils::recover_path<Robot>(parents.data(), state_index, result.path, best_goal);
+                result.solved = true;
+                result.cost = nodes[best_goal].g;
+            }
+
             result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
             result.iterations = iter;
             result.size.emplace_back(roadmap.size());

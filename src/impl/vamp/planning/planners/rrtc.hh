@@ -5,7 +5,7 @@
 
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/local_planner.hh>
-#include <vamp/planning/nn.hh>
+#include <vamp/planning/nn/nn.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
@@ -75,6 +75,8 @@ namespace vamp::planning
                         result.path.emplace_back(c);
                     }
                     result.path.emplace_back(goal);
+                    result.solved = true;
+                    result.cost = result.path.cost();
                     result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
                     result.iterations = 0;
                     result.size.emplace_back(1);
@@ -194,7 +196,7 @@ namespace vamp::planning
                     const auto other_nearest_configuration = Configuration(buffer_index(other_nearest_node.index));
 
                     const std::size_t n_extensions =
-                        std::ceil(LocalPlanner::connect_slack * other_nearest_distance / settings.range);
+                        std::ceil(lp.connect_slack * other_nearest_distance / settings.range);
 
                     std::size_t i_extension = 0;
                     bool connected = false;
@@ -266,6 +268,7 @@ namespace vamp::planning
                             std::reverse(result.path.begin(), result.path.end());
                         }
 
+                        result.solved = true;
                         break;
                     }
                 }

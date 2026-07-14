@@ -110,45 +110,10 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
 
     nb::class_<vc::Environment<float>>(pymodule, "Environment")
         .def(nb::init<>())
-        .def(
-            "add_sphere",
-            [](vc::Environment<float> &e, const vc::Sphere<float> &s)
-            {
-                e.spheres.emplace_back(s);
-                e.sort();
-            })
-        .def(
-            "add_cuboid",
-            [](vc::Environment<float> &e, const vc::Cuboid<float> &s)
-            {
-                if (s.axis_3_z == 1.)
-                {
-                    e.z_aligned_cuboids.emplace_back(s);
-                }
-                else
-                {
-                    e.cuboids.emplace_back(s);
-                }
-                e.sort();
-            })
-        .def(
-            "add_capsule",
-            [](vc::Environment<float> &e, const vc::Cylinder<float> &s)
-            {
-                if (s.xv == 0. and s.yv == 0.)
-                {
-                    e.z_aligned_capsules.emplace_back(s);
-                }
-                else
-                {
-                    e.capsules.emplace_back(s);
-                }
-                e.sort();
-            })
-        .def(
-            "add_heightfield",
-            [](vc::Environment<float> &e, const vc::HeightField<float> &s)
-            { e.heightfields.emplace_back(s); })
+        .def("add_sphere", &vc::Environment<float>::add_sphere)
+        .def("add_cuboid", &vc::Environment<float>::add_cuboid)
+        .def("add_capsule", &vc::Environment<float>::add_capsule)
+        .def("add_heightfield", &vc::Environment<float>::add_heightfield)
         .def(
             "add_pointcloud",
             [](vc::Environment<float> &e,

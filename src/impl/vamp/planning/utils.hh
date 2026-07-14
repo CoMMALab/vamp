@@ -7,7 +7,7 @@
 
 #include <pdqsort.h>
 
-#include <vamp/planning/nn.hh>
+#include <vamp/planning/nn/nn.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/planners/roadmap.hh>
 #include <vamp/vector.hh>
@@ -72,12 +72,15 @@ namespace vamp::planning::utils
         }
     };
 
+    // Parent-array convention shared by astar and recover_path: unreached nodes hold
+    // max(), the root (the start, index 0) is its own parent.
     template <typename Robot, typename Configuration, typename StateLookupFn>
     inline auto astar(
         std::vector<RoadmapNode> &graph,
         const Configuration &start,
         const Configuration &goal,
-        const StateLookupFn &state_index) noexcept -> std::unique_ptr<unsigned int[]>
+        const StateLookupFn &state_index,
+        unsigned int goal_index = 1) noexcept -> std::unique_ptr<unsigned int[]>
     {
         // TODO: With C++20, use make_unique_for_overwrite here
         auto parents = std::make_unique<unsigned int[]>(graph.size());
@@ -88,9 +91,8 @@ namespace vamp::planning::utils
             expanded[i] = false;
         }
 
-        // NOTE: Assumes that the start is the first element of the graph and the goal is the second
+        // NOTE: Assumes that the start is the first element of the graph
         constexpr const unsigned int start_index = 0;
-        constexpr const unsigned int goal_index = 1;
         parents[start_index] = start_index;
         std::vector<utils::QueueNode> open_set;
         open_set.emplace_back(utils::QueueNode{start_index, Robot::distance(goal, start)});
@@ -141,15 +143,16 @@ namespace vamp::planning::utils
         return parents;
     }
 
+    // Walk the parent array from goal_index back to the root (the root is its own
+    // parent), emitting the path in start-to-goal order. The goal must have been
+    // reached: unreached entries hold max() and are not valid to walk from.
     template <typename Robot, typename StateLookupFn>
     inline void recover_path(
-        const std::unique_ptr<unsigned int[]> parents,
+        const unsigned int *parents,
         const StateLookupFn &state_index,
-        Path<Robot> &path) noexcept
+        Path<Robot> &path,
+        unsigned int goal_index = 1) noexcept
     {
-        // NOTE: Assumes that the start is the first element of the graph and the goal is the second
-        constexpr const unsigned int start_index = 0;
-        constexpr const unsigned int goal_index = 1;
         auto current_index = goal_index;
         while (parents[current_index] != current_index)
         {
@@ -157,45 +160,7 @@ namespace vamp::planning::utils
             current_index = parents[current_index];
         }
 
-        path.emplace_back(state_index(start_index));
+        path.emplace_back(state_index(current_index));
         std::reverse(path.begin(), path.end());
-    }
-
-    template <typename Robot, typename StateLookupFn>
-    inline void recover_path(
-        const std::vector<unsigned int> &parents,
-        const StateLookupFn &state_index,
-        Path<Robot> &path) noexcept
-    {
-        // NOTE: Assumes that the start is the first element of the graph and the goal is the second
-        constexpr const unsigned int start_index = 0;
-        constexpr const unsigned int goal_index = 1;
-        auto current_index = goal_index;
-        while (parents[current_index] != std::numeric_limits<unsigned int>::max())
-        {
-            path.emplace_back(state_index(current_index));
-            current_index = parents[current_index];
-        }
-        path.emplace_back(state_index(start_index));
-        std::reverse(path.begin(), path.end());
-    }
-
-    inline auto recover_path_indices(const std::unique_ptr<unsigned int[]> parents) noexcept
-        -> std::vector<unsigned int>
-    {
-        // NOTE: Assumes that the start is the first element of the graph and the goal is the second
-        constexpr const unsigned int start_index = 0;
-        constexpr const unsigned int goal_index = 1;
-        auto current_index = goal_index;
-        std::vector<unsigned int> path;
-        while (parents[current_index] != current_index)
-        {
-            path.emplace_back(current_index);
-            current_index = parents[current_index];
-        }
-
-        path.emplace_back(start_index);
-        std::reverse(path.begin(), path.end());
-        return path;
     }
 }  // namespace vamp::planning::utils

@@ -60,19 +60,8 @@ namespace vamp::planning::constraint
 
         static constexpr bool projecting = true;
 
-        // Projection drift makes constrained connects wander: allow twice the direct-path
-        // step count before a connect loop gives up.
-        static constexpr float connect_slack = 2.F;
-
-        // Squared radius around the steer target within which the endpoint counts as
-        // Reached: projection rarely lands exactly on the target.
-        static constexpr float reached_radius2 = 1e-2F;
-
-        // Squared tolerance for a traced chain to count as attaining its endpoint.
-        static constexpr float endpoint_tolerance2 = 1e-6F;
-
         explicit ConstrainedLocalPlanner(ConstraintSet<Robot, rake> constraint_set) noexcept
-          : constraints(std::move(constraint_set))
+          : constraints(std::move(constraint_set)), connect_slack(constraints.settings().connect_slack)
         {
         }
 
@@ -84,7 +73,7 @@ namespace vamp::planning::constraint
         {
             Waypoints waypoints;
             return trace(a, b, e, waypoints) and
-                   (waypoints.back() - b).squared_l2_norm() < endpoint_tolerance2;
+                   (waypoints.back() - b).squared_l2_norm() < constraints.settings().endpoint_tolerance2;
         }
 
         // The local path a -> b is defined by its projected chain: on success the extension
@@ -104,7 +93,7 @@ namespace vamp::planning::constraint
 
             Waypoints waypoints;
             if (rake - 1 >= max_states or not trace(a, b, e, waypoints) or
-                (waypoints.back() - b).squared_l2_norm() >= endpoint_tolerance2)
+                (waypoints.back() - b).squared_l2_norm() >= constraints.settings().endpoint_tolerance2)
             {
                 return {SteerStatus::Trapped, chain_};
             }
@@ -210,7 +199,8 @@ namespace vamp::planning::constraint
                 chain_.emplace_back(next);
             }
 
-            const bool reached = reach and (next - target).squared_l2_norm() < reached_radius2;
+            const bool reached =
+                reach and (next - target).squared_l2_norm() < constraints.settings().reached_radius2;
             return {(reached) ? SteerStatus::Reached : SteerStatus::Advanced, chain_};
         }
 
@@ -225,6 +215,10 @@ namespace vamp::planning::constraint
         }
 
         ConstraintSet<Robot, rake> constraints;
+
+        // Read by planners as lp.connect_slack, uniformly with the static constant on the
+        // non-projecting local planners.
+        float connect_slack;
 
     private:
         mutable std::vector<Configuration> chain_;

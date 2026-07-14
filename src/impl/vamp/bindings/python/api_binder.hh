@@ -131,16 +131,16 @@ namespace vamp::binding
             t,
             name,
             std::string("Plan using ") + name +
-                " subject to phase (state-velocity) gates. Raises ValueError if the start or a "
-                "goal violates the gates; scale their velocities by velocity_scale() first.",
+                " subject to phase (state-velocity) constraints. Raises ValueError if the start "
+                "or a goal violates them; scale their velocities by velocity_scale() first.",
             &Traits::template solve_single_phase<P, Settings>,
             &Traits::template solve_multi_phase<P, Settings>,
             "phase_constraints"_a);
     }
 
-    // Phase-gated overloads on the same entry points as the unconstrained API: the extra
-    // required `phase_constraints` argument selects them. PRM and FCIT do not use the local
-    // planner, so they have no phase-gated form.
+    // Phase-constrained overloads on the same entry points as the unconstrained API: the
+    // extra required `phase_constraints` argument selects them. PRM and FCIT do not use the
+    // local planner, so they have no phase-constrained form.
     template <typename Traits, typename Target>
     inline void bind_phase_methods(Target &t)
     {
@@ -149,14 +149,14 @@ namespace vamp::binding
             &Traits::phase_satisfied,
             "state"_a,
             "phase_constraints"_a,
-            "Whether a (q, qdot) state satisfies every phase gate.");
+            "Whether a (q, qdot) state satisfies every phase constraint.");
         t.def(
             "velocity_scale",
             &Traits::phase_velocity_scale,
             "state"_a,
             "phase_constraints"_a,
             "Largest s in (0, 1] such that scaling the state's velocity half by s satisfies "
-            "every phase gate; exactly 1 on feasible states.");
+            "every phase constraint; exactly 1 on feasible states.");
         t.def(
             "simplify",
             &Traits::simplify_phase,
@@ -165,8 +165,8 @@ namespace vamp::binding
             "settings"_a,
             "sampler"_a,
             "phase_constraints"_a,
-            "Simplification heuristics with every validated motion gated by the phase "
-            "constraints. Raises ValueError if any path state violates the gates.");
+            "Simplification heuristics with every validated motion checked against the phase "
+            "constraints. Raises ValueError if any path state violates them.");
 
         register_phase_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
         register_phase_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");
@@ -210,8 +210,8 @@ namespace vamp::binding
             "phase_constraints"_a = typename Traits::PhaseConstraintVec{},
             "Project a (q, qdot) state onto the constraint manifold: position by constraint "
             "projection, velocity into the tangent space at the projected position (then "
-            "scaled to satisfy any phase gates). Raises ValueError if the projection does "
-            "not converge.");
+            "scaled to satisfy any phase constraints). Raises ValueError if the projection "
+            "does not converge.");
         t.def(
             "satisfied",
             &Traits::chart_satisfied,
@@ -220,7 +220,7 @@ namespace vamp::binding
             "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "phase_constraints"_a = typename Traits::PhaseConstraintVec{},
             "Whether a state's position satisfies every constraint within tolerance and its "
-            "velocity every phase gate.");
+            "velocity every phase constraint.");
         t.def(
             "simplify",
             &Traits::simplify_chart,

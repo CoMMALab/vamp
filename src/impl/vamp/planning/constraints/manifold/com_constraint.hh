@@ -95,7 +95,7 @@ namespace vamp::planning::constraint
 
         void evaluate_error_jacobian(const Block &q) const noexcept final
         {
-            // The half-plane hinge is intrinsic here (the error has no unhinged form: it is
+            // The half-plane hinge is intrinsic here (the error has no raw form: it is
             // identically zero inside the polygon), but these rows are never chart-active, so
             // the masked Jacobian is safe to report.
             evaluate(q);

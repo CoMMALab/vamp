@@ -8,7 +8,7 @@
 
 namespace vamp::planning
 {
-    // Default gate: accept every candidate.
+    // Default accept predicate: accepts every candidate.
     struct AlwaysTrue
     {
         template <typename T>
@@ -41,17 +41,17 @@ namespace vamp::planning
                                            Robot::template fkcc<rake>(environment, block);
     }
 
-    // `block_gate` is invoked on every interpolated sample block before the collision
+    // `block_accept` is invoked on every interpolated sample block before the collision
     // check; returning false invalidates the motion. All rake lanes of every block are
     // legitimate samples of the motion (trailing batches backstep over earlier ones), so
-    // gates must judge all lanes. The default accepts everything at zero cost.
-    template <typename Robot, std::size_t rake, std::size_t resolution, typename BlockGate = AlwaysTrue>
+    // the predicate must judge all lanes. The default accepts everything at zero cost.
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename BlockAccept = AlwaysTrue>
     inline constexpr auto validate_vector(
         const typename Robot::Configuration &start,
         const typename Robot::Configuration &vector,
         float distance,
         const collision::Environment<FloatVector<rake>> &environment,
-        const BlockGate &block_gate = BlockGate()) -> bool
+        const BlockAccept &block_accept = BlockAccept()) -> bool
     {
         // TODO: Fix use of reinterpret_cast in pack() so that this can be constexpr
         const auto percents = FloatVector<rake>(Percents<rake>::percents);
@@ -66,7 +66,7 @@ namespace vamp::planning
 
         const std::size_t n = std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
 
-        bool valid = block_gate(block) and fkcc_block<Robot, rake>(environment, block);
+        bool valid = block_accept(block) and fkcc_block<Robot, rake>(environment, block);
         if (not valid or n == 1)
         {
             return valid;
@@ -80,7 +80,7 @@ namespace vamp::planning
                 block[j] = block[j] - backstep.broadcast(j);
             }
 
-            bool valid = block_gate(block) and fkcc_block<Robot, rake>(environment, block);
+            bool valid = block_accept(block) and fkcc_block<Robot, rake>(environment, block);
             if (not valid)
             {
                 return false;
@@ -90,18 +90,18 @@ namespace vamp::planning
         return true;
     }
 
-    template <typename Robot, std::size_t rake, std::size_t resolution, typename BlockGate = AlwaysTrue>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename BlockAccept = AlwaysTrue>
     inline constexpr auto validate_motion(
         const typename Robot::Configuration &start,
         const typename Robot::Configuration &goal,
         const collision::Environment<FloatVector<rake>> &environment,
-        const BlockGate &block_gate = BlockGate()) -> bool
+        const BlockAccept &block_accept = BlockAccept()) -> bool
     {
         if constexpr (Robot::euclidean)
         {
             auto vector = goal - start;
             return validate_vector<Robot, rake, resolution>(
-                start, vector, vector.l2_norm(), environment, block_gate);
+                start, vector, vector.l2_norm(), environment, block_accept);
         }
         else
         {
@@ -117,7 +117,7 @@ namespace vamp::planning
             auto t_block = percents;
             Robot::template interpolate_block<rake>(start, goal, t_block, block);
 
-            bool valid = block_gate(block) and fkcc_block<Robot, rake>(environment, block);
+            bool valid = block_accept(block) and fkcc_block<Robot, rake>(environment, block);
             if (not valid or n == 1)
             {
                 return valid;
@@ -128,7 +128,7 @@ namespace vamp::planning
                 t_block = t_block - t_step;
                 Robot::template interpolate_block<rake>(start, goal, t_block, block);
 
-                valid = block_gate(block) and fkcc_block<Robot, rake>(environment, block);
+                valid = block_accept(block) and fkcc_block<Robot, rake>(environment, block);
                 if (not valid)
                 {
                     return false;

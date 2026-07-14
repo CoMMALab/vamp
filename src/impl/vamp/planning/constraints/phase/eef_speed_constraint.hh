@@ -9,9 +9,9 @@
 
 namespace vamp::planning::constraint
 {
-    // Phase gate bounding the workspace speed of every end-effector origin:
+    // Phase constraint bounding the workspace speed of every end-effector origin:
     // ||v_eef|| <= max_speed (linear velocity only), via the robot-generated eef_velocity
-    // kernels. The velocity is homogeneous of degree 1 in qd, so the feasibility scale is
+    // kernels. The velocity is homogeneous of degree 1 in qd, so velocity_scale is
     // max_speed / ||v_eef||.
     template <typename Robot, std::size_t rake>
     struct EEFSpeedConstraint final : PhaseConstraint<Robot, rake>

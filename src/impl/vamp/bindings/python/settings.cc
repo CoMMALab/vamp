@@ -161,7 +161,8 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("reached_vel_tol", &vc::ChartSettings::reached_vel_tol)
         .def_rw("shoot_iters", &vc::ChartSettings::shoot_iters)
         .def_rw("max_edge_samples", &vc::ChartSettings::max_edge_samples)
-        .def_rw("rank_tolerance", &vc::ChartSettings::rank_tolerance);
+        .def_rw("rank_tolerance", &vc::ChartSettings::rank_tolerance)
+        .def_rw("max_slip_fraction", &vc::ChartSettings::max_slip_fraction);
 
     nb::class_<vp::SimplifySettings>(pymodule, "SimplifySettings")
         .def(nb::init<>())

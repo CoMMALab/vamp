@@ -169,7 +169,7 @@ namespace vamp::planning
 
                 if (extension.status != SteerStatus::Trapped)
                 {
-                    const auto [frontier_index, extend_truncated] =
+                    const auto [new_index, extend_truncated] =
                         insert_chain<Robot>(extension.waypoints, nearest_node.index, add_node);
 
                     if (settings.dynamic_domain and nearest_radius != std::numeric_limits<float>::max())
@@ -184,7 +184,7 @@ namespace vamp::planning
 
                     // Extend to goal tree
                     const auto other_nearest =
-                        tree_b->nearest(Robot::nn_key(buffer_index(frontier_index)));
+                        tree_b->nearest(Robot::nn_key(buffer_index(new_index)));
                     if (not other_nearest)
                     {
                         continue;
@@ -198,8 +198,8 @@ namespace vamp::planning
 
                     std::size_t i_extension = 0;
                     bool connected = false;
-                    Configuration prior = extension.frontier();
-                    std::size_t prior_index = frontier_index;
+                    Configuration prior = extension.endpoint();
+                    std::size_t prior_index = new_index;
                     while (not connected and i_extension < n_extensions and
                            free_index < settings.max_samples)
                     {
@@ -230,7 +230,7 @@ namespace vamp::planning
 
                         connected = (step.status == SteerStatus::Reached);
                         i_extension++;
-                        prior = step.frontier();
+                        prior = step.endpoint();
                         prior_index = step_index;
                     }
 

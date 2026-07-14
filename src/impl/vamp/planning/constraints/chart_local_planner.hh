@@ -33,8 +33,8 @@ namespace vamp::planning::constraint
     // chart machinery -- simplify's B-spline subdivision midpoints and interpolants are
     // flat z-space cubics -- leave the manifold, so `projecting` is true. Extensions have
     // no interior waypoints: an edge is reconstructible from its endpoint states, since
-    // the flown chart target is a fixed point of the shooting iteration at the parent's
-    // chart.
+    // the executed chart target is a fixed point of the shooting iteration at the
+    // parent's chart.
     //
     // Directedness: goal-tree extensions (`forward` false) are validated as the
     // time-reversed edge -- same geometric path, negated velocities -- which leaves LQMT
@@ -115,9 +115,9 @@ namespace vamp::planning::constraint
         // caller's state-space `distance` is ignored: reach is decided by the chart-space
         // displacement). Within range the edge shoots to hit the target exactly; beyond
         // it the chart target is clipped and the endpoint velocity still aims at the
-        // target's. The frontier is the lifted terminal state with its velocity
+        // target's. The endpoint is the lifted terminal state with its velocity
         // tangent-projected at its own chart.
-        template <typename Gate = AlwaysTrue>
+        template <typename Accept = AlwaysTrue>
         inline auto steer(
             const Configuration &from,
             const Configuration &target,
@@ -125,7 +125,7 @@ namespace vamp::planning::constraint
             float range,
             bool forward,
             const Environment &e,
-            Gate &&gate = Gate()) const noexcept -> Extension<ZRobot>
+            Accept &&accept = Accept()) const noexcept -> Extension<ZRobot>
         {
             chain_.clear();
 
@@ -133,15 +133,15 @@ namespace vamp::planning::constraint
             split(from, q0, v0);
             split(target, qt, vt);
 
-            // Shape the target toward phase feasibility: the scale is exactly 1 on
-            // feasible targets (stored nodes are unchanged); the per-sample gate in
-            // make_edge remains the soundness mechanism.
+            // Scale the target velocity toward phase feasibility: the scale is exactly 1
+            // on feasible targets (stored nodes are unchanged); the per-sample phase
+            // check in make_edge remains the soundness mechanism.
             phase_clamp(qt, vt);
 
             Edge edge;
             const auto status =
-                make_edge(q0, v0, qt, vt, range, forward, e, std::forward<Gate>(gate), edge);
-            if (status == EdgeStatus::Gated)
+                make_edge(q0, v0, qt, vt, range, forward, e, std::forward<Accept>(accept), edge);
+            if (status == EdgeStatus::Pruned)
             {
                 return {SteerStatus::Rejected, chain_};
             }
@@ -201,7 +201,7 @@ namespace vamp::planning::constraint
         }
 
         // Whether a state's position satisfies every manifold constraint within tolerance
-        // and the state passes every phase gate.
+        // and the state satisfies every phase constraint.
         inline auto satisfied(const Configuration &z) const noexcept -> bool
         {
             std::array<float, d> q, v;
@@ -230,8 +230,8 @@ namespace vamp::planning::constraint
         // Reconstruct the executed trajectory of the edge from -> target through the same
         // chart/LQMT/lift machinery, without any validation. Emits n_samples lifted states
         // at uniform times in [0, T] (velocities in the execution frame, tangent-projected
-        // at each sample's own chart) and each sample's stacked hinged constraint error
-        // norm. Samples run in chart time from `from`; backward edges are executed by
+        // at each sample's own chart) and each sample's stacked constraint-violation
+        // error norm. Samples run in chart time from `from`; backward edges are executed by
         // traversing them in reverse. A trivial (no-motion) edge emits the single lifted
         // from-state. False only when no chart exists at `from`, the initial chart target
         // cannot be lifted, or the time-optimal solve fails; per-sample lift failures
@@ -322,7 +322,7 @@ namespace vamp::planning::constraint
         enum struct EdgeStatus : std::uint8_t
         {
             Invalid,  // chart, LQMT, lift, or validity failure
-            Gated,    // the caller's gate rejected the candidate frontier
+            Pruned,   // the caller's cost bound pruned the candidate endpoint
             Valid,
         };
 
@@ -349,15 +349,15 @@ namespace vamp::planning::constraint
         };
 
         // Front half of an edge evaluation, shared by make_edge and lift_edge: the chart
-        // at q0, boundary data in the execution frame, cubic coefficients, retargeted
-        // lifted endpoint, and the time-optimal solve.
+        // at q0, boundary data in the execution frame, cubic coefficients, the
+        // shooting-corrected lifted endpoint, and the time-optimal solve.
         struct EdgeSolve
         {
             Chart<d> chart{};
             LQMTScalars s{};
             std::array<float, d> ud0{}, uf{}, udf{};
             std::array<float, d> a3{}, a2{};
-            std::array<float, d> q_pre{};  // retargeted lifted endpoint, valid iff `lifted`
+            std::array<float, d> q_pre{};  // shooting-corrected lifted endpoint, valid iff `lifted`
             float T = 0.F;
             float cost = 0.F;
             bool reach = false;
@@ -389,9 +389,9 @@ namespace vamp::planning::constraint
             return Configuration(arr);
         }
 
-        // Scale the velocity half into the phase-feasible set: gate kernels are
-        // homogeneous in qd, so scaling always reaches it, and the scale is exactly 1 on
-        // feasible states.
+        // Scale the velocity half into the phase-feasible set: phase-constraint kernels
+        // are homogeneous in qd, so scaling always reaches it, and the scale is exactly
+        // 1 on feasible states.
         inline void phase_clamp(const std::array<float, d> &q, std::array<float, d> &v)
             const noexcept
         {
@@ -430,14 +430,14 @@ namespace vamp::planning::constraint
             return true;
         }
 
-        // Chart retargeting toward the exact target: iterate u_f += B^T (q_t - psi(u_f)),
+        // Shooting iteration toward the exact target: iterate u_f += B^T (q_t - psi(u_f)),
         // whose fixed point lifts exactly onto the target; `lifted` reports whether q_pre
         // holds a successful lift. Strict mode (make_edge) fails on any diverged lift.
         // Best-effort mode (debug replay -- the caller judges the endpoint miss) verifies
         // the final target with one extra lift and falls back to the last liftable target
         // on divergence, failing only if the initial target is unliftable.
         template <bool best_effort>
-        auto retarget(
+        auto shoot(
             const Chart<d> &chart,
             const std::array<float, d> &qt,
             std::array<float, d> &uf,
@@ -516,9 +516,9 @@ namespace vamp::planning::constraint
 
         // Shared front half of make_edge and lift_edge: chart at q0, boundary conversion
         // into the execution frame (sign negates velocities for time-reversed edges),
-        // clipping the chart target to `range`, retargeting toward the exact target when
-        // within range (strict or best-effort, see retarget), and the time-optimal LQMT
-        // solve with cubic coefficients. False when no chart exists at q0, retargeting
+        // clipping the chart target to `range`, shooting toward the exact target when
+        // within range (strict or best-effort, see shoot), and the time-optimal LQMT
+        // solve with cubic coefficients. False when no chart exists at q0, the shooting
         // fails, or the solve does; on success `es.trivial` marks a zero-length edge
         // (T, cost, and coefficients unset).
         template <bool best_effort>
@@ -572,7 +572,7 @@ namespace vamp::planning::constraint
 
             es.q_pre = q0;
             if (es.reach and
-                not retarget<best_effort>(es.chart, qt, es.uf, es.q_pre, es.lifted))
+                not shoot<best_effort>(es.chart, qt, es.uf, es.q_pre, es.lifted))
             {
                 return false;
             }
@@ -630,7 +630,7 @@ namespace vamp::planning::constraint
 
         // The stored (and physically executed) arrival velocity of an edge. The lift's
         // pushforward is the tangent projector at the arrival point, so the raw
-        // chart-frame terminal velocity carries a curvature-order normal seam that
+        // chart-frame terminal velocity carries a curvature-order normal error that
         // projection removes; residue below float noise is zeroed so rest states stay
         // exactly at rest. False when no chart exists at the arrival point.
         inline auto arrival_velocity(const Edge &edge, std::array<float, d> &vf) const noexcept
@@ -655,9 +655,9 @@ namespace vamp::planning::constraint
         }
 
         // Whether an edge's arrival state attains a target within the reached tolerances.
-        // The velocity tolerance is speed-relative (tol * (1 + |vt|)): the residual chart
-        // seam between nearby tangent spaces scales with speed, while rest targets keep
-        // the strict absolute tolerance.
+        // The velocity tolerance is speed-relative (tol * (1 + |vt|)): the residual
+        // velocity error between nearby tangent spaces scales with speed, while rest
+        // targets keep the strict absolute tolerance.
         inline auto attained(
             const std::array<float, d> &qf,
             const std::array<float, d> &vf,
@@ -713,12 +713,12 @@ namespace vamp::planning::constraint
         // reversal (negated boundary velocities, terminal velocity negated back). The
         // chart target is clipped to `range`; within range the edge shoots to land on qt
         // exactly. Each lifted sample must stay within eps_chart of its pre-image and
-        // within the continuity guard of its predecessor; its velocity row is re-projected
+        // within the continuity guard of its predecessor; its velocity is re-projected
         // into the tangent space at its own lifted point (the execution frame), and the
         // assembled (y, yd, ydd) blocks must pass the z-robot's fused limit/torque/
-        // collision check. The gate sees the candidate frontier after the LQMT solve but
-        // before batch validation.
-        template <typename Gate>
+        // collision check. The accept predicate sees the candidate endpoint after the
+        // LQMT solve but before batch validation.
+        template <typename Accept>
         auto make_edge(
             const std::array<float, d> &q0,
             const std::array<float, d> &v0_in,
@@ -727,7 +727,7 @@ namespace vamp::planning::constraint
             float range,
             bool forward,
             const Environment &environment,
-            Gate &&gate,
+            Accept &&accept,
             Edge &out) const noexcept -> EdgeStatus
         {
             const float sign = (forward) ? 1.F : -1.F;
@@ -761,17 +761,18 @@ namespace vamp::planning::constraint
                 v_T[dim] *= sign;
             }
 
-            // Cost-gate on the candidate frontier before paying for batch validation.
-            if constexpr (not std::is_same_v<std::decay_t<Gate>, AlwaysTrue>)
+            // Apply the cost bound to the candidate endpoint before paying for batch
+            // validation.
+            if constexpr (not std::is_same_v<std::decay_t<Accept>, AlwaysTrue>)
             {
                 if (not es.lifted and not lift_point(chart_point(es.chart, es.uf), es.q_pre))
                 {
                     return EdgeStatus::Invalid;
                 }
 
-                if (not gate(join(es.q_pre, v_T)))
+                if (not accept(join(es.q_pre, v_T)))
                 {
-                    return EdgeStatus::Gated;
+                    return EdgeStatus::Pruned;
                 }
             }
 
@@ -789,6 +790,16 @@ namespace vamp::planning::constraint
             std::array<float, d> prev_u{};
             std::array<float, d> u_now{}, ud_now{}, udd_now{};
             std::array<float, rake> du_step;
+
+            // Pfaffian rows have no position error for the per-sample projection to
+            // correct, so the executed polyline drifts along their normals to first
+            // order in the rows' rotation across the edge -- and cost shortcutting
+            // exploits that drift in place of genuine steering. Bound the accumulated
+            // normal drift by a fraction of the executed length (the slip tolerance).
+            const bool bound_slip =
+                builder_.n_pfaffian() != 0 and settings.max_slip_fraction < 1.F;
+            float slip_sum = 0.F;
+            float exec_len = 0.F;
             std::array<std::array<float, d>, rake> pre_scalar;
             alignas(FloatVectorAlignment) std::array<FloatT, d * rake> amb;
             alignas(FloatVectorAlignment) std::array<FloatT, 3 * d * rake> zarr;
@@ -849,6 +860,7 @@ namespace vamp::planning::constraint
                 for (auto lane = 0U; lane < rake; ++lane)
                 {
                     std::array<float, d> q_lift;
+                    std::array<float, d> chord;
                     float disp2 = 0.F, jump2 = 0.F;
                     for (auto dim = 0U; dim < d; ++dim)
                     {
@@ -858,6 +870,7 @@ namespace vamp::planning::constraint
 
                         const float jj = pj - prev_q[dim];
                         jump2 += jj * jj;
+                        chord[dim] = jj;
 
                         zarr[lane + dim * rake] = pj;
                         q_lift[dim] = pj;
@@ -873,6 +886,13 @@ namespace vamp::planning::constraint
                     if (jump2 > jump_tol * jump_tol)
                     {
                         return EdgeStatus::Invalid;
+                    }
+
+                    if (bound_slip)
+                    {
+                        exec_len += std::sqrt(jump2);
+                        slip_sum +=
+                            builder_.slip(jac_batch_.data() + lane * jac_stride, chord.data());
                     }
 
                     // Execution-frame velocity: the lift's pushforward is the tangent
@@ -909,10 +929,10 @@ namespace vamp::planning::constraint
 
                 ZBlock zblock(zarr);
 
-                // Phase gates on the execution-frame samples: every lane's velocity rows
-                // are already tangent-projected at their own lifted points above, so the
-                // gates judge the executed velocities. One batched kernel evaluation
-                // serves all lanes.
+                // Phase constraints on the execution-frame samples: every lane's
+                // velocities are already tangent-projected at their own lifted points
+                // above, so the constraints judge the executed velocities. One batched
+                // kernel evaluation serves all lanes.
                 if (not phase_constraints.empty() and not phase_constraints.satisfied_block(zblock))
                 {
                     return EdgeStatus::Invalid;
@@ -924,6 +944,11 @@ namespace vamp::planning::constraint
                 {
                     return EdgeStatus::Invalid;
                 }
+            }
+
+            if (bound_slip and slip_sum > settings.max_slip_fraction * exec_len)
+            {
+                return EdgeStatus::Invalid;
             }
 
             out.T = T;

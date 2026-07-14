@@ -6,6 +6,23 @@ entry points (rrtc, aorrtc, grrtstar) and simplify:
 - line: the Panda's end-effector may only translate along its approach axis.
 - plane: the Panda's end-effector slides in a fixed-orientation plane through a sphere cage.
 - bimanual: the two arms of the bimanual Panda hold a fixed relative grasp transform.
+- screw: the Panda's end-effector advances along its approach axis locked to rotation
+  about it (lead-screw coupling), threading the arm past sphere obstacles. The coupling
+  row is Pfaffian -- it restricts velocities, not positions -- so this mode requires
+  --flask; the reported drift of the screw invariant h measures how well the chart
+  machinery holds the coupling. The twist-based row is smooth for any rotation
+  (--turn sets the total, default 5 rad); --holonomic swaps it for its integrable
+  level constraint as an oracle, which uses the log map and so needs --turn below pi.
+- knife: the Panda drags a knife edge across a virtual board: the blade may advance
+  along its edge and yaw about the board normal, but its lateral (body-y) velocity is
+  pinned to zero -- the classic nonintegrable unicycle row, built from the generic
+  TwistConstraint with runtime coefficients and no dedicated kernel. The goal is
+  laterally offset from the start at the same heading, a displacement that is
+  forbidden pointwise, so the plan must steer (yaw, cut, yaw back); the reported
+  net slip measures how well the chart machinery holds the row (a broken row
+  would show the full offset as slip, and without the ChartSettings slip tolerance
+  shortcutting realizes ~40% of it by slip). Nonintegrable, so no holonomic
+  oracle exists.
 
 Start and goal must lie on the constraint manifold: the planners raise ValueError
 otherwise, so this script projects them first with the module's project() helper.
@@ -21,6 +38,7 @@ C_loc shortcutting (validated chart-LQMT edges on the manifold) blends the
 stop-at-every-waypoint lift into flowing motion.
 """
 
+from functools import partial
 from pathlib import Path
 import time
 
@@ -52,6 +70,36 @@ LINE_EXTENT = 0.6
 # Reference pose (qw, qx, qy, qz, x, y, z) of the plane constraint: the end-effector
 # slides in the local x-y plane of this frame with fixed orientation.
 PLANE_POSE = [0.0, 0.707107, 0.0, 0.707107, 0.354, 0.7, 0.243]
+
+# Lead-screw coupling for the screw example: advance per full turn (m). The Pfaffian
+# twist row is smooth for any rotation; only the holonomic level constraint (seed pinning
+# and --holonomic) uses the log map, which wraps at a half turn from its anchor. The
+# default 5 rad turn advances 0.279 m; much beyond ~0.32 m the arm runs out of reach
+# along the fixed approach axis and goal projection stalls short.
+SCREW_PITCH = 0.35
+
+# Sphere obstacle for the screw example (position, radius): hovers just above where
+# the wrist ends up late in the default 5 rad turn on the start's (negative) swivel
+# side. Grid-probing the manifold's (phase, swivel) free set shows it blocks the
+# swivel crossing for phases past about half the default turn while leaving the exact
+# h = 0 manifold connected: the elbow must cross to the goal side early, then finish
+# the advance there. At --turn 2 the wrist never rises into it, so the holonomic
+# oracle plans the same scene. (An obstacle on the unswiveled elbow corridor instead
+# blocks all swivels at every phase -- the arm barely descends -- making h = 0
+# infeasible; the Pfaffian planner then "solves" it only by drifting h across leaves.)
+SCREW_OBSTACLES = [([-0.01, 0.07, 0.84], 0.035)]
+
+# Elbow-swivel bias (rad, applied to the base joint) separating the screw seeds:
+# start on the obstacle's (negative) side, goal on the free (positive) side.
+SCREW_SWIVEL = 1.2
+
+# Blade pose anchor for the knife example: the ready pose, approach axis (body z)
+# pointing down at the virtual board; the blade edge lies along body x.
+KNIFE_NOMINAL = np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785], dtype=np.float32)
+
+# Lateral (body-y) displacement of the knife goal, in meters: entirely along the
+# forbidden direction, so it can only be realized by steering.
+KNIFE_OFFSET = 0.2
 
 # Playback rate for geometric (non-flask) paths, which carry no timing.
 PLAYBACK_FPS = 30.0
@@ -102,6 +150,102 @@ def pose_to_transform(pose):
     pose = np.asarray(pose)
     x, y, z, w = tr.quaternion_from_matrix(pose)
     return [w, x, y, z, *pose[:3, 3]]
+
+
+def screw_invariant_series(module, reference_inv, qs):
+    """Screw invariant h = [t]_z - (pitch / 2 pi) theta of the end-effector pose in the
+    reference frame along a densely-sampled trajectory, computed independently of the
+    generated kernels. The rotation angle theta about the reference z-axis is
+    accumulated with np.unwrap, so multi-turn screws (beyond the log map's half-turn
+    wrap) report correctly. Returns (h, theta)."""
+    z, theta = [], []
+    for q in qs:
+        rTe = reference_inv @ np.array(module.eefk(q))
+        rot = rTe[:3, :3]
+        theta.append(np.arctan2(rot[1, 0] - rot[0, 1], rot[0, 0] + rot[1, 1]))
+        z.append(rTe[2, 3])
+    theta = np.unwrap(theta)
+    return np.asarray(z) - SCREW_PITCH / (2.0 * np.pi) * theta, theta
+
+
+def screw_transform(theta):
+    """Displacement of the lead screw at rotation theta: advance (pitch / 2 pi) theta
+    along z while rotating theta about it."""
+    t = tr.rotation_matrix(theta, [0.0, 0.0, 1.0])
+    t[2, 3] = SCREW_PITCH / (2.0 * np.pi) * theta
+    return t
+
+
+def screw_nominal(turn):
+    """Unswiveled configuration whose end-effector pose anchors the screw: the ready
+    pose with the wrist roll (aligned with the approach axis) at +turn/2, so the turn
+    splits symmetrically between the roll's joint limits (+-2.8973)."""
+    return np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, turn / 2.0], dtype=np.float32)
+
+
+def screw_problem(module, turn):
+    # The end-effector rotates by `turn` about the approach (local z) axis of the
+    # nominal pose while advancing along it, coupled as a lead screw: SCREW_PITCH
+    # meters per full turn. The TSR pins the off-axis rows; the coupling row is
+    # Pfaffian. The seeds are elbow-swiveled to opposite sides; the obstacle blocks
+    # the swivel crossing late in the turn, so the plan must swing the elbow to the
+    # goal side early and finish the advance there.
+    nominal = screw_nominal(turn)
+    start_seed = nominal.copy()
+    start_seed[0] -= SCREW_SWIVEL
+    goal_seed = nominal.copy()
+    goal_seed[0] += SCREW_SWIVEL
+    goal_seed[6] -= turn
+
+    reference = np.array(module.eefk(nominal))
+
+    # The TSR is anchored mid-screw so its z-translation row brackets the whole advance
+    # symmetrically; the row must not be flagged tight (bound width < 0.5) or its
+    # gradient joins the chart basis permanently and freezes the screw's only DOF. The
+    # rz bounds are never active (|log3_z| <= pi always): rotation is the coupling
+    # row's job, not the TSR's.
+    advance = SCREW_PITCH * turn / (2.0 * np.pi)
+    assert advance / 2.0 < 0.3
+    tsr = module.TaskSpaceConstraint(
+        IDENTITY,
+        pose_to_transform(reference @ screw_transform(-turn / 2.0)),
+        [-0.01, -0.01, -0.3, -0.01, -0.01, -3.2],
+        [0.01, 0.01, 0.3, 0.01, 0.01, 3.2],
+    )
+
+    screw = module.LeadScrewConstraint(IDENTITY, pose_to_transform(reference), SCREW_PITCH)
+
+    e = vamp.Environment()
+    for position, radius in SCREW_OBSTACLES:
+        e.add_sphere(vamp.Sphere(position, radius))
+
+    return start_seed, goal_seed, [tsr, screw], e
+
+
+def knife_problem(module):
+    # The blade's contact frame may advance along its edge (body x) and yaw about the
+    # board normal, but its lateral body-y velocity is zero: a unicycle row, expressed
+    # directly through the generic TwistConstraint's body-frame coefficients. The TSR
+    # holds the blade at board height and vertical (z, rx, ry tight) while x, y, and
+    # heading stay free (wide slab bounds, width >= 0.5 so they never join the chart basis).
+    # Both seeds are the nominal config; main() pins the goal seed to the laterally
+    # offset pose with a narrow TSR before planning.
+    reference = np.array(module.eefk(KNIFE_NOMINAL))
+
+    tsr = module.TaskSpaceConstraint(
+        IDENTITY,
+        pose_to_transform(reference),
+        [-0.3, -0.3, -0.01, -0.01, -0.01, -3.2],
+        [0.3, 0.3, 0.01, 0.01, 0.01, 3.2],
+    )
+
+    knife = module.TwistConstraint(
+        IDENTITY, pose_to_transform(reference),
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+    )
+
+    return KNIFE_NOMINAL.copy(), KNIFE_NOMINAL.copy(), [tsr, knife], vamp.Environment()
 
 
 def line_problem(module):
@@ -183,32 +327,54 @@ PROBLEMS = {
     "line": ("panda", line_problem, "panda_spherized.urdf"),
     "plane": ("panda", plane_problem, "panda_spherized.urdf"),
     "bimanual": ("bimanual_panda", bimanual_problem, "bipanda_spherized.urdf"),
+    "screw": ("panda", screw_problem, "panda_spherized.urdf"),
+    "knife": ("panda", knife_problem, "panda_spherized.urdf"),
 }
 
 
 def main(
-    mode: str = "plane",  # One of line, plane, bimanual.
+    mode: str = "plane",  # One of line, plane, bimanual, screw, knife.
     planner: str = "rrtc",  # One of rrtc, aorrtc, grrtstar.
-    range_: float = 0.5,  # Planner range; constrained steps should stay small.
+    range_: float | None = None,  # Planner range; constrained steps should stay small.
     flask: bool = False,  # Plan kinodynamically on the manifold with the chart-LQMT planner.
     retime: bool = False,  # Plan geometrically, then retime on the flask sibling.
     rho: float | None = None,  # LQMT time weight in C = rho * T + int |u|^2 (flask/retime).
-    max_kinetic_energy: float | None = None,  # Phase gate: kinetic energy cap in J (flask/retime).
-    max_eef_speed: float | None = None,  # Phase gate: end-effector speed cap in m/s (flask/retime).
+    max_kinetic_energy: float | None = None,  # Phase constraint: kinetic energy cap in J (flask/retime).
+    max_eef_speed: float | None = None,  # Phase constraint: end-effector speed cap in m/s (flask/retime).
     sample_energy: float | None = None,  # Shape sampled kinetic energy to [0, cap] J (flask only).
+    holonomic: bool = False,  # Swap the screw's Pfaffian row for its holonomic representation (screw only).
+    turn: float = 5.0,  # Total screw rotation in rad (screw only).
     visualize: bool = False,
     **kwargs,
 ):
     robot_name, problem, urdf = PROBLEMS[mode]
+    if range_ is None:
+        # An exact connect's arrival misses its target by ~ arc length x Pfaffian row
+        # rotation (a frozen-chart arc cannot land across the row normal), so the
+        # knife's rapidly turning row needs shorter arcs for connects to attain the
+        # tightened reached_pos_tol below.
+        range_ = 0.35 if mode == "knife" else 0.5
+    if mode == "screw":
+        problem = partial(screw_problem, turn=turn)
     if flask and retime:
         raise ValueError("--flask already plans kinodynamically; --retime retimes a geometric plan")
     kinodynamic = flask or retime
     if rho is not None and not kinodynamic:
         raise ValueError("--rho only applies to the chart-LQMT machinery; pass --flask or --retime")
     if (max_kinetic_energy is not None or max_eef_speed is not None) and not kinodynamic:
-        raise ValueError("phase gates only apply to the chart-LQMT machinery; pass --flask or --retime")
+        raise ValueError("phase constraints only apply to the chart-LQMT machinery; pass --flask or --retime")
     if sample_energy is not None and not flask:
         raise ValueError("--sample_energy only applies to the chart-LQMT planner; pass --flask")
+    if mode in ("screw", "knife") and not flask:
+        raise ValueError(
+            f"{mode} mode requires --flask: the Pfaffian coupling row restricts velocities "
+            "only, which the geometric projection-based pipeline ignores")
+    if holonomic and mode != "screw":
+        raise ValueError("--holonomic only applies to screw mode")
+    if holonomic and turn + 0.4 >= np.pi:
+        raise ValueError(
+            "--holonomic plans on the log-map level constraint, which wraps at a half turn "
+            "from its anchor; pass --turn below pi - 0.4 (the TSR's rz slack)")
     if flask:
         kwargs.setdefault("max_iterations", 50000)
         kwargs.setdefault("max_samples", 50000)
@@ -248,7 +414,7 @@ def main(
             plan_settings.rrtc.radius = 8.0
 
     constraint_settings = vamp.ConstraintSettings()
-    constraint_settings.max_iterations = 10
+    constraint_settings.max_iterations = 50
 
     # Constraints always come from the ambient (geometric) robot's submodule; a flask
     # robot is a nested submodule of its ambient parent.
@@ -256,9 +422,76 @@ def main(
     start_seed, goal_seed, constraints, e = problem(ambient)
     n_q = len(start_seed)
 
+    # The Pfaffian screw row restricts directions but cannot pin which leaf of the
+    # foliation a state is on, so each seed is projected with a holonomic level constraint
+    # pinning the invariant h = 0 at an anchor within a half turn of that seed (the
+    # log-map kernel wraps beyond that): the start constraint at the start pose, the goal
+    # constraint a full `turn` down the screw. The level constraint pins the helix but not the
+    # phase along it -- projection can slide the wrist back while it advances the arm
+    # -- so each seed set also carries a seed-anchored TSR whose narrow rz rows pin
+    # the phase (its log map sees that seed at rotation ~0, so no wrap).
+    start_constraints = goal_constraints = constraints
+    seed_settings = constraint_settings
+    if mode == "screw":
+        screw_reference = np.array(ambient.eefk(screw_nominal(turn)))
+
+        def level_at(theta):
+            anchor = screw_reference @ screw_transform(theta)
+            return ambient.LeadScrewLevelConstraint(
+                IDENTITY, pose_to_transform(anchor), SCREW_PITCH, 0.0)
+
+        def pin_tsr_at(theta):
+            return ambient.TaskSpaceConstraint(
+                IDENTITY,
+                pose_to_transform(screw_reference @ screw_transform(theta)),
+                [-0.01, -0.01, -0.3, -0.01, -0.01, -0.01],
+                [0.01, 0.01, 0.3, 0.01, 0.01, 0.01],
+            )
+
+        start_constraints = [pin_tsr_at(0.0), level_at(0.0)]
+        goal_constraints = [pin_tsr_at(-turn), level_at(-turn)]
+        # Alternating projection between the narrow TSR rows and the level row
+        # converges slowly (each drags the other off slightly), and the goal
+        # projection must pull the arm through the screw's whole advance; give the
+        # one-off seed projections a much bigger budget than the planner's
+        # per-sample one.
+        seed_settings = vamp.ConstraintSettings()
+        seed_settings.max_iterations = 500
+        if holonomic:
+            # The level constraint's log map wraps at a half turn from its start anchor, so
+            # unlike the Pfaffian row it cannot leave the TSR's rz rows fully free:
+            # samples rotated past pi see a spurious pitch-shifted helix. Cap rz so
+            # all reachable rotations stay within the wrap radius.
+            capped_tsr = ambient.TaskSpaceConstraint(
+                IDENTITY,
+                pose_to_transform(screw_reference @ screw_transform(-turn / 2.0)),
+                [-0.01, -0.01, -0.3, -0.01, -0.01, -(turn / 2.0 + 0.4)],
+                [0.01, 0.01, 0.3, 0.01, 0.01, turn / 2.0 + 0.4],
+            )
+            constraints = [capped_tsr, level_at(0.0)]
+    elif mode == "knife":
+        # The unicycle row restricts directions only; positions are pinned by narrow
+        # seed TSRs: the start at the nominal blade pose, the goal displaced purely
+        # along the blade's lateral (body-y) axis at the same heading.
+        knife_reference = np.array(ambient.eefk(KNIFE_NOMINAL))
+        goal_pose = knife_reference.copy()
+        goal_pose[:3, 3] += knife_reference[:3, :3] @ [0.0, KNIFE_OFFSET, 0.0]
+
+        def pin_tsr(pose):
+            return ambient.TaskSpaceConstraint(
+                IDENTITY, pose_to_transform(pose), [-0.01] * 6, [0.01] * 6)
+
+        start_constraints = [pin_tsr(knife_reference)]
+        goal_constraints = [pin_tsr(goal_pose)]
+        seed_settings = vamp.ConstraintSettings()
+        seed_settings.max_iterations = 500
+
     chart_kwargs = {}
     if kinodynamic:
-        chart_kwargs["chart_settings"] = vamp.ChartSettings()
+        chart_settings = vamp.ChartSettings()
+        if mode in ("screw", "knife"):
+            chart_settings.reached_pos_tol = 0.05
+        chart_kwargs["chart_settings"] = chart_settings
         gates = vf.phase_constraints(path_module, max_kinetic_energy, max_eef_speed)
         if gates:
             chart_kwargs["phase_constraints"] = gates
@@ -271,8 +504,15 @@ def main(
         start_seed, goal_seed = vf.rest_state(start_seed), vf.rest_state(goal_seed)
 
     # Strict start/goal policy: seeds must be projected onto the manifold explicitly.
-    start = module.project(start_seed, constraints, constraint_settings, **plan_chart_kwargs)
-    goal = module.project(goal_seed, constraints, constraint_settings, **plan_chart_kwargs)
+    start = module.project(start_seed, start_constraints, seed_settings, **plan_chart_kwargs)
+    goal = module.project(goal_seed, goal_constraints, seed_settings, **plan_chart_kwargs)
+
+    if mode in ("screw", "knife"):
+        # The seeds were projected in seed-anchored frames whose TSR bounds differ
+        # slightly from the planning TSR's ones; polish them onto the planning set
+        # (whose rows barely move them, so the pinned poses survive).
+        start = module.project(start, constraints, seed_settings, **plan_chart_kwargs)
+        goal = module.project(goal, constraints, seed_settings, **plan_chart_kwargs)
 
     for name, q in (("start", start), ("goal", goal)):
         if not module.validate(q, e):
@@ -330,6 +570,37 @@ def main(
         print(f"trajectory: {total_T:.2f} s over {len(path) - 1} segments, "
               f"max constraint dist^2 {max_err ** 2:.2e}, max velocity ratio {vel_ratio:.2f}, "
               f"max endpoint miss {max_miss:.2e}")
+        if mode == "screw":
+            # Drift of the screw invariant along the executed trajectory: zero up to
+            # per-sample tangent projection and chart tolerance for the Pfaffian row,
+            # and up to projection tolerance for the holonomic representation.
+            reference_inv = np.linalg.inv(screw_reference)
+            h, theta = screw_invariant_series(ambient, reference_inv, dense[:, :n_q])
+            kind = "holonomic level row" if holonomic else "Pfaffian row"
+            print(f"screw invariant ({kind}): h start {h[0]:+.2e} m, "
+                  f"max drift {np.abs(h - h[0]).max():.2e} m, "
+                  f"rotation {theta[-1]:+.2f} rad (target {-turn:+.2f})")
+        if mode == "knife":
+            # Blade-frame lateral motion along the executed trajectory. The goal
+            # displacement is purely lateral, so the net (signed) slip is displacement
+            # stolen along the forbidden direction: without the chart machinery's slip
+            # gate, shortcutting realizes ~40% of the offset by same-signed slip
+            # instead of steering; with it, net slip sits at integration-noise level
+            # and the offset is earned by the heading swing. The unsigned total is
+            # first-order arc wobble that largely cancels.
+            poses = [np.array(ambient.eefk(q)) for q in dense[:, :n_q]]
+            slip = net = travel = 0.0
+            for a, b in zip(poses, poses[1:]):
+                d_body = a[:3, :3].T @ (b[:3, 3] - a[:3, 3])
+                slip += abs(float(d_body[1]))
+                net += float(d_body[1])
+                travel += float(np.linalg.norm(d_body[:2]))
+            heading = np.unwrap([np.arctan2(p[1, 0], p[0, 0]) for p in poses])
+            rel_end = np.linalg.inv(knife_reference) @ poses[-1]
+            print(f"knife edge (Pfaffian row): lateral offset {rel_end[1, 3]:+.3f} m "
+                  f"(target {KNIFE_OFFSET:+.3f}), net slip {net:+.2e} m "
+                  f"(unsigned {slip:.2e}) over {travel:.2f} m travel, "
+                  f"heading swing {heading.max() - heading.min():.2f} rad")
         if "phase_constraints" in chart_kwargs:
             # Enforcement is at the planner's validation samples, so uniformly-resampled
             # lift samples may peak slightly between them.
@@ -394,6 +665,34 @@ def main(
                 wxyz=np.array(PLANE_POSE[:4]),
                 position=np.array(PLANE_POSE[4:]),
             )
+        elif mode == "knife":
+            # The virtual board: the blade's contact point slides in this plane.
+            rotation, origin = knife_reference[:3, :3], knife_reference[:3, 3]
+            server.scene.add_box(
+                "/constraint/board",
+                color=(255, 140, 0),
+                dimensions=(0.8, 0.8, 0.002),
+                opacity=0.25,
+                wxyz=tf.SO3.from_matrix(rotation).wxyz,
+                position=origin,
+            )
+        elif mode == "screw":
+            rotation, origin = screw_reference[:3, :3], screw_reference[:3, 3]
+            axis = rotation[:, 2]
+            extent = SCREW_PITCH * (turn + 0.1) / (2.0 * np.pi)
+            server.scene.add_line_segments(
+                "/constraint/screw_axis",
+                points=np.array([[origin - extent * axis, origin + extent * axis]]),
+                colors=(255, 140, 0),
+                line_width=4.0,
+            )
+            server.scene.add_frame(
+                "/constraint/reference",
+                wxyz=tf.SO3.from_matrix(rotation).wxyz,
+                position=origin,
+                axes_length=0.1,
+                axes_radius=0.004,
+            )
 
         # Geometric paths are already dense (planners emit whole projected waypoint
         # chains); flask paths are lifted to the executed trajectory. Either way, no
@@ -405,6 +704,14 @@ def main(
             # End-effector positions along the path; these should all lie on the constraint.
             ee_trace = np.array([np.array(ambient.eefk(q))[:3, 3] for q in waypoints])
             add_point_cloud(server, ee_trace, colors=[0, 255, 0], point_size=0.008, prefix="/ee_trace")
+
+        if mode == "screw":
+            # The end-effector origin lies on the screw axis, so its own trace is a
+            # straight line; an off-axis point of the hand traces the actual helix.
+            helix = np.array(
+                [(np.array(ambient.eefk(q)) @ [0.06, 0.0, 0.0, 1.0])[:3] for q in waypoints])
+            add_point_cloud(
+                server, helix, colors=[255, 0, 255], point_size=0.006, prefix="/helix_trace")
 
         slider = add_trajectory(server, waypoints, robot, [], [[]])
         play = server.gui.add_checkbox("Play", initial_value=True)

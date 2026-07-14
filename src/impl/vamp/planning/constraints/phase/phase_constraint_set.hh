@@ -9,7 +9,7 @@
 
 namespace vamp::planning::constraint
 {
-    // Runtime collection of phase-space inequality gates. An empty set is valid and
+    // Runtime collection of phase-space inequality constraints. An empty set is valid and
     // satisfied everywhere. Not thread-safe (constraints cache per-evaluation state): use
     // one set (with unshared constraints) per thread.
     template <typename Robot, std::size_t rake>
@@ -32,7 +32,7 @@ namespace vamp::planning::constraint
             return constraints_.empty();
         }
 
-        // Run every gate's kernel on the whole block, caching all lanes for extract().
+        // Run every constraint's kernel on the whole block, caching all lanes for extract().
         void evaluate(const Block &x) const noexcept
         {
             for (const auto &c : constraints_)
@@ -41,7 +41,7 @@ namespace vamp::planning::constraint
             }
         }
 
-        // Whether one SIMD lane of the last evaluate() block satisfies every gate.
+        // Whether one SIMD lane of the last evaluate() block satisfies every constraint.
         auto extract(std::size_t lane) const noexcept -> bool
         {
             for (const auto &c : constraints_)
@@ -55,8 +55,8 @@ namespace vamp::planning::constraint
             return true;
         }
 
-        // Whether every SIMD lane of a block satisfies every gate: one batched kernel
-        // evaluation serves all lanes.
+        // Whether every SIMD lane of a block satisfies every constraint: one batched
+        // kernel evaluation serves all lanes.
         auto satisfied_block(const Block &x) const noexcept -> bool
         {
             evaluate(x);
@@ -71,7 +71,7 @@ namespace vamp::planning::constraint
             return true;
         }
 
-        // Largest s in (0, 1] such that (q, s * qd) satisfies every gate; exactly 1 on
+        // Largest s in (0, 1] such that (q, s * qd) satisfies every constraint; exactly 1 on
         // feasible states, so applying the scale is idempotent.
         auto velocity_scale(const Configuration &z) const noexcept -> float
         {
@@ -82,13 +82,14 @@ namespace vamp::planning::constraint
             }
 
             // The closed-form scales are exact in real arithmetic but can land a hair
-            // outside a gate in float (the scale comes from the scalar kernels, feasibility
-            // is judged by the block kernels); back off so scaled states always pass.
+            // outside a constraint in float (the scale comes from the scalar kernels,
+            // feasibility is judged by the block kernels); back off so scaled states
+            // always pass.
             return (s < 1.0F) ? s * (1.0F - 1e-5F) : 1.0F;
         }
 
-        // Whether a single flat state satisfies every gate, judged by the same block
-        // kernels as extract() so steer/gate decisions agree bit-for-bit.
+        // Whether a single flat state satisfies every constraint, judged by the same block
+        // kernels as extract() so steer/validate decisions agree bit-for-bit.
         auto satisfied(const Configuration &z) const noexcept -> bool
         {
             if (empty())

@@ -64,7 +64,7 @@ namespace vamp::planning::constraint
         // step count before a connect loop gives up.
         static constexpr float connect_slack = 2.F;
 
-        // Squared radius around the steer target within which the frontier counts as
+        // Squared radius around the steer target within which the endpoint counts as
         // Reached: projection rarely lands exactly on the target.
         static constexpr float reached_radius2 = 1e-2F;
 
@@ -125,7 +125,7 @@ namespace vamp::planning::constraint
             return {SteerStatus::Reached, chain_};
         }
 
-        template <typename Gate = AlwaysTrue>
+        template <typename Accept = AlwaysTrue>
         inline auto steer(
             const Configuration &from,
             const Configuration &target,
@@ -133,7 +133,7 @@ namespace vamp::planning::constraint
             float range,
             bool,
             const Environment &e,
-            Gate &&gate = Gate()) const noexcept -> Extension<Robot>
+            Accept &&accept = Accept()) const noexcept -> Extension<Robot>
         {
             chain_.clear();
 
@@ -177,12 +177,12 @@ namespace vamp::planning::constraint
             }
 
             Configuration next(next_arr);
-            if (not gate(next))
+            if (not accept(next))
             {
                 return {SteerStatus::Rejected, chain_};
             }
 
-            // Check the frontier for collision before paying for the full trace.
+            // Check the candidate endpoint for collision before paying for the full trace.
             Block next_block;
             for (auto j = 0U; j < Robot::dimension; ++j)
             {

@@ -7491,7 +7491,7 @@ for (const auto &sp : cc_self_pairs)
 
     // Input: q (dimension), then per end-effector rTe (7), wTr (7), lb (6), ub (6); transforms
     // are wxyz quaternion + xyz translation. Output: d(err)/dq (6 * n_eef * dimension,
-    // row-major), then the raw un-hinged error (6 * n_eef).
+    // row-major), then the raw error (6 * n_eef).
     template <std::size_t rake, typename InputVector, typename OutputVector>
     static inline auto tsr_error(const InputVector &x, OutputVector &out) noexcept
     {
@@ -12935,7 +12935,7 @@ for (const auto &sp : cc_self_pairs)
     
     // Relative-pose TSR between the first two end-effectors.
     // Input: q (dimension), then the reference relative transform lTr (7), lb (6), ub (6).
-    // Output: d(err)/dq (6 * dimension, row-major), then the raw un-hinged error (6).
+    // Output: d(err)/dq (6 * dimension, row-major), then the raw error (6).
     template <std::size_t rake, typename InputVector, typename OutputVector>
     static inline auto tsr_bimanual_error(const InputVector &x, OutputVector &out) noexcept
     {

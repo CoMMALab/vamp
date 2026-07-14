@@ -60,12 +60,12 @@ def phase_constraints(
     max_kinetic_energy: Optional[float] = None,
     max_eef_speed: Optional[float] = None,
 ) -> List[Any]:
-    """Phase gates for the given caps; empty when no cap is given.
+    """Phase constraints for the given caps; empty when no cap is given.
 
     Raises RuntimeError if a cap is requested but the robot was not generated
     with the corresponding phase-constraint kernel.
     """
-    gates = []
+    constraints = []
     for cap, kernel in (
         (max_kinetic_energy, "KineticEnergyConstraint"),
         (max_eef_speed, "EEFSpeedConstraint"),
@@ -74,14 +74,14 @@ def phase_constraints(
             continue
         if not hasattr(robot_module, kernel):
             raise RuntimeError(f"Robot {robot_module.__name__} has no {kernel} kernel!")
-        gates.append(getattr(robot_module, kernel)(float(cap)))
+        constraints.append(getattr(robot_module, kernel)(float(cap)))
 
-    return gates
+    return constraints
 
 
 def max_eef_speed(robot_module: Any, z: Any) -> float:
     """Largest per-end-effector linear speed of a flat state z (the quantity the
-    EEF-speed phase gate caps: each end-effector's speed separately)."""
+    EEF-speed phase constraint caps: each end-effector's speed separately)."""
     v = robot_module.eef_velocity(np.asarray(z, dtype=np.float32))
     return float(np.linalg.norm(np.reshape(v, (-1, 3)), axis=1).max())
 

@@ -31,14 +31,25 @@ namespace vamp::planning
         std::string_view settings_class;
         std::string_view header;
         std::string_view settings_header;
+        bool local_planner;
     };
 
     inline constexpr std::array<PlannerDescriptor, 5> PLANNERS = {{
-        {"rrtc", "RRTC", "RRTCSettings", "rrtc.hh", "rrtc_settings.hh"},
-        {"prm", "PRM", "RoadmapSettings<vamp::planning::PRMStarNeighborParams>", "prm.hh", "roadmap.hh"},
-        {"fcit", "FCIT", "RoadmapSettings<vamp::planning::FCITStarNeighborParams>", "fcit.hh", "roadmap.hh"},
-        {"aorrtc", "AORRTC", "AORRTCSettings", "aorrtc.hh", "aorrtc_settings.hh"},
-        {"grrtstar", "GRRTStar", "GRRTStarSettings", "grrtstar.hh", "grrtstar_settings.hh"},
+        {"rrtc", "RRTC", "RRTCSettings", "rrtc.hh", "rrtc_settings.hh", true},
+        {"prm",
+         "PRM",
+         "RoadmapSettings<vamp::planning::PRMStarNeighborParams>",
+         "prm.hh",
+         "roadmap.hh",
+         false},
+        {"fcit",
+         "FCIT",
+         "RoadmapSettings<vamp::planning::FCITStarNeighborParams>",
+         "fcit.hh",
+         "roadmap.hh",
+         false},
+        {"aorrtc", "AORRTC", "AORRTCSettings", "aorrtc.hh", "aorrtc_settings.hh", true},
+        {"grrtstar", "GRRTStar", "GRRTStarSettings", "grrtstar.hh", "grrtstar_settings.hh", true},
     }};
 
     inline constexpr std::size_t N_PLANNERS = PLANNERS.size();

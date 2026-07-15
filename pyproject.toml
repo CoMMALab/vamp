@@ -54,4 +54,5 @@ VAMP_ROBOT_STRUCTS = "UR5;Panda;Fetch;BimanualPanda;R2c6;Digit"
 
 [[tool.scikit-build.overrides]]
 if.env.VAMP_BUILD_JIT = "ON"
+inherit.cmake.define = "append"
 cmake.define.VAMP_BUILD_JIT = "ON"

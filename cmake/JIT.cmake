@@ -1,4 +1,26 @@
 if(VAMP_BUILD_JIT)
+  if(NOT cricket_DIR)
+    set(_vamp_cricket_py "${Python_EXECUTABLE}")
+    if(NOT _vamp_cricket_py)
+      find_program(_vamp_cricket_py NAMES python3 python)
+    endif()
+    if(_vamp_cricket_py)
+      execute_process(
+          COMMAND "${_vamp_cricket_py}" -c "import cricket; print(cricket.cmake_dir())"
+          OUTPUT_VARIABLE _vamp_cricket_cmake_dir
+          OUTPUT_STRIP_TRAILING_WHITESPACE
+          RESULT_VARIABLE _vamp_cricket_query_rc
+          ERROR_VARIABLE _vamp_cricket_query_err)
+      if(_vamp_cricket_query_rc EQUAL 0 AND EXISTS "${_vamp_cricket_cmake_dir}")
+        set(cricket_DIR "${_vamp_cricket_cmake_dir}")
+        message(STATUS "Discovered cricket CMake package via Python: ${cricket_DIR}")
+      else()
+        message(STATUS "cricket Python query failed (${_vamp_cricket_query_err}); "
+                       "relying on default find_package search")
+      endif()
+    endif()
+  endif()
+
   find_package(cricket REQUIRED)
 
   # Configure build_paths.hh with the include dirs / flags vamp's JIT stub needs to compile against
@@ -53,6 +75,7 @@ if(VAMP_BUILD_JIT)
       preamble:VAMP_JIT_PREAMBLE
       robot_stub:VAMP_JIT_ROBOT_STUB
       planner_stub:VAMP_JIT_PLANNER_STUB
+      flask_stub:VAMP_JIT_FLASK_STUB
   )
     string(REPLACE ":" ";" stub "${stub}")
     list(GET stub 0 stub_file)

@@ -26,6 +26,8 @@ namespace vamp::jit
 
         std::vector<vamp::planning::Planner> planners;
 
+        RobotCapabilities capabilities;
+
         cricket::jit::CompileOptions compile_options;
     };
 
@@ -37,9 +39,72 @@ namespace vamp::jit
         {
             ffi::SolveFn solve{nullptr};
             ffi::SolveMultiFn solve_multi{nullptr};
+            ffi::SolveConstrainedFn solve_constrained{nullptr};
+            ffi::SolveMultiConstrainedFn solve_multi_constrained{nullptr};
+
+            // Flask sibling only: phase-constrained and chart-constrained solves.
+            ffi::SolvePhaseFn solve_phase{nullptr};
+            ffi::SolveMultiPhaseFn solve_multi_phase{nullptr};
+            ffi::SolveChartFn solve_chart{nullptr};
+            ffi::SolveMultiChartFn solve_multi_chart{nullptr};
         };
 
         std::array<PlannerEntry, vamp::planning::N_PLANNERS> planners{};
+
+        // Constraint entry points; factories are only non-null for capabilities present
+        // in the generated robot source.
+        struct ConstraintOps
+        {
+            ffi::ConstraintDestroyFn destroy{nullptr};
+            ffi::ConstraintProjectFn project{nullptr};
+            ffi::ConstraintSatisfiedFn satisfied{nullptr};
+            ffi::SimplifyConstrainedFn simplify_constrained{nullptr};
+
+            ffi::TaskSpaceConstraintNewFn task_space_new{nullptr};
+            ffi::BimanualTaskSpaceConstraintNewFn bimanual_task_space_new{nullptr};
+            ffi::ClosedLoopConstraintNewFn closed_loop_new{nullptr};
+            ffi::CoMConstraintNewFn com_new{nullptr};
+            ffi::TwistConstraintNewFn twist_new{nullptr};
+            ffi::LeadScrewConstraintNewFn lead_screw_new{nullptr};
+            ffi::LeadScrewLevelConstraintNewFn lead_screw_level_new{nullptr};
+        };
+
+        ConstraintOps constraint{};
+
+        // Flask entry points, populated only on the flask sibling robot; chart entries
+        // additionally require a manifold-defining kernel on the ambient robot.
+        struct FlaskOps
+        {
+            ffi::PhaseDestroyFn phase_destroy{nullptr};
+            ffi::PhaseKineticEnergyNewFn phase_kinetic_energy_new{nullptr};
+            ffi::PhaseEEFSpeedNewFn phase_eef_speed_new{nullptr};
+            ffi::PhaseSatisfiedFn phase_satisfied{nullptr};
+            ffi::PhaseVelocityScaleFn phase_velocity_scale{nullptr};
+            ffi::SamplerKeShapedFn sampler_ke_shaped{nullptr};
+            ffi::SimplifyPhaseFn simplify_phase{nullptr};
+
+            ffi::FlaskOptimalTimeFn optimal_time{nullptr};
+            ffi::FlaskCostFn cost{nullptr};
+            ffi::FlaskCostGradFn cost_grad{nullptr};
+            ffi::FlaskEvalFn eval{nullptr};
+            ffi::FlaskTorquesFn torques{nullptr};
+            ffi::FlaskKineticEnergyFn kinetic_energy{nullptr};
+            ffi::FlaskEEFVelocityFn eef_velocity{nullptr};
+            ffi::FlaskNEndEffectorsFn n_end_effectors{nullptr};
+            ffi::FlaskFlatDimensionFn flat_dimension{nullptr};
+            ffi::FlaskRhoGetFn rho_get{nullptr};
+            ffi::FlaskRhoSetFn rho_set{nullptr};
+            ffi::FlaskLimitsFn velocity_limits{nullptr};
+            ffi::FlaskLimitsFn effort_limits{nullptr};
+
+            ffi::ChartProjectFn chart_project{nullptr};
+            ffi::ChartSatisfiedFn chart_satisfied{nullptr};
+            ffi::ChartDebugFn chart_debug{nullptr};
+            ffi::ChartLiftEdgeFn chart_lift_edge{nullptr};
+            ffi::SimplifyChartFn simplify_chart{nullptr};
+        };
+
+        FlaskOps flask{};
 
         ffi::ResultMetaFn result_meta{nullptr};
         ffi::ResultCopyWaypointFn result_copy_waypoint{nullptr};
@@ -93,6 +158,11 @@ namespace vamp::jit
             return ops_.planners[static_cast<std::size_t>(p)].solve != nullptr;
         }
 
+        auto capabilities() const -> const RobotCapabilities &
+        {
+            return capabilities_;
+        }
+
         auto dimension() const -> std::size_t
         {
             return dimension_;
@@ -138,11 +208,40 @@ namespace vamp::jit
             return lower_bounds_;
         }
 
+        // The flask (flat-system) sibling robot, sharing this robot's JIT session; null
+        // unless the recipe had a flask block. The sibling itself has no sibling.
+        auto flask_sibling() const -> const std::shared_ptr<DynamicRobot> &
+        {
+            return flask_;
+        }
+
+        // Identity of the ambient robot this flask sibling was derived from (null on
+        // ambient robots). Used only for pointer comparison when validating that chart
+        // constraints were created on the ambient robot; any live constraint keeps the
+        // ambient robot alive through its own shared_ptr.
+        auto ambient() const -> const DynamicRobot *
+        {
+            return ambient_;
+        }
+
     private:
+        struct FlaskSiblingTag
+        {
+        };
+
+        DynamicRobot(FlaskSiblingTag, const DynamicRobot &ambient, const LoadOptions &opts);
+
+        // Entry points and metadata common to both the ambient and flask stubs,
+        // resolved under the given symbol name (robot_name or robot_name + "_flask").
+        void resolve_base(const std::string &r);
+
         std::size_t dimension_;
         std::size_t rake_;
-        std::unique_ptr<cricket::jit::JitSession> session_;
+        RobotCapabilities capabilities_;
+        std::shared_ptr<cricket::jit::JitSession> session_;
         RobotOps ops_{};
+        std::shared_ptr<DynamicRobot> flask_;
+        const DynamicRobot *ambient_{nullptr};
 
         std::size_t n_spheres_{0};
         float space_measure_{0.0F};

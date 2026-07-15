@@ -109,6 +109,12 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     )
     target_compile_definitions(_core_ext PRIVATE VAMP_HAVE_JIT=1)
 
+    set_property(TARGET _core_ext APPEND PROPERTY INSTALL_RPATH
+        "$<TARGET_FILE_DIR:cricket::cricket>"
+        "$<TARGET_FILE_DIR:cricket::cricket_jit>"
+        "$ORIGIN/../../cricket/lib"
+    )
+
     # simdxorshift symbols need exported so dynamic symbol search finds them
     if(TARGET simdxorshift)
       target_link_options(_core_ext PRIVATE

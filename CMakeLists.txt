@@ -154,6 +154,9 @@ endif()
 if(VAMP_BUILD_CPP_DEMO)
   add_executable(vamp_rrtc_example scripts/cpp/rrtc_example.cc)
   target_link_libraries(vamp_rrtc_example PRIVATE vamp_cpp)
+
+  add_executable(iiwa_task_space_planner scripts/cpp/iiwa_task_space_planner.cc)
+  target_link_libraries(iiwa_task_space_planner PRIVATE vamp_cpp)
   
   # Disable strict warnings for demos to maintain compatibility
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")

@@ -1333,7 +1333,9 @@ namespace vamp::binding
                nb::object closed_loops,
                bool lead_screw,
                bool twist,
-               nb::object flask) -> std::shared_ptr<vj::DynamicRobot>
+               nb::object flask,
+               nb::object active_joints,
+               nb::object default_configuration) -> std::shared_ptr<vj::DynamicRobot>
             {
                 cricket::GenOptions g;
                 g.urdf = urdf;
@@ -1456,6 +1458,30 @@ namespace vamp::binding
                     g.data["flask"] = std::move(j);
                 }
 
+                if (not active_joints.is_none())
+                {
+                    g.data["active_joints"] = nb::cast<std::vector<std::string>>(active_joints);
+                }
+
+                if (not default_configuration.is_none())
+                {
+                    auto d = nb::cast<nb::dict>(default_configuration);
+                    nlohmann::json j = nlohmann::json::object();
+                    for (auto [k, v] : d)
+                    {
+                        const auto key = nb::cast<std::string>(k);
+                        if (nb::isinstance<nb::float_>(v) or nb::isinstance<nb::int_>(v))
+                        {
+                            j[key] = nb::cast<double>(v);
+                        }
+                        else
+                        {
+                            j[key] = nb::cast<std::vector<double>>(v);
+                        }
+                    }
+                    g.data["default_configuration"] = std::move(j);
+                }
+
                 auto gen = cricket::generate_robot_source(g);
 
                 vj::LoadOptions opts = vj::default_load_options();
@@ -1499,10 +1525,15 @@ namespace vamp::binding
             "lead_screw"_a = false,
             "twist"_a = false,
             "flask"_a = nb::none(),
+            "active_joints"_a = nb::none(),
+            "default_configuration"_a = nb::none(),
             "JIT-compile a robot from a URDF. end_effector accepts a frame name or a list of "
             "frame names; constraints/com/closed_loops/lead_screw/twist mirror the cricket "
             "recipe keys and select which constraint kernels are generated. flask takes a dict "
             "mirroring the recipe's flask block (rho required; resolution, velocity_limits, "
-            "effort_limits optional) and generates a flat-system sibling robot on .flask.");
+            "effort_limits optional) and generates a flat-system sibling robot on .flask. "
+            "active_joints (list of joint names) locks every other joint at its value in "
+            "default_configuration (dict of joint name to value(s); pinocchio neutral if "
+            "omitted) and constant-folds it out of the compiled robot.");
     }
 }  // namespace vamp::binding

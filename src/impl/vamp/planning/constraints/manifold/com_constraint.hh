@@ -93,6 +93,11 @@ namespace vamp::planning::constraint
             rows[1] = false;
         }
 
+        void mask_jacobian(const bool *pinned) const noexcept final
+        {
+            mask_pinned_columns<Robot>(solve, pinned);
+        }
+
         void evaluate_error_jacobian(const Block &q) const noexcept final
         {
             // The half-plane hinge is intrinsic here (the error has no raw form: it is

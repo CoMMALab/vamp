@@ -8,6 +8,7 @@
 #include <vamp/planning/planner.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/planning/simplify_settings.hh>
+#include <vamp/utils.hh>
 
 #include <nanobind/eigen/dense.h>
 #include <nanobind/nanobind.h>
@@ -24,6 +25,9 @@ namespace vamp::binding
     namespace nb_ = nanobind;
     namespace vp_ = vamp::planning;
     using namespace nb_::literals;
+
+    VAMP_DEFINE_HAS_METHOD(make_pinned_sampler)
+    VAMP_DEFINE_HAS_METHOD(constraint_project_pinned)
 
     // Every planner entry point is a single-goal/multi-goal overload pair on the same
     // name, sharing the leading arguments and docstring; the family-specific trailing
@@ -99,6 +103,21 @@ namespace vamp::binding
             "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "Project a configuration onto the constraint manifold. Raises ValueError if the "
             "projection does not converge.");
+
+        if constexpr (has_constraint_project_pinned_v<Traits>)
+        {
+            t.def(
+                "project",
+                &Traits::constraint_project_pinned,
+                "configuration"_a,
+                "constraints"_a,
+                "rng"_a,
+                "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+                "Project a configuration onto the constraint manifold within the sampler's "
+                "pinned slice: pinned joints are snapped to their pinned values and held "
+                "exactly while the active joints project. Raises ValueError if the projection "
+                "does not converge.");
+        }
         t.def(
             "satisfied",
             &Traits::constraint_satisfied,
@@ -327,6 +346,18 @@ namespace vamp::binding
             "focus_b"_a,
             "Construct a prolate hyperspheroid from two foci.");
         t.def("phs_sampler", &Traits::make_phs_sampler, "phs"_a, "rng"_a, "Create a PHS sampler.");
+        if constexpr (has_make_pinned_sampler_v<Traits>)
+        {
+            t.def(
+                "pin_sampler",
+                &Traits::make_pinned_sampler,
+                "rng"_a,
+                "active_joints"_a,
+                "default_configuration"_a,
+                "Wrap a sampler so that every joint not named in active_joints is pinned to its "
+                "value in default_configuration; planning then only moves the active joints. "
+                "Start and goal configurations must match the pinned values.");
+        }
 
         register_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
         register_planner<Traits, vp_::Planner::PRM, typename Traits::PRMSettings>(t, "prm");

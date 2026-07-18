@@ -41,6 +41,7 @@
 #include <vamp/planning/validate.hh>
 #include <vamp/random/halton.hh>
 #include <vamp/random/ke_shaped.hh>
+#include <vamp/random/pinned.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
 #include <vamp/vector.hh>
@@ -217,6 +218,22 @@ namespace vamp::binding
         template <vamp::planning::Planner P>
         using PlannerT = vamp::planning::PlannerClass<Robot, rake, Robot::resolution, P>;
 
+        static void check_pins(
+            const std::shared_ptr<Sampler> &rng,
+            const Configuration &c,
+            const char *which)
+        {
+            if (auto pinned = std::dynamic_pointer_cast<vamp::rng::PinnedRNG<Robot>>(rng))
+            {
+                if (not pinned->matches(c))
+                {
+                    throw std::invalid_argument(
+                        std::string(which) +
+                        " configuration does not match the sampler's pinned joint values!");
+                }
+            }
+        }
+
         template <vamp::planning::Planner P, typename Settings>
         static auto solve_single(
             const Cfg &start,
@@ -225,6 +242,8 @@ namespace vamp::binding
             const Settings &s,
             std::shared_ptr<Sampler> rng) -> PlanningResult
         {
+            check_pins(rng, Input::to(start), "Start");
+            check_pins(rng, Input::to(goal), "Goal");
             return PlannerT<P>::solve(Input::to(start), Input::to(goal), EnvVec(env), s, rng);
         }
 
@@ -236,11 +255,13 @@ namespace vamp::binding
             const Settings &s,
             std::shared_ptr<Sampler> rng) -> PlanningResult
         {
+            check_pins(rng, Input::to(start), "Start");
             std::vector<Configuration> goals_v;
             goals_v.reserve(goals.size());
             for (const auto &g : goals)
             {
                 goals_v.emplace_back(Input::to(g));
+                check_pins(rng, goals_v.back(), "Goal");
             }
             return PlannerT<P>::solve(Input::to(start), goals_v, EnvVec(env), s, rng);
         }
@@ -344,6 +365,16 @@ namespace vamp::binding
         static constexpr const char *manifold_simplify_message =
             " violates the constraints; simplify requires an on-manifold path";
 
+        // Forward a PinnedRNG's pinned dimensions into a constraint set so projection
+        // holds them exactly (their Jacobian columns are zeroed before every descent step).
+        static void apply_pins(ConstraintSetT &set, const std::shared_ptr<Sampler> &rng)
+        {
+            if (auto pinned = std::dynamic_pointer_cast<vamp::rng::PinnedRNG<Robot>>(rng))
+            {
+                set.set_pinned(pinned->pinned_dims());
+            }
+        }
+
         template <vamp::planning::Planner P, typename Settings>
         static auto solve_single_constrained(
             const Cfg &start,
@@ -359,14 +390,13 @@ namespace vamp::binding
                 return solve_single<P, Settings>(start, goal, env, s, rng);
             }
 
+            check_pins(rng, Input::to(start), "Start");
+            check_pins(rng, Input::to(goal), "Goal");
+
+            ConstraintSetT set(std::move(constraints), cs);
+            apply_pins(set, rng);
             return solve_single_lp<P>(
-                start,
-                goal,
-                env,
-                s,
-                rng,
-                ConstrainedLP(ConstraintSetT(std::move(constraints), cs)),
-                manifold_message);
+                start, goal, env, s, rng, ConstrainedLP(std::move(set)), manifold_message);
         }
 
         template <vamp::planning::Planner P, typename Settings>
@@ -384,14 +414,16 @@ namespace vamp::binding
                 return solve_multi<P, Settings>(start, goals, env, s, rng);
             }
 
+            check_pins(rng, Input::to(start), "Start");
+            for (const auto &g : goals)
+            {
+                check_pins(rng, Input::to(g), "Goal");
+            }
+
+            ConstraintSetT set(std::move(constraints), cs);
+            apply_pins(set, rng);
             return solve_multi_lp<P>(
-                start,
-                goals,
-                env,
-                s,
-                rng,
-                ConstrainedLP(ConstraintSetT(std::move(constraints), cs)),
-                manifold_message);
+                start, goals, env, s, rng, ConstrainedLP(std::move(set)), manifold_message);
         }
 
         static auto simplify_constrained(
@@ -407,13 +439,10 @@ namespace vamp::binding
                 return simplify(p, env, settings, rng);
             }
 
+            ConstraintSetT set(std::move(constraints), cs);
+            apply_pins(set, rng);
             return simplify_lp(
-                p,
-                env,
-                settings,
-                rng,
-                ConstrainedLP(ConstraintSetT(std::move(constraints), cs)),
-                manifold_simplify_message);
+                p, env, settings, rng, ConstrainedLP(std::move(set)), manifold_simplify_message);
         }
 
         static auto constraint_project(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs)
@@ -421,6 +450,30 @@ namespace vamp::binding
         {
             const ConstraintSetT set(std::move(constraints), cs);
             auto q = Input::to(c);
+            if (not set.project(q))
+            {
+                throw std::invalid_argument("projection onto the constraint manifold did not converge");
+            }
+
+            return Input::from(q);
+        }
+
+        // Projection within a pinned sampler's slice: snap the pinned joints to their
+        // pinned values, then hold them exactly while the active joints descend.
+        static auto constraint_project_pinned(
+            const Cfg &c,
+            ConstraintVec constraints,
+            std::shared_ptr<Sampler> rng,
+            const ConstraintSettings &cs) -> Cfg
+        {
+            ConstraintSetT set(std::move(constraints), cs);
+            auto q = Input::to(c);
+            if (auto pinned = std::dynamic_pointer_cast<vamp::rng::PinnedRNG<Robot>>(rng))
+            {
+                q = q * pinned->unmask + pinned->pinned;
+                set.set_pinned(pinned->pinned_dims());
+            }
+
             if (not set.project(q))
             {
                 throw std::invalid_argument("projection onto the constraint manifold did not converge");
@@ -578,6 +631,35 @@ namespace vamp::binding
 #else
             throw std::runtime_error("XORShift is not supported on non-x86 systems!");
 #endif
+        }
+
+        static auto make_pinned_sampler(
+            std::shared_ptr<Sampler> inner,
+            const std::vector<std::string> &active_joints,
+            const Cfg &default_configuration) -> std::shared_ptr<Sampler>
+        {
+            for (const auto &name : active_joints)
+            {
+                if (std::find(Robot::joint_names.begin(), Robot::joint_names.end(), name) ==
+                    Robot::joint_names.end())
+                {
+                    throw std::invalid_argument(
+                        "Active joint `" + name + "` is not a joint of this robot!");
+                }
+            }
+
+            alignas(FloatVectorAlignment)
+                std::array<float, Configuration::num_scalars_rounded> mask{};
+            for (auto i = 0U; i < Robot::dimension; ++i)
+            {
+                const bool active =
+                    std::find(active_joints.begin(), active_joints.end(), Robot::joint_names[i]) !=
+                    active_joints.end();
+                mask[i] = active ? 0.F : 1.F;
+            }
+
+            return std::make_shared<vamp::rng::PinnedRNG<Robot>>(
+                std::move(inner), Configuration(mask.data()), Input::to(default_configuration));
         }
 
         static auto make_phs(const Cfg &focus_a, const Cfg &focus_b) -> std::shared_ptr<Phs>

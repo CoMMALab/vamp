@@ -40,6 +40,20 @@ namespace vamp::planning::constraint
             return settings_;
         }
 
+        // Pin dimensions during projection (pinned[j] true): every descent step's Jacobian
+        // columns for the pinned dimensions are zeroed, so projection solves within the
+        // active subspace and pinned joints hold their values exactly. Configurations fed
+        // to the projection loops must already sit on the pinned slice.
+        void set_pinned(const std::array<bool, Robot::dimension> &pinned) noexcept
+        {
+            pinned_ = pinned;
+            has_pins_ = false;
+            for (const auto p : pinned)
+            {
+                has_pins_ |= p;
+            }
+        }
+
         // Per-lane squared violation error summed over all constraints. Caches each
         // constraint's Jacobian and error for step_in_place(). An empty set has zero
         // error everywhere.
@@ -132,6 +146,11 @@ namespace vamp::planning::constraint
         {
             for (const auto &c : constraints_)
             {
+                if (has_pins_)
+                {
+                    c->mask_jacobian(pinned_.data());
+                }
+
                 c->step(q, settings_.method, settings_.descend_rate);
             }
         }
@@ -309,5 +328,7 @@ namespace vamp::planning::constraint
 
         std::vector<Ptr> constraints_;
         ConstraintSettings settings_;
+        std::array<bool, Robot::dimension> pinned_{};
+        bool has_pins_ = false;
     };
 }  // namespace vamp::planning::constraint

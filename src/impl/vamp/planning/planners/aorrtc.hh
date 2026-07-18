@@ -16,6 +16,7 @@
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/planners/aorrtc_settings.hh>
 #include <vamp/planning/planners/rrtc.hh>
+#include <vamp/random/pinned.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
 #include <vamp/vector.hh>
@@ -546,10 +547,26 @@ namespace vamp::planning
                 {
                     ProlateHyperspheroid<Robot> phs(start, goals[0]);
                     phs.set_transverse_diameter(best_path_cost);
-                    auto phs_rng = std::make_shared<ProlateHyperspheroidRNG<Robot>>(phs, rng);
-                    informed_rng = phs_rng;
-                    update_informed_bound = [phs_rng](float c)
-                    { phs_rng->phs.set_transverse_diameter(c); };
+
+                    // A pinned RNG must stay outermost: the PHS transform scatters into
+                    // all dimensions, so wrap PHS around the unpinned inner sampler and
+                    // re-apply the pins on top (projection onto the pinned slice).
+                    if (auto pinned = std::dynamic_pointer_cast<rng::PinnedRNG<Robot>>(rng))
+                    {
+                        auto phs_rng =
+                            std::make_shared<ProlateHyperspheroidRNG<Robot>>(phs, pinned->inner);
+                        informed_rng = std::make_shared<rng::PinnedRNG<Robot>>(
+                            phs_rng, pinned->mask, pinned->values);
+                        update_informed_bound = [phs_rng](float c)
+                        { phs_rng->phs.set_transverse_diameter(c); };
+                    }
+                    else
+                    {
+                        auto phs_rng = std::make_shared<ProlateHyperspheroidRNG<Robot>>(phs, rng);
+                        informed_rng = phs_rng;
+                        update_informed_bound = [phs_rng](float c)
+                        { phs_rng->phs.set_transverse_diameter(c); };
+                    }
                 }
             }
 

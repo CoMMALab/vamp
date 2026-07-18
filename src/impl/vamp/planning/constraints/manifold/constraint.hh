@@ -52,6 +52,14 @@ namespace vamp::planning::constraint
             }
         }
 
+        // Zero the pinned dimensions' columns (pinned[j] true, Robot::dimension entries) of
+        // the Jacobian cached by the last squared_error() call, so the next step() solves
+        // for the optimal descent within the active subspace and cannot move pinned joints.
+        // Default: no-op, for constraints whose step() is already a no-op.
+        virtual void mask_jacobian(const bool * /*pinned*/) const noexcept
+        {
+        }
+
         // Run the error/Jacobian kernel on the whole block, caching every lane for
         // extract_error_jacobian(). One evaluation serves all rake lanes, so batch callers
         // (chart construction over a block of samples) pay the kernel once instead of per
@@ -95,6 +103,27 @@ namespace vamp::planning::constraint
             return (index < jac_size) ? jac[index] : err[index - jac_size];
         }
     };
+
+    // Zero the pinned columns of a cached solve buffer's Jacobian (mask_jacobian()
+    // implementations of constraints with generated solvers).
+    template <typename Robot, std::size_t rake, std::size_t err_size, std::size_t jac_size>
+    inline void mask_pinned_columns(
+        SolveBuffer<rake, err_size, jac_size> &solve,
+        const bool *pinned) noexcept
+    {
+        for (auto j = 0U; j < Robot::dimension; ++j)
+        {
+            if (not pinned[j])
+            {
+                continue;
+            }
+
+            for (auto i = 0U; i < err_size; ++i)
+            {
+                solve.jac[i * Robot::dimension + j] = FloatVector<rake, 1>::fill(0.F);
+            }
+        }
+    }
 
     // Shared machinery of bounded task-space (TSR-style) constraints, whose rows are pose
     // errors hinged against [lb, ub] bounds. The derived constraint supplies, as private
@@ -160,6 +189,11 @@ namespace vamp::planning::constraint
             {
                 rows[i] = tight_rows[i];
             }
+        }
+
+        void mask_jacobian(const bool *pinned) const noexcept final
+        {
+            mask_pinned_columns<Robot>(solve, pinned);
         }
 
         void evaluate_error_jacobian(const Block &q) const noexcept final

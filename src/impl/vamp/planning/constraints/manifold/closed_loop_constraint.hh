@@ -68,6 +68,11 @@ namespace vamp::planning::constraint
             }
         }
 
+        void mask_jacobian(const bool *pinned) const noexcept final
+        {
+            mask_pinned_columns<Robot>(solve, pinned);
+        }
+
         void evaluate_error_jacobian(const Block &q) const noexcept final
         {
             input.q = q;

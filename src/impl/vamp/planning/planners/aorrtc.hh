@@ -1,13 +1,14 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
 
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/nn/gnat.hh>
+#include <vamp/planning/nn/kdtree.hh>
 #include <vamp/planning/cost.hh>
 #include <vamp/planning/local_planner.hh>
 #include <vamp/planning/phs.hh>
@@ -30,22 +31,48 @@ namespace vamp::planning
         static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
 
-        using NNNode = GNATNode<dimension>;
-        using NN = NearestNeighborsGNAT<NNNode>;
+        // Cost-augmented NN: nodes are keyed by the configuration lifted with the node's
+        // cost-to-come as one extra L2 coordinate, so the tree metric is
+        // sqrt(dist(a, b)^2 + (cost_a - cost_b)^2).
+        struct LiftedRobot
+        {
+            static constexpr std::size_t dimension = Robot::dimension + 1;
+            static constexpr auto so3_offsets = Robot::so3_offsets;
+        };
+
+        using NN = KDTree<LiftedRobot>;
+        struct alignas(FloatVectorAlignment) Key
+            : std::array<float, Configuration::num_scalars_rounded + 1>
+        {
+        };
+
+        struct Vertex
+        {
+            std::size_t index;
+            float cost;
+            Configuration array;
+        };
 
         vamp::utils::buffer_ptr<float> buffer;
         vamp::utils::buffer_ptr<std::size_t> parents;
         vamp::utils::buffer_ptr<float> radii;
         vamp::utils::buffer_ptr<float> costs;
+        std::vector<std::pair<std::size_t, float>> near_list_;
 
         inline auto buffer_index(std::size_t index) -> float *
         {
             return buffer.get() + index * Configuration::num_scalars_rounded;
         };
 
+        inline static void make_key(const Configuration &c, float cost, Key &key)
+        {
+            c.to_array(key.data());
+            key[dimension] = cost;
+        }
+
         inline auto
         add_to_tree(NN *nn, const Configuration &c, std::size_t index, std::size_t parent_index, float cost)
-            -> NNNode
+            -> Vertex
         {
             c.to_array(buffer_index(index));
 
@@ -53,15 +80,16 @@ namespace vamp::planning
             parents[index] = parent_index;
             costs[index] = cost;
 
-            auto node = NNNode{index, cost, c};
-            nn->add(node);
+            Key key;
+            make_key(c, cost, key);
+            nn->insert(index, key.data());
 
-            return node;
+            return Vertex{index, cost, c};
         };
 
         struct NearestResult
         {
-            NNNode node;
+            Vertex node;
             float distance;   // configuration-space distance (steering / dynamic domain / extension)
             float edge_cost;  // directed edge cost between the tree node and c (execution order)
         };
@@ -73,45 +101,53 @@ namespace vamp::planning
         // root will always be valid
         inline auto find_nearest(
             NN *nn,
-            const NNNode &root,
+            const Vertex &root,
             const Configuration &c,
             float cost_bound,
             bool tree_is_start) -> NearestResult
         {
-            std::vector<NNNode> near_list;
+            Key key;
+            make_key(c, cost_bound, key);
+
+            // Only need to consider nodes closer (in the lifted metric) than the root of
+            // the tree, since connecting to the root is always valid.
+            const float radius = std::sqrt(
+                std::pow(Robot::distance(c, root.array), 2) + std::pow(cost_bound - root.cost, 2));
 
             // Almost always just pulls in the entire graph, but good to be principled.
-            near_list.reserve(nn->size());
-
-            auto temp_node = NNNode{0, cost_bound, c};
-            nn->nearestR(temp_node, NNNode::distance(temp_node, root), near_list);
+            nn->nearest(near_list_, key.data(), nn->size(), radius);
 
             // Start-tree edges execute node -> c; goal-tree edges execute c -> node
-            const auto edge_cost = [&c, tree_is_start](const NNNode &node) -> float
+            const auto edge_cost = [&c, tree_is_start](const Configuration &node) -> float
             {
-                return (tree_is_start) ? planning::cost<Robot>(node.array, c) :
-                                         planning::cost<Robot>(c, node.array);
+                return (tree_is_start) ? planning::cost<Robot>(node, c) :
+                                         planning::cost<Robot>(c, node);
             };
 
             // Explicitly handle case where no neighbors are within r distance.
-            if (near_list.empty())
+            if (near_list_.empty())
             {
-                return {root, Robot::distance(c, root.array), edge_cost(root)};
+                return {root, Robot::distance(c, root.array), edge_cost(root.array)};
             }
 
-            const auto *new_nearest_node = &near_list[0];
-            float new_nearest_cost = edge_cost(*new_nearest_node);
+            auto pick = near_list_[0].first;
+            auto pick_array = Configuration(buffer_index(pick));
+            float pick_edge_cost = edge_cost(pick_array);
 
-            for (auto idx = 1U; new_nearest_node->cost > 0                            //
-                                and cost_bound < new_nearest_node->cost + new_nearest_cost  //
-                                and idx < near_list.size();
+            for (auto idx = 1U; costs[pick] > 0                                 //
+                                and cost_bound < costs[pick] + pick_edge_cost  //
+                                and idx < near_list_.size();
                  ++idx)
             {
-                new_nearest_node = &near_list[idx];
-                new_nearest_cost = edge_cost(*new_nearest_node);
+                pick = near_list_[idx].first;
+                pick_array = Configuration(buffer_index(pick));
+                pick_edge_cost = edge_cost(pick_array);
             }
 
-            return {*new_nearest_node, Robot::distance(c, new_nearest_node->array), new_nearest_cost};
+            return {
+                Vertex{pick, costs[pick], pick_array},
+                Robot::distance(c, pick_array),
+                pick_edge_cost};
         }
 
         AOX_RRTC(std::size_t max_samples)
@@ -139,6 +175,10 @@ namespace vamp::planning
 
             NN start_tree;
             NN goal_tree;
+            start_tree.reserve(rrtc_settings.max_samples);
+            goal_tree.reserve(rrtc_settings.max_samples);
+            start_tree.set_epsilon(rrtc_settings.nn_epsilon);
+            goal_tree.set_epsilon(rrtc_settings.nn_epsilon);
 
             std::size_t iter = 0;
             std::size_t free_index = start_index + 1;
@@ -146,7 +186,7 @@ namespace vamp::planning
             auto start_vert = add_to_tree(&start_tree, start, start_index, start_index, 0);
 
             // Add goals to tree
-            std::vector<NNNode> goal_verts;
+            std::vector<Vertex> goal_verts;
             goal_verts.reserve(goals.size());
 
             for (const auto &goal : goals)
@@ -201,7 +241,7 @@ namespace vamp::planning
 
                 const auto temp = rng->next();
 
-                NNNode goal_vert = *std::min_element(
+                Vertex goal_vert = *std::min_element(
                     goal_verts.begin(),
                     goal_verts.end(),
                     [&temp](const auto &a, const auto &b) {

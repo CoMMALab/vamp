@@ -4,11 +4,8 @@
 #include <vamp/vector/math.hh>
 #include <vamp/collision/environment.hh>
 #include <vamp/collision/validity.hh>
-#include <vamp/planning/nn/nn.hh>
 
 #include <Eigen/Geometry>
-#include <nigh/so3_space.hpp>
-#include <nigh/cartesian_space.hpp>
 
 // clang-format off
 // NOLINTBEGIN(*-magic-numbers)
@@ -24,6 +21,7 @@ struct Baxter
     static constexpr float max_radius = 0.5;
     static constexpr std::size_t resolution = 64;
     static constexpr bool euclidean = true;
+    static constexpr std::array<std::size_t, 0> so3_offsets = {};
 
     static constexpr std::array<std::string_view, dimension> joint_names = {"left_s0", "left_s1", "left_e0", "left_e1", "left_w0", "left_w1", "left_w2", "right_s0", "right_s1", "right_e0", "right_e1", "right_w0", "right_w1", "right_w2"};
     static constexpr const char *end_effector = "right_gripper";
@@ -34,21 +32,6 @@ struct Baxter
     {
     };
     using Sample = FloatVector<sample_dimension>;
-
-    using NNKey = std::tuple<
-        vamp::planning::NNFloatArray<14>
-        >;
-
-    using NNSpace = unc::robotics::nigh::metric::CartesianSpace<
-        unc::robotics::nigh::metric::Space<vamp::planning::NNFloatArray<14>, unc::robotics::nigh::metric::LP<2>>
-        >;
-
-    static inline auto nn_key(float *cfg_ptr) noexcept -> NNKey
-    {
-        return NNKey{
-            vamp::planning::NNFloatArray<14>{cfg_ptr + 0}
-            };
-    }
 
     struct alignas(FloatVectorAlignment) ConfigurationBuffer
         : std::array<float, Configuration::num_scalars_rounded>

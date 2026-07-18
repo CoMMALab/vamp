@@ -4,11 +4,8 @@
 #include <vamp/vector/math.hh>
 #include <vamp/collision/environment.hh>
 #include <vamp/collision/validity.hh>
-#include <vamp/planning/nn/nn.hh>
 
 #include <Eigen/Geometry>
-#include <nigh/so3_space.hpp>
-#include <nigh/cartesian_space.hpp>
 
 // clang-format off
 // NOLINTBEGIN(*-magic-numbers)
@@ -35,27 +32,6 @@ struct Digit
     {
     };
     using Sample = FloatVector<sample_dimension>;
-
-    using NNKey = std::tuple<
-        vamp::planning::NNFloatArray<3>,
-        Eigen::Quaternion<float>,
-        vamp::planning::NNFloatArray<24>
-        >;
-
-    using NNSpace = unc::robotics::nigh::metric::CartesianSpace<
-        unc::robotics::nigh::metric::Space<vamp::planning::NNFloatArray<3>, unc::robotics::nigh::metric::LP<2>>,
-        unc::robotics::nigh::metric::Space<Eigen::Quaternion<float>, unc::robotics::nigh::metric::SO3>,
-        unc::robotics::nigh::metric::Space<vamp::planning::NNFloatArray<24>, unc::robotics::nigh::metric::LP<2>>
-        >;
-
-    static inline auto nn_key(float *cfg_ptr) noexcept -> NNKey
-    {
-        return NNKey{
-            vamp::planning::NNFloatArray<3>{cfg_ptr + 0},
-            Eigen::Quaternion<float>(cfg_ptr[6], cfg_ptr[3], cfg_ptr[4], cfg_ptr[5]),
-            vamp::planning::NNFloatArray<24>{cfg_ptr + 7}
-            };
-    }
 
     struct alignas(FloatVectorAlignment) ConfigurationBuffer
         : std::array<float, Configuration::num_scalars_rounded>

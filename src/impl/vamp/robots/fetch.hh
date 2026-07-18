@@ -4,12 +4,9 @@
 #include <vamp/vector/math.hh>
 #include <vamp/collision/environment.hh>
 #include <vamp/collision/validity.hh>
-#include <vamp/planning/nn/nn.hh>
 #include <vamp/planning/flask.hh>
 
 #include <Eigen/Geometry>
-#include <nigh/so3_space.hpp>
-#include <nigh/cartesian_space.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -41,21 +38,6 @@ struct Fetch
     {
     };
     using Sample = FloatVector<sample_dimension>;
-
-    using NNKey = std::tuple<
-        vamp::planning::NNFloatArray<8>
-        >;
-
-    using NNSpace = unc::robotics::nigh::metric::CartesianSpace<
-        unc::robotics::nigh::metric::Space<vamp::planning::NNFloatArray<8>, unc::robotics::nigh::metric::LP<2>>
-        >;
-
-    static inline auto nn_key(float *cfg_ptr) noexcept -> NNKey
-    {
-        return NNKey{
-            vamp::planning::NNFloatArray<8>{cfg_ptr + 0}
-            };
-    }
 
     struct alignas(FloatVectorAlignment) ConfigurationBuffer
         : std::array<float, Configuration::num_scalars_rounded>
@@ -144654,16 +144636,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[496],
         {
         };
         using Sample = FloatVector<sample_dimension>;
-
-        using NNKey = std::tuple<vamp::planning::NNFloatArray<dimension>>;
-
-        using NNSpace = unc::robotics::nigh::metric::CartesianSpace<
-            unc::robotics::nigh::metric::Space<vamp::planning::NNFloatArray<dimension>, unc::robotics::nigh::metric::LP<2>>>;
-
-        static inline auto nn_key(float *cfg_ptr) noexcept -> NNKey
-        {
-            return NNKey{vamp::planning::NNFloatArray<dimension>{cfg_ptr}};
-        }
 
         struct alignas(FloatVectorAlignment) ConfigurationBuffer
             : std::array<float, Configuration::num_scalars_rounded>

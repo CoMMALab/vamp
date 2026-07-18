@@ -110,6 +110,8 @@ namespace vamp::planning
 
             PlanningResult<Robot> result;
             NN<Robot> roadmap;
+            roadmap.reserve(settings.max_samples);
+            roadmap.set_epsilon(settings.nn_epsilon);
 
             std::size_t iter = 0;
             auto states = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(
@@ -133,7 +135,7 @@ namespace vamp::planning
             // recover_path convention: the root is its own parent.
             parents.emplace_back(start_index);
             nodes.emplace_back(start_index, 0.0);
-            roadmap.insert(NNNode<Robot>{start_index, Robot::nn_key(start_state)});
+            roadmap.insert(start_index, start_state);
             auto &start_node = nodes[start_index];
             start_node.neighbor_iterator = start_node.neighbors.begin();
 
@@ -144,7 +146,7 @@ namespace vamp::planning
                 goal.to_array(goal_state);
                 parents.emplace_back(std::numeric_limits<unsigned int>::max());
                 nodes.emplace_back(index);
-                roadmap.insert(NNNode<Robot>{index, Robot::nn_key(goal_state)});
+                roadmap.insert(index, goal_state);
             }
 
             Configuration temp_config;
@@ -369,8 +371,7 @@ namespace vamp::planning
                     parents.emplace_back(std::numeric_limits<unsigned int>::max());
                     auto &node = nodes.emplace_back(nodes.size());
 
-                    auto road_node = NNNode<Robot>{node.index, Robot::nn_key(state)};
-                    roadmap.insert(road_node);
+                    roadmap.insert(node.index, state);
                     new_samples++;
                 }
             }

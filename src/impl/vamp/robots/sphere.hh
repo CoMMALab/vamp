@@ -1,11 +1,8 @@
 #pragma once
 
 #include <vamp/vector.hh>
-#include <vamp/planning/nn/nn.hh>
 
 #include <Eigen/Geometry>
-#include <nigh/so3_space.hpp>
-#include <nigh/cartesian_space.hpp>
 
 #include <tuple>
 
@@ -27,6 +24,7 @@ namespace vamp::robots
         static constexpr std::size_t n_spheres = 1;
         static constexpr std::size_t resolution = 32;
         static constexpr bool euclidean = true;
+        static constexpr std::array<std::size_t, 0> so3_offsets = {};
 
         static constexpr float &min_radius = radius;
         static constexpr float &max_radius = radius;
@@ -35,16 +33,6 @@ namespace vamp::robots
         using ConfigurationArray = std::array<FloatT, dimension>;
         using Sample = FloatVector<sample_dimension>;
 
-        static constexpr std::size_t nn_dimension = dimension;
-
-        using NNKey = std::tuple<vamp::planning::NNFloatArray<dimension>>;
-        using NNSpace = unc::robotics::nigh::metric::CartesianSpace<
-            unc::robotics::nigh::metric::Space<vamp::planning::NNFloatArray<dimension>, unc::robotics::nigh::metric::LP<2>>>;
-
-        static inline auto nn_key(float *cfg_ptr) noexcept -> NNKey
-        {
-            return NNKey{vamp::planning::NNFloatArray<dimension>{cfg_ptr}};
-        }
 
         template <std::size_t rake>
         using ConfigurationBlock = FloatVector<rake, 3>;

@@ -26,6 +26,7 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       baxter
       digit
       r2c6
+      iiwamarker
     )
 
     list(APPEND VAMP_ROBOT_STRUCTS
@@ -37,6 +38,7 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       Baxter
       Digit
       R2c6
+      IiwaMarker
     )
   endif()
 

@@ -6,70 +6,17 @@
 #include <vector>
 
 #include <vamp/collision/environment.hh>
+#include <vamp/planning/local_planner.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/vector.hh>
+#include <vamp/profiler_utils.hh>
 
 namespace vamp::planning
 {
-    enum struct SteerStatus : std::uint8_t
-    {
-        Rejected,  // the caller's cost bound pruned the candidate before validation
-        Trapped,   // no progress: the first step of the local path was invalid
-        Advanced,  // moved toward the target but did not reach it
-        Reached,   // the target configuration was attained
-    };
-
-    // Result of a local-planner extension: a status plus the accepted waypoints of the local
-    // path, in execution order. The waypoints view a buffer owned by the local planner and
-    // are valid only until its next steer/connect_within call; they are empty on
-    // Rejected/Trapped, and empty on success when the local path has no interior waypoints
-    // (the unconstrained connect_within).
-    template <typename Robot>
-    struct [[nodiscard]] Extension
-    {
-        using Configuration = typename Robot::Configuration;
-
-        SteerStatus status;
-        const std::vector<Configuration> &waypoints;
-
-        // The last accepted waypoint. Only meaningful on Advanced/Reached with a nonempty
-        // chain (always true for steer).
-        [[nodiscard]] inline auto endpoint() const noexcept -> const Configuration &
-        {
-            return waypoints.back();
-        }
-    };
-
-    // Insert an extension's waypoints as a chain of tree nodes: add_node(configuration,
-    // parent_index) inserts one node and returns its index, or std::nullopt if the tree is
-    // full. Returns the index of the last inserted node (or `parent` if none were) and
-    // whether insertion was truncated by a full tree.
-    template <typename Iterator, typename AddNode>
-    inline auto insert_chain(Iterator begin, Iterator end, std::size_t parent, AddNode &&add_node)
-        -> std::pair<std::size_t, bool>
-    {
-        for (; begin != end; ++begin)
-        {
-            const auto index = add_node(*begin, parent);
-            if (not index)
-            {
-                return {parent, true};
-            }
-
-            parent = *index;
-        }
-
-        return {parent, false};
-    }
-
-    template <typename Robot, typename AddNode>
-    inline auto insert_chain(
-        const std::vector<typename Robot::Configuration> &waypoints,
-        std::size_t parent,
-        AddNode &&add_node) -> std::pair<std::size_t, bool>
-    {
-        return insert_chain(waypoints.begin(), waypoints.end(), parent, std::forward<AddNode>(add_node));
-    }
+    // SteerStatus, Extension, and insert_chain are defined in vamp/planning/local_planner.hh
+    // (included above) and reused here as-is; this file only adds the IK-parameterized local
+    // planner that resolves each interpolated block through Robot::parameterized_ik before
+    // collision checking.
 
     // Local planners generate and validate the local paths that connect configurations. All
     // operations are directed: a local path from a to b is traversed in execution order
@@ -94,7 +41,8 @@ namespace vamp::planning
 
         using Configuration = typename Robot::Configuration;
         using Environment = collision::Environment<FloatVector<rake>>;
-        using ConfigBlock = FloatVector<rake, Robot::dimension + Robot::num_ik_parameters>;
+        // using ConfigBlock = FloatVector<rake, Robot::dimension>;
+        using ConfigurationBlock = typename Robot::template ConfigurationBlock<rake>;
 
         IKParameterizedLocalPlanner() = default;
 
@@ -158,16 +106,25 @@ namespace vamp::planning
 
             const bool reach = distance < range;
             const float step = range / distance;
+
+            auto interpolate_start_time = std::chrono::steady_clock::now();
             const auto next = (reach)    ? target :
                               (forward)  ? Robot::interpolate(from, target, step) :
                                            Robot::interpolate(target, from, 1.F - step);
+            auto interpolate_end_time = std::chrono::steady_clock::now();
+            auto interpolate_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(interpolate_end_time - interpolate_start_time).count();
+            vamp::profiling::get_profiler()["interpolate"].push_back(interpolate_duration);
 
             if (not accept(next))
             {
                 return {SteerStatus::Rejected, chain_};
             }
-
-            if (not validate(from, next, e, forward))
+            auto validate_start_time = std::chrono::steady_clock::now();
+            const bool valid = validate(from, next, e, forward);
+            auto validate_end_time = std::chrono::steady_clock::now();
+            auto validate_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(validate_end_time - validate_start_time).count();
+            vamp::profiling::get_profiler()["validate"].push_back(validate_duration);
+            if (not valid)
             {
                 return {SteerStatus::Trapped, chain_};
             }
@@ -208,6 +165,7 @@ namespace vamp::planning
             const Configuration &goal,
             const Environment &environment) const noexcept -> bool
         {
+
             const float distance = Robot::distance(start, goal);
             const std::size_t n =
                 std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
@@ -216,31 +174,55 @@ namespace vamp::planning
 
             typename Robot::template ConfigurationBlock<rake> interp_block;
             typename Robot::template AmbientConfigurationBlock<rake> block;
-            ConfigBlock config_block;
-
-            for (auto i = 0U; i < Robot::num_ik_parameters; ++i)
-            {
-                config_block[Robot::dimension + i] = Robot::ik_parameters[i];
-            }
 
             auto t_block = percents;
+            auto interpolate_block_start_time = std::chrono::steady_clock::now();
             Robot::template interpolate_block<rake>(start, goal, t_block, interp_block);
-            for (auto j = 0U; j < Robot::dimension; ++j)
-            {
-                config_block[j] = interp_block[j];
-            }
+            auto interpolate_end_time = std::chrono::steady_clock::now();
+            auto interpolate_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(interpolate_end_time - interpolate_block_start_time).count();
+            vamp::profiling::get_profiler()["interpolate_block"].push_back(interpolate_duration);
 
-            bool param_valid;
-            std::tie(param_valid, block) =
-                Robot::template parameterized_ik<ConfigBlock, rake>(config_block);
-            if (not param_valid)
+
+            // before calling IK, to speed things up, we can check if the interpolated block is already valid, by
+            // inserting a dummy sphere at the end-effector position and checking for collisions. If the interpolated block is invalid, then we can skip calling IK and return false immediately.
+
+            auto is_eef_in_collision_start_time = std::chrono::steady_clock::now();
+            bool eef_in_collision = Robot::template check_if_ik_valid_block<rake>(environment, interp_block);
+            auto is_eef_in_collision_end_time = std::chrono::steady_clock::now();
+            auto is_eef_in_collision_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(is_eef_in_collision_end_time - is_eef_in_collision_start_time).count();
+            vamp::profiling::get_profiler()["check_if_ik_valid_block"].push_back(is_eef_in_collision_duration);
+            if (not eef_in_collision)
             {
+                vamp::profiling::get_profiler()["check_if_ik_valid_block_failed"].push_back(is_eef_in_collision_duration);
                 return false;
             }
 
+            
+
+            auto parameterized_ik_start_time = std::chrono::steady_clock::now();
+            bool param_valid;
+            std::tie(param_valid, block) =
+                Robot::template parameterized_ik<ConfigurationBlock, rake>(interp_block);
+            auto parameterized_ik_end_time = std::chrono::steady_clock::now();
+            auto parameterized_ik_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(parameterized_ik_end_time - parameterized_ik_start_time).count();
+            vamp::profiling::get_profiler()["parameterized_ik"].push_back(parameterized_ik_duration);
+
+            auto check_param_valid_start_time = std::chrono::steady_clock::now();
+            if (not param_valid)
+            {
+                auto check_param_valid_end_time = std::chrono::steady_clock::now();
+                auto check_param_valid_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(check_param_valid_end_time - check_param_valid_start_time).count();
+                vamp::profiling::get_profiler()["check_param_valid"].push_back(check_param_valid_duration);
+                return false;
+            }
+
+            auto fkcc_start_time = std::chrono::steady_clock::now();
             bool valid = (environment.attachments) ?
                 Robot::template fkcc_attach<rake>(environment, block) :
                 Robot::template fkcc<rake>(environment, block);
+            auto fkcc_end_time = std::chrono::steady_clock::now();
+            auto fkcc_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(fkcc_end_time - fkcc_start_time).count();
+            vamp::profiling::get_profiler()["fkcc"].push_back(fkcc_duration);
             if (not valid or n == 1)
             {
                 return valid;
@@ -249,22 +231,31 @@ namespace vamp::planning
             for (auto i = 1U; i < n; ++i)
             {
                 t_block = t_block - t_step;
+                auto inner_interpolate_start_time = std::chrono::steady_clock::now();
                 Robot::template interpolate_block<rake>(start, goal, t_block, interp_block);
-                for (auto j = 0U; j < Robot::dimension; ++j)
-                {
-                    config_block[j] = interp_block[j];
-                }
+                auto inner_interpolate_end_time = std::chrono::steady_clock::now();
+                auto inner_interpolate_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(inner_interpolate_end_time - inner_interpolate_start_time).count();
+                vamp::profiling::get_profiler()["inner_interpolate_block"].push_back(inner_interpolate_duration);
 
+                auto inner_parameterized_ik_start_time = std::chrono::steady_clock::now();
                 std::tie(param_valid, block) =
-                    Robot::template parameterized_ik<ConfigBlock, rake>(config_block);
+                    Robot::template parameterized_ik<ConfigurationBlock, rake>(interp_block);
+                auto inner_parameterized_ik_end_time = std::chrono::steady_clock::now();
+                auto inner_parameterized_ik_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(inner_parameterized_ik_end_time - inner_parameterized_ik_start_time).count();
+                vamp::profiling::get_profiler()["inner_parameterized_ik"].push_back(inner_parameterized_ik_duration);
                 if (not param_valid)
                 {
+                    // std::cout << "Parameterization failed at sample " << i << std::endl;
                     return false;
                 }
 
+                auto inner_fkcc_start_time = std::chrono::steady_clock::now();
                 valid = (environment.attachments) ?
                     Robot::template fkcc_attach<rake>(environment, block) :
                     Robot::template fkcc<rake>(environment, block);
+                auto inner_fkcc_end_time = std::chrono::steady_clock::now();
+                auto inner_fkcc_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(inner_fkcc_end_time - inner_fkcc_start_time).count();
+                vamp::profiling::get_profiler()["inner_fkcc"].push_back(inner_fkcc_duration);
                 if (not valid)
                 {
                     return false;

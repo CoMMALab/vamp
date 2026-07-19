@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -17,6 +18,7 @@
 #include <vamp/planning/constraints/manifold/com_constraint.hh>
 #include <vamp/planning/constraints/manifold/constraint.hh>
 #include <vamp/planning/constraints/manifold/constraint_set.hh>
+#include <vamp/planning/constraints/ik_parameterized_local_planner.hh>
 #include <vamp/planning/constraints/manifold/lead_screw_constraint.hh>
 #include <vamp/planning/constraints/manifold/twist_constraint.hh>
 #include <vamp/planning/constraints/phase/eef_speed_constraint.hh>
@@ -101,6 +103,23 @@ struct robot_has_lead_screw<T, std::void_t<decltype(T::has_lead_screw)>> : std::
 
 template <typename T>
 constexpr bool robot_has_lead_screw_v = robot_has_lead_screw<T>::value;
+
+// Robots whose Configuration is a task-space target resolved to the robot's real joint/
+// ambient space via Robot::parameterized_ik declare `static constexpr bool
+// use_parameterized_ik`.
+template <typename T, typename = void>
+struct robot_uses_parameterized_ik : std::false_type
+{
+};
+
+template <typename T>
+struct robot_uses_parameterized_ik<T, std::void_t<decltype(T::use_parameterized_ik)>>
+  : std::bool_constant<T::use_parameterized_ik>
+{
+};
+
+template <typename T>
+constexpr bool robot_uses_parameterized_ik_v = robot_uses_parameterized_ik<T>::value;
 
 // Robots with a generated twist-Jacobian kernel declare `static constexpr bool has_twist`.
 template <typename T, typename = void>
@@ -890,6 +909,225 @@ namespace vamp::binding
         }
     };
 
+    // IK-parameterized planning for robots whose Configuration is a task-space target (pose
+    // (+ selector), not joint values) resolved to the robot's actual joint/ambient space via
+    // Robot::parameterized_ik. Kept separate from StaticRobotTraits because fk/eefk/debug/
+    // validate/validate_motion/filter_self_from_pointcloud must resolve through IK before
+    // touching the robot's ambient-space kernels (sphere_fk, eefk, fkcc, fkcc_debug all take
+    // AmbientConfigurationBlock, not ConfigurationBlock). PRM/FCIT hardcode ConfigurationBlock
+    // collision checks with no local-planner hook, so (like the constrained/phase/chart
+    // families) there is no IK-parameterized PRM/FCIT: see bind_robot_methods_ik.
+    template <typename Robot, typename Input>
+    struct IKRobotTraits
+    {
+        using Base = StaticRobotTraits<Robot, Input>;
+        using Cfg = typename Base::Cfg;
+        using Pth = typename Base::Pth;
+        using Pc = typename Base::Pc;
+        using Path = typename Base::Path;
+        using PlanningResult = typename Base::PlanningResult;
+        using Sampler = typename Base::Sampler;
+        using Phs = typename Base::Phs;
+        using Env = typename Base::Env;
+        using EnvVec = typename Base::EnvVec;
+        using Configuration = typename Robot::Configuration;
+
+        template <vamp::planning::Planner P>
+        using PlannerT = typename Base::template PlannerT<P>;
+
+        using IKLP = vamp::planning::IKParameterizedLocalPlanner<Robot, rake, Robot::resolution>;
+
+        static constexpr const char *ik_message =
+            " configuration has no IK solution on the current self-motion-manifold branch "
+            "(see smm() / set_smm())";
+
+        // Build the ambient (joint-space) block for a task-space configuration by resolving
+        // it through Robot::parameterized_ik; nullopt when the pose has no IK solution on the
+        // current Robot::smm branch. Templated on r so callers that only need the single
+        // configuration (fk/eefk/filter_self_from_pointcloud) can use r=1, while callers that
+        // must line up with an r=rake Environment (debug, matching EnvVec) broadcast the same
+        // configuration into every lane at r=rake instead of introducing a separate rake=1
+        // environment type.
+        template <std::size_t r>
+        static auto resolve_ambient(const Configuration &c)
+            -> std::optional<typename Robot::template AmbientConfigurationBlock<r>>
+        {
+            typename Robot::template ConfigurationBlock<r> block;
+            for (auto i = 0U; i < Robot::dimension; ++i)
+            {
+                block[i] = c.broadcast(i);
+            }
+
+            auto [valid, ambient] =
+                Robot::template parameterized_ik<typename Robot::template ConfigurationBlock<r>, r>(block);
+            if (not valid)
+            {
+                return std::nullopt;
+            }
+
+            return ambient;
+        }
+
+        static auto fk(const Cfg &c) -> std::vector<vamp::collision::Sphere<float>>
+        {
+            auto ambient = resolve_ambient<1>(Input::to(c));
+            if (not ambient)
+            {
+                throw std::invalid_argument(std::string("configuration") + ik_message);
+            }
+
+            typename Robot::template Spheres<1> out;
+            Robot::template sphere_fk<1>(*ambient, out);
+
+            std::vector<vamp::collision::Sphere<float>> result(Robot::n_spheres);
+            for (auto i = 0U; i < Robot::n_spheres; ++i)
+            {
+                result[i] = vamp::collision::Sphere<float>{
+                    out.x[{i, 0}], out.y[{i, 0}], out.z[{i, 0}], out.r[{i, 0}]};
+            }
+            return result;
+        }
+
+        static auto eefk(const Cfg &c) -> Eigen::Matrix4f
+        {
+            auto ambient = resolve_ambient<1>(Input::to(c));
+            if (not ambient)
+            {
+                throw std::invalid_argument(std::string("configuration") + ik_message);
+            }
+
+            typename Robot::AmbientConfigurationArray arr;
+            for (auto i = 0U; i < Robot::ambient_dimension; ++i)
+            {
+                arr[i] = (*ambient)[{i, 0}];
+            }
+            return Robot::eefk(arr).matrix();
+        }
+
+        static auto debug(const Cfg &c, const Env &env) -> typename Robot::Debug
+        {
+            // Broadcast into every lane at rake (not 1) so the block matches EnvVec's rake,
+            // same as StaticRobotTraits::debug does for joint-space robots.
+            auto ambient = resolve_ambient<rake>(Input::to(c));
+            if (not ambient)
+            {
+                throw std::invalid_argument(std::string("configuration") + ik_message);
+            }
+            return Robot::template fkcc_debug<rake>(EnvVec(env), *ambient);
+        }
+
+        // No in_bounds concept for a task-space Configuration (IiwaMarker has none, unlike
+        // joint-space robots): check_bounds is accepted for API parity but unused. An
+        // IK-infeasible or colliding pose is rejected by IKLP::validate itself.
+        static auto validate(const Cfg &c, const Env &env, bool /*check_bounds*/) -> bool
+        {
+            const auto configuration = Input::to(c);
+            return IKLP().validate(configuration, configuration, EnvVec(env));
+        }
+
+        static auto validate_motion(const Cfg &c_in, const Cfg &c_out, const Env &env, bool /*check_bounds*/)
+            -> bool
+        {
+            return IKLP().validate(Input::to(c_in), Input::to(c_out), EnvVec(env));
+        }
+
+        static auto
+        filter_self_from_pointcloud(const Pc &pc, float point_radius, const Cfg &c, const Env &env)
+            -> std::vector<vamp::collision::Point>
+        {
+            auto ambient = resolve_ambient<1>(Input::to(c));
+            if (not ambient)
+            {
+                throw std::invalid_argument(std::string("configuration") + ik_message);
+            }
+
+            std::vector<vamp::collision::Point> out;
+            vamp::collision::filter_self_from_pointcloud<Robot, rake>(
+                pc.empty() ? nullptr : pc.front().data(), pc.size(), point_radius, *ambient, EnvVec(env), out);
+            return out;
+        }
+
+        // Validate start/every goal is IK-feasible and collision-free before planning
+        // (IKLP::satisfied() is trivially true, so this is the real feasibility gate; mirrors
+        // the intent of StaticRobotTraits::check_feasible for the constrained families).
+        template <vamp::planning::Planner P, typename Settings>
+        static auto solve_single(
+            const Cfg &start,
+            const Cfg &goal,
+            const Env &env,
+            const Settings &s,
+            std::shared_ptr<Sampler> rng) -> PlanningResult
+        {
+            const auto env_v = EnvVec(env);
+            const auto start_c = Input::to(start);
+            const auto goal_c = Input::to(goal);
+            const IKLP lp;
+            if (not lp.validate(start_c, start_c, env_v))
+            {
+                throw std::invalid_argument(std::string("start") + ik_message);
+            }
+            if (not lp.validate(goal_c, goal_c, env_v))
+            {
+                throw std::invalid_argument(std::string("goal") + ik_message);
+            }
+            return PlannerT<P>::solve(start_c, goal_c, env_v, s, rng, lp);
+        }
+
+        template <vamp::planning::Planner P, typename Settings>
+        static auto solve_multi(
+            const Cfg &start,
+            const Pth &goals,
+            const Env &env,
+            const Settings &s,
+            std::shared_ptr<Sampler> rng) -> PlanningResult
+        {
+            const auto env_v = EnvVec(env);
+            const auto start_c = Input::to(start);
+            const IKLP lp;
+            if (not lp.validate(start_c, start_c, env_v))
+            {
+                throw std::invalid_argument(std::string("start") + ik_message);
+            }
+
+            std::vector<Configuration> goals_v;
+            goals_v.reserve(goals.size());
+            for (const auto &g : goals)
+            {
+                goals_v.emplace_back(Input::to(g));
+                if (not lp.validate(goals_v.back(), goals_v.back(), env_v))
+                {
+                    throw std::invalid_argument(std::string("goal") + ik_message);
+                }
+            }
+            return PlannerT<P>::solve(start_c, goals_v, env_v, s, rng, lp);
+        }
+
+        static auto simplify(
+            const Path &p,
+            const Env &env,
+            const vamp::planning::SimplifySettings &settings,
+            std::shared_ptr<Sampler> rng) -> PlanningResult
+        {
+            return vamp::planning::simplify<Robot, rake, Robot::resolution>(
+                p, EnvVec(env), settings, rng, IKLP());
+        }
+
+        // Pass-through: purely Configuration-space, unaffected by task-space vs. ambient-space.
+        // (path_*/sampler_*/phs_*/result_solved aren't forwarded here: init_robot still binds
+        // Path/RNG/PHS/PlanningResult via the plain StaticRobotTraits instantiation, since
+        // those never touch fk/eefk/validate.)
+        static auto make_halton() { return Base::make_halton(); }
+
+        static auto make_xorshift(std::uint64_t seed) { return Base::make_xorshift(seed); }
+
+        static auto make_phs(const Cfg &focus_a, const Cfg &focus_b) { return Base::make_phs(focus_a, focus_b); }
+
+        static auto make_phs_sampler(const Phs &phs, std::shared_ptr<Sampler> inner)
+        {
+            return Base::make_phs_sampler(phs, inner);
+        }
+    };
+
     template <typename Robot, typename Input>
     inline void bind_flask_methods(nanobind::module_ &submodule)
     {
@@ -985,8 +1223,30 @@ namespace vamp::binding
 
         bind_planning_result<TA>(submodule, "PlanningResult");
 
-        bind_robot_methods<TA>(submodule);
-        bind_robot_methods<TC>(submodule);
+        if constexpr (robot_uses_parameterized_ik_v<Robot>)
+        {
+            using IA = IKRobotTraits<Robot, NA>;
+            using IC = IKRobotTraits<Robot, CA>;
+
+            bind_robot_methods_ik<IA>(submodule);
+            bind_robot_methods_ik<IC>(submodule);
+
+            submodule.def(
+                "smm",
+                []() { return Robot::smm; },
+                "Self-motion-manifold branch selector (GC2, GC4, GC6) used by parameterized_ik.");
+            submodule.def(
+                "set_smm",
+                [](const std::array<float, Robot::num_smm_parameters> &v) { Robot::smm = v; },
+                "smm"_a,
+                "Set the self-motion-manifold branch selector used by parameterized_ik on this "
+                "thread.");
+        }
+        else
+        {
+            bind_robot_methods<TA>(submodule);
+            bind_robot_methods<TC>(submodule);
+        }
 
         if constexpr (
             has_n_eef_v<Robot> or has_n_closed_loops_v<Robot> or robot_has_com_v<Robot> or

@@ -335,6 +335,79 @@ namespace vamp::binding
         register_planner<Traits, vp_::Planner::GRRTSTAR, vp_::GRRTStarSettings>(t, "grrtstar");
     }
 
+    // IK-parameterized robot bindings (Configuration is a task-space target resolved through
+    // Robot::parameterized_ik): same surface as bind_robot_methods, but PRM/FCIT are omitted
+    // since they hardcode ConfigurationBlock collision checks with no local-planner hook (the
+    // same reason the constrained/phase/chart families above have no PRM/FCIT form).
+    template <typename Traits, typename Target>
+    inline void bind_robot_methods_ik(Target &t)
+    {
+        using Env = typename Traits::Env;
+        const auto default_env = Env{};
+
+        t.def(
+            "fk",
+            &Traits::fk,
+            "configuration"_a,
+            "Forward kinematics. Returns the robot's collision spheres in world frame.");
+        t.def(
+            "eefk",
+            &Traits::eefk,
+            "configuration"_a,
+            "End-effector forward kinematics. Returns a 4x4 transform.");
+        t.def(
+            "debug",
+            &Traits::debug,
+            "configuration"_a,
+            "environment"_a = default_env,
+            "Per-sphere collision debug: which spheres collide with each other and the environment.");
+        t.def(
+            "validate",
+            &Traits::validate,
+            "configuration"_a,
+            "environment"_a = default_env,
+            "check_bounds"_a = false,
+            "Check whether a configuration is valid.");
+        t.def(
+            "validate_motion",
+            &Traits::validate_motion,
+            "configuration_in"_a,
+            "configuration_out"_a,
+            "environment"_a = default_env,
+            "check_bounds"_a = true,
+            "Check whether a straight-line motion between two configurations is valid.");
+        t.def(
+            "filter_self_from_pointcloud",
+            &Traits::filter_self_from_pointcloud,
+            "pc"_a,
+            "point_radius"_a,
+            "configuration"_a,
+            "environment"_a = default_env,
+            "Remove pointcloud points colliding with the robot or environment.");
+        t.def(
+            "simplify",
+            &Traits::simplify,
+            "path"_a,
+            "environment"_a,
+            "settings"_a,
+            "sampler"_a,
+            "Simplification heuristics to post-process a path.");
+
+        t.def("halton", &Traits::make_halton, "Create a Halton sampler for this robot.");
+        t.def("xorshift", &Traits::make_xorshift, "seed"_a = std::uint64_t{0}, "Create an XORShift sampler.");
+        t.def(
+            "phs",
+            &Traits::make_phs,
+            "focus_a"_a,
+            "focus_b"_a,
+            "Construct a prolate hyperspheroid from two foci.");
+        t.def("phs_sampler", &Traits::make_phs_sampler, "phs"_a, "rng"_a, "Create a PHS sampler.");
+
+        register_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
+        register_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");
+        register_planner<Traits, vp_::Planner::GRRTSTAR, vp_::GRRTStarSettings>(t, "grrtstar");
+    }
+
     template <typename Traits>
     inline auto bind_path_class(nb_::module_ &m, const char *name) -> nb_::class_<typename Traits::Path>
     {

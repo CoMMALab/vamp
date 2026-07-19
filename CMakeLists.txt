@@ -157,7 +157,14 @@ if(VAMP_BUILD_CPP_DEMO)
 
   add_executable(iiwa_task_space_planner scripts/cpp/iiwa_task_space_planner.cc)
   target_link_libraries(iiwa_task_space_planner PRIVATE vamp_cpp)
-  
+
+  add_executable(iiwa_maze_solver scripts/cpp/iiwa_maze_solver.cc)
+  target_link_libraries(iiwa_maze_solver PRIVATE vamp_cpp)
+
+  add_executable(iiwa_maze_solver_benchmark scripts/cpp/iiwa_maze_solver_benchmark.cc)
+  target_link_libraries(iiwa_maze_solver_benchmark PRIVATE vamp_cpp)
+
+
   # Disable strict warnings for demos to maintain compatibility
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_rrtc_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)

@@ -70,21 +70,14 @@ def main(
         server, np.zeros((1, 3)), np.array([attachment_radius]), colors = [[0, 255, 0]]
         )
 
-    # Update attachment sphere positions corresponding to the waypoints.
-    # this could also be made into a callable that can be called during trajectory viz
-    def get_attachment_pos(configuration):
-        attachment.set_ee_pose(vamp_module.eefk(configuration))
-        return np.array([attachment.posed_spheres[0].position])
-
     # Plan and display
     sampler = vamp_module.halton()
     result = planner_func(a, b, e, plan_settings, sampler)
     simple = vamp_module.simplify(result.path, e, simp_settings, sampler)
     simple.path.interpolate_to_resolution(vamp.panda.resolution())
 
-    attachment_positions = [get_attachment_pos(pos) for pos in simple.path.numpy()]
 
-    add_trajectory(server, simple.path.numpy(), robot, attachment_sph, attachment_positions)
+    add_trajectory(server, simple.path.numpy(), robot, [], [[]])
 
     # display
     while True:

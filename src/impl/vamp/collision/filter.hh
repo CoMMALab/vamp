@@ -323,12 +323,12 @@ namespace vamp::collision
             cull);
     }
 
-    template <typename Robot, std::size_t rake>
+    template <typename Robot, std::size_t rake, typename Block>
     inline void filter_self_from_pointcloud(
         const float *points,
         std::uint64_t n,
         float point_radius,
-        const typename Robot::template ConfigurationBlock<1> &block,
+        const Block &block,
         const vamp::collision::Environment<vamp::FloatVector<rake>> &env,
         std::vector<vamp::collision::Point> &out)
     {

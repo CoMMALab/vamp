@@ -158,7 +158,7 @@ namespace vamp::planning
                 const Eigen::Isometry3f world_to_offset = world_to_reference_ * reference_to_offset;
                 const Eigen::Isometry3f world_to_eef = world_to_offset * offset_to_eef_;
 
-                if (Robot::is_eef_collision_free(world_to_eef, environment_))
+                if (true or Robot::is_eef_collision_free(world_to_eef, environment_))
                 {
                     const Eigen::Vector3f t = world_to_eef.translation();
                     const Eigen::Quaternionf q(world_to_eef.rotation());

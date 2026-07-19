@@ -140,8 +140,8 @@ auto main(int, char **) -> int
     // Bound order is (dx, dy, dz, rx, ry, rz): translation box + so(3) log-map rotation box.
     // z pinned to the xy plane, xy free within +-1m; rx/ry (tilt away from facing down) held
     // to a tight numerical tolerance, rz (yaw about the down axis) free over a full turn.
-    TaskSampler::Bound tsr_lower = {-0.85F, -0.75F, -0.01F, -0.01F, -0.01F, -0.015F};
-    TaskSampler::Bound tsr_upper = {0.0F, 0.75F, 0.01F, 0.01F, 0.01F, 0.015F};
+    TaskSampler::Bound tsr_lower = {-0.85F, -0.7F, -0.001F, -0.0001F, -0.0001F, -0.00015F};
+    TaskSampler::Bound tsr_upper = {0.0F, 0.7F, 0.001F, 0.01F, 0.0001F, 0.00015F};
 
     auto task_sampler = vamp::planning::make_task_space_informed_sampler<Robot>(
         eef_to_offset,
@@ -279,7 +279,7 @@ auto main(int, char **) -> int
     auto rng = std::make_shared<vamp::rng::Halton<Robot>>();
 
     vamp::planning::RRTCSettings rrtc_settings;
-    rrtc_settings.range = 0.25;
+    rrtc_settings.range = 0.5;
     rrtc_settings.max_iterations = 1000000;
     rrtc_settings.max_samples = 1000000;
     rrtc_settings.dynamic_domain = false;

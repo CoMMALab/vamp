@@ -230,7 +230,7 @@ auto main(int, char **) -> int
 
         if (not is_in_coll)
         {
-            // return false;
+            return false;
             auto [env_cc, self_cc] = Robot::template fkcc_debug<rake>(env_v, ambient_block);
             std::cout << env_cc.size() << " environment collisions, " << self_cc.size() << " self-collisions"
                       << std::endl;

@@ -109,6 +109,7 @@ namespace vamp::planning
             auto start_time = std::chrono::steady_clock::now();
 
             PlanningResult<Robot> result;
+            PlanningStats stats;
             NN<Robot> roadmap;
             roadmap.reserve(settings.max_samples);
             roadmap.set_epsilon(settings.nn_epsilon);
@@ -259,8 +260,14 @@ namespace vamp::planning
                                         if (current_index != current_p)
                                         {
                                             temp_config = state_index(current_p);
+                                            ++stats.motions_attempted;
                                             valid = validate_motion<Robot, rake, resolution>(
-                                                temp_config, temp_config_self, environment);
+                                                temp_config,
+                                                temp_config_self,
+                                                environment,
+                                                AlwaysTrue(),
+                                                &stats.rake_calls);
+                                            stats.motions_valid += valid;
                                         }
 
                                         // If the edge is valid
@@ -359,7 +366,8 @@ namespace vamp::planning
                      new_samples < settings.batch_size and nodes.size() < settings.max_samples;)
                 {
                     auto rng_temp = rng->next();
-                    if (not validate_configuration<Robot, rake>(rng_temp, environment))
+                    ++stats.samples_drawn;
+                    if (not validate_configuration<Robot, rake>(rng_temp, environment, &stats.rake_calls))
                     {
                         continue;
                     }
@@ -397,6 +405,8 @@ namespace vamp::planning
             result.iterations = iter;
             result.size.emplace_back(roadmap.size());
             result.size.emplace_back(0);
+            result.stats = stats;
+            result.stats.nn_queries = roadmap.n_queries();
 
             return result;
         }

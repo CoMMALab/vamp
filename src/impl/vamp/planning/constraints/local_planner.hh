@@ -11,6 +11,7 @@
 #include <vamp/planning/constraints/utils.hh>
 #include <vamp/planning/cost.hh>
 #include <vamp/planning/local_planner.hh>
+#include <vamp/planning/plan.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/vector.hh>
 
@@ -71,9 +72,13 @@ namespace vamp::planning::constraint
             const Environment &e,
             bool = true) const noexcept -> bool
         {
+            ++stats_.motions_attempted;
             Waypoints waypoints;
-            return trace(a, b, e, waypoints) and
-                   (waypoints.back() - b).squared_l2_norm() < constraints.settings().endpoint_tolerance2;
+            const bool valid =
+                trace(a, b, e, waypoints) and
+                (waypoints.back() - b).squared_l2_norm() < constraints.settings().endpoint_tolerance2;
+            stats_.motions_valid += valid;
+            return valid;
         }
 
         // The local path a -> b is defined by its projected chain: on success the extension
@@ -91,9 +96,18 @@ namespace vamp::planning::constraint
         {
             chain_.clear();
 
+            if (rake - 1 >= max_states)
+            {
+                return {SteerStatus::Trapped, chain_};
+            }
+
+            ++stats_.motions_attempted;
             Waypoints waypoints;
-            if (rake - 1 >= max_states or not trace(a, b, e, waypoints) or
-                (waypoints.back() - b).squared_l2_norm() >= constraints.settings().endpoint_tolerance2)
+            const bool valid =
+                trace(a, b, e, waypoints) and
+                (waypoints.back() - b).squared_l2_norm() < constraints.settings().endpoint_tolerance2;
+            stats_.motions_valid += valid;
+            if (not valid)
             {
                 return {SteerStatus::Trapped, chain_};
             }
@@ -171,6 +185,8 @@ namespace vamp::planning::constraint
                 return {SteerStatus::Rejected, chain_};
             }
 
+            ++stats_.motions_attempted;
+
             // Check the candidate endpoint for collision before paying for the full trace.
             Block next_block;
             for (auto j = 0U; j < Robot::dimension; ++j)
@@ -178,7 +194,7 @@ namespace vamp::planning::constraint
                 next_block[j] = next.broadcast(j);
             }
 
-            if (not fkcc_block<Robot, rake>(e, next_block))
+            if (not fkcc_block<Robot, rake>(e, next_block, &stats_.rake_calls))
             {
                 return {SteerStatus::Trapped, chain_};
             }
@@ -189,6 +205,7 @@ namespace vamp::planning::constraint
                 return {SteerStatus::Trapped, chain_};
             }
 
+            ++stats_.motions_valid;
             next = waypoints.back();
             if (constraints.settings().emit_all_waypoints)
             {
@@ -214,6 +231,19 @@ namespace vamp::planning::constraint
             return constraints.satisfied(q);
         }
 
+        // Work counters accumulated across validate/connect_within/steer (motions_attempted/
+        // motions_valid/rake_calls). Mutable scratch like chain_: planners hold the local
+        // planner const but reset this per query.
+        inline auto reset_stats() const noexcept -> void
+        {
+            stats_ = PlanningStats();
+        }
+
+        [[nodiscard]] inline auto stats() const noexcept -> const PlanningStats &
+        {
+            return stats_;
+        }
+
         ConstraintSet<Robot, rake> constraints;
 
         // Read by planners as lp.connect_slack, uniformly with the static constant on the
@@ -222,6 +252,7 @@ namespace vamp::planning::constraint
 
     private:
         mutable std::vector<Configuration> chain_;
+        mutable PlanningStats stats_;
 
         // Trace the constrained local path a -> b: project the rake-lane discretization of
         // the chord onto the manifold, require continuity (adjacent lanes within twice the
@@ -277,7 +308,7 @@ namespace vamp::planning::constraint
                 max_gap2 = std::max(max_gap2, gap2);
             }
 
-            if (not fkcc_block<Robot, rake>(e, block))
+            if (not fkcc_block<Robot, rake>(e, block, &stats_.rake_calls))
             {
                 return false;
             }
@@ -330,7 +361,7 @@ namespace vamp::planning::constraint
                     return false;
                 }
 
-                if (not fkcc_block<Robot, rake>(e, projected))
+                if (not fkcc_block<Robot, rake>(e, projected, &stats_.rake_calls))
                 {
                     return false;
                 }

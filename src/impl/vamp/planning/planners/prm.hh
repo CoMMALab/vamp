@@ -68,6 +68,7 @@ namespace vamp::planning
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
             PlanningResult<Robot> result;
+            PlanningStats stats;
 
             NN<Robot> roadmap;
             roadmap.reserve(settings.max_samples);
@@ -78,8 +79,11 @@ namespace vamp::planning
             // Check if the straight-line solution is valid
             for (const auto &goal : goals)
             {
-                if (validate_motion<Robot, rake, resolution>(start, goal, environment))
+                ++stats.motions_attempted;
+                if (validate_motion<Robot, rake, resolution>(
+                        start, goal, environment, AlwaysTrue(), &stats.rake_calls))
                 {
+                    ++stats.motions_valid;
                     result.path.emplace_back(start);
                     result.path.emplace_back(goal);
                     result.solved = true;
@@ -88,6 +92,7 @@ namespace vamp::planning
                     result.iterations = 0;
                     result.size.emplace_back(1);
                     result.size.emplace_back(1);
+                    result.stats = stats;
 
                     return result;
                 }
@@ -131,7 +136,8 @@ namespace vamp::planning
             while (iter++ < settings.max_iterations and nodes.size() < settings.max_samples)
             {
                 auto temp = rng->next();
-                if (not validate_configuration<Robot, rake>(temp, environment))
+                ++stats.samples_drawn;
+                if (not validate_configuration<Robot, rake>(temp, environment, &stats.rake_calls))
                 {
                     continue;
                 }
@@ -147,8 +153,15 @@ namespace vamp::planning
                 roadmap.nearest(neighbors, state, k, r);
                 for (const auto &[neighbor, distance] : neighbors)
                 {
-                    if (validate_motion<Robot, rake, resolution>(Configuration(state_index(neighbor)), temp, environment))
+                    ++stats.motions_attempted;
+                    if (validate_motion<Robot, rake, resolution>(
+                            Configuration(state_index(neighbor)),
+                            temp,
+                            environment,
+                            AlwaysTrue(),
+                            &stats.rake_calls))
                     {
+                        ++stats.motions_valid;
                         node.neighbors.emplace_back(
                             typename RoadmapNode::Neighbor{
                                 static_cast<unsigned int>(neighbor), distance});
@@ -198,6 +211,8 @@ namespace vamp::planning
                     result.iterations = iter;
                     result.size.emplace_back(roadmap.size());
                     result.size.emplace_back(0);
+                    result.stats = stats;
+                    result.stats.nn_queries = roadmap.n_queries();
                     return result;
                 }
             }
@@ -206,6 +221,8 @@ namespace vamp::planning
             result.iterations = iter;
             result.size.emplace_back(roadmap.size());
             result.size.emplace_back(0);
+            result.stats = stats;
+            result.stats.nn_queries = roadmap.n_queries();
             return result;
         }
 
@@ -216,6 +233,7 @@ namespace vamp::planning
             const RoadmapSettings<NeighborParamsT> &settings,
             typename RNG::Ptr rng) noexcept -> Roadmap<Robot>
         {
+            PlanningStats stats;
             NN<Robot> roadmap;
             roadmap.reserve(settings.max_samples);
             roadmap.set_epsilon(settings.nn_epsilon);
@@ -249,7 +267,8 @@ namespace vamp::planning
             while (iter++ < settings.max_iterations and nodes.size() < settings.max_samples)
             {
                 auto temp = rng->next();
-                if (not validate_configuration<Robot, rake>(temp, environment))
+                ++stats.samples_drawn;
+                if (not validate_configuration<Robot, rake>(temp, environment, &stats.rake_calls))
                 {
                     continue;
                 }
@@ -265,8 +284,15 @@ namespace vamp::planning
                 roadmap.nearest(neighbors, state, k, r);
                 for (const auto &[neighbor, distance] : neighbors)
                 {
-                    if (validate_motion<Robot, rake, resolution>(Configuration(state_index(neighbor)), temp, environment))
+                    ++stats.motions_attempted;
+                    if (validate_motion<Robot, rake, resolution>(
+                            Configuration(state_index(neighbor)),
+                            temp,
+                            environment,
+                            AlwaysTrue(),
+                            &stats.rake_calls))
                     {
+                        ++stats.motions_valid;
                         node.neighbors.emplace_back(
                             typename RoadmapNode::Neighbor{
                                 static_cast<unsigned int>(neighbor), distance});
@@ -296,6 +322,8 @@ namespace vamp::planning
 
             result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
             result.iterations = iter;
+            result.stats = stats;
+            result.stats.nn_queries = roadmap.n_queries();
 
             return result;
         }

@@ -172,6 +172,8 @@ namespace vamp::planning
             static constexpr std::size_t start_index = 0;
             const RRTCSettings &rrtc_settings = settings.rrtc;
             PlanningResult<Robot> result;
+            lp.reset_stats();
+            std::size_t samples_drawn = 0;
 
             NN start_tree;
             NN goal_tree;
@@ -240,6 +242,7 @@ namespace vamp::planning
                 }
 
                 const auto temp = rng->next();
+                ++samples_drawn;
 
                 Vertex goal_vert = *std::min_element(
                     goal_verts.begin(),
@@ -486,6 +489,9 @@ namespace vamp::planning
             }
 
             result.iterations = iter;
+            result.stats = lp.stats();
+            result.stats.samples_drawn = samples_drawn;
+            result.stats.nn_queries = start_tree.n_queries() + goal_tree.n_queries();
             return result;
         }
     };
@@ -539,6 +545,8 @@ namespace vamp::planning
             rrtc_settings.max_samples = std::min(rrtc_settings.max_samples, settings.max_samples);
 
             PlanningResult<Robot> result;
+            // Accumulated over every internal search (simplification work is not counted).
+            PlanningStats total_stats;
             float best_path_cost = std::numeric_limits<float>::max();
             std::size_t iters = 0;
 
@@ -547,6 +555,7 @@ namespace vamp::planning
                 // Find an initial solution
                 result = RRTC::solve(start, goals, environment, rrtc_settings, rng, lp);
                 iters += result.iterations;
+                total_stats += result.stats;
             } while (result.path.empty() and iters < settings.max_iterations);
 
             // Simplify solution if enabled
@@ -558,6 +567,7 @@ namespace vamp::planning
 
             result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
             result.iterations = iters;
+            result.stats = total_stats;
 
             // Exit early if trivial, unsolved, or not optimizing
             if (not settings.optimize or result.path.empty() or result.path.size() == 2)
@@ -636,6 +646,7 @@ namespace vamp::planning
                 }
 
                 iters += result.iterations;
+                total_stats += result.stats;
 
                 // If last search found a solution
                 if (not result.path.empty())
@@ -661,6 +672,7 @@ namespace vamp::planning
 
             final_result.iterations = iters;
             final_result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
+            final_result.stats = total_stats;
 
             return final_result;
         }

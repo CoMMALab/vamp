@@ -118,6 +118,11 @@ extern "C" vamp::jit::ffi::PlanResultMeta VAMP_JIT_FN_RESULT_META(const vamp::ji
     m.nanoseconds = w->inner.nanoseconds;
     m.iterations = w->inner.iterations;
     m.cost = w->inner.path.cost();
+    m.samples_drawn = w->inner.stats.samples_drawn;
+    m.nn_queries = w->inner.stats.nn_queries;
+    m.motions_attempted = w->inner.stats.motions_attempted;
+    m.motions_valid = w->inner.stats.motions_valid;
+    m.rake_calls = w->inner.stats.rake_calls;
     return m;
 }
 

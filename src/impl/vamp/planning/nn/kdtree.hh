@@ -135,6 +135,14 @@ namespace vamp::planning
             return size_;
         }
 
+        // Number of nearest/k-NN/radius queries served since construction. Deliberately
+        // survives clear(): planners that rebuild the tree mid-query (pruning) still report
+        // total query counts.
+        [[nodiscard]] auto n_queries() const noexcept -> std::size_t
+        {
+            return n_queries_;
+        }
+
         // (1 + epsilon)-approximate queries: prune subtrees and leaf blocks that cannot
         // improve the current best by more than the epsilon factor, so any reported
         // neighbor is within (1 + epsilon) of the true nearest distance. Also shrinks
@@ -197,6 +205,7 @@ namespace vamp::planning
         [[nodiscard]] auto nearest(const float *q) const noexcept
             -> std::optional<std::pair<std::size_t, float>>
         {
+            ++n_queries_;
             if (size_ == 0)
             {
                 return std::nullopt;
@@ -216,6 +225,7 @@ namespace vamp::planning
             std::size_t k,
             float radius = inf) const
         {
+            ++n_queries_;
             out.clear();
             if (size_ == 0 or k == 0)
             {
@@ -631,6 +641,7 @@ namespace vamp::planning
         std::vector<Node> nodes_;
         std::vector<Leaf> leaves_;
         std::size_t size_ = 0;
+        mutable std::size_t n_queries_ = 0;
         mutable std::vector<std::pair<float, std::uint32_t>> scratch_;
     };
 }  // namespace vamp::planning

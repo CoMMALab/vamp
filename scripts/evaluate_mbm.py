@@ -144,6 +144,16 @@ def main(
             }
         )
 
+    mbm.print_stats_table(
+        df, {
+            'samples_drawn': 'Samples Drawn',
+            'nn_queries': 'NN Queries',
+            'motions_attempted': 'Motions Att.',
+            'motions_valid': 'Motions Valid',
+            'rake_calls': 'Rake Calls',
+            }
+        )
+
     if pointcloud:
         mbm.print_stats_table(
             df, {

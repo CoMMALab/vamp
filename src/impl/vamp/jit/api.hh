@@ -287,6 +287,7 @@ namespace vamp::jit
         std::size_t iterations{0};
         std::uint64_t nanoseconds{0};
         std::vector<std::size_t> size;
+        vamp::planning::PlanningStats stats;
 
         auto solved() const -> bool
         {
@@ -543,6 +544,11 @@ namespace vamp::jit
         result.success = meta.success != 0;
         result.iterations = meta.iterations;
         result.nanoseconds = meta.nanoseconds;
+        result.stats.samples_drawn = meta.samples_drawn;
+        result.stats.nn_queries = meta.nn_queries;
+        result.stats.motions_attempted = meta.motions_attempted;
+        result.stats.motions_valid = meta.motions_valid;
+        result.stats.rake_calls = meta.rake_calls;
         result.path = std::make_shared<DynamicPath>(robot);
         result.path->waypoints.reserve(meta.waypoints);
 

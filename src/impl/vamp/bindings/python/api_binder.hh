@@ -445,7 +445,8 @@ namespace vamp::binding
             .def_ro("nanoseconds", &R::nanoseconds, "Nanoseconds taken to find the path.")
             .def_ro("iterations", &R::iterations, "Number of planner iterations used to find the path.")
             .def_ro(
-                "size", &R::size, "Sizes of the planner's internal datastructures (e.g. tree node counts).");
+                "size", &R::size, "Sizes of the planner's internal datastructures (e.g. tree node counts).")
+            .def_ro("stats", &R::stats, "Work counters recorded by the planner.");
     }
 
     template <typename Traits>

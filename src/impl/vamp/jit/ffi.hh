@@ -20,6 +20,11 @@ namespace vamp::jit::ffi
         std::uint64_t nanoseconds;
         std::uint64_t iterations;
         float cost;
+        std::uint64_t samples_drawn;
+        std::uint64_t nn_queries;
+        std::uint64_t motions_attempted;
+        std::uint64_t motions_valid;
+        std::uint64_t rake_calls;
     };
 
     using SolveFn = PlanResultHandle *(*)(const float *start,

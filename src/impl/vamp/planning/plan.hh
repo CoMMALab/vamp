@@ -172,6 +172,31 @@ namespace vamp::planning
         }
     };
 
+    // Counters for the work a planner performed. Units:
+    // - samples_drawn: sampler/RNG draws.
+    // - nn_queries: nearest/k-NN/radius queries against the planner's NN structures.
+    // - motions_attempted: local-path validations through the local planner (cost-Rejected
+    //   steers never validate and are not counted). motions_valid: those that validated.
+    // - rake_calls: rake-wide FK+CC batch evaluations, the unit of collision-checking cost.
+    struct PlanningStats
+    {
+        std::size_t samples_drawn{0};
+        std::size_t nn_queries{0};
+        std::size_t motions_attempted{0};
+        std::size_t motions_valid{0};
+        std::size_t rake_calls{0};
+
+        inline auto operator+=(const PlanningStats &o) noexcept -> PlanningStats &
+        {
+            samples_drawn += o.samples_drawn;
+            nn_queries += o.nn_queries;
+            motions_attempted += o.motions_attempted;
+            motions_valid += o.motions_valid;
+            rake_calls += o.rake_calls;
+            return *this;
+        }
+    };
+
     template <typename Robot>
     struct PlanningResult
     {
@@ -181,6 +206,7 @@ namespace vamp::planning
         std::size_t nanoseconds{0};
         std::size_t iterations{0};
         std::vector<std::size_t> size;
+        PlanningStats stats;
     };
 
     template <typename Robot>
@@ -190,5 +216,6 @@ namespace vamp::planning
         std::vector<std::vector<std::size_t>> edges;
         std::size_t nanoseconds{0};
         std::size_t iterations{0};
+        PlanningStats stats;
     };
 }  // namespace vamp::planning

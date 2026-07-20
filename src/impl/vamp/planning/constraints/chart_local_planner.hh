@@ -13,6 +13,7 @@
 #include <vamp/planning/constraints/settings.hh>
 #include <vamp/planning/flask.hh>
 #include <vamp/planning/local_planner.hh>
+#include <vamp/planning/plan.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/vector.hh>
 
@@ -88,8 +89,11 @@ namespace vamp::planning::constraint
             const Environment &e,
             bool forward = true) const noexcept -> bool
         {
+            ++stats_.motions_attempted;
             float cost;
-            return exact_edge(a, b, e, forward, cost);
+            const bool valid = exact_edge(a, b, e, forward, cost);
+            stats_.motions_valid += valid;
+            return valid;
         }
 
         // Admit the exact local path a -> b (execution order) only if it is valid, attains
@@ -105,9 +109,16 @@ namespace vamp::planning::constraint
         {
             chain_.clear();
 
+            if (max_states == 0)
+            {
+                return {SteerStatus::Trapped, chain_};
+            }
+
+            ++stats_.motions_attempted;
             float cost;
-            const bool valid =
-                0 < max_states and exact_edge(a, b, e, true, cost) and cost <= budget();
+            const bool edge_valid = exact_edge(a, b, e, true, cost);
+            stats_.motions_valid += edge_valid;
+            const bool valid = edge_valid and cost <= budget();
             return {(valid) ? SteerStatus::Reached : SteerStatus::Trapped, chain_};
         }
 
@@ -145,6 +156,9 @@ namespace vamp::planning::constraint
             {
                 return {SteerStatus::Rejected, chain_};
             }
+
+            ++stats_.motions_attempted;
+            stats_.motions_valid += (status == EdgeStatus::Valid);
 
             if (status != EdgeStatus::Valid or edge.trivial)
             {
@@ -314,6 +328,19 @@ namespace vamp::planning::constraint
         ConstraintSet<Ambient, rake> constraints;
         PhaseConstraintSet<ZRobot, rake> phase_constraints;
         ChartSettings settings;
+
+        // Work counters accumulated across validate/connect_within/steer (motions_attempted/
+        // motions_valid/rake_calls). Mutable scratch like chain_: planners hold the local
+        // planner const but reset this per query.
+        inline auto reset_stats() const noexcept -> void
+        {
+            stats_ = PlanningStats();
+        }
+
+        [[nodiscard]] inline auto stats() const noexcept -> const PlanningStats &
+        {
+            return stats_;
+        }
 
     private:
         // Effectively unbounded chart radius: exact edges never clip.
@@ -940,7 +967,7 @@ namespace vamp::planning::constraint
 
                 // Fused z-robot check: position/velocity bounds, RNEA torque limits, and
                 // sphere collision in one pass over the (y, yd, ydd) block.
-                if (not fkcc_block<ZRobot, rake>(environment, zblock))
+                if (not fkcc_block<ZRobot, rake>(environment, zblock, &stats_.rake_calls))
                 {
                     return EdgeStatus::Invalid;
                 }
@@ -962,5 +989,6 @@ namespace vamp::planning::constraint
         mutable std::vector<float> err_;
         mutable std::vector<float> jac_batch_;
         mutable std::vector<Configuration> chain_;
+        mutable PlanningStats stats_;
     };
 }  // namespace vamp::planning::constraint

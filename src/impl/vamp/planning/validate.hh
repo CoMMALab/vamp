@@ -32,11 +32,18 @@ namespace vamp::planning
 
     // Collision-check a block, dispatching to the attachment-aware kernel when the
     // environment carries attachments. True when every lane is collision-free.
+    // `rake_calls`, when given, counts every batch evaluation performed.
     template <typename Robot, std::size_t rake>
     inline auto fkcc_block(
         const collision::Environment<FloatVector<rake>> &environment,
-        const typename Robot::template ConfigurationBlock<rake> &block) noexcept -> bool
+        const typename Robot::template ConfigurationBlock<rake> &block,
+        std::size_t *rake_calls = nullptr) noexcept -> bool
     {
+        if (rake_calls)
+        {
+            ++*rake_calls;
+        }
+
         return (not environment.attachments.empty()) ?
                    Robot::template fkcc_attach<rake>(environment, block) :
                    Robot::template fkcc<rake>(environment, block);
@@ -47,7 +54,8 @@ namespace vamp::planning
     template <typename Robot, std::size_t rake>
     inline auto validate_configuration(
         const typename Robot::Configuration &configuration,
-        const collision::Environment<FloatVector<rake>> &environment) noexcept -> bool
+        const collision::Environment<FloatVector<rake>> &environment,
+        std::size_t *rake_calls = nullptr) noexcept -> bool
     {
         typename Robot::template ConfigurationBlock<rake> block;
         for (auto i = 0U; i < Robot::dimension; ++i)
@@ -55,7 +63,7 @@ namespace vamp::planning
             block[i] = configuration.broadcast(i);
         }
 
-        return fkcc_block<Robot, rake>(environment, block);
+        return fkcc_block<Robot, rake>(environment, block, rake_calls);
     }
 
     // `block_accept` is invoked on every interpolated sample block before the collision
@@ -68,7 +76,8 @@ namespace vamp::planning
         const typename Robot::Configuration &vector,
         float distance,
         const collision::Environment<FloatVector<rake>> &environment,
-        const BlockAccept &block_accept = BlockAccept()) -> bool
+        const BlockAccept &block_accept = BlockAccept(),
+        std::size_t *rake_calls = nullptr) -> bool
     {
         // TODO: Fix use of reinterpret_cast in pack() so that this can be constexpr
         const auto percents = FloatVector<rake>(Percents<rake>::percents);
@@ -83,7 +92,7 @@ namespace vamp::planning
 
         const std::size_t n = std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
 
-        bool valid = block_accept(block) and fkcc_block<Robot, rake>(environment, block);
+        bool valid = block_accept(block) and fkcc_block<Robot, rake>(environment, block, rake_calls);
         if (not valid or n == 1)
         {
             return valid;
@@ -97,7 +106,7 @@ namespace vamp::planning
                 block[j] = block[j] - backstep.broadcast(j);
             }
 
-            bool valid = block_accept(block) and fkcc_block<Robot, rake>(environment, block);
+            bool valid = block_accept(block) and fkcc_block<Robot, rake>(environment, block, rake_calls);
             if (not valid)
             {
                 return false;
@@ -112,13 +121,14 @@ namespace vamp::planning
         const typename Robot::Configuration &start,
         const typename Robot::Configuration &goal,
         const collision::Environment<FloatVector<rake>> &environment,
-        const BlockAccept &block_accept = BlockAccept()) -> bool
+        const BlockAccept &block_accept = BlockAccept(),
+        std::size_t *rake_calls = nullptr) -> bool
     {
         if constexpr (Robot::euclidean)
         {
             auto vector = goal - start;
             return validate_vector<Robot, rake, resolution>(
-                start, vector, vector.l2_norm(), environment, block_accept);
+                start, vector, vector.l2_norm(), environment, block_accept, rake_calls);
         }
         else
         {
@@ -134,7 +144,7 @@ namespace vamp::planning
             auto t_block = percents;
             Robot::template interpolate_block<rake>(start, goal, t_block, block);
 
-            bool valid = block_accept(block) and fkcc_block<Robot, rake>(environment, block);
+            bool valid = block_accept(block) and fkcc_block<Robot, rake>(environment, block, rake_calls);
             if (not valid or n == 1)
             {
                 return valid;
@@ -145,7 +155,7 @@ namespace vamp::planning
                 t_block = t_block - t_step;
                 Robot::template interpolate_block<rake>(start, goal, t_block, block);
 
-                valid = block_accept(block) and fkcc_block<Robot, rake>(environment, block);
+                valid = block_accept(block) and fkcc_block<Robot, rake>(environment, block, rake_calls);
                 if (not valid)
                 {
                     return false;

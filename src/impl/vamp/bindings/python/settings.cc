@@ -1,6 +1,7 @@
 #include <vamp_python_init.hh>
 
 #include <vamp/planning/constraints/settings.hh>
+#include <vamp/planning/plan.hh>
 #include <vamp/planning/planners/roadmap.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/planning/planners/aorrtc_settings.hh>
@@ -15,6 +16,23 @@ namespace vc = vamp::planning::constraint;
 
 void vamp::binding::init_settings(nanobind::module_ &pymodule)
 {
+    nb::class_<vp::PlanningStats>(pymodule, "PlanningStats", "Work counters recorded by a planner.")
+        .def(nb::init<>())
+        .def_ro("samples_drawn", &vp::PlanningStats::samples_drawn, "Configurations drawn from the sampler.")
+        .def_ro(
+            "nn_queries",
+            &vp::PlanningStats::nn_queries,
+            "Nearest-neighbor queries against the planner's NN structures.")
+        .def_ro(
+            "motions_attempted",
+            &vp::PlanningStats::motions_attempted,
+            "Local-path validations attempted through the local planner.")
+        .def_ro("motions_valid", &vp::PlanningStats::motions_valid, "Attempted motions that validated.")
+        .def_ro(
+            "rake_calls",
+            &vp::PlanningStats::rake_calls,
+            "Rake-wide FK + collision-check batch evaluations.");
+
     nb::class_<vp::RRTCSettings>(pymodule, "RRTCSettings")
         .def(nb::init<>())
         .def_rw("range", &vp::RRTCSettings::range)

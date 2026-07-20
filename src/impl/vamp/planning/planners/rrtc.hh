@@ -44,6 +44,8 @@ namespace vamp::planning
             const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
         {
             PlanningResult<Robot> result;
+            lp.reset_stats();
+            std::size_t samples_drawn = 0;
 
             NN<Robot> start_tree;
             NN<Robot> goal_tree;
@@ -85,6 +87,7 @@ namespace vamp::planning
                     result.iterations = 0;
                     result.size.emplace_back(1);
                     result.size.emplace_back(1);
+                    result.stats = lp.stats();
 
                     return result;
                 }
@@ -143,6 +146,7 @@ namespace vamp::planning
                 }
 
                 auto temp = rng->next();
+                ++samples_drawn;
                 typename Robot::ConfigurationBuffer temp_array;
                 temp.to_array(temp_array.data());
 
@@ -293,6 +297,9 @@ namespace vamp::planning
             result.iterations = iter;
             result.size.emplace_back(start_tree.size());
             result.size.emplace_back(goal_tree.size());
+            result.stats = lp.stats();
+            result.stats.samples_drawn = samples_drawn;
+            result.stats.nn_queries = start_tree.n_queries() + goal_tree.n_queries();
             return result;
         }
     };

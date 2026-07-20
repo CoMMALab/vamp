@@ -7,6 +7,7 @@
 
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/constraints/phase/phase_constraint_set.hh>
+#include <vamp/planning/plan.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/vector.hh>
 
@@ -125,16 +126,19 @@ namespace vamp::planning
             const Configuration &start = (forward) ? a : b;
             const Configuration &goal = (forward) ? b : a;
 
-            if (phase_constraints.empty())
-            {
-                return validate_motion<Robot, rake, resolution>(start, goal, e);
-            }
-
-            return validate_motion<Robot, rake, resolution>(
-                start,
-                goal,
-                e,
-                [this](const auto &block) { return phase_constraints.satisfied_block(block); });
+            ++stats_.motions_attempted;
+            const bool valid =
+                (phase_constraints.empty()) ?
+                    validate_motion<Robot, rake, resolution>(
+                        start, goal, e, AlwaysTrue(), &stats_.rake_calls) :
+                    validate_motion<Robot, rake, resolution>(
+                        start,
+                        goal,
+                        e,
+                        [this](const auto &block) { return phase_constraints.satisfied_block(block); },
+                        &stats_.rake_calls);
+            stats_.motions_valid += valid;
+            return valid;
         }
 
         // Admit the local path a -> b only if it is valid, has fewer interior waypoints than
@@ -229,7 +233,21 @@ namespace vamp::planning
             return phase_constraints.satisfied(z);
         }
 
+        // Work counters accumulated across validate() calls (motions_attempted/motions_valid/
+        // rake_calls; the other fields are the planner's to fill). Mutable scratch like
+        // chain_: planners hold the local planner const but reset this per query.
+        inline auto reset_stats() const noexcept -> void
+        {
+            stats_ = PlanningStats();
+        }
+
+        [[nodiscard]] inline auto stats() const noexcept -> const PlanningStats &
+        {
+            return stats_;
+        }
+
     private:
         mutable std::vector<Configuration> chain_;
+        mutable PlanningStats stats_;
     };
 }  // namespace vamp::planning

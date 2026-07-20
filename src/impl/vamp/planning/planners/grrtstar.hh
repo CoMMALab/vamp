@@ -79,6 +79,8 @@ namespace vamp::planning
             const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
         {
             PlanningResult<Robot> result;
+            lp.reset_stats();
+            std::size_t samples_drawn = 0;
 
             auto start_time = std::chrono::steady_clock::now();
 
@@ -374,6 +376,7 @@ namespace vamp::planning
 
                 // Sample
                 auto temp = sample();
+                ++samples_drawn;
 
                 // Cost gating (directed heuristics; admissible under the directed triangle inequality)
                 if (has_solution)
@@ -840,6 +843,9 @@ namespace vamp::planning
             result.iterations = iter;
             result.size.emplace_back(start_tree.size());
             result.size.emplace_back(goal_tree.size());
+            result.stats = lp.stats();
+            result.stats.samples_drawn = samples_drawn;
+            result.stats.nn_queries = start_tree.n_queries() + goal_tree.n_queries();
             return result;
         }
     };

@@ -245,6 +245,7 @@ def results_to_dict(
     except ImportError:
         raise RuntimeError("pandas is not installed!")
 
+    stats = planning_result.stats
     data = {
         "planning_time": pd.Timedelta(nanoseconds = planning_result.nanoseconds),
         "planning_iterations": planning_result.iterations,
@@ -252,6 +253,11 @@ def results_to_dict(
         "planning_graph_size": sum(planning_result.size),
         "initial_path_vertices": len(planning_result.path),
         "initial_path_cost": planning_result.path.cost(),
+        "samples_drawn": stats.samples_drawn,
+        "nn_queries": stats.nn_queries,
+        "motions_attempted": stats.motions_attempted,
+        "motions_valid": stats.motions_valid,
+        "rake_calls": stats.rake_calls,
         }
 
     if simplification_result:

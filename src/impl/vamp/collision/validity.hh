@@ -146,6 +146,14 @@ namespace vamp
             }
         }
 
+        for (const auto &pc : e.pointclouds_mvt)
+        {
+            if (pc.collides_simd(positions, sr))
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 

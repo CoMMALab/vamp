@@ -133,7 +133,8 @@ def problem_dict_to_pointcloud(
         problem: Dict[str, List[Dict[str, Union[float, NDArray[np.float32]]]]],
         samples_per_object: int,
         filter_radius: float,
-        filter_cull: bool
+        filter_cull: bool,
+        structure: str = "capt",
     ):
     original_pointcloud = problem_to_pointcloud(problem, samples_per_object).tolist()
 
@@ -162,6 +163,14 @@ def problem_dict_to_pointcloud(
     )
 
     env = Environment()
-    build_time = env.add_pointcloud(filtered_pc, r_min, r_max, POINT_RADIUS)
+    if structure == "capt":
+        build_time = env.add_pointcloud(filtered_pc, r_min, r_max, POINT_RADIUS)
+    elif structure == "mvt":
+        pc = np.asarray(filtered_pc, dtype = np.float32)
+        workspace_min = (pc.min(axis = 0) - 0.1).tolist()
+        workspace_max = (pc.max(axis = 0) + 0.1).tolist()
+        build_time = env.add_pointcloud_mvt(filtered_pc, r_max, workspace_min, workspace_max, POINT_RADIUS)
+    else:
+        raise ValueError(f"unknown structure {structure!r}: expected 'capt' or 'mvt'")
 
     return env, original_pointcloud, filtered_pc, filter_time, build_time

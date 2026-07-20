@@ -210,42 +210,46 @@ namespace vamp::collision
 
                 uint32_t hi_len = 0;
                 uint32_t lo_len = 0;
+                // Prune by max_affordance_l1 (r_max + r_point), not bare r_max: a query sphere
+                // can reach r_point past its radius into the neighboring cell.
                 for (const auto idx : hi_afford)
                 {
-                    if (points[idx][frame.d] <= test + r_max)
+                    if (points[idx][frame.d] <= test + max_affordance_l1)
                     {
                         lo_afford[lo_len++] = idx;
                     }
 
-                    if (points[idx][frame.d] >= test - r_max)
+                    if (points[idx][frame.d] >= test - max_affordance_l1)
                     {
                         hi_afford[hi_len++] = idx;
                     }
                 }
 
-                uint32_t new_hi_afford = frame.points_begin;
+                // argsort is fully sorted ascending on dim d, so the lo half's points nearest
+                // the split plane are its *suffix*: scan backwards from the median.
+                uint32_t new_hi_afford = frame.points_begin + next_width;
                 uint32_t new_lo_afford = frame.points_begin + next_width;
-                while (new_hi_afford < frame.points_begin + next_width and
-                       points[argsort[new_hi_afford]][frame.d] >= test - r_max and
-                       std::isfinite(points[argsort[new_hi_afford]][frame.d]))
+                while (new_hi_afford > frame.points_begin and
+                       points[argsort[new_hi_afford - 1]][frame.d] >= test - max_affordance_l1 and
+                       std::isfinite(points[argsort[new_hi_afford - 1]][frame.d]))
                 {
-                    ++new_hi_afford;
+                    --new_hi_afford;
                 }
 
                 while (new_lo_afford < frame.points_begin + frame.how_many_points and
-                       points[argsort[new_lo_afford]][frame.d] <= test + r_max and
+                       points[argsort[new_lo_afford]][frame.d] <= test + max_affordance_l1 and
                        std::isfinite(points[argsort[new_lo_afford]][frame.d]))
                 {
                     ++new_lo_afford;
                 }
 
-                uint32_t num_new_hi = new_hi_afford - frame.points_begin;
+                uint32_t num_new_hi = (frame.points_begin + next_width) - new_hi_afford;
                 uint32_t num_new_lo = new_lo_afford - (frame.points_begin + next_width);
 
                 hi_afford.resize(hi_len + num_new_hi);
                 std::copy(
-                    argsort.begin() + frame.points_begin,
                     argsort.begin() + new_hi_afford,
+                    argsort.begin() + frame.points_begin + next_width,
                     hi_afford.begin() + hi_len);
                 lo_afford.resize(lo_len + num_new_lo);
                 std::copy(
@@ -289,7 +293,9 @@ namespace vamp::collision
         // Inputs
         // - `points`: buffer filled with 3-dimensional points. All these points will be included in the tree.
         // - `r_min`: The minimum radius that queries to this tree will request, inclusive.
-        // - `r_max`: The maximum radius-squared that queries to this tree will request, inclusive.
+        // - `r_max`: The maximum radius that queries to this tree will request, inclusive. Queries
+        //   above `r_max` are out of contract: the affordance sets only cover points within
+        //   `r_max + r_point` of each cell, so such queries may miss collisions.
         // - `r_point`: The radius to associate with each point in the tree.
         CAPT(
             const std::vector<Point> &points,

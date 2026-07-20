@@ -15,10 +15,10 @@ import vamp.pointcloud
 from fire import Fire
 
 # Starting configuration
-a = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+a = np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785], dtype=np.float32)
 
 # Goal configuration
-b = [2.35, 1.0, 0.0, -0.8, 0, 2.5, 0.785]
+b = np.array([2.35, 1.0, 0.0, -0.8, 0, 2.5, 0.785], dtype=np.float32)
 
 # Problem specification: a list of sphere centers
 problem = [
@@ -45,6 +45,8 @@ def main(
     attachment_radius: float = 0.07,
     attachment_offset: float = 0.02,
     planner: str = "rrtc",
+    structure: str = "capt",
+    filter_voxel_size: float = 0.0,
     **kwargs,
     ):
 
@@ -54,6 +56,23 @@ def main(
             for center in problem
             ]
         ).astype(np.float32)
+
+    workspace_min = point_cloud.min(axis=0) - 0.1
+    workspace_max = point_cloud.max(axis=0) + 0.1
+
+    if filter_voxel_size > 0.0:
+        filtered, filter_ns = vamp.filter_pointcloud_centervox(
+            point_cloud,
+            filter_voxel_size,
+            10.0,
+            [0.0, 0.0, 0.0],
+            workspace_min.tolist(),
+            workspace_max.tolist(),
+            )
+        print(f"centervox filter: {point_cloud.shape[0]} -> {len(filtered)} points "
+              f"({filter_ns / 1e6:.2f} ms)")
+        point_cloud = np.array(filtered, dtype=np.float32)
+
     point_cloud_colors = np.random.randint(100, 200, (point_cloud.shape[0], 3))
 
     (vamp_module, planner_func, plan_settings,
@@ -66,7 +85,20 @@ def main(
     e = vamp.Environment()
 
     r_min, r_max = vamp_module.min_max_radii()
-    e.add_pointcloud(point_cloud.tolist(), r_min, r_max, 0.01)
+    if structure == "capt":
+        build_ns = e.add_pointcloud(point_cloud.tolist(), r_min, r_max, 0.01)
+    elif structure == "mvt":
+        build_ns = e.add_pointcloud_mvt(
+            point_cloud.tolist(),
+            r_max,
+            workspace_min.tolist(),
+            workspace_max.tolist(),
+            0.01,
+            )
+    else:
+        raise ValueError(f"unknown structure {structure!r}: expected 'capt' or 'mvt'")
+
+    print(f"{structure} build: {point_cloud.shape[0]} points ({build_ns / 1e6:.2f} ms)")
 
     _problem_point_cloud_handles = add_point_cloud(server, point_cloud, point_cloud_colors)
 

@@ -20,6 +20,7 @@ def main(
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     print_failures: bool = False,          # Print out failures and invalid problems
     pointcloud: bool = False,              # Use pointcloud rather than primitive geometry
+    structure: str = "capt",               # Pointcloud collision structure to use (capt or mvt)
     samples_per_object: int = 10000,       # If pointcloud, samples per object to use
     filter_radius: float = 0.02,           # Filter radius for pointcloud filtering
     filter_cull: bool = True,              # Cull pointcloud around robot by maximum distance
@@ -68,13 +69,14 @@ def main(
                     samples_per_object,
                     filter_radius,
                     filter_cull,
+                    structure,
                     )
 
                 pointcloud_results = {
                     'original_pointcloud_size': len(original_pc),
                     'filtered_pointcloud_size': len(filtered_pc),
                     'filter_time': pd.Timedelta(nanoseconds = filter_time),
-                    'capt_build_time': pd.Timedelta(nanoseconds = build_time)
+                    'build_time': pd.Timedelta(nanoseconds = build_time)
                     }
             else:
                 env = vamp.problem_dict_to_vamp(data)
@@ -118,9 +120,9 @@ def main(
 
     # Pointcloud data
     if pointcloud:
-        df["total_build_and_plan_time"] = df["total_time"] + df["filter_time"] + df["capt_build_time"]
+        df["total_build_and_plan_time"] = df["total_time"] + df["filter_time"] + df["build_time"]
         df["filter_time"] = df["filter_time"].dt.microseconds / 1e3
-        df["capt_build_time"] = df["capt_build_time"].dt.microseconds / 1e3
+        df["build_time"] = df["build_time"].dt.microseconds / 1e3
         df["total_build_and_plan_time"] = df["total_build_and_plan_time"].dt.microseconds / 1e3
 
     df["total_time"] = df["total_time"].dt.microseconds
@@ -146,7 +148,7 @@ def main(
         mbm.print_stats_table(
             df, {
                 'filter_time': '  Filter Time (ms)',
-                'capt_build_time': '    CAPT Build Time (ms)',
+                'build_time': f'    {structure.upper()} Build Time (ms)',
                 'total_build_and_plan_time': 'Total Time (ms)',
                 }
             )

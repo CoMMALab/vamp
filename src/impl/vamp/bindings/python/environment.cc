@@ -2,6 +2,7 @@
 
 #include <vamp/collision/environment.hh>
 #include <vamp/collision/filter.hh>
+#include <vamp/collision/filter_centervox.hh>
 #include <vamp/collision/capt.hh>
 #include <vamp/collision/factory.hh>
 #include <vamp/collision/shapes.hh>
@@ -127,6 +128,22 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
                 return vamp::utils::get_elapsed_nanoseconds(start_time);
             })
         .def(
+            "add_pointcloud_mvt",
+            [](vc::Environment<float> &e,
+               const std::vector<collision::Point> &pc,
+               float max_query_radius,
+               const collision::Point &workspace_aabb_min,
+               const collision::Point &workspace_aabb_max,
+               float r_point)
+            {
+                auto start_time = std::chrono::steady_clock::now();
+                e.pointclouds_mvt.emplace_back(
+                    pc, max_query_radius, workspace_aabb_min, workspace_aabb_max, r_point);
+                return vamp::utils::get_elapsed_nanoseconds(start_time);
+            },
+            "Adds a pointcloud backed by an MVT (voxel table) instead of a CAPT. All points must "
+            "lie within the workspace AABB; max_query_radius sizes the voxels.")
+        .def(
             "attach",
             [](vc::Environment<float> &e, const vc::Attachment<float> &a)
             { e.attachments.emplace_back(a); },
@@ -170,6 +187,36 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
             auto start_time = std::chrono::steady_clock::now();
             auto filtered =
                 vc::filter_pointcloud(pc, min_dist, max_range, origin, workcell_min, workcell_max, cull);
+            return {filtered, vamp::utils::get_elapsed_nanoseconds(start_time)};
+        });
+
+    pymodule.def(
+        "filter_pointcloud_centervox",
+        [](const std::vector<collision::Point> &pc,
+           float voxel_size,
+           float max_range,
+           const collision::Point &origin,
+           const collision::Point &workcell_min,
+           const collision::Point &workcell_max) -> std::pair<std::vector<collision::Point>, std::size_t>
+        {
+            auto start_time = std::chrono::steady_clock::now();
+            auto filtered = vc::filter_pointcloud_centervox(
+                pc, voxel_size, max_range, origin, workcell_min, workcell_max);
+            return {filtered, vamp::utils::get_elapsed_nanoseconds(start_time)};
+        });
+
+    pymodule.def(
+        "filter_pointcloud_centervox",
+        [](const nb::ndarray<float, nb::shape<-1, 3>, nb::device::cpu> &pc,
+           float voxel_size,
+           float max_range,
+           const collision::Point &origin,
+           const collision::Point &workcell_min,
+           const collision::Point &workcell_max) -> std::pair<std::vector<collision::Point>, std::size_t>
+        {
+            auto start_time = std::chrono::steady_clock::now();
+            auto filtered = vc::filter_pointcloud_centervox(
+                pc, voxel_size, max_range, origin, workcell_min, workcell_max);
             return {filtered, vamp::utils::get_elapsed_nanoseconds(start_time)};
         });
 

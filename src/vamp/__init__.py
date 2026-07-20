@@ -22,6 +22,7 @@ __all__ = [
     "ConstraintSettings",
     "ChartSettings",
     "filter_pointcloud",
+    "filter_pointcloud_centervox",
     ]
 
 from pathlib import Path
@@ -51,6 +52,7 @@ from ._core import ProjMethod as ProjMethod
 from ._core import ConstraintSettings as ConstraintSettings
 from ._core import ChartSettings as ChartSettings
 from ._core import filter_pointcloud as filter_pointcloud
+from ._core import filter_pointcloud_centervox as filter_pointcloud_centervox
 
 if hasattr(_core._core_ext, "jit"):
     from ._core._core_ext import jit as jit

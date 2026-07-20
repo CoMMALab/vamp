@@ -9260,7 +9260,7 @@ for (const auto &sp : cc_self_pairs)
 
 
         // attaching at r2/left_leg/gripper/tip
-        set_attachment_pose(environment, to_isometry(&y[1116]));
+        set_attachment_pose(environment, 0, to_isometry(&y[1116]));
 
         //
         // attachment vs. environment collisions
@@ -9280,7 +9280,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/pelvis
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[844],
                                                         y[845],
                                                         y[846],
@@ -9288,7 +9288,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[0],
                                                             y[1],
                                                             y[2],
@@ -9304,7 +9304,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_hip_roll
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[848],
                                                         y[849],
                                                         y[850],
@@ -9312,7 +9312,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[4],
                                                             y[5],
                                                             y[6],
@@ -9322,7 +9322,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[8],
                                                             y[9],
                                                             y[10],
@@ -9332,7 +9332,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[12],
                                                             y[13],
                                                             y[14],
@@ -9348,7 +9348,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_hip_pitch
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[852],
                                                         y[853],
                                                         y[854],
@@ -9356,7 +9356,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[16],
                                                             y[17],
                                                             y[18],
@@ -9366,7 +9366,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[20],
                                                             y[21],
                                                             y[22],
@@ -9376,7 +9376,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[24],
                                                             y[25],
                                                             y[26],
@@ -9392,7 +9392,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_upper_leg
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[856],
                                                         y[857],
                                                         y[858],
@@ -9400,7 +9400,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[28],
                                                             y[29],
                                                             y[30],
@@ -9410,7 +9410,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[32],
                                                             y[33],
                                                             y[34],
@@ -9420,7 +9420,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[36],
                                                             y[37],
                                                             y[38],
@@ -9436,7 +9436,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_knee
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[860],
                                                         y[861],
                                                         y[862],
@@ -9444,7 +9444,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[40],
                                                             y[41],
                                                             y[42],
@@ -9454,7 +9454,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[44],
                                                             y[45],
                                                             y[46],
@@ -9464,7 +9464,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[48],
                                                             y[49],
                                                             y[50],
@@ -9480,7 +9480,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_hip_roll
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[888],
                                                         y[889],
                                                         y[890],
@@ -9488,7 +9488,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[100],
                                                             y[101],
                                                             y[102],
@@ -9498,7 +9498,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[104],
                                                             y[105],
                                                             y[106],
@@ -9508,7 +9508,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[108],
                                                             y[109],
                                                             y[110],
@@ -9524,7 +9524,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_hip_pitch
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[892],
                                                         y[893],
                                                         y[894],
@@ -9532,7 +9532,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[112],
                                                             y[113],
                                                             y[114],
@@ -9542,7 +9542,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[116],
                                                             y[117],
                                                             y[118],
@@ -9552,7 +9552,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[120],
                                                             y[121],
                                                             y[122],
@@ -9568,7 +9568,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_upper_leg
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[896],
                                                         y[897],
                                                         y[898],
@@ -9576,7 +9576,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[124],
                                                             y[125],
                                                             y[126],
@@ -9586,7 +9586,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[128],
                                                             y[129],
                                                             y[130],
@@ -9596,7 +9596,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[132],
                                                             y[133],
                                                             y[134],
@@ -9612,7 +9612,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_knee
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[900],
                                                         y[901],
                                                         y[902],
@@ -9620,7 +9620,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[136],
                                                             y[137],
                                                             y[138],
@@ -9630,7 +9630,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[140],
                                                             y[141],
                                                             y[142],
@@ -9640,7 +9640,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[144],
                                                             y[145],
                                                             y[146],
@@ -9656,7 +9656,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_lower_leg
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[904],
                                                         y[905],
                                                         y[906],
@@ -9664,7 +9664,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[148],
                                                             y[149],
                                                             y[150],
@@ -9674,7 +9674,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[152],
                                                             y[153],
                                                             y[154],
@@ -9684,7 +9684,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[156],
                                                             y[157],
                                                             y[158],
@@ -9700,7 +9700,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_ankle_pitch
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[908],
                                                         y[909],
                                                         y[910],
@@ -9708,7 +9708,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[160],
                                                             y[161],
                                                             y[162],
@@ -9718,7 +9718,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[164],
                                                             y[165],
                                                             y[166],
@@ -9728,7 +9728,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[168],
                                                             y[169],
                                                             y[170],
@@ -9744,7 +9744,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_ankle_roll
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[912],
                                                         y[913],
                                                         y[914],
@@ -9752,7 +9752,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[172],
                                                             y[173],
                                                             y[174],
@@ -9768,7 +9768,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_leg_foot
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[916],
                                                         y[917],
                                                         y[918],
@@ -9776,7 +9776,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[176],
                                                             y[177],
                                                             y[178],
@@ -9786,7 +9786,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[180],
                                                             y[181],
                                                             y[182],
@@ -9796,7 +9796,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[184],
                                                             y[185],
                                                             y[186],
@@ -9812,7 +9812,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_leg/gripper/jaw_left
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[920],
                                                         y[921],
                                                         y[922],
@@ -9820,7 +9820,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[188],
                                                             y[189],
                                                             y[190],
@@ -9836,7 +9836,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_leg/gripper/jaw_right
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[924],
                                                         y[925],
                                                         y[926],
@@ -9844,7 +9844,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[192],
                                                             y[193],
                                                             y[194],
@@ -9860,7 +9860,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/waist_center
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[928],
                                                         y[929],
                                                         y[930],
@@ -9868,7 +9868,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[196],
                                                             y[197],
                                                             y[198],
@@ -9878,7 +9878,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[200],
                                                             y[201],
                                                             y[202],
@@ -9888,7 +9888,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[204],
                                                             y[205],
                                                             y[206],
@@ -9904,7 +9904,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/backpack
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[932],
                                                         y[933],
                                                         y[934],
@@ -9912,7 +9912,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[208],
                                                             y[209],
                                                             y[210],
@@ -9922,7 +9922,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[212],
                                                             y[213],
                                                             y[214],
@@ -9932,7 +9932,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[216],
                                                             y[217],
                                                             y[218],
@@ -9942,7 +9942,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[220],
                                                             y[221],
                                                             y[222],
@@ -9958,7 +9958,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_shoulder_roll
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[936],
                                                         y[937],
                                                         y[938],
@@ -9966,7 +9966,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[224],
                                                             y[225],
                                                             y[226],
@@ -9976,7 +9976,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[228],
                                                             y[229],
                                                             y[230],
@@ -9986,7 +9986,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[232],
                                                             y[233],
                                                             y[234],
@@ -10002,7 +10002,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_shoulder_pitch
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[940],
                                                         y[941],
                                                         y[942],
@@ -10010,7 +10010,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[236],
                                                             y[237],
                                                             y[238],
@@ -10026,7 +10026,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_upper_arm
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[944],
                                                         y[945],
                                                         y[946],
@@ -10034,7 +10034,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[240],
                                                             y[241],
                                                             y[242],
@@ -10044,7 +10044,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[244],
                                                             y[245],
                                                             y[246],
@@ -10054,7 +10054,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[248],
                                                             y[249],
                                                             y[250],
@@ -10064,7 +10064,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[252],
                                                             y[253],
                                                             y[254],
@@ -10080,7 +10080,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_elbow
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[948],
                                                         y[949],
                                                         y[950],
@@ -10088,7 +10088,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[256],
                                                             y[257],
                                                             y[258],
@@ -10098,7 +10098,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[260],
                                                             y[261],
                                                             y[262],
@@ -10114,7 +10114,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_lower_arm
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[952],
                                                         y[953],
                                                         y[954],
@@ -10122,7 +10122,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[264],
                                                             y[265],
                                                             y[266],
@@ -10132,7 +10132,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[268],
                                                             y[269],
                                                             y[270],
@@ -10142,7 +10142,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[272],
                                                             y[273],
                                                             y[274],
@@ -10152,7 +10152,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[276],
                                                             y[277],
                                                             y[278],
@@ -10168,7 +10168,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_index_proximal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[956],
                                                         y[957],
                                                         y[958],
@@ -10176,7 +10176,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[280],
                                                             y[281],
                                                             y[282],
@@ -10186,7 +10186,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[284],
                                                             y[285],
                                                             y[286],
@@ -10196,7 +10196,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[288],
                                                             y[289],
                                                             y[290],
@@ -10206,7 +10206,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[292],
                                                             y[293],
                                                             y[294],
@@ -10222,7 +10222,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_index_medial
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[960],
                                                         y[961],
                                                         y[962],
@@ -10230,7 +10230,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[296],
                                                             y[297],
                                                             y[298],
@@ -10240,7 +10240,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[300],
                                                             y[301],
                                                             y[302],
@@ -10250,7 +10250,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[304],
                                                             y[305],
                                                             y[306],
@@ -10260,7 +10260,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[308],
                                                             y[309],
                                                             y[310],
@@ -10276,7 +10276,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_index_distal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[964],
                                                         y[965],
                                                         y[966],
@@ -10284,7 +10284,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[312],
                                                             y[313],
                                                             y[314],
@@ -10294,7 +10294,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[316],
                                                             y[317],
                                                             y[318],
@@ -10304,7 +10304,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[320],
                                                             y[321],
                                                             y[322],
@@ -10320,7 +10320,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_middle_proximal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[968],
                                                         y[969],
                                                         y[970],
@@ -10328,7 +10328,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[324],
                                                             y[325],
                                                             y[326],
@@ -10338,7 +10338,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[328],
                                                             y[329],
                                                             y[330],
@@ -10348,7 +10348,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[332],
                                                             y[333],
                                                             y[334],
@@ -10358,7 +10358,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[336],
                                                             y[337],
                                                             y[338],
@@ -10374,7 +10374,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_middle_medial
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[972],
                                                         y[973],
                                                         y[974],
@@ -10382,7 +10382,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[340],
                                                             y[341],
                                                             y[342],
@@ -10392,7 +10392,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[344],
                                                             y[345],
                                                             y[346],
@@ -10402,7 +10402,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[348],
                                                             y[349],
                                                             y[350],
@@ -10412,7 +10412,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[352],
                                                             y[353],
                                                             y[354],
@@ -10428,7 +10428,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_middle_distal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[976],
                                                         y[977],
                                                         y[978],
@@ -10436,7 +10436,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[356],
                                                             y[357],
                                                             y[358],
@@ -10446,7 +10446,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[360],
                                                             y[361],
                                                             y[362],
@@ -10456,7 +10456,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[364],
                                                             y[365],
                                                             y[366],
@@ -10472,7 +10472,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_palm
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[980],
                                                         y[981],
                                                         y[982],
@@ -10480,7 +10480,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[368],
                                                             y[369],
                                                             y[370],
@@ -10490,7 +10490,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[372],
                                                             y[373],
                                                             y[374],
@@ -10500,7 +10500,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[376],
                                                             y[377],
                                                             y[378],
@@ -10510,7 +10510,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[380],
                                                             y[381],
                                                             y[382],
@@ -10526,7 +10526,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_little_proximal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[984],
                                                         y[985],
                                                         y[986],
@@ -10534,7 +10534,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[384],
                                                             y[385],
                                                             y[386],
@@ -10544,7 +10544,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[388],
                                                             y[389],
                                                             y[390],
@@ -10554,7 +10554,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[392],
                                                             y[393],
                                                             y[394],
@@ -10564,7 +10564,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[396],
                                                             y[397],
                                                             y[398],
@@ -10580,7 +10580,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_little_medial
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[988],
                                                         y[989],
                                                         y[990],
@@ -10588,7 +10588,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[400],
                                                             y[401],
                                                             y[402],
@@ -10598,7 +10598,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[404],
                                                             y[405],
                                                             y[406],
@@ -10608,7 +10608,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[408],
                                                             y[409],
                                                             y[410],
@@ -10618,7 +10618,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[412],
                                                             y[413],
                                                             y[414],
@@ -10634,7 +10634,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_little_distal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[992],
                                                         y[993],
                                                         y[994],
@@ -10642,7 +10642,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[416],
                                                             y[417],
                                                             y[418],
@@ -10652,7 +10652,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[420],
                                                             y[421],
                                                             y[422],
@@ -10662,7 +10662,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[424],
                                                             y[425],
                                                             y[426],
@@ -10678,7 +10678,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_ring_proximal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[996],
                                                         y[997],
                                                         y[998],
@@ -10686,7 +10686,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[428],
                                                             y[429],
                                                             y[430],
@@ -10696,7 +10696,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[432],
                                                             y[433],
                                                             y[434],
@@ -10706,7 +10706,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[436],
                                                             y[437],
                                                             y[438],
@@ -10716,7 +10716,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[440],
                                                             y[441],
                                                             y[442],
@@ -10732,7 +10732,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_ring_medial
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1000],
                                                         y[1001],
                                                         y[1002],
@@ -10740,7 +10740,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[444],
                                                             y[445],
                                                             y[446],
@@ -10750,7 +10750,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[448],
                                                             y[449],
                                                             y[450],
@@ -10760,7 +10760,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[452],
                                                             y[453],
                                                             y[454],
@@ -10770,7 +10770,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[456],
                                                             y[457],
                                                             y[458],
@@ -10786,7 +10786,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_ring_distal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1004],
                                                         y[1005],
                                                         y[1006],
@@ -10794,7 +10794,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[460],
                                                             y[461],
                                                             y[462],
@@ -10804,7 +10804,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[464],
                                                             y[465],
                                                             y[466],
@@ -10814,7 +10814,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[468],
                                                             y[469],
                                                             y[470],
@@ -10830,7 +10830,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_thumb_proximal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1008],
                                                         y[1009],
                                                         y[1010],
@@ -10838,7 +10838,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[472],
                                                             y[473],
                                                             y[474],
@@ -10848,7 +10848,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[476],
                                                             y[477],
                                                             y[478],
@@ -10858,7 +10858,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[480],
                                                             y[481],
                                                             y[482],
@@ -10874,7 +10874,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_thumb_medial_prime
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1012],
                                                         y[1013],
                                                         y[1014],
@@ -10882,7 +10882,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[484],
                                                             y[485],
                                                             y[486],
@@ -10892,7 +10892,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[488],
                                                             y[489],
                                                             y[490],
@@ -10902,7 +10902,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[492],
                                                             y[493],
                                                             y[494],
@@ -10912,7 +10912,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[496],
                                                             y[497],
                                                             y[498],
@@ -10928,7 +10928,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_thumb_medial
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1016],
                                                         y[1017],
                                                         y[1018],
@@ -10936,7 +10936,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[500],
                                                             y[501],
                                                             y[502],
@@ -10946,7 +10946,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[504],
                                                             y[505],
                                                             y[506],
@@ -10956,7 +10956,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[508],
                                                             y[509],
                                                             y[510],
@@ -10966,7 +10966,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[512],
                                                             y[513],
                                                             y[514],
@@ -10982,7 +10982,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/left_thumb_distal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1020],
                                                         y[1021],
                                                         y[1022],
@@ -10990,7 +10990,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[516],
                                                             y[517],
                                                             y[518],
@@ -11000,7 +11000,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[520],
                                                             y[521],
                                                             y[522],
@@ -11010,7 +11010,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[524],
                                                             y[525],
                                                             y[526],
@@ -11020,7 +11020,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[528],
                                                             y[529],
                                                             y[530],
@@ -11036,7 +11036,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_shoulder_roll
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1024],
                                                         y[1025],
                                                         y[1026],
@@ -11044,7 +11044,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[532],
                                                             y[533],
                                                             y[534],
@@ -11054,7 +11054,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[536],
                                                             y[537],
                                                             y[538],
@@ -11064,7 +11064,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[540],
                                                             y[541],
                                                             y[542],
@@ -11080,7 +11080,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_shoulder_pitch
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1028],
                                                         y[1029],
                                                         y[1030],
@@ -11088,7 +11088,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[544],
                                                             y[545],
                                                             y[546],
@@ -11104,7 +11104,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_upper_arm
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1032],
                                                         y[1033],
                                                         y[1034],
@@ -11112,7 +11112,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[548],
                                                             y[549],
                                                             y[550],
@@ -11122,7 +11122,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[552],
                                                             y[553],
                                                             y[554],
@@ -11132,7 +11132,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[556],
                                                             y[557],
                                                             y[558],
@@ -11142,7 +11142,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[560],
                                                             y[561],
                                                             y[562],
@@ -11158,7 +11158,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_elbow
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1036],
                                                         y[1037],
                                                         y[1038],
@@ -11166,7 +11166,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[564],
                                                             y[565],
                                                             y[566],
@@ -11176,7 +11176,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[568],
                                                             y[569],
                                                             y[570],
@@ -11192,7 +11192,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_lower_arm
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1040],
                                                         y[1041],
                                                         y[1042],
@@ -11200,7 +11200,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[572],
                                                             y[573],
                                                             y[574],
@@ -11210,7 +11210,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[576],
                                                             y[577],
                                                             y[578],
@@ -11220,7 +11220,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[580],
                                                             y[581],
                                                             y[582],
@@ -11230,7 +11230,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[584],
                                                             y[585],
                                                             y[586],
@@ -11246,7 +11246,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_index_proximal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1044],
                                                         y[1045],
                                                         y[1046],
@@ -11254,7 +11254,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[588],
                                                             y[589],
                                                             y[590],
@@ -11264,7 +11264,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[592],
                                                             y[593],
                                                             y[594],
@@ -11274,7 +11274,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[596],
                                                             y[597],
                                                             y[598],
@@ -11284,7 +11284,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[600],
                                                             y[601],
                                                             y[602],
@@ -11300,7 +11300,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_index_medial
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1048],
                                                         y[1049],
                                                         y[1050],
@@ -11308,7 +11308,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[604],
                                                             y[605],
                                                             y[606],
@@ -11318,7 +11318,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[608],
                                                             y[609],
                                                             y[610],
@@ -11328,7 +11328,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[612],
                                                             y[613],
                                                             y[614],
@@ -11338,7 +11338,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[616],
                                                             y[617],
                                                             y[618],
@@ -11354,7 +11354,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_index_distal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1052],
                                                         y[1053],
                                                         y[1054],
@@ -11362,7 +11362,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[620],
                                                             y[621],
                                                             y[622],
@@ -11372,7 +11372,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[624],
                                                             y[625],
                                                             y[626],
@@ -11382,7 +11382,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[628],
                                                             y[629],
                                                             y[630],
@@ -11398,7 +11398,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_middle_proximal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1056],
                                                         y[1057],
                                                         y[1058],
@@ -11406,7 +11406,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[632],
                                                             y[633],
                                                             y[634],
@@ -11416,7 +11416,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[636],
                                                             y[637],
                                                             y[638],
@@ -11426,7 +11426,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[640],
                                                             y[641],
                                                             y[642],
@@ -11436,7 +11436,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[644],
                                                             y[645],
                                                             y[646],
@@ -11452,7 +11452,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_middle_medial
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1060],
                                                         y[1061],
                                                         y[1062],
@@ -11460,7 +11460,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[648],
                                                             y[649],
                                                             y[650],
@@ -11470,7 +11470,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[652],
                                                             y[653],
                                                             y[654],
@@ -11480,7 +11480,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[656],
                                                             y[657],
                                                             y[658],
@@ -11490,7 +11490,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[660],
                                                             y[661],
                                                             y[662],
@@ -11506,7 +11506,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_middle_distal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1064],
                                                         y[1065],
                                                         y[1066],
@@ -11514,7 +11514,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[664],
                                                             y[665],
                                                             y[666],
@@ -11524,7 +11524,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[668],
                                                             y[669],
                                                             y[670],
@@ -11534,7 +11534,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[672],
                                                             y[673],
                                                             y[674],
@@ -11550,7 +11550,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_palm
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1068],
                                                         y[1069],
                                                         y[1070],
@@ -11558,7 +11558,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[676],
                                                             y[677],
                                                             y[678],
@@ -11568,7 +11568,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[680],
                                                             y[681],
                                                             y[682],
@@ -11578,7 +11578,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[684],
                                                             y[685],
                                                             y[686],
@@ -11588,7 +11588,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[688],
                                                             y[689],
                                                             y[690],
@@ -11604,7 +11604,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_little_proximal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1072],
                                                         y[1073],
                                                         y[1074],
@@ -11612,7 +11612,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[692],
                                                             y[693],
                                                             y[694],
@@ -11622,7 +11622,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[696],
                                                             y[697],
                                                             y[698],
@@ -11632,7 +11632,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[700],
                                                             y[701],
                                                             y[702],
@@ -11642,7 +11642,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[704],
                                                             y[705],
                                                             y[706],
@@ -11658,7 +11658,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_little_medial
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1076],
                                                         y[1077],
                                                         y[1078],
@@ -11666,7 +11666,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[708],
                                                             y[709],
                                                             y[710],
@@ -11676,7 +11676,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[712],
                                                             y[713],
                                                             y[714],
@@ -11686,7 +11686,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[716],
                                                             y[717],
                                                             y[718],
@@ -11696,7 +11696,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[720],
                                                             y[721],
                                                             y[722],
@@ -11712,7 +11712,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_little_distal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1080],
                                                         y[1081],
                                                         y[1082],
@@ -11720,7 +11720,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[724],
                                                             y[725],
                                                             y[726],
@@ -11730,7 +11730,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[728],
                                                             y[729],
                                                             y[730],
@@ -11740,7 +11740,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[732],
                                                             y[733],
                                                             y[734],
@@ -11756,7 +11756,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_ring_proximal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1084],
                                                         y[1085],
                                                         y[1086],
@@ -11764,7 +11764,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[736],
                                                             y[737],
                                                             y[738],
@@ -11774,7 +11774,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[740],
                                                             y[741],
                                                             y[742],
@@ -11784,7 +11784,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[744],
                                                             y[745],
                                                             y[746],
@@ -11794,7 +11794,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[748],
                                                             y[749],
                                                             y[750],
@@ -11810,7 +11810,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_ring_medial
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1088],
                                                         y[1089],
                                                         y[1090],
@@ -11818,7 +11818,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[752],
                                                             y[753],
                                                             y[754],
@@ -11828,7 +11828,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[756],
                                                             y[757],
                                                             y[758],
@@ -11838,7 +11838,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[760],
                                                             y[761],
                                                             y[762],
@@ -11848,7 +11848,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[764],
                                                             y[765],
                                                             y[766],
@@ -11864,7 +11864,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_ring_distal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1092],
                                                         y[1093],
                                                         y[1094],
@@ -11872,7 +11872,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[768],
                                                             y[769],
                                                             y[770],
@@ -11882,7 +11882,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[772],
                                                             y[773],
                                                             y[774],
@@ -11892,7 +11892,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[776],
                                                             y[777],
                                                             y[778],
@@ -11908,7 +11908,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_thumb_proximal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1096],
                                                         y[1097],
                                                         y[1098],
@@ -11916,7 +11916,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[780],
                                                             y[781],
                                                             y[782],
@@ -11926,7 +11926,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[784],
                                                             y[785],
                                                             y[786],
@@ -11936,7 +11936,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[788],
                                                             y[789],
                                                             y[790],
@@ -11952,7 +11952,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_thumb_medial_prime
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1100],
                                                         y[1101],
                                                         y[1102],
@@ -11960,7 +11960,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[792],
                                                             y[793],
                                                             y[794],
@@ -11970,7 +11970,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[796],
                                                             y[797],
                                                             y[798],
@@ -11980,7 +11980,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[800],
                                                             y[801],
                                                             y[802],
@@ -11990,7 +11990,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[804],
                                                             y[805],
                                                             y[806],
@@ -12006,7 +12006,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_thumb_medial
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1104],
                                                         y[1105],
                                                         y[1106],
@@ -12014,7 +12014,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[808],
                                                             y[809],
                                                             y[810],
@@ -12024,7 +12024,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[812],
                                                             y[813],
                                                             y[814],
@@ -12034,7 +12034,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[816],
                                                             y[817],
                                                             y[818],
@@ -12044,7 +12044,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[820],
                                                             y[821],
                                                             y[822],
@@ -12060,7 +12060,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/right_thumb_distal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1108],
                                                         y[1109],
                                                         y[1110],
@@ -12068,7 +12068,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[824],
                                                             y[825],
                                                             y[826],
@@ -12078,7 +12078,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[828],
                                                             y[829],
                                                             y[830],
@@ -12088,7 +12088,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[832],
                                                             y[833],
                                                             y[834],
@@ -12098,7 +12098,7 @@ for (const auto &sp : cc_self_pairs)
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[836],
                                                             y[837],
                                                             y[838],
@@ -12114,7 +12114,7 @@ for (const auto &sp : cc_self_pairs)
         
 
         // Attachment vs. r2/head
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[1112],
                                                         y[1113],
                                                         y[1114],
@@ -12122,7 +12122,7 @@ for (const auto &sp : cc_self_pairs)
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[840],
                                                             y[841],
                                                             y[842],

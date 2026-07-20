@@ -128,8 +128,11 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
             })
         .def(
             "attach",
-            [](vc::Environment<float> &e, const vc::Attachment<float> &a) { e.attachments.emplace(a); })
-        .def("detach", [](vc::Environment<float> &e) { e.attachments.reset(); })
+            [](vc::Environment<float> &e, const vc::Attachment<float> &a)
+            { e.attachments.emplace_back(a); },
+            "Adds an attachment; multiple attachments (across end-effectors) may coexist.")
+        .def("detach", [](vc::Environment<float> &e) { e.attachments.clear(); })
+        .def_ro("attachments", &vc::Environment<float>::attachments)
         .def_ro("spheres", &vc::Environment<float>::spheres)
         .def_ro("cuboids", &vc::Environment<float>::cuboids)
         .def_ro("z_aligned_cuboids", &vc::Environment<float>::z_aligned_cuboids)
@@ -173,13 +176,18 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
     nb::class_<vc::Attachment<float>>(pymodule, "Attachment")
         .def(
             "__init__",
-            [](vc::Attachment<float> *q, Eigen::Matrix4f &tf) noexcept
+            [](vc::Attachment<float> *q, Eigen::Matrix4f &tf, std::size_t end_effector) noexcept
             {
                 Eigen::Isometry3f iso;
                 iso.matrix() = tf;
                 new (q) vc::Attachment<float>(iso);
+                q->end_effector = end_effector;
             },
-            "Constructor for an attachment centered at a relative transform from the end-effector.")
+            "tf"_a,
+            "end_effector"_a = 0,
+            "Constructor for an attachment centered at a relative transform from the given "
+            "end-effector (by index into the robot's end-effector list).")
+        .def_rw("end_effector", &vc::Attachment<float>::end_effector)
         .def_prop_ro("relative_frame", [](vc::Attachment<float> &a) { return a.tf; })
         .def(
             "add_sphere",

@@ -4,7 +4,6 @@
 #include <Eigen/Geometry>
 
 #include <vector>
-#include <optional>
 #include <vamp/collision/shapes.hh>
 #include <vamp/collision/capt.hh>
 #include <vamp/collision/attachments.hh>
@@ -22,7 +21,7 @@ namespace vamp::collision
         std::vector<Cuboid<DataT>> z_aligned_cuboids;
         std::vector<HeightField<DataT>> heightfields;
         std::vector<CAPT> pointclouds;
-        std::optional<Attachment<DataT>> attachments;
+        std::vector<Attachment<DataT>> attachments;
 
         Environment() = default;
 
@@ -114,23 +113,33 @@ namespace vamp::collision
         friend struct Environment;
 
         template <typename OtherDataT>
-        inline auto clone_attachments() const noexcept -> std::optional<Attachment<OtherDataT>>
+        inline auto clone_attachments() const noexcept -> std::vector<Attachment<OtherDataT>>
         {
-            if (attachments)
+            std::vector<Attachment<OtherDataT>> result;
+            result.reserve(attachments.size());
+            for (const auto &attachment : attachments)
             {
-                return Attachment<OtherDataT>(*attachments);
+                result.emplace_back(attachment);
             }
 
-            return std::nullopt;
+            return result;
         }
     };
 
+    // Poses every attachment riding on end-effector `end_effector`.
     template <typename DataT>
     inline auto set_attachment_pose(
         const Environment<DataT> &e,
+        std::size_t end_effector,
         const Eigen::Transform<DataT, 3, Eigen::Isometry> &p_tf) noexcept
     {
-        e.attachments->pose(p_tf);
+        for (const auto &attachment : e.attachments)
+        {
+            if (attachment.end_effector == end_effector)
+            {
+                attachment.pose(p_tf);
+            }
+        }
     }
 
 }  // namespace vamp::collision

@@ -68,6 +68,10 @@ namespace vamp::planning
 
             return Eigen::Quaternionf(Eigen::AngleAxisf(theta, w / theta));
         }
+
+        // A bound this narrow (< ~1e-6 m or rad) is treated as fixed: sampling it would just
+        // reproduce the midpoint with extra float error, so skip the draw and use it directly.
+        static constexpr float fixed_bound_eps = 1e-6F;
     }  // namespace detail
 
     // Rejects candidate poses via Robot::is_eef_collision_free(pose, environment). Single
@@ -109,11 +113,43 @@ namespace vamp::planning
 
             std::tie(world_to_reference_q_, world_to_reference_t_) = to_quat_trans(world_to_reference);
 
-            constexpr float full_turn = 2.F * static_cast<float>(vamp::utils::constants::pi);
-            rotation_free_ = true;
+            // Precompute per-dimension range/midpoint and whether a dimension is narrow enough
+            // to just use its midpoint instead of sampling it, plus the inverse position scale
+            // (turns a per-call division into a multiply below).
+            for (std::size_t i = 0; i < 6; ++i)
+            {
+                range_[i] = upper_[i] - lower_[i];
+                mid_[i] = 0.5F * (lower_[i] + upper_[i]);
+            }
+
+            all_pos_fixed_ = true;
             for (std::size_t i = 0; i < 3; ++i)
             {
-                rotation_free_ = rotation_free_ and (upper_[3 + i] - lower_[3 + i] >= full_turn);
+                pos_fixed_[i] = range_[i] < detail::fixed_bound_eps;
+                all_pos_fixed_ = all_pos_fixed_ and pos_fixed_[i];
+
+                const float scale = Robot::sample_position_upper[i] - Robot::sample_position_lower[i];
+                inv_pos_scale_[i] = 1.F / scale;
+            }
+
+            if (all_pos_fixed_)
+            {
+                fixed_translation_ = Eigen::Vector3f(mid_[0], mid_[1], mid_[2]);
+            }
+
+            constexpr float full_turn = 2.F * static_cast<float>(vamp::utils::constants::pi);
+            rotation_free_ = true;
+            all_rot_fixed_ = true;
+            for (std::size_t i = 0; i < 3; ++i)
+            {
+                rotation_free_ = rotation_free_ and (range_[3 + i] >= full_turn);
+                rot_fixed_[i] = range_[3 + i] < detail::fixed_bound_eps;
+                all_rot_fixed_ = all_rot_fixed_ and rot_fixed_[i];
+            }
+
+            if ((not rotation_free_) and all_rot_fixed_)
+            {
+                fixed_rotation_ = detail::exp_so3(Eigen::Vector3f(mid_[3], mid_[4], mid_[5]));
             }
         }
 
@@ -133,12 +169,24 @@ namespace vamp::planning
                 alignas(FloatVectorAlignment) auto buf = inner->next().to_array();
 
                 Eigen::Vector3f translation;
-                for (std::size_t i = 0; i < 3; ++i)
+                if (all_pos_fixed_)
                 {
-                    const float lo = Robot::sample_position_lower[i];
-                    const float scale = Robot::sample_position_upper[i] - Robot::sample_position_lower[i];
-                    const float digit = (buf[i] - lo) / scale;
-                    translation[static_cast<Eigen::Index>(i)] = lower_[i] + digit * (upper_[i] - lower_[i]);
+                    // Bound is a point (or near enough): skip sampling, use the midpoint.
+                    translation = fixed_translation_;
+                }
+                else
+                {
+                    for (std::size_t i = 0; i < 3; ++i)
+                    {
+                        if (pos_fixed_[i])
+                        {
+                            translation[static_cast<Eigen::Index>(i)] = mid_[i];
+                            continue;
+                        }
+                        const float lo = Robot::sample_position_lower[i];
+                        const float digit = (buf[i] - lo) * inv_pos_scale_[i];
+                        translation[static_cast<Eigen::Index>(i)] = lower_[i] + digit * range_[i];
+                    }
                 }
 
                 Eigen::Quaternionf reference_rotation;
@@ -147,13 +195,20 @@ namespace vamp::planning
                     // Already Shoemake-uniform over SO(3); reuse as the local rotation as-is.
                     reference_rotation = Eigen::Quaternionf(buf[6], buf[3], buf[4], buf[5]);
                 }
+                else if (all_rot_fixed_)
+                {
+                    // Rotation bound is a point (or near enough): reuse the precomputed midpoint
+                    // quaternion instead of re-running exp_so3 every call.
+                    reference_rotation = fixed_rotation_;
+                }
                 else
                 {
                     Eigen::Vector3f rotvec;
                     for (std::size_t i = 0; i < 3; ++i)
                     {
-                        rotvec[static_cast<Eigen::Index>(i)] =
-                            inner->dist.uniform_real(lower_[3 + i], upper_[3 + i]);
+                        rotvec[static_cast<Eigen::Index>(i)] = rot_fixed_[i]
+                            ? mid_[3 + i]
+                            : inner->dist.uniform_real(lower_[3 + i], upper_[3 + i]);
                     }
                     reference_rotation = detail::exp_so3(rotvec);
                 }
@@ -212,6 +267,16 @@ namespace vamp::planning
         Eigen::Vector3f offset_to_eef_t_;
         Eigen::Quaternionf world_to_reference_q_;
         Eigen::Vector3f world_to_reference_t_;
+        Bound range_;  // upper_ - lower_
+        Bound mid_;    // (lower_ + upper_) / 2
+        std::array<bool, 3> pos_fixed_{};
+        std::array<bool, 3> rot_fixed_{};
+        bool all_pos_fixed_ = false;
+        bool all_rot_fixed_ = false;
+        Eigen::Vector3f fixed_translation_ = Eigen::Vector3f::Zero();  // valid iff all_pos_fixed_
+        Eigen::Quaternionf fixed_rotation_ =
+            Eigen::Quaternionf::Identity();  // valid iff (!rotation_free_ && all_rot_fixed_)
+        std::array<float, 3> inv_pos_scale_{};  // 1 / (sample_position_upper - sample_position_lower)
         bool rotation_free_ = false;
         vamp::collision::Environment<float> environment_;
         typename rng::RNG<Robot>::Ptr inner;

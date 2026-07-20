@@ -97,11 +97,18 @@ namespace vamp::planning
             typename rng::RNG<Robot>::Ptr inner_in) noexcept
           : lower_(lower)
           , upper_(upper)
-          , offset_to_eef_(to_isometry(eef_to_offset).inverse())
-          , world_to_reference_(to_isometry(world_to_reference))
           , environment_(std::move(environment_in))
           , inner(std::move(inner_in))
         {
+            // Precompute the two fixed transforms as quaternion + translation once, instead of
+            // rebuilding Isometry3f (3x3 rotation matrices) for them on every next() call.
+            const auto [eef_to_offset_q, eef_to_offset_t] = to_quat_trans(eef_to_offset);
+            // offset_to_eef = eef_to_offset^{-1}: for a unit quaternion, inverse == conjugate.
+            offset_to_eef_q_ = eef_to_offset_q.conjugate();
+            offset_to_eef_t_ = -(offset_to_eef_q_ * eef_to_offset_t);
+
+            std::tie(world_to_reference_q_, world_to_reference_t_) = to_quat_trans(world_to_reference);
+
             constexpr float full_turn = 2.F * static_cast<float>(vamp::utils::constants::pi);
             rotation_free_ = true;
             for (std::size_t i = 0; i < 3; ++i)
@@ -151,24 +158,28 @@ namespace vamp::planning
                     reference_rotation = detail::exp_so3(rotvec);
                 }
 
-                Eigen::Isometry3f reference_to_offset = Eigen::Isometry3f::Identity();
-                reference_to_offset.linear() = reference_rotation.toRotationMatrix();
-                reference_to_offset.translation() = translation;
+                // world_to_offset = world_to_reference * reference_to_offset, then
+                // world_to_eef = world_to_offset * offset_to_eef, done as quaternion/vector
+                // composition instead of building an Isometry3f (3x3 rotation matrix) for each
+                // factor and multiplying those out.
+                const Eigen::Quaternionf world_to_offset_q = world_to_reference_q_ * reference_rotation;
+                const Eigen::Vector3f world_to_offset_t =
+                    world_to_reference_t_ + (world_to_reference_q_ * translation);
 
-                const Eigen::Isometry3f world_to_offset = world_to_reference_ * reference_to_offset;
-                const Eigen::Isometry3f world_to_eef = world_to_offset * offset_to_eef_;
+                Eigen::Quaternionf world_to_eef_q = world_to_offset_q * offset_to_eef_q_;
+                world_to_eef_q.normalize();
+                const Eigen::Vector3f world_to_eef_t = world_to_offset_t + (world_to_offset_q * offset_to_eef_t_);
 
-                if (true or Robot::is_eef_collision_free(world_to_eef, environment_))
+                if (true or Robot::is_eef_collision_free(
+                                to_isometry(world_to_eef_q, world_to_eef_t), environment_))
                 {
-                    const Eigen::Vector3f t = world_to_eef.translation();
-                    const Eigen::Quaternionf q(world_to_eef.rotation());
-                    buf[0] = t.x();
-                    buf[1] = t.y();
-                    buf[2] = t.z();
-                    buf[3] = q.x();
-                    buf[4] = q.y();
-                    buf[5] = q.z();
-                    buf[6] = q.w();
+                    buf[0] = world_to_eef_t.x();
+                    buf[1] = world_to_eef_t.y();
+                    buf[2] = world_to_eef_t.z();
+                    buf[3] = world_to_eef_q.x();
+                    buf[4] = world_to_eef_q.y();
+                    buf[5] = world_to_eef_q.z();
+                    buf[6] = world_to_eef_q.w();
                     // buf[7+] (psi, ...) is untouched: Robot::sample()'s own output.
                     return Configuration(buf.data());
                 }
@@ -178,18 +189,29 @@ namespace vamp::planning
         }
 
     private:
-        static auto to_isometry(const Transform &t) noexcept -> Eigen::Isometry3f
+        static auto to_quat_trans(const Transform &t) noexcept
+            -> std::pair<Eigen::Quaternionf, Eigen::Vector3f>
+        {
+            return {Eigen::Quaternionf(t[6], t[3], t[4], t[5]), Eigen::Vector3f(t[0], t[1], t[2])};
+        }
+
+        // Only needed on the (currently dead) collision-check path, which wants a full pose.
+        static auto to_isometry(const Eigen::Quaternionf &q, const Eigen::Vector3f &t) noexcept
+            -> Eigen::Isometry3f
         {
             Eigen::Isometry3f iso = Eigen::Isometry3f::Identity();
-            iso.linear() = Eigen::Quaternionf(t[6], t[3], t[4], t[5]).toRotationMatrix();
-            iso.translation() = Eigen::Vector3f(t[0], t[1], t[2]);
+            iso.linear() = q.toRotationMatrix();
+            iso.translation() = t;
             return iso;
         }
 
         Bound lower_;
         Bound upper_;
-        Eigen::Isometry3f offset_to_eef_;
-        Eigen::Isometry3f world_to_reference_;
+        // Precomputed once at construction (constant across all next() calls).
+        Eigen::Quaternionf offset_to_eef_q_;
+        Eigen::Vector3f offset_to_eef_t_;
+        Eigen::Quaternionf world_to_reference_q_;
+        Eigen::Vector3f world_to_reference_t_;
         bool rotation_free_ = false;
         vamp::collision::Environment<float> environment_;
         typename rng::RNG<Robot>::Ptr inner;

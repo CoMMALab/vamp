@@ -128,9 +128,7 @@ void load_problems_from_json(std::vector<Problem> &problems, const std::string &
             p.problem_start = item.at("problem_start").get<std::array<float, 7>>();
             p.problem_end = item.at("problem_end").get<std::array<float, 7>>();
             p.start_eef_pos = item.at("start_eef_pos").get<std::array<float, 3>>();
-            p.start_eef_pos[0] += 0.05; // push it slightly forward
             p.goal_eef_pos = item.at("goal_eef_pos").get<std::array<float, 3>>();
-            p.goal_eef_pos[0] += 0.05; // push it slightly forward
             problems.push_back(p);
         } catch (const std::exception &e) {
             std::cerr << "Error reading problem fields: " << e.what() << " -- skipping problem" << std::endl;
@@ -187,8 +185,8 @@ auto main(int, char **) -> int
     // Bound order is (dx, dy, dz, rx, ry, rz): translation box + so(3) log-map rotation box.
     // z pinned to the xy plane, xy free within +-1m; rx/ry (tilt away from facing down) held
     // to a tight numerical tolerance, rz (yaw about the down axis) free over a full turn.
-    TaskSampler::Bound tsr_lower = {-0.85F, -0.75F, -0.01F, -0.01F, -0.01F, -0.015F};
-    TaskSampler::Bound tsr_upper = {0.0F, 0.75F, 0.01F, 0.01F, 0.01F, 0.015F};
+    TaskSampler::Bound tsr_lower = {-0.76F, -0.70F, -0.0F, -0.0F, -0.0F, -0.0F};
+    TaskSampler::Bound tsr_upper = {-0.19F, 0.70F, 0.0F, 0.0F, 0.0F, 0.0F};
 
     auto task_sampler = vamp::planning::make_task_space_informed_sampler<Robot>(
         eef_to_offset,
@@ -329,7 +327,7 @@ auto main(int, char **) -> int
     auto rng = std::make_shared<vamp::rng::Halton<Robot>>();
 
     vamp::planning::RRTCSettings rrtc_settings;
-    rrtc_settings.range = 0.25;
+    rrtc_settings.range = 0.4;
     rrtc_settings.max_iterations = 1000000;
     rrtc_settings.max_samples = 1000000;
     rrtc_settings.dynamic_domain = false;
@@ -351,7 +349,7 @@ auto main(int, char **) -> int
 
     std::vector<Problem> problems;
     // load the json file of problems from the specified path
-    std::string problem_json_path = "resources/iiwa_marker/maze_problems.json";
+    std::string problem_json_path = "resources/iiwa_marker/maze_problems_checked_ik.json";
     load_problems_from_json(problems, problem_json_path);
 
 
@@ -439,6 +437,18 @@ auto main(int, char **) -> int
         std::sort(iterations_per_problem.begin(), iterations_per_problem.end());
         std::cout << "Median time (ms) for successful problems: " << (nanoseconds_per_problem[successful_problems / 2]) / 1000000.0 << std::endl;
         std::cout << "Median iterations for successful problems: " << iterations_per_problem[successful_problems / 2] << std::endl;
+        std::cout << "Minimum time (ms) for successful problems: " << (nanoseconds_per_problem[0]) / 1000000.0 << std::endl;
+        std::cout << "Minimum iterations for successful problems: " << iterations_per_problem[0] << std::endl;
+        std::cout << "Maximum time (ms) for successful problems: " << (nanoseconds_per_problem[successful_problems - 1]) / 1000000.0 << std::endl;
+        std::cout << "Maximum iterations for successful problems: " << iterations_per_problem[successful_problems - 1] << std::endl;
+
+        // also get q1, q3 and 95% results here
+        std::cout << "Q1 time (ms) for successful problems: " << (nanoseconds_per_problem[successful_problems / 4]) / 1000000.0 << std::endl;
+        std::cout << "Q1 iterations for successful problems: " << iterations_per_problem[successful_problems / 4] << std::endl;
+        std::cout << "Q3 time (ms) for successful problems: " << (nanoseconds_per_problem[3 * successful_problems / 4]) / 1000000.0 << std::endl;
+        std::cout << "Q3 iterations for successful problems: " << iterations_per_problem[3 * successful_problems / 4] << std::endl;
+        std::cout << "95th percentile time (ms) for successful problems: " << (nanoseconds_per_problem[95 * successful_problems / 100]) / 1000000.0 << std::endl;
+        std::cout << "95th percentile iterations for successful problems: " << iterations_per_problem[95 * successful_problems / 100] << std::endl;
     }
     return 0;    
 

@@ -137,20 +137,20 @@ namespace vamp::planning
                     std::swap(tree_a, tree_b);
                     tree_a_is_start = not tree_a_is_start;
                 }
-                auto sample_start_time = std::chrono::steady_clock::now();
+                // auto sample_start_time = std::chrono::steady_clock::now();
                 auto temp = rng->next();
-                auto sample_end_time = std::chrono::steady_clock::now();
-                auto sample_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(sample_end_time - sample_start_time).count();
-                vamp::profiling::get_profiler()["sampling"].push_back(sample_duration);
+                // auto sample_end_time = std::chrono::steady_clock::now();
+                // auto sample_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(sample_end_time - sample_start_time).count();
+                // vamp::profiling::get_profiler()["sampling"].push_back(sample_duration);
 
                 typename Robot::ConfigurationBuffer temp_array;
                 temp.to_array(temp_array.data());
 
-                auto nearest_start_time = std::chrono::steady_clock::now();
+                // auto nearest_start_time = std::chrono::steady_clock::now();
                 const auto nearest = tree_a->nearest(Robot::nn_key(temp_array.data()));
-                auto nearest_end_time = std::chrono::steady_clock::now();
-                auto nearest_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(nearest_end_time - nearest_start_time).count();
-                vamp::profiling::get_profiler()["nearest"].push_back(nearest_duration);
+                // auto nearest_end_time = std::chrono::steady_clock::now();
+                // auto nearest_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(nearest_end_time - nearest_start_time).count();
+                // vamp::profiling::get_profiler()["nearest"].push_back(nearest_duration);
                 if (not nearest)
                 {
                     continue;
@@ -169,7 +169,7 @@ namespace vamp::planning
                 // Edges are executed from start to goal: goal-tree edges run child -> parent,
                 // so the local planner steers and validates along the local path in that
                 // direction (identical for symmetric interpolation).
-                auto steer_start_time = std::chrono::steady_clock::now();
+                // auto steer_start_time = std::chrono::steady_clock::now();
                 const auto extension = lp.steer(
                     nearest_configuration,
                     temp,
@@ -177,9 +177,9 @@ namespace vamp::planning
                     settings.range,
                     tree_a_is_start,
                     environment);
-                auto steer_end_time = std::chrono::steady_clock::now();
-                auto steer_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(steer_end_time - steer_start_time).count();
-                vamp::profiling::get_profiler()["steer"].push_back(steer_duration);
+                // auto steer_end_time = std::chrono::steady_clock::now();
+                // auto steer_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(steer_end_time - steer_start_time).count();
+                // vamp::profiling::get_profiler()["steer"].push_back(steer_duration);
 
                 if (extension.status != SteerStatus::Trapped)
                 {
@@ -197,12 +197,12 @@ namespace vamp::planning
                     }
 
                     // Extend to goal tree
-                    auto other_nearest_start_time = std::chrono::steady_clock::now();
+                    // auto other_nearest_start_time = std::chrono::steady_clock::now();
                     const auto other_nearest =
                         tree_b->nearest(Robot::nn_key(buffer_index(new_index)));
-                    auto other_nearest_end_time = std::chrono::steady_clock::now();
-                    auto other_nearest_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(other_nearest_end_time - other_nearest_start_time).count();
-                    vamp::profiling::get_profiler()["other_nearest"].push_back(other_nearest_duration);
+                    // auto other_nearest_end_time = std::chrono::steady_clock::now();
+                    // auto other_nearest_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(other_nearest_end_time - other_nearest_start_time).count();
+                    // vamp::profiling::get_profiler()["other_nearest"].push_back(other_nearest_duration);
                     if (not other_nearest)
                     {
                         continue;
@@ -225,7 +225,7 @@ namespace vamp::planning
                             Robot::distance(prior, other_nearest_configuration);
                         const bool final_step =
                             (i_extension == n_extensions - 1) or (remaining <= settings.range);
-                        auto internal_steer_start_time = std::chrono::steady_clock::now();
+                        // auto internal_steer_start_time = std::chrono::steady_clock::now();
                         const auto step = lp.steer(
                             prior,
                             other_nearest_configuration,
@@ -233,9 +233,9 @@ namespace vamp::planning
                             (final_step) ? std::numeric_limits<float>::max() : settings.range,
                             tree_a_is_start,
                             environment);
-                        auto internal_steer_end_time = std::chrono::steady_clock::now();
-                        auto internal_steer_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(internal_steer_end_time - internal_steer_start_time).count();
-                        vamp::profiling::get_profiler()["internal_steer"].push_back(internal_steer_duration);
+                        // auto internal_steer_end_time = std::chrono::steady_clock::now();
+                        // auto internal_steer_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(internal_steer_end_time - internal_steer_start_time).count();
+                        // vamp::profiling::get_profiler()["internal_steer"].push_back(internal_steer_duration);
 
                         if (step.status == SteerStatus::Trapped)
                         {

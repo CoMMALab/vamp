@@ -107,13 +107,13 @@ namespace vamp::planning
             const bool reach = distance < range;
             const float step = range / distance;
 
-            auto interpolate_start_time = std::chrono::steady_clock::now();
+            // auto interpolate_start_time = std::chrono::steady_clock::now();
             const auto next = (reach)    ? target :
                               (forward)  ? Robot::interpolate(from, target, step) :
                                            Robot::interpolate(target, from, 1.F - step);
-            auto interpolate_end_time = std::chrono::steady_clock::now();
-            auto interpolate_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(interpolate_end_time - interpolate_start_time).count();
-            vamp::profiling::get_profiler()["interpolate"].push_back(interpolate_duration);
+            // auto interpolate_end_time = std::chrono::steady_clock::now();
+            // auto interpolate_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(interpolate_end_time - interpolate_start_time).count();
+            // vamp::profiling::get_profiler()["interpolate"].push_back(interpolate_duration);
 
             if (not accept(next))
             {
@@ -178,53 +178,53 @@ namespace vamp::planning
             typename Robot::template AmbientConfigurationBlock<rake> block;
 
             auto t_block = percents;
-            auto interpolate_block_start_time = std::chrono::steady_clock::now();
+            // auto interpolate_block_start_time = std::chrono::steady_clock::now();
             Robot::template interpolate_block<rake>(start, goal, t_block, interp_block);
-            auto interpolate_end_time = std::chrono::steady_clock::now();
-            auto interpolate_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(interpolate_end_time - interpolate_block_start_time).count();
-            vamp::profiling::get_profiler()["interpolate_block"].push_back(interpolate_duration);
+            // auto interpolate_end_time = std::chrono::steady_clock::now();
+            // auto interpolate_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(interpolate_end_time - interpolate_block_start_time).count();
+            // vamp::profiling::get_profiler()["interpolate_block"].push_back(interpolate_duration);
 
 
             // before calling IK, to speed things up, we can check if the interpolated block is already valid, by
             // inserting a dummy sphere at the end-effector position and checking for collisions. If the interpolated block is invalid, then we can skip calling IK and return false immediately.
 
-            auto is_eef_in_collision_start_time = std::chrono::steady_clock::now();
+            // auto is_eef_in_collision_start_time = std::chrono::steady_clock::now();
             bool eef_in_collision = Robot::template check_if_ik_valid_block<rake>(environment, interp_block);
-            auto is_eef_in_collision_end_time = std::chrono::steady_clock::now();
-            auto is_eef_in_collision_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(is_eef_in_collision_end_time - is_eef_in_collision_start_time).count();
-            vamp::profiling::get_profiler()["check_if_ik_valid_block"].push_back(is_eef_in_collision_duration);
+            // auto is_eef_in_collision_end_time = std::chrono::steady_clock::now();
+            // auto is_eef_in_collision_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(is_eef_in_collision_end_time - is_eef_in_collision_start_time).count();
+            // vamp::profiling::get_profiler()["check_if_ik_valid_block"].push_back(is_eef_in_collision_duration);
             if (not eef_in_collision)
             {
-                vamp::profiling::get_profiler()["check_if_ik_valid_block_failed"].push_back(is_eef_in_collision_duration);
+                // vamp::profiling::get_profiler()["check_if_ik_valid_block_failed"].push_back(is_eef_in_collision_duration);
                 return false;
             }
 
             
 
-            auto parameterized_ik_start_time = std::chrono::steady_clock::now();
+            // auto parameterized_ik_start_time = std::chrono::steady_clock::now();
             bool param_valid;
             std::tie(param_valid, block) =
                 Robot::template parameterized_ik<ConfigurationBlock, rake>(interp_block);
-            auto parameterized_ik_end_time = std::chrono::steady_clock::now();
-            auto parameterized_ik_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(parameterized_ik_end_time - parameterized_ik_start_time).count();
-            vamp::profiling::get_profiler()["parameterized_ik"].push_back(parameterized_ik_duration);
+            // auto parameterized_ik_end_time = std::chrono::steady_clock::now();
+            // auto parameterized_ik_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(parameterized_ik_end_time - parameterized_ik_start_time).count();
+            // vamp::profiling::get_profiler()["parameterized_ik"].push_back(parameterized_ik_duration);
 
-            auto check_param_valid_start_time = std::chrono::steady_clock::now();
+            // auto check_param_valid_start_time = std::chrono::steady_clock::now();
             if (not param_valid)
             {
-                auto check_param_valid_end_time = std::chrono::steady_clock::now();
-                auto check_param_valid_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(check_param_valid_end_time - check_param_valid_start_time).count();
-                vamp::profiling::get_profiler()["check_param_valid"].push_back(check_param_valid_duration);
+                // auto check_param_valid_end_time = std::chrono::steady_clock::now();
+                // auto check_param_valid_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(check_param_valid_end_time - check_param_valid_start_time).count();
+                // vamp::profiling::get_profiler()["check_param_valid"].push_back(check_param_valid_duration);
                 return false;
             }
 
-            auto fkcc_start_time = std::chrono::steady_clock::now();
+            // auto fkcc_start_time = std::chrono::steady_clock::now();
             bool valid = (environment.attachments) ?
                 Robot::template fkcc_attach<rake>(environment, block) :
                 Robot::template fkcc<rake>(environment, block);
-            auto fkcc_end_time = std::chrono::steady_clock::now();
-            auto fkcc_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(fkcc_end_time - fkcc_start_time).count();
-            vamp::profiling::get_profiler()["fkcc"].push_back(fkcc_duration);
+            // auto fkcc_end_time = std::chrono::steady_clock::now();
+            // auto fkcc_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(fkcc_end_time - fkcc_start_time).count();
+            // vamp::profiling::get_profiler()["fkcc"].push_back(fkcc_duration);
             if (not valid or n == 1)
             {
                 return valid;
@@ -233,32 +233,32 @@ namespace vamp::planning
             for (auto i = 1U; i < n; ++i)
             {
                 t_block = t_block - t_step;
-                auto inner_interpolate_start_time = std::chrono::steady_clock::now();
+                // auto inner_interpolate_start_time = std::chrono::steady_clock::now();
                 Robot::template interpolate_block<rake>(start, goal, t_block, interp_block);
-                auto inner_interpolate_end_time = std::chrono::steady_clock::now();
-                auto inner_interpolate_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(inner_interpolate_end_time - inner_interpolate_start_time).count();
-                vamp::profiling::get_profiler()["inner_interpolate_block"].push_back(inner_interpolate_duration);
+                // auto inner_interpolate_end_time = std::chrono::steady_clock::now();
+                // auto inner_interpolate_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(inner_interpolate_end_time - inner_interpolate_start_time).count();
+                // vamp::profiling::get_profiler()["inner_interpolate_block"].push_back(inner_interpolate_duration);
 
-                auto inner_parameterized_ik_start_time = std::chrono::steady_clock::now();
+                // auto inner_parameterized_ik_start_time = std::chrono::steady_clock::now();
                 std::tie(param_valid, block) =
                     Robot::template parameterized_ik<ConfigurationBlock, rake>(interp_block);
-                auto inner_parameterized_ik_end_time = std::chrono::steady_clock::now();
-                auto inner_parameterized_ik_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(inner_parameterized_ik_end_time - inner_parameterized_ik_start_time).count();
-                vamp::profiling::get_profiler()["inner_parameterized_ik"].push_back(inner_parameterized_ik_duration);
+                // auto inner_parameterized_ik_end_time = std::chrono::steady_clock::now();
+                // auto inner_parameterized_ik_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(inner_parameterized_ik_end_time - inner_parameterized_ik_start_time).count();
+                // vamp::profiling::get_profiler()["inner_parameterized_ik"].push_back(inner_parameterized_ik_duration);
                 if (not param_valid)
                 {
-                    vamp::profiling::get_profiler()["inner_parameterized_ik_failed"].push_back(inner_parameterized_ik_duration);
+                    // vamp::profiling::get_profiler()["inner_parameterized_ik_failed"].push_back(inner_parameterized_ik_duration);
                     // std::cout << "Parameterization failed at sample " << i << ": " << interp_block << t_step << " : " << distance << std::endl;
                     return false;
                 }
 
-                auto inner_fkcc_start_time = std::chrono::steady_clock::now();
+                // auto inner_fkcc_start_time = std::chrono::steady_clock::now();
                 valid = (environment.attachments) ?
                     Robot::template fkcc_attach<rake>(environment, block) :
                     Robot::template fkcc<rake>(environment, block);
-                auto inner_fkcc_end_time = std::chrono::steady_clock::now();
-                auto inner_fkcc_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(inner_fkcc_end_time - inner_fkcc_start_time).count();
-                vamp::profiling::get_profiler()["inner_fkcc"].push_back(inner_fkcc_duration);
+                // auto inner_fkcc_end_time = std::chrono::steady_clock::now();
+                // auto inner_fkcc_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(inner_fkcc_end_time - inner_fkcc_start_time).count();
+                // vamp::profiling::get_profiler()["inner_fkcc"].push_back(inner_fkcc_duration);
                 if (not valid)
                 {
                     return false;

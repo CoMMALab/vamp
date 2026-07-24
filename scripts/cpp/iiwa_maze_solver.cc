@@ -11,6 +11,7 @@
 #include <vamp/collision/factory.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/planners/rrtc.hh>
+#include <vamp/planning/simplify.hh>
 #include <vamp/planning/constraints/ik_parameterized_local_planner.hh>
 #include <vamp/planning/constraints/task_space_informed_sampler.hh>
 #include <vamp/robots/iiwamarker.hh>
@@ -164,7 +165,7 @@ auto main(int, char **) -> int
 
         auto [param_valid, ambient_block] =
             Robot::template parameterized_ik<Robot::template ConfigurationBlock<rake>, rake>(pose_block);
-        std::cout << label << " parameterized IK valid: " << std::boolalpha << param_valid << std::endl;
+        // std::cout << label << " parameterized IK valid: " << std::boolalpha << param_valid << std::endl;
 
         // print the ambient_block as a comma-separated list
         for (std::size_t i = 0; i < Robot::ambient_dimension; ++i)
@@ -174,7 +175,7 @@ auto main(int, char **) -> int
         std::cout << std::endl;
 
         auto is_in_coll = Robot::template fkcc<rake>(env_v, ambient_block);
-        std::cout << label << " configuration is collision free: " << std::boolalpha << is_in_coll << std::endl;
+        // std::cout << label << " configuration is collision free: " << std::boolalpha << is_in_coll << std::endl;
 
         if (not is_in_coll)
         {
@@ -297,6 +298,14 @@ auto main(int, char **) -> int
     std::cout << "RRTC path size: " << result.path.size() << ", iterations: " << result.iterations
               << ", microseconds: " << result.nanoseconds / 1000.0F << ", with tree sizes: " << result.size[0] << ", "
               << result.size[1] << std::endl;
+
+    vamp::planning::SimplifySettings simplify_settings;
+    simplify_settings.operations = {vamp::planning::SHORTCUT};
+    auto shortcut_result = vamp::planning::simplify<Robot, rake, Robot::resolution>(
+        result.path, env_v, simplify_settings, rng, ik_local_planner);
+
+    std::cout << "Shortcut path size: " << shortcut_result.path.size() << " (from " << result.path.size()
+              << "), nanoseconds: " << shortcut_result.nanoseconds << std::endl;
 
     for (const auto &config : result.path)
     {

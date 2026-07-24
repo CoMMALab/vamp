@@ -9,6 +9,7 @@
 #include <vamp/collision/factory.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/planners/rrtc.hh>
+#include <vamp/planning/simplify.hh>
 #include <vamp/planning/constraints/ik_parameterized_local_planner.hh>
 #include <vamp/planning/constraints/task_space_informed_sampler.hh>
 #include <vamp/robots/iiwamarker.hh>
@@ -240,6 +241,14 @@ auto main(int, char **) -> int
 
     std::cout << "RRTC path size: " << result.path.size() << ", iterations: " << result.iterations
               << ", nanoseconds: " << result.nanoseconds << ", with tree sizes : " <<result.size[0] << ", " << result.size[1] << std::endl;
+
+    vamp::planning::SimplifySettings simplify_settings;
+    simplify_settings.operations = {vamp::planning::SHORTCUT};
+    auto shortcut_result = vamp::planning::simplify<Robot, rake, Robot::resolution>(
+        result.path, env_v, simplify_settings, rng, ik_local_planner);
+
+    std::cout << "Shortcut path size: " << shortcut_result.path.size() << " (from " << result.path.size()
+              << "), nanoseconds: " << shortcut_result.nanoseconds << std::endl;
 
     for (const auto &config : result.path)
     {

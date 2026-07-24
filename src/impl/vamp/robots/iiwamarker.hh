@@ -27,6 +27,7 @@ namespace vamp::robots
         static constexpr std::size_t ambient_dimension = 7;
 
         static constexpr bool use_parameterized_ik = true;
+        static constexpr bool euclidean = false;
 
         // Self-motion-manifold selector (GC2, GC4, GC6): picks the shoulder/
         // elbow/wrist IK branch for the redundant arm. Fixed for the whole

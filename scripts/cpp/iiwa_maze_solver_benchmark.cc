@@ -1,6 +1,7 @@
 #include <vector>
 #include <array>
 #include <utility>
+#include <cmath>
 #include <iostream>
 #include <iomanip>
 #include <fstream>
@@ -8,9 +9,12 @@
 #include <string>
 #include <nlohmann/json.hpp>
 
+#include <Eigen/Geometry>
+
 #include <vamp/collision/factory.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/planners/rrtc.hh>
+#include <vamp/planning/simplify.hh>
 #include <vamp/planning/constraints/ik_parameterized_local_planner.hh>
 #include <vamp/planning/constraints/task_space_informed_sampler.hh>
 #include <vamp/robots/iiwamarker.hh>
@@ -209,7 +213,7 @@ auto main(int, char **) -> int
 
         auto [param_valid, ambient_block] =
             Robot::template parameterized_ik<Robot::template ConfigurationBlock<rake>, rake>(pose_block);
-        std::cout << label << " parameterized IK valid: " << std::boolalpha << param_valid << std::endl;
+        // std::cout << label << " parameterized IK valid: " << std::boolalpha << param_valid << std::endl;
 
         if (not param_valid)
         {
@@ -217,14 +221,14 @@ auto main(int, char **) -> int
         }
 
         // print the ambient_block as a comma-separated list
-        for (std::size_t i = 0; i < Robot::ambient_dimension; ++i)
-        {
-            std::cout << ambient_block[{i, 0}] << (i < Robot::ambient_dimension - 1 ? ", " : "");
-        }
-        std::cout << std::endl;
+        // for (std::size_t i = 0; i < Robot::ambient_dimension; ++i)
+        // {
+        //     std::cout << ambient_block[{i, 0}] << (i < Robot::ambient_dimension - 1 ? ", " : "");
+        // }
+        // std::cout << std::endl;
 
         auto is_in_coll = Robot::template fkcc<rake>(env_v, ambient_block);
-        std::cout << label << " configuration is collision free: " << std::boolalpha << is_in_coll << std::endl;
+        // std::cout << label << " configuration is collision free: " << std::boolalpha << is_in_coll << std::endl;
 
         if (not is_in_coll)
         {
@@ -327,12 +331,134 @@ auto main(int, char **) -> int
     auto rng = std::make_shared<vamp::rng::Halton<Robot>>();
 
     vamp::planning::RRTCSettings rrtc_settings;
-    rrtc_settings.range = 0.4;
+    rrtc_settings.range = 0.75;
     rrtc_settings.max_iterations = 1000000;
     rrtc_settings.max_samples = 1000000;
     rrtc_settings.dynamic_domain = false;
 
     IKLocalPlanner ik_local_planner;
+
+    vamp::planning::SimplifySettings simplify_settings;
+    simplify_settings.operations = {vamp::planning::SHORTCUT};
+
+    // Dump each successful problem's raw and shortcut paths for offline "distance" analysis
+    // in python. Configurations here are this robot's task-space parameterization (x, y, z,
+    // qx, qy, qz, qw, psi), not joint angles.
+    auto path_to_json = [](const std::vector<Robot::Configuration> &path)
+    {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &config : path)
+        {
+            // to_array() pads out to num_scalars_rounded (SIMD width); only the first
+            // Robot::dimension entries are meaningful.
+            const auto full = config.to_array();
+            arr.push_back(std::vector<float>(full.begin(), full.begin() + Robot::dimension));
+        }
+
+        return arr;
+    };
+
+    // Resolve each task-space pose through parameterized_ik to the ambient (joint-space)
+    // configuration -- this is what's actually physically reachable, so it's the
+    // representation "distance" analysis should really care about. Split from the json/
+    // distance helpers below so the (relatively expensive) IK resolution happens once per
+    // waypoint, not once per consumer.
+    auto resolve_ambient_path = [](const std::vector<Robot::Configuration> &path)
+    {
+        std::vector<Robot::AmbientConfigurationArray> ambient_path;
+        ambient_path.reserve(path.size());
+        for (const auto &config : path)
+        {
+            Robot::template ConfigurationBlock<rake> pose_block;
+            for (std::size_t i = 0; i < Robot::dimension; ++i)
+            {
+                pose_block[i] = config.broadcast(i);
+            }
+
+            auto [param_valid, ambient_block] =
+                Robot::template parameterized_ik<Robot::template ConfigurationBlock<rake>, rake>(pose_block);
+            static_cast<void>(param_valid);
+
+            Robot::AmbientConfigurationArray ambient_array;
+            for (std::size_t i = 0; i < Robot::ambient_dimension; ++i)
+            {
+                ambient_array[i] = ambient_block[{i, 0}];
+            }
+
+            ambient_path.push_back(ambient_array);
+        }
+
+        return ambient_path;
+    };
+
+    auto ambient_path_to_json = [](const std::vector<Robot::AmbientConfigurationArray> &ambient_path)
+    {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &q : ambient_path)
+        {
+            arr.push_back(std::vector<float>(q.begin(), q.end()));
+        }
+
+        return arr;
+    };
+
+    // Hand-rolled Euclidean distance summed over consecutive ambient (joint-space) waypoints.
+    auto ambient_path_distance = [](const std::vector<Robot::AmbientConfigurationArray> &ambient_path)
+    {
+        float total = 0.0F;
+        for (std::size_t i = 0; i + 1 < ambient_path.size(); ++i)
+        {
+            float squared = 0.0F;
+            for (std::size_t j = 0; j < Robot::ambient_dimension; ++j)
+            {
+                const float diff = ambient_path[i][j] - ambient_path[i + 1][j];
+                squared += diff * diff;
+            }
+
+            total += std::sqrt(squared);
+        }
+
+        return total;
+    };
+
+    // Hand-rolled SE3 distance (translation distance and quaternion angle, combined in
+    // quadrature) between two eef poses. Kept identical to the mcvamp benchmark's version so
+    // the two files' "eef distance" numbers are directly comparable.
+    auto se3_distance = [](const Eigen::Vector3f &ta,
+                            const Eigen::Quaternionf &qa,
+                            const Eigen::Vector3f &tb,
+                            const Eigen::Quaternionf &qb)
+    {
+        const float translation_distance = (tb - ta).norm();
+        float dot = std::abs(static_cast<float>(qa.dot(qb)));
+        dot = std::min(1.0F, dot);
+        const float rotation_distance = 2.0F * std::acos(dot);
+        return std::sqrt(translation_distance * translation_distance + rotation_distance * rotation_distance);
+    };
+
+    // Total SE3 distance along a task-space pose path. The Configuration already *is* the eef
+    // pose (x, y, z, qx, qy, qz, qw, psi) -- no FK needed -- and index 7 (psi, the
+    // self-motion-manifold redundancy parameter) is simply never read here, since it isn't
+    // part of the eef pose.
+    auto path_se3_distance = [&](const std::vector<Robot::Configuration> &path)
+    {
+        float total = 0.0F;
+        for (std::size_t i = 0; i + 1 < path.size(); ++i)
+        {
+            const auto a = path[i].to_array();
+            const auto b = path[i + 1].to_array();
+            const Eigen::Vector3f ta(a[0], a[1], a[2]);
+            const Eigen::Quaternionf qa(a[6], a[3], a[4], a[5]);
+            const Eigen::Vector3f tb(b[0], b[1], b[2]);
+            const Eigen::Quaternionf qb(b[6], b[3], b[4], b[5]);
+            total += se3_distance(ta, qa, tb, qb);
+        }
+
+        return total;
+    };
+
+    nlohmann::json all_paths = nlohmann::json::array();
+    const char *paths_output_path = "resources/iiwa_marker/maze_solver_benchmark_paths.json";
 
     auto result = RRTC::solve(
         Robot::Configuration(start_pose_array),
@@ -358,6 +484,9 @@ auto main(int, char **) -> int
     size_t successful_problems = 0;
     std::vector<std::size_t> nanoseconds_per_problem;
     std::vector<std::size_t> iterations_per_problem;
+    std::vector<std::size_t> shortcut_nanoseconds_per_problem;
+    std::vector<std::size_t> path_size_before_shortcut;
+    std::vector<std::size_t> path_size_after_shortcut;
     size_t valid_problems = 0;
 
 
@@ -411,11 +540,44 @@ auto main(int, char **) -> int
             successful_problems++;
             nanoseconds_per_problem.push_back(result.nanoseconds);
             iterations_per_problem.push_back(result.iterations);
+
+            auto shortcut_result = vamp::planning::simplify<Robot, rake, Robot::resolution>(
+                result.path, env_v, simplify_settings, rng, ik_local_planner);
+            shortcut_nanoseconds_per_problem.push_back(shortcut_result.nanoseconds);
+            path_size_before_shortcut.push_back(result.path.size());
+            path_size_after_shortcut.push_back(shortcut_result.path.size());
+
+            const auto ambient_path = resolve_ambient_path(result.path);
+            const auto shortcut_ambient_path = resolve_ambient_path(shortcut_result.path);
+
+            nlohmann::json path_entry;
+            path_entry["problem_index"] = total_num_problems - 1;
+            path_entry["start_eef_pos"] = problem.start_eef_pos;
+            path_entry["goal_eef_pos"] = problem.goal_eef_pos;
+            path_entry["nanoseconds"] = result.nanoseconds;
+            path_entry["path"] = path_to_json(result.path);
+            path_entry["ambient_path"] = ambient_path_to_json(ambient_path);
+            path_entry["path_ambient_distance"] = ambient_path_distance(ambient_path);
+            path_entry["path_se3_distance"] = path_se3_distance(result.path);
+            path_entry["shortcut_nanoseconds"] = shortcut_result.nanoseconds;
+            path_entry["shortcut_path"] = path_to_json(shortcut_result.path);
+            path_entry["shortcut_ambient_path"] = ambient_path_to_json(shortcut_ambient_path);
+            path_entry["shortcut_path_ambient_distance"] = ambient_path_distance(shortcut_ambient_path);
+            path_entry["shortcut_path_se3_distance"] = path_se3_distance(shortcut_result.path);
+            all_paths.push_back(path_entry);
+
+            std::ofstream paths_file(paths_output_path);
+            if (paths_file.is_open())
+            {
+                paths_file << all_paths.dump(4);
+            }
         }
         else {
             std::cout << "Unable to solve problem with start and goal configs : " << Robot::Configuration(start_pose_array) << " and " << Robot::Configuration(goal_pose_array) << std::endl;
         }
     }
+
+    std::cout << "Saved " << all_paths.size() << " problem paths to " << paths_output_path << std::endl;
 
     // print summary of results
     std::cout << "Total problems: " << total_num_problems << std::endl
@@ -449,7 +611,23 @@ auto main(int, char **) -> int
         std::cout << "Q3 iterations for successful problems: " << iterations_per_problem[3 * successful_problems / 4] << std::endl;
         std::cout << "95th percentile time (ms) for successful problems: " << (nanoseconds_per_problem[95 * successful_problems / 100]) / 1000000.0 << std::endl;
         std::cout << "95th percentile iterations for successful problems: " << iterations_per_problem[95 * successful_problems / 100] << std::endl;
+
+        // shortcutting stats
+        std::size_t total_shortcut_nanoseconds = 0;
+        std::size_t total_size_before = 0;
+        std::size_t total_size_after = 0;
+        for (size_t i = 0; i < successful_problems; i++)
+        {
+            total_shortcut_nanoseconds += shortcut_nanoseconds_per_problem[i];
+            total_size_before += path_size_before_shortcut[i];
+            total_size_after += path_size_after_shortcut[i];
+        }
+        std::sort(shortcut_nanoseconds_per_problem.begin(), shortcut_nanoseconds_per_problem.end());
+        std::cout << "Average shortcut time (ms): " << (total_shortcut_nanoseconds / successful_problems) / 1000000.0 << std::endl;
+        std::cout << "Median shortcut time (ms): " << (shortcut_nanoseconds_per_problem[successful_problems / 2]) / 1000000.0 << std::endl;
+        std::cout << "Average path size before shortcutting: " << static_cast<float>(total_size_before) / successful_problems << std::endl;
+        std::cout << "Average path size after shortcutting: " << static_cast<float>(total_size_after) / successful_problems << std::endl;
     }
-    return 0;    
+    return 0;
 
 }

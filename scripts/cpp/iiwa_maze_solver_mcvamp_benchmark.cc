@@ -1,11 +1,14 @@
 #include <vector>
 #include <array>
 #include <utility>
+#include <cmath>
 #include <iostream>
 #include <iomanip>
 #include <fstream>
 #include <limits>
 #include <nlohmann/json.hpp>
+
+#include <Eigen/Geometry>
 
 #include <vamp/collision/factory.hh>
 #include <vamp/planning/validate.hh>
@@ -213,6 +216,7 @@ auto main(int, char **) -> int
     region_settings.method = ProjMethod::OuterLM;
     region_settings.descend_rate = 0.75F;
     region_settings.max_iterations = 10;
+    region_settings.emit_all_waypoints = false;
 
     ConstraintSetT region_set(std::vector<ConstraintSetT::Ptr>{region_constraint}, region_settings);
     ConstrainedLP region_lp(region_set);
@@ -239,6 +243,107 @@ auto main(int, char **) -> int
     rrtc_settings.dynamic_domain = false;
 
     vamp::planning::SimplifySettings simplify_settings;
+    simplify_settings.operations = {vamp::planning::SHORTCUT};
+
+    // Dump each successful problem's raw and shortcut paths for offline "distance" analysis
+    // in python. Configurations here are real joint angles (Robot::dimension of them).
+    auto path_to_json = [](const std::vector<Configuration> &path)
+    {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &config : path)
+        {
+            // to_array() pads out to num_scalars_rounded (SIMD width); only the first
+            // Robot::dimension entries are meaningful.
+            const auto full = config.to_array();
+            arr.push_back(std::vector<float>(full.begin(), full.begin() + Robot::dimension));
+        }
+
+        return arr;
+    };
+
+    // Total Euclidean distance summed over consecutive joint-space waypoints. Configuration
+    // is FloatVector<Robot::dimension>, which already provides distance() (see
+    // vamp/vector/interface.hh) -- no need to hand-roll this one.
+    auto path_joint_distance = [](const std::vector<Configuration> &path)
+    {
+        float total = 0.0F;
+        for (std::size_t i = 0; i + 1 < path.size(); ++i)
+        {
+            total += path[i].distance(path[i + 1]);
+        }
+
+        return total;
+    };
+
+    // Resolve the eef pose (translation, quaternion) at each waypoint via forward kinematics
+    // once -- reused both for the saved eef_path json and for the eef SE3 distance below.
+    auto resolve_eef_path = [](const std::vector<Configuration> &path)
+    {
+        std::vector<std::pair<Eigen::Vector3f, Eigen::Quaternionf>> eef_path;
+        eef_path.reserve(path.size());
+        for (const auto &config : path)
+        {
+            const auto full = config.to_array();
+            Robot::ConfigurationArray config_array;
+            for (std::size_t i = 0; i < Robot::dimension; ++i)
+            {
+                config_array[i] = full[i];
+            }
+
+            const auto eefk = Robot::eefk(config_array);
+            eef_path.emplace_back(eefk.translation(), Eigen::Quaternionf(eefk.rotation()));
+        }
+
+        return eef_path;
+    };
+
+    auto eef_path_to_json = [](const std::vector<std::pair<Eigen::Vector3f, Eigen::Quaternionf>> &eef_path)
+    {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &[translation, rotation] : eef_path)
+        {
+            arr.push_back(std::vector<float>{
+                translation.x(),
+                translation.y(),
+                translation.z(),
+                rotation.x(),
+                rotation.y(),
+                rotation.z(),
+                rotation.w()});
+        }
+
+        return arr;
+    };
+
+    // Hand-rolled SE3 distance (translation distance and quaternion angle, combined in
+    // quadrature) between two eef poses. Kept identical to the (also hand-rolled) version in
+    // iiwa_maze_solver_benchmark.cc so the two files' "eef distance" numbers are directly
+    // comparable.
+    auto se3_distance = [](const Eigen::Vector3f &ta,
+                            const Eigen::Quaternionf &qa,
+                            const Eigen::Vector3f &tb,
+                            const Eigen::Quaternionf &qb)
+    {
+        const float translation_distance = (tb - ta).norm();
+        float dot = std::abs(static_cast<float>(qa.dot(qb)));
+        dot = std::min(1.0F, dot);
+        const float rotation_distance = 2.0F * std::acos(dot);
+        return std::sqrt(translation_distance * translation_distance + rotation_distance * rotation_distance);
+    };
+
+    auto eef_path_distance = [&](const std::vector<std::pair<Eigen::Vector3f, Eigen::Quaternionf>> &eef_path)
+    {
+        float total = 0.0F;
+        for (std::size_t i = 0; i + 1 < eef_path.size(); ++i)
+        {
+            total += se3_distance(eef_path[i].first, eef_path[i].second, eef_path[i + 1].first, eef_path[i + 1].second);
+        }
+
+        return total;
+    };
+
+    nlohmann::json all_paths = nlohmann::json::array();
+    const char *paths_output_path = "resources/iiwa_marker/maze_solver_mcvamp_benchmark_paths.json";
 
     std::vector<Problem> problems;
     std::string problem_json_path = "resources/iiwa_marker/maze_problems_checked_ik.json";
@@ -249,6 +354,9 @@ auto main(int, char **) -> int
     size_t successful_problems = 0;
     std::vector<std::size_t> nanoseconds_per_problem;
     std::vector<std::size_t> iterations_per_problem;
+    std::vector<std::size_t> shortcut_nanoseconds_per_problem;
+    std::vector<std::size_t> path_size_before_shortcut;
+    std::vector<std::size_t> path_size_after_shortcut;
 
     for (const auto &problem : problems)
     {
@@ -274,8 +382,34 @@ auto main(int, char **) -> int
             nanoseconds_per_problem.push_back(result.nanoseconds);
             iterations_per_problem.push_back(result.iterations);
 
-            vamp::planning::simplify<Robot, rake, Robot::resolution>(
+            auto shortcut_result = vamp::planning::simplify<Robot, rake, Robot::resolution>(
                 result.path, env_v, simplify_settings, rng, region_lp);
+            shortcut_nanoseconds_per_problem.push_back(shortcut_result.nanoseconds);
+            path_size_before_shortcut.push_back(result.path.size());
+            path_size_after_shortcut.push_back(shortcut_result.path.size());
+
+            const auto eef_path = resolve_eef_path(result.path);
+            const auto shortcut_eef_path = resolve_eef_path(shortcut_result.path);
+
+            nlohmann::json path_entry;
+            path_entry["problem_index"] = total_num_problems - 1;
+            path_entry["nanoseconds"] = result.nanoseconds;
+            path_entry["path"] = path_to_json(result.path);
+            path_entry["eef_path"] = eef_path_to_json(eef_path);
+            path_entry["path_joint_distance"] = path_joint_distance(result.path);
+            path_entry["path_eef_se3_distance"] = eef_path_distance(eef_path);
+            path_entry["shortcut_nanoseconds"] = shortcut_result.nanoseconds;
+            path_entry["shortcut_path"] = path_to_json(shortcut_result.path);
+            path_entry["shortcut_eef_path"] = eef_path_to_json(shortcut_eef_path);
+            path_entry["shortcut_path_joint_distance"] = path_joint_distance(shortcut_result.path);
+            path_entry["shortcut_path_eef_se3_distance"] = eef_path_distance(shortcut_eef_path);
+            all_paths.push_back(path_entry);
+
+            std::ofstream paths_file(paths_output_path);
+            if (paths_file.is_open())
+            {
+                paths_file << all_paths.dump(4);
+            }
         }
         else
         {
@@ -283,6 +417,8 @@ auto main(int, char **) -> int
                       << goal_config << std::endl;
         }
     }
+
+    std::cout << "Saved " << all_paths.size() << " problem paths to " << paths_output_path << std::endl;
 
     // print summary of results
     std::cout << "Total problems: " << total_num_problems << std::endl
@@ -319,6 +455,22 @@ auto main(int, char **) -> int
         std::cout << "Q3 iterations for successful problems: " << iterations_per_problem[3 * successful_problems / 4] << std::endl;
         std::cout << "95th percentile time (ms) for successful problems: " << (nanoseconds_per_problem[95 * successful_problems / 100]) / 1000000.0 << std::endl;
         std::cout << "95th percentile iterations for successful problems: " << iterations_per_problem[95 * successful_problems / 100] << std::endl;
+
+        // shortcutting stats
+        std::size_t total_shortcut_nanoseconds = 0;
+        std::size_t total_size_before = 0;
+        std::size_t total_size_after = 0;
+        for (size_t i = 0; i < successful_problems; i++)
+        {
+            total_shortcut_nanoseconds += shortcut_nanoseconds_per_problem[i];
+            total_size_before += path_size_before_shortcut[i];
+            total_size_after += path_size_after_shortcut[i];
+        }
+        std::sort(shortcut_nanoseconds_per_problem.begin(), shortcut_nanoseconds_per_problem.end());
+        std::cout << "Average shortcut time (ms): " << (total_shortcut_nanoseconds / successful_problems) / 1000000.0 << std::endl;
+        std::cout << "Median shortcut time (ms): " << (shortcut_nanoseconds_per_problem[successful_problems / 2]) / 1000000.0 << std::endl;
+        std::cout << "Average path size before shortcutting: " << static_cast<float>(total_size_before) / successful_problems << std::endl;
+        std::cout << "Average path size after shortcutting: " << static_cast<float>(total_size_after) / successful_problems << std::endl;
     }
     return 0;
 }

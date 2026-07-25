@@ -9,28 +9,22 @@ namespace vamp::planning {
 
     // maybe optimize this, i.e. compute once and store somewhere
     inline static int comb(int n, int k) {
-        int n_fact = 1;
-        int k_fact = 1;
-        int n_k_fact = 1;
+        if (k < 0 || k > n) return 0;
+        if (k == 0 || k == n) return 1;
+        if (k > n / 2) k = n - k; // Optimize by taking advantage of symmetry
 
-        for (int i = 1; i <= n; i++) {
-            if (i <= k) {
-                k_fact *= i;
-            }
-
-            if (i <= (n - k)) {
-                n_k_fact *= i;
-            }
-            n_fact *= i;
+        long long res = 1;
+        for (int i = 1; i <= k; ++i) {
+            res = res * (n - i + 1) / i;
         }
-        return n_fact / (k_fact * n_k_fact);
+        return res;
     }
 
     class Bezier {
         public:
             row_matrix anchors;
             int degree;
-            std::array<int, 10> combs;
+            std::array<int, 24> combs;
             float time;
 
             Bezier() = default;

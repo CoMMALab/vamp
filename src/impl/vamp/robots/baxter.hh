@@ -1,5 +1,10 @@
 #pragma once
 
+#include <filesystem>
+#include <string>
+#include <vector>
+#include <utility>
+#include <Eigen/Dense>
 #include <vamp/vector.hh>
 #include <vamp/vector/math.hh>
 #include <vamp/collision/environment.hh>
@@ -10,6 +15,7 @@ namespace vamp::robots
 {
     struct Baxter
     {
+        using npy_matrix = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
         static constexpr char *name = "baxter";
         static constexpr std::size_t dimension = 14;
         static constexpr std::size_t n_spheres = 75;
@@ -154,6 +160,38 @@ namespace vamp::robots
         inline static auto space_measure() noexcept -> float
         {
             return 590532810.7756369;
+        }
+        
+        static inline std::pair<std::vector<npy_matrix>, std::vector<npy_matrix>> load_matrices() noexcept
+        {
+            std::vector<npy_matrix> a;
+            std::vector<npy_matrix> b;
+            return {a, b};
+        }
+        
+        static inline auto topple_nn_forward(std::vector<npy_matrix> weights, std::vector<npy_matrix> bias, std::array<float, 2 * dimension> x) {
+            // convert x to eigen
+            npy_matrix x_eigen(2 * dimension, 1);
+            for (auto i = 0U; i < 2 * dimension; i++) {
+                x_eigen(i) = x[i];
+            }
+
+            // forward pass
+            npy_matrix z = x_eigen;
+            for (auto i = 0U; i < weights.size() - 1; i++) {
+                z = weights[i] * z + bias[i];
+                // activation
+                z = z.cwiseMax(0);
+            }
+            z = weights[weights.size() - 1] * z + bias[weights.size() - 1];
+
+
+            // convert to array
+            std::array<float, 134> y;
+            for (int i = 0U; i < 134; i++) {
+                y[i] = z(i);
+            }
+            return y;
         }
 
         // placeholder

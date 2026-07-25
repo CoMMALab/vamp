@@ -332,7 +332,7 @@ namespace vamp::planning
         auto ts = std::chrono::high_resolution_clock::now();
         auto out = Robot::template topple_nn_forward(x);
         auto tf = std::chrono::high_resolution_clock::now();
-        std::cout << "NN inference time: " << std::chrono::duration_cast<std::chrono::milliseconds>(tf - ts).count() << " ms" << std::endl;
+        // std::cout << "NN inference time: " << std::chrono::duration_cast<std::chrono::milliseconds>(tf - ts).count() << " ms" << std::endl;
 
         // build the anchors
         row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
@@ -359,14 +359,79 @@ namespace vamp::planning
 
         Bezier bez(anchors);
         // print anchors
-        for (auto i = 0U; i < Robot::topple_out_dim + 2; i++) {
-            std::cout << "Anchor " << i << ": ";
-            std::cout << bez.anchors.row(i) << std::endl;
-            std::cout << std::endl;
-        }
+        // for (auto i = 0U; i < Robot::topple_out_dim + 2; i++) {
+        //     std::cout << "Anchor " << i << ": ";
+        //     std::cout << bez.anchors.row(i) << std::endl;
+        //     std::cout << std::endl;
+        // }
         bez.time = T;
         return bez;
     }
+
+    template <typename Robot, std::size_t rake>
+    inline constexpr auto compute_bez_eigen(
+        const typename Robot::Configuration &start,
+        const typename Robot::Configuration &goal,
+        std::vector<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> weights,
+        std::vector<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> bias
+    ) -> Bezier
+    {
+
+        // std::cout << "???" << std::endl;
+        std::array<float, Robot::dimension * 2> x;
+        // std::cout << "CONVERT START TO ARRAY" << std::endl;
+        auto start_arr = start.to_array();
+        int robot_dim_q = Robot::dimension / 3;
+
+        // std::cout << "CREATE INPUT TO NN" << std::endl;
+        for (auto i = 0U; i < Robot::dimension; i++) {
+            x[i] = static_cast<float>(start_arr[i]);
+        }
+        auto goal_arr = goal.to_array();
+        for (auto i = 0U; i < Robot::dimension; i++) {
+            x[Robot::dimension + i] = static_cast<float>(goal_arr[i]);
+        }
+
+        // array to store inference output
+        auto ts = std::chrono::high_resolution_clock::now();
+        auto out = Robot::template topple_nn_forward(weights, bias, x);
+        auto tf = std::chrono::high_resolution_clock::now();
+        // std::cout << "NN inference time: " << std::chrono::duration_cast<std::chrono::milliseconds>(tf - ts).count() << " ms" << std::endl;
+
+        // build the anchors
+        row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
+
+        // initial point
+        for (auto i = 0U; i < robot_dim_q; i++) {
+            anchors(0, i) = static_cast<float>(start_arr[i]);
+        }
+
+        // intermediate points
+        for (auto i = 1U; i <= Robot::topple_out_dim; i++) {
+            for (auto j = 0U; j < robot_dim_q; j++) {
+                anchors(i, j) = out[(i - 1) * robot_dim_q + j];
+            }
+        }
+
+        // time in seconds
+        float T = out[Robot::topple_out_dim * Robot::dimension / 3];
+
+        // final point
+        for (auto i = 0U; i < robot_dim_q; i++) {
+            anchors(Robot::topple_out_dim + 1, i) = static_cast<float>(goal_arr[i]);
+        }
+
+        Bezier bez(anchors);
+        // print anchors
+        // for (auto i = 0U; i < Robot::topple_out_dim + 2; i++) {
+        //     std::cout << "Anchor " << i << ": ";
+        //     std::cout << bez.anchors.row(i) << std::endl;
+        //     std::cout << std::endl;
+        // }
+        bez.time = T;
+        return bez;
+    }
+
     template <typename Robot, std::size_t rake>
     inline constexpr auto compute_sub_bez(
         Bezier &bez,
@@ -392,6 +457,22 @@ namespace vamp::planning
         const float bez_range) -> std::pair<bool, Bezier>
     {
         Bezier bez = compute_bez<Robot, rake>(start, goal);
+        Bezier sub_bez = compute_sub_bez<Robot, rake>(bez, bez_range);
+        bool bez_valid = validate_bez<Robot, rake, resolution>(sub_bez, environment);
+        return {bez_valid, sub_bez};
+    }
+
+    template <typename Robot, std::size_t rake, std::size_t resolution>
+    inline constexpr auto validate_sub_bez_motion_eigen(
+        const typename Robot::Configuration &start,
+        const typename Robot::Configuration &goal,
+        const collision::Environment<FloatVector<rake>> &environment,
+        const float bez_range,
+        std::vector<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> weights,
+        std::vector<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> bias
+    ) -> std::pair<bool, Bezier>
+    {
+        Bezier bez = compute_bez_eigen<Robot, rake>(start, goal, weights, bias);
         Bezier sub_bez = compute_sub_bez<Robot, rake>(bez, bez_range);
         bool bez_valid = validate_bez<Robot, rake, resolution>(sub_bez, environment);
         return {bez_valid, sub_bez};

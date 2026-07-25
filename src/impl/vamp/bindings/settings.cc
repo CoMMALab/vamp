@@ -8,6 +8,8 @@
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/planning/bezier.hh>
 #include <Eigen/Dense>
+#include <vector>
+#include <array>
 
 #include <nanobind/stl/vector.h>
 #include <nanobind/nanobind.h>

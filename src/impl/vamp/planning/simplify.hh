@@ -614,6 +614,10 @@ namespace vamp::planning
             std::vector<state> waypts = bez.generate_trajectory();
             std::vector<state> dwaypts = dbez.generate_trajectory();
             std::vector<state> ddwaypts = ddbez.generate_trajectory();
+
+            // for (int j = 0; j < dwaypts.size(); j++) {
+            //     std::cout << dwaypts[j] << std::endl;
+            // }
             //convert waypoints to floatvector
             // std::cout << "number of waypoints: " << waypts.size() << std::endl;
             for (auto j = 0U; j < waypts.size(); j++) {
@@ -621,13 +625,13 @@ namespace vamp::planning
                 std::array<float, vamp::FloatVector<Robot::dimension>::num_scalars_rounded> tmp = {};
                 for (auto k = 0U; k < Robot::dimension; k++) {
                     if (k < robot_dim_q) {
-                        tmp[k] = static_cast<float>(waypts[j](0, static_cast<int>(k)));
+                        tmp[k] = (waypts[j](k));
                     }
                     else if (k < 2 * robot_dim_q) {
-                        tmp[k] = static_cast<float>(dwaypts[j](0, static_cast<int>(k)));
+                        tmp[k] = (dwaypts[j](k - robot_dim_q));
                     }
                     else {
-                        tmp[k] = static_cast<float>(ddwaypts[j](0, static_cast<int>(k)));
+                        tmp[k] = (ddwaypts[j](k - 2 * robot_dim_q));
                     }
                 }
                 vamp::FloatVector<Robot::dimension> vv(tmp.data());

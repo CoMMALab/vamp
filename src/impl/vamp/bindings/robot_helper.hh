@@ -2,6 +2,8 @@
 
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
+#include <vector>
+#include <array>
 
 #include <vamp/planning/phs.hh>
 #include <vamp/random/rng.hh>

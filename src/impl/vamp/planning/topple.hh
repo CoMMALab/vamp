@@ -58,15 +58,21 @@ namespace vamp::planning
 
             std::vector<float> radii(settings.max_samples);
 
+            std::cout << "Reached" << std::endl;
+            auto [weights, bias] = Robot::load_matrices();
+            fflush(stdout);
+
             auto start_time = std::chrono::steady_clock::now();
 
             for (const auto &goal : goals)
             {
-                auto [valid_extension, sub_bez] = validate_sub_bez_motion<Robot, rake, resolution>(
+                auto [valid_extension, sub_bez] = validate_sub_bez_motion_eigen<Robot, rake, resolution>(
                     start,
                     goal,
                     environment,
-                    1.0);
+                    1.0,
+                    weights,
+                    bias);
 
                 if (valid_extension)
                 {
@@ -191,11 +197,13 @@ namespace vamp::planning
                 auto to_extend = typename Robot::Configuration(to_extend_array.data());
                 // std::cout << " <-- " << to_extend << std::endl;
                 // std::cout << "Extending for " << extensions[nearest_node.index] << std::endl;
-                auto [valid_extension, sub_bez] = validate_sub_bez_motion<Robot, rake, resolution>(
+                auto [valid_extension, sub_bez] = validate_sub_bez_motion_eigen<Robot, rake, resolution>(
                         nearest_configuration,
                         to_extend,
                         environment,
-                        extensions[nearest_node.index]);
+                        extensions[nearest_node.index],
+                        weights,
+                        bias);
 
                 if (valid_extension)
                 {
@@ -269,11 +277,14 @@ namespace vamp::planning
                     const auto &[other_nearest_node, other_nearest_distance] = *other_nearest;
                     const auto other_nearest_configuration = other_nearest_node.as_vector();
 
-                    auto connection_bez = compute_bez<Robot, rake>(
+                    auto connection_bez = compute_bez_eigen<Robot, rake>(
                         new_configuration_bez,
-                        other_nearest_configuration);
+                        other_nearest_configuration,
+                        weights,
+                        bias);
                     // std::cout << "Tried to validate connection between " << new_configuration_bez << " and " << other_nearest_configuration << " with bezier " << connection_bez.anchors << std::endl;
 
+                    std::cout << "Reached extend" << std::endl;
                     std::size_t i_extension = 0;
                     // std::size_t new_index = free_index - 1;
                     float alpha_i = settings.bez_range;
@@ -336,6 +347,7 @@ namespace vamp::planning
                         }
                     }
 
+                    std::cout << "Reached connection" << std::endl;
                     if (i_extension == n_extensions)  // connected
                     {
                         auto current = free_index - 1;
@@ -386,11 +398,13 @@ namespace vamp::planning
 
                             // std::cout << rand << std::endl;
 
-                            auto connection = validate_sub_bez_motion<Robot, rake, resolution>(
+                            auto connection = validate_sub_bez_motion_eigen<Robot, rake, resolution>(
                                 rand_node_a.as_vector(),
                                 rand_node_b.as_vector(),
                                 environment,
-                                1);
+                                1,
+                                weights,
+                                bias);
                             if (connection.first) {
                                 connected = true;
                                 if (not tree_a_is_start) {

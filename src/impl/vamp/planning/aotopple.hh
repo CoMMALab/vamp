@@ -132,6 +132,10 @@ namespace vamp::planning
             auto *tree_a = (settings.rrtc.start_tree_first) ? &goal_tree : &start_tree;
             auto *tree_b = (settings.rrtc.start_tree_first) ? &start_tree : &goal_tree;
 
+            std::cout << "Reached" << std::endl;
+            auto [weights, bias] = Robot::load_matrices();
+            fflush(stdout);
+
             // Search loop
             while (iter++ < settings.rrtc.max_iterations and free_index < settings.rrtc.max_samples)
             {
@@ -533,7 +537,7 @@ namespace vamp::planning
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
             auto start_time = std::chrono::steady_clock::now();
-
+            
             // Update the settings for internal searches
             AOTOPPLESettings settings = settings_in;  // make a mutable copy
             const std::size_t &max_samples = settings.max_samples;
@@ -555,11 +559,12 @@ namespace vamp::planning
             float best_path_cost = std::numeric_limits<float>::max();
             std::size_t iters = 0;
 
+            std::cout << "Solving" << std::endl;
             do
             {
                 // Find an initial solution
                 result = TOPPLE::solve(start, goals, environment, topple_settings, rng);
-                // iters += result.iterations;
+                iters += result.iterations;
             } while (result.path.empty() and iters < settings.max_iterations);
 
             // Simplify solution if enabled

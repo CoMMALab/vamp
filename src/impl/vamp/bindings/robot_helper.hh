@@ -29,6 +29,7 @@
 #include <nanobind/make_iterator.h>
 #include <nanobind/stl/array.h>
 #include <nanobind/stl/tuple.h>
+#include <nanobind/stl/pair.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
@@ -550,7 +551,11 @@ namespace vamp::binding
             .def_ro(
                 "cost_history",
                 &HPN::PlanningResult::cost_history,
-                "Anytime convergence: list of (elapsed_nanoseconds, best_cost) pairs, one per incumbent improvement. Empty for one-shot planners.");
+                "Anytime convergence: list of (elapsed_nanoseconds, best_cost) pairs, one per incumbent improvement. Empty for one-shot planners.")
+            .def_ro(
+                "path_history",
+                &HPN::PlanningResult::path_history,
+                "Anytime exploration: list of (elapsed_nanoseconds, Path) pairs, one per incumbent improvement (parallel to cost_history). Empty for one-shot planners.");
 
         nb::class_<typename HPN::Roadmap>(submodule, "Roadmap", "Undirected graph in configuration space.")
             .def(nb::init<>(), "Empty constructor.")

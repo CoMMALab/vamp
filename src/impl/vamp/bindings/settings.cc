@@ -38,7 +38,8 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_internal_iterations", &vp::AORRTCSettings::max_internal_iterations)
         .def_rw("max_cost_bound_resamples", &vp::AORRTCSettings::max_cost_bound_resamples)
         .def_rw("max_samples", &vp::AORRTCSettings::max_samples)
-        .def_rw("max_nanoseconds", &vp::AORRTCSettings::max_nanoseconds);
+        .def_rw("max_nanoseconds", &vp::AORRTCSettings::max_nanoseconds)
+        .def_rw("snapshot_interval_ns", &vp::AORRTCSettings::snapshot_interval_ns);
 
     // TODO: Redesign a neater form of RoadmapSettings/NeighborParams
     // TODO: Expose the other NeighborParams types
@@ -76,6 +77,7 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("optimize", &FCITStarSettings::optimize)
         .def_rw("neighbor_params", &FCITStarSettings::neighbor_params)
         .def_rw("max_nanoseconds", &FCITStarSettings::max_nanoseconds)
+        .def_rw("snapshot_interval_ns", &FCITStarSettings::snapshot_interval_ns)
         .def("max_neighbors", &FCITStarSettings::max_neighbors)
         .def("neighbor_radius", &FCITStarSettings::neighbor_radius);
 

@@ -137,6 +137,7 @@ namespace vamp::planning
             // can emit a per-improvement (elapsed_ns, cost) entry into the
             // result's cost_history.
             float prev_best_goal_g = std::numeric_limits<float>::infinity();
+            std::size_t last_snapshot_ns = 0;
 
             // Search until Initial Solution
             while (nodes.size() < settings.max_samples and iter++ < settings.max_iterations)
@@ -334,9 +335,28 @@ namespace vamp::planning
                     if (best_goal_g < prev_best_goal_g and
                         best_goal_g < std::numeric_limits<float>::infinity())
                     {
-                        result.cost_history.emplace_back(
-                            vamp::utils::get_elapsed_nanoseconds(start_time), best_goal_g);
+                        auto elapsed = vamp::utils::get_elapsed_nanoseconds(start_time);
+                        result.cost_history.emplace_back(elapsed, best_goal_g);
+                        // Reconstruct the current incumbent geometry so callers
+                        // see the actual sequence of distinct paths, not only
+                        // their costs (FCIT only builds result.path at the end).
+                        Path<Robot> incumbent;
+                        utils::recover_path<Robot>(parents, state_index, incumbent);
+                        result.path_history.emplace_back(elapsed, std::move(incumbent));
                         prev_best_goal_g = best_goal_g;
+                        last_snapshot_ns = elapsed;
+                    }
+                }
+
+                // Periodic snapshot: emit current best even when no improvement occurred.
+                if (settings.snapshot_interval_ns > 0 and
+                    prev_best_goal_g < std::numeric_limits<float>::infinity())
+                {
+                    auto elapsed = vamp::utils::get_elapsed_nanoseconds(start_time);
+                    if (elapsed >= last_snapshot_ns + settings.snapshot_interval_ns)
+                    {
+                        result.cost_history.emplace_back(elapsed, prev_best_goal_g);
+                        last_snapshot_ns = elapsed;
                     }
                 }
 

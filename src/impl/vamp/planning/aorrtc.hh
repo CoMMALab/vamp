@@ -421,8 +421,9 @@ namespace vamp::planning
             PlanningResult<Robot> final_result;
             final_result.path = result.path;
             best_path_cost = result.path.cost();
-            final_result.cost_history.emplace_back(
-                vamp::utils::get_elapsed_nanoseconds(start_time), best_path_cost);
+            std::size_t last_snapshot_ns = vamp::utils::get_elapsed_nanoseconds(start_time);
+            final_result.cost_history.emplace_back(last_snapshot_ns, best_path_cost);
+            final_result.path_history.emplace_back(last_snapshot_ns, final_result.path);
 
             float best_possible_cost = std::numeric_limits<float>::max();
             for (const auto &goal : goals)
@@ -494,10 +495,22 @@ namespace vamp::planning
                         // Update best solution
                         final_result.path = result.path;
                         best_path_cost = result.path.cost();
-                        final_result.cost_history.emplace_back(
-                            vamp::utils::get_elapsed_nanoseconds(start_time), best_path_cost);
+                        last_snapshot_ns = vamp::utils::get_elapsed_nanoseconds(start_time);
+                        final_result.cost_history.emplace_back(last_snapshot_ns, best_path_cost);
+                        final_result.path_history.emplace_back(last_snapshot_ns, final_result.path);
 
                         phs_rng->phs.set_transverse_diameter(best_path_cost);
+                    }
+                }
+
+                // Periodic snapshot: emit current best even when no improvement occurred.
+                if (settings.snapshot_interval_ns > 0)
+                {
+                    auto elapsed = vamp::utils::get_elapsed_nanoseconds(start_time);
+                    if (elapsed >= last_snapshot_ns + settings.snapshot_interval_ns)
+                    {
+                        final_result.cost_history.emplace_back(elapsed, best_path_cost);
+                        last_snapshot_ns = elapsed;
                     }
                 }
             }

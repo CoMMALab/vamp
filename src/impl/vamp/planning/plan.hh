@@ -180,6 +180,11 @@ namespace vamp::planning
         // incumbent improvement: (elapsed nanoseconds since planner start,
         // best-known path cost at that moment). Empty for one-shot planners.
         std::vector<std::pair<std::size_t, float>> cost_history;
+        // Anytime exploration geometry: one (elapsed nanoseconds, incumbent
+        // path) entry per improvement, parallel to cost_history. Lets callers
+        // see the actual sequence of distinct paths a planner discovers over
+        // time, not just their costs. Empty for one-shot planners.
+        std::vector<std::pair<std::size_t, Path<Robot>>> path_history;
     };
 
     template <typename Robot>

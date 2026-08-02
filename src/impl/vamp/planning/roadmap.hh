@@ -174,6 +174,9 @@ namespace vamp::planning
         // Wall-clock budget for the planner's main loop. When zero (the
         // default) the loop terminates only on iteration / sample limits.
         std::size_t max_nanoseconds = 0;
+        // Emit a cost_history snapshot at this interval (nanoseconds) even
+        // when no improvement occurs. Zero disables periodic snapshots.
+        std::size_t snapshot_interval_ns = 0;
     };
 
     struct RoadmapNode

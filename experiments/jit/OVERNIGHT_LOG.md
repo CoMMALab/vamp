@@ -14,8 +14,8 @@ Goal = the design doc's decision gate (§13 actions 1–3, §10 milestone 1): pr
 - [x] M0  env `jit_patch` created + cricket & vamp built (JIT ON) + load_robot Panda/UR5 smoke
 - [x] M1  T0 baselines: generic fkcc throughput sweep + clang load_robot latency
 - [x] M2  T2 prototype: scene-specialized kernel (const-fold + type-prune + unroll), bit-exact correctness, speedup + clang latency
-- [ ] M2.5 broadphase pruning (added): the AOT-impossible lever, vs VAMP's existing early-exit
-- [ ] M3  scene-specialization compile latency + gate decision on fast specializer
+- [x] M2.5 broadphase pruning (added): the AOT-impossible lever, vs VAMP's existing early-exit
+- [x] M3  scene-specialization compile latency + gate decision on fast specializer
 
 ## Timeline
 
@@ -80,5 +80,50 @@ divergence at collision boundaries, amplified by the union over N spheres
 (1−(1−0.5%)^59 ≈ 26%). `sphere_mismatch=0` proves the *collision kernel* is exact;
 the real system reuses one FK so this vanishes. `speedup_vs_fused` is confounded by
 this FK-strategy difference and is NOT reported as a specialization win.
+
+### M2.5 — broadphase pruning (the AOT-impossible lever)  ✅
+Per robot sphere j, a sampled-and-inflated reachable **AABB** (over the joint box —
+robot-intrinsic, offline) prunes obstacles that sphere can never touch. Files:
+`m25_pruning.cc` (factor analysis, no codegen), `m25_prune_bench.cc` (throughput +
+correctness). Data: `results/m25_{pruning,prune_bench}.csv`.
+
+**Pruning factor vs VAMP's *existing* radial early-exit** (`aabb_beats_radial` =
+obstacles left by radial ÷ by AABB; >1 ⇒ AABB wins):
+- **Fetch (111 sph): 2.8–4.8×** — tight per-sphere AABBs; the standout.
+- **UR5 (40): 1.5–2.3×.**  **Panda/Baxter: 0.53–1.12×** — broad-reach arms, AABB≈radial
+  (confirms doc §4 caveat exactly). Start/goal *corridor* AABBs did NOT tighten Panda
+  past radial (still <1) at jitter 0.25 rad.
+
+**Throughput (per-sphere pruned Environment + VAMP's own kernel), correctness-verified:**
+- **fn_rate = 0.000000** everywhere (100k blocks × ≤111 spheres) — sampled AABBs +5 cm
+  margin are empirically conservative (no missed collisions).
+- **UR5: 2.4–4.3× speedup** (N=800/0.6: 6411→1477 ns). Real, AOT-impossible.
+- **Panda: 0.99–1.31×** (no win, as predicted). **Fetch: 0.98–1.14×** despite keeping
+  only 18% of obstacles — Fetch is **FK-dominated** (111-sphere `sphere_fk`) and dense
+  scenes early-exit on sphere 0, so there's little collision work left to prune.
+- ⇒ **pruning factor does NOT directly predict speedup**: FK cost and the existing
+  early-exit gate it. The win is real but conditional (robot geometry, scene density,
+  FK/collision balance).
+
+### M3 — specialization latency + fast-specializer gate decision  ✅
+Latency picture (host i9-14900K):
+| specialization | cost | delivers throughput win? |
+|---|---|---|
+| full-robot JIT (clang→ORC, M0) | 5.7–8.8 s | n/a (baseline machinery) |
+| scene const-fold kernel, clang -c (M2) | 0.64–1.09 s | **no (~1×)** |
+| **broadphase partition (M2.5)** | **42–1588 µs** | **yes (UR5 2–4×)** |
+
+**Gate decision (design doc §13 action 4 — "only if T2 shows benefit, invest in the
+fast specializer"): DO NOT build the copy-and-patch / LLVM-min-pipeline specializer
+now.** The lever that works (pruning) is a **data-structure partition (µs–ms), not
+codegen** — it needs no compiler, so the entire Component-2 (fast specializer) effort
+is off the critical path. The lever that would need codegen (const-fold) doesn't pay.
+The LLVM-min-pipeline latency measurement is therefore deferred as not
+decision-relevant — building it would chase a number the results say not to act on.
+
+**Amortization caveat (feeds the cost model, doc §6/E5):** even the µs–ms partition
+exceeds UR5's ~40–100 µs median plan time, so single easy queries don't pay. Pruning
+amortizes over **streaming/workcell** (scene reused across queries) and **long single
+runs** (hard problems, optimizing planners) — exactly the regimes the doc targets.
 
 

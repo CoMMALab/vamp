@@ -857,3 +857,47 @@ Baxter marginal (transform-dominated: leaves only 30% of FK, little to reclaim);
   Fetch is the sweet spot (moderate pairs, leaves = most of FK, tight bounding spheres).
 - Structural non-targets, both explained: panda (coarse spherization -> leaves always needed,
   loose bounding spheres), baxter colliding (349-pair setup, transform-dominated FK).
+
+---
+
+## IN-PRACTICE EVALUATION on real MBM environments (m42) — the reality check
+
+Ablations + orthogonal combinations of every method on REAL Motion-Bench-Maker environments for
+ur5/panda/fetch/baxter (21/21/21/9 scenes spanning all problem sets; edges sampled RRTC-style
+within each robot's RRT range; swept env test via VAMP's own sphere_environment_in_collision so
+it handles spheres, capsules and cuboids). Every method verified bit-identical to baseline fkcc:
+**0 mismatches, 0 unsafe over ~23,000 edges.** Collision-check ns/edge, vs baseline:
+
+| robot | edges | recur | swept | swept+cache | staged+cache |
+|-------|------:|------:|------:|------------:|-------------:|
+| ur5    | all  | 1.00x | 0.76x | 0.87x | 0.87x |
+| ur5    | free | 1.06x | 0.95x | 0.99x | 0.98x |
+| panda  | all  | **1.05x** | 0.92x | 1.03x | 1.02x |
+| panda  | free | 1.06x | 0.96x | 1.06x | 1.05x |
+| fetch  | all  | 1.03x | 0.80x | 0.89x | 0.94x |
+| fetch  | free | 1.04x | 0.99x | 1.06x | **1.09x** |
+| baxter | all  | 0.97x | 0.57x | 0.67x | 0.69x |
+| baxter | free | 1.00x | 0.78x | 0.88x | 0.90x |
+
+**The swept broadphase does NOT survive contact with real scenes.** It was break-even-to-negative
+everywhere (all-edges), badly negative on colliding edges and baxter. The +58% fetch / +71% free
+from m36-m41 was a **microbenchmark artifact**: those used a synthetic 40-small-sphere shelf,
+~3x denser than MBM's ~12-15 primitives (mostly boxes/cylinders) and all-spheres. That inflated
+the baseline collision cost (fetch free baseline 2900ns synthetic -> 1869ns MBM), i.e. inflated
+exactly what the swept mask skips. On real SPARSE scenes the per-rake broadphase is already cheap
+(few primitives, effective culling), so the O(n_bs + n_pairs) swept setup — 17-33 env tests +
+up to 349 pair tests per edge — cannot amortize over n=2-6 rakes. Baxter (33 bs, 349 pairs, n=2)
+is worst at 0.57x. Node-caching + staged FK recover some of it but never past ~break-even.
+
+**The one robust win is the leaf-trig recurrence** — a pure FK-side, environment-independent,
+exact optimization: **~1.03-1.06x on free/planning-relevant edges across ur5/panda/fetch**
+(baxter ~flat: transform-heavy FK, n=2). It's small but it is real in practice and it is the
+only method here that holds up on MBM.
+
+**Honest bottom line:** of everything explored, only the exact leaf-trig recurrence delivers a
+(single-digit-percent) speedup on real MBM problems. The swept broadphase — the centerpiece of
+the later sessions — is a scene-density artifact and does not pay on real MBM scenes as-is; it
+would only help in much denser environments (dense pointclouds / many small obstacles) where the
+baseline collision cost is high enough to amortize the per-edge setup. The methodological lesson:
+the synthetic shelf was not representative, and every headline speedup should have been measured
+on MBM from the start.

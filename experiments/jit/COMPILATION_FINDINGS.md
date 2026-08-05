@@ -111,3 +111,26 @@ The extractable edge-continuity win is only the LEAVES (expensive sin/cos), and 
 LARGER for trig-heavy/placement-light robots (moderate sphere count) -- Fetch 1.2x,
 r2c6 1.07x. The near-screw low-order structure (order<=3, robust across robots) is
 mathematically elegant but not exploitable for speed given the shared chain.
+
+---
+
+## (d) Structured per-sphere position recurrence (m23): cheaper, but inaccurate
+
+Challenge: advancing a sphere is just a point translation -> ~9 ops (1 mul + 2 add/coord
+via p_{k+1}=a(p_k-p_{k-1})+p_{k-2}), not a 15-op transform. Confirmed on ops: seed 4 rakes
+full + recur is 1.19x (n=8) -> 1.40x (n=16) faster than full FK.
+
+BUT position error is 2.9 mm -> 1.6 cm (grows with edge) -- catastrophic for collision
+(radii are cm-scale). NOT an alpha-conditioning issue (robust alpha didn't help). Two
+fundamental causes:
+  1. Some spheres are genuinely order 4 (not 3) at 1e-6 (m21) -> order-3 recurrence can't
+     represent them.
+  2. The recurrence is marginally stable (roots on the unit circle) -> any model mismatch
+     ACCUMULATES over the edge.
+
+Contrast with the leaf-trig recurrence (m20): sin(a+k*delta) is EXACTLY order-3 with an
+EXACTLY-known coefficient 1+2cos(delta) (delta = edge step) -> exact, zero accumulation.
+The sphere position is only approximately low-order with an ESTIMATED coefficient -> it
+accumulates. **So the op-count was indeed too high (per-sphere is cheaper), but the
+blocker is accuracy/stability, not ops. Exact collision needs the leaf-trig recurrence;
+the sphere recurrence is a marginally-stable approximation that drifts to cm error.**

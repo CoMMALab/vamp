@@ -48,10 +48,10 @@ Pruning factor vs VAMP's radial early-exit (`aabb_beats_radial`, >1 ⇒ AABB win
 
 | robot | n_spheres | aabb_beats_radial | throughput speedup | note |
 |-------|-----------|-------------------|--------------------|------|
-| **UR5**   | 40  | 1.5–2.3× | **2.4–4.3×** | clean win |
-| Fetch | 111 | 2.8–4.8× | ~1.0–1.14× | pruning masked by FK-dominance |
-| Panda | 59  | 0.53–1.05× | 0.99–1.31× | broad reach → AABB≈radial |
-| Baxter| 75  | 0.61–1.12× | (not benched) | broad reach |
+| **UR5**   | 40  | 1.5–2.3× | **2.4–4.4×** | clean win |
+| Fetch | 111 | 2.8–4.8× | ~1.0–1.16× | pruning masked by FK-dominance |
+| Panda | 59  | 0.53–1.05× | 0.99–1.34× | broad reach → AABB≈radial |
+| Baxter| 75  | 0.61–1.12× | 1.01–1.03× | broad reach, keeps 77% of obstacles |
 
 - **fn_rate = 0.000000** (sampled AABB + 5 cm margin is empirically conservative over 100k×≤111).
 - Per-sphere reachable AABBs are **robot-intrinsic** (joint-box only) → computable **offline**;

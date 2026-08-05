@@ -34,6 +34,7 @@
 #include <vamp/collision/validity.hh>
 #include <vamp/robots/ur5.hh>
 #include <vamp/robots/panda.hh>
+#include <vamp/robots/baxter.hh>
 #include <vamp/robots/fetch.hh>
 
 namespace
@@ -226,6 +227,7 @@ auto main() -> int
             for (std::size_t N : {std::size_t(200), std::size_t(800)})
             {
                 run<vamp::robots::Fetch>("fetch", N, extent, margin);
+                run<vamp::robots::Baxter>("baxter", N, extent, margin);
                 run<vamp::robots::UR5>("ur5", N, extent, margin);
                 run<vamp::robots::Panda>("panda", N, extent, margin);
             }

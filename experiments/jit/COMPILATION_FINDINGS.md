@@ -36,3 +36,32 @@ because its hierarchical bounding gates already do cheap, effective, per-config 
   impossible over the joint box). Cheap table shrink.
 - Attack the dominant cost (FK ~260 ns) via edge continuity (incremental/interpolated FK).
 - Const-fold + re-vectorize obstacles over SIMD lanes (vs configs) for collision-bound cases.
+
+---
+
+## Edge-continuity FK: the trig recurrence (m19) — first EXACT win
+
+Sub-configs along an edge are collinear (theta_j(t) = a_j + t*delta_j), so per joint the
+angle is an arithmetic progression and sin/cos obey an exact 3-term recurrence
+(rotate by rake*delta_j between rakes). Compute rake 0 full-SIMD, recur the rest (4 mul +
+2 add/step, SIMD over lanes).
+
+| edge rakes | full trig | recurrence | speedup | max err |
+|-----------:|----------:|-----------:|--------:|--------:|
+| 2 | 131.5 ns | 71.0 ns | 1.85x | 3.6e-6 |
+| 4 | 263.0 ns | 80.1 ns | **3.28x** | 4.2e-6 |
+| 8 | 525.9 ns | 98.8 ns | **5.32x** | 4.2e-6 |
+
+- **Exact** (error = float sin precision), **general** (any edge), **scales with edge length**.
+- Leaf trig is ~25% of Fetch per-rake FK -> recurrence ~= **15-20% off FK** (~8-10% off a free
+  edge). Modest, but the FIRST exact win vs the real kernel -- it attacks FK, the dominant
+  UN-gated cost, which the bounding gates don't touch. Composes with everything.
+
+**Integration (codegen):** emit FK taking precomputed sin/cos v[] as inputs; the motion
+validator computes rake-0 trig full, recurs subsequent rakes, and calls FK-with-precomputed-
+trig per rake. cricket already traces v[]=sin(x[j])/cos(x[j]) as the leaves -> hoist them out
+of the per-rake FK and feed the recurrence. Next: wire it and measure the real FK saving.
+
+**Deeper (open):** the full sphere positions along the edge are trig polynomials in t; a
+higher-order recurrence could compute more of FK, but frequency count grows with chain depth
+-- the leaf-trig recurrence is the clean, cheap version.

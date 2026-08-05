@@ -1,0 +1,4 @@
+n_rakes,dim,full_trig_ns,recurrence_ns,speedup,max_error
+2,8,131.5,71.0,1.85,3.6e-6
+4,8,263.0,80.1,3.28,4.2e-6
+8,8,525.9,98.8,5.32,4.2e-6

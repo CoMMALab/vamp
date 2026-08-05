@@ -1,0 +1,11 @@
+{
+  "panda": {
+    "load_robot_s": 8.805960643105209,
+    "solved": 10,
+    "tried": 10,
+    "median_plan_us": 40.12
+  },
+  "ur5": {
+    "load_robot_s": 5.737602856941521
+  }
+}

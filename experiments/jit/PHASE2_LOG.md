@@ -12,8 +12,8 @@ and (b) **hoisting static-sphere collision** out of the per-config loop. Verify 
 - [x] F0  unblock `cricket.generate_robot_source` (template_path = the .hh file; data needs name+resolution)
 - [x] 2A-i  joint-locking FK win: **1.5% only** — base/torso already cheap → 2A is NOT an FK lever
 - [~] 2A-ii static-collision hoist — deprioritized (helps collision-bound, not FK-bound robots)
-- [ ] 2B  staged/gated dynamic FK codegen + bit-exact + throughput  ← the real FK lever
-- [ ] 2C  compose with Lever A + MBM
+- [x] 2B  staged/gated FK: REFUTED (0% movable w/ self-collision; env-only ceiling 76% movable but <=1.00x, bit-exact)
+- [~] 2C  not pursued — FK lever refuted; see PHASE2_FINDINGS.md
 
 ## Timeline
 

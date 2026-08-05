@@ -1,0 +1,4 @@
+n_obs,collision_frac,envbase_ns,envstaged_ns,speedup,mismatches
+300,0.497,3588.7,3586.3,1.001,0
+80,0.306,974.3,981.1,0.993,0
+40,0.241,582.8,589.0,0.990,0

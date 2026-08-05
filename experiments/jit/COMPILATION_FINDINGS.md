@@ -337,3 +337,54 @@ AND narrowphase. Needs only endpoint bounding-sphere FK (2 configs, bounding sub
 `bound_fk` cricket could trace. Open question to probe first: on realistic free edges, what
 fraction of (link x edge) stay entirely clear of the environment (skippable), and how much
 inflation is needed to stay conservative -- that bounds the achievable slice of the 2.7x.
+
+---
+
+## Skippability + conservative advancement (m32) -- two levers, one wins
+
+Probe of both user questions on free edges (40-obstacle shelf, true min clearance = min over
+all leaf spheres x all obstacles; per-joint reach r_j from finite-diff FK; M = sum_j r_j*|dtheta_j|
+= Cartesian sweep of the edge).
+
+### Q1 skippability -- whole-robot NO, per-sphere YES
+| view | panda | fetch |
+|------|------:|------:|
+| median min-clearance over free edge | 0.289 m | 0.173 m |
+| whole-edge certified by 1 midpoint check | 0.8% | 0.8% |
+| **per-sphere swept-certifiable (skip all n rakes)** | **95.9%** | **94.2%** |
+
+A full-range RRTC edge sweeps ~1 m of Cartesian space (reach ~1 m/rad x ~1 rad) while
+clearance is ~0.2 m, so the *closest* link kills any whole-robot skip. But ~95% of leaf
+spheres never approach an obstacle -- one swept test (enclose the center trajectory: center =
+midpoint, radius rho = max deviation; certified iff clearance(center) > rho) certifies each
+for the WHOLE edge. Only ~5% (the approaching link) need per-rake checks. This is the
+swept-broadphase lever, quantified: on a free edge ~95% of per-sphere collision work is
+skippable with one test.
+
+### Q2 "skip subsequent rakes if far from obstacles" = conservative advancement -- does NOT pay
+CA: at clearance d, all configs within joint-motion d/M are provably free; jump d/M, re-eval.
+
+vs edge LENGTH (range 0.5..2.5): CA evals AND n_blocks both scale with length (M ~ range ~ n),
+so block-skip stays flat at ~0.6-0.8x -- **CA never wins as edges lengthen**.
+
+vs RESOLUTION at fixed length 1.25 (M fixed, n = resmul x native):
+| n_blocks | CA evals (loose-M) | block-skip |
+|---------:|-------------------:|-----------:|
+| 5  (native res 32) | 7.08 | 0.71x |
+| 10 | 7.11 | 1.41x |
+| 20 | 7.10 | 2.82x |
+| 40 | 7.09 | 5.64x |
+
+CA cost is ~M/clearance ~= 7 checks INDEPENDENT of sampling density. So CA only wins ABOVE
+native resolution. **Why it doesn't help VAMP:** the 8-wide SIMD rake already bundles ~8
+configs per check, which is about the CA skip distance at these clearances (config spacing
+~M/N ~ 3 cm, clearance ~25 cm -> skip ~8 configs = 1 rake). VAMP's fixed resolution 32 sits
+right at the point where per-config CA stops paying -- the rake captures the temporal-skip win
+structurally, for free, via SIMD. A distance query (costlier than a broadphase block) can't
+beat it. (CA would pay 1.4-5.6x only if VAMP had to check at 2-8x finer resolution, e.g. very
+thin obstacles.)
+
+**Takeaway:** temporal skipping (CA) is already done by the rake; the open lever is SPATIAL --
+the per-link swept broadphase (skip the ~95% of links that stay clear across the whole edge).
+Next: measure it at the BOUNDING-SPHERE level (VAMP prunes per-link, not per-leaf) via a
+traced `bound_fk`, then build the swept-broadphase kernel.

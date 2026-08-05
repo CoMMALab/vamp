@@ -131,12 +131,16 @@ static void run(const char *name, float range, std::size_t jlo, std::size_t jhi,
         for (auto &b : e.B) if (not R::template fkcc_swept<rake>(envs[e.env], b, ec, pc)) return false; return true; };
     auto valid_staged_c = [&](const Edge &e) { std::array<bool, NBS> ec; std::array<bool, R::n_self_pairs> pc{}; masks(e, ec, pc);
         for (auto &b : e.B) if (not R::template fkcc_swept_staged<rake>(envs[e.env], b, ec, pc)) return false; return true; };
+    // ISOLATED tracing change: staged sphere-aware FK doing a FULL (unmasked) check -> vs baseline
+    // fkcc this measures the FK-tracing modification alone (no swept skipping).
+    std::array<bool, NBS> ec_off{}; std::array<bool, R::n_self_pairs> pc_off{};
+    auto valid_staged_full = [&](const Edge &e) { for (auto &b : e.B) if (not R::template fkcc_swept_staged<rake>(envs[e.env], b, ec_off, pc_off)) return false; return true; };
 
     // rigor: every method must match baseline; unsafe = method says FREE, baseline says COLLIDE
-    std::size_t nfree = 0; std::array<std::size_t, 4> mm{}, uns{};
+    std::size_t nfree = 0; std::array<std::size_t, 5> mm{}, uns{};
     auto chk = [&](std::size_t idx, bool bv, bool mv) { if (bv != mv) { mm[idx]++; if (mv && not bv) uns[idx]++; } };
     for (auto &e : edges) { bool bv = valid_base(e); nfree += e.free;
-        chk(0, bv, valid_recur(e)); chk(1, bv, valid_swept_nc(e)); chk(2, bv, valid_swept_c(e)); chk(3, bv, valid_staged_c(e)); }
+        chk(0, bv, valid_recur(e)); chk(1, bv, valid_swept_nc(e)); chk(2, bv, valid_swept_c(e)); chk(3, bv, valid_staged_c(e)); chk(4, bv, valid_staged_full(e)); }
 
     auto med = [&](auto fn, int mode) { std::vector<double> t; volatile std::uint64_t sk = 0; std::vector<Edge *> sub;
         for (auto &e : edges) if (mode == 0 || (mode == 1 && e.free) || (mode == 2 && not e.free)) sub.push_back(&e); if (sub.empty()) return 0.0;
@@ -147,15 +151,16 @@ static void run(const char *name, float range, std::size_t jlo, std::size_t jhi,
     auto Sn = [&](const Edge &e) { return valid_swept_nc(e) ? 1U : 0U; };
     auto Sc = [&](const Edge &e) { return valid_swept_c(e) ? 1U : 0U; };
     auto St = [&](const Edge &e) { return valid_staged_c(e) ? 1U : 0U; };
+    auto Sf = [&](const Edge &e) { return valid_staged_full(e) ? 1U : 0U; };
 
-    std::printf("\n== %-6s ==  dim=%zu  n=%zu  bs=%zu pairs=%zu  envs=%zu  edges=%zu (free %zu)  mism r/s/sc/st=%zu/%zu/%zu/%zu  unsafe=%zu/%zu/%zu/%zu\n",
-                name, dim, n, NBS, NP, envs.size(), edges.size(), nfree, mm[0], mm[1], mm[2], mm[3], uns[0], uns[1], uns[2], uns[3]);
+    std::printf("\n== %-6s ==  dim=%zu  n=%zu  bs=%zu pairs=%zu  envs=%zu  edges=%zu (free %zu)  mism=%zu/%zu/%zu/%zu/%zu  unsafe=%zu/%zu/%zu/%zu/%zu\n",
+                name, dim, n, NBS, NP, envs.size(), edges.size(), nfree, mm[0], mm[1], mm[2], mm[3], mm[4], uns[0], uns[1], uns[2], uns[3], uns[4]);
     const char *lbls[3] = {"all", "free", "colliding"};
-    std::printf("   %-9s | %8s %8s %8s %8s %8s   (ns/edge; x = vs base)\n", "edges", "base", "recur", "swept", "swept+$", "staged+$");
+    std::printf("   %-9s | %8s %8s %8s %8s %8s %9s   (ns/edge; x = vs base)\n", "edges", "base", "recur", "swept", "swept+$", "staged+$", "stagedFULL");
     for (int m = 0; m < 3; ++m) {
-        double bb = med(B0, m), rr = med(Rr, m), sn = med(Sn, m), sc = med(Sc, m), st = med(St, m);
-        std::printf("   %-9s | %8.0f %8.0f %8.0f %8.0f %8.0f\n", lbls[m], bb, rr, sn, sc, st);
-        std::printf("   %-9s | %8s %7.2fx %7.2fx %7.2fx %7.2fx\n", "", "1.00x", bb / rr, bb / sn, bb / sc, bb / st);
+        double bb = med(B0, m), rr = med(Rr, m), sn = med(Sn, m), sc = med(Sc, m), st = med(St, m), sf = med(Sf, m);
+        std::printf("   %-9s | %8.0f %8.0f %8.0f %8.0f %8.0f %9.0f\n", lbls[m], bb, rr, sn, sc, st, sf);
+        std::printf("   %-9s | %8s %7.2fx %7.2fx %7.2fx %7.2fx %8.2fx\n", "", "1.00x", bb / rr, bb / sn, bb / sc, bb / st, bb / sf);
     }
 }
 

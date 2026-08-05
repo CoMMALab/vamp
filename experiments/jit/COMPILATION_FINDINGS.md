@@ -901,3 +901,28 @@ would only help in much denser environments (dense pointclouds / many small obst
 baseline collision cost is high enough to amortize the per-edge setup. The methodological lesson:
 the synthetic shelf was not representative, and every headline speedup should have been measured
 on MBM from the start.
+
+### Isolating the FK-tracing change on MBM (m42, stagedFULL column)
+
+The staged sphere-aware FK (joint_tf + place_sphere) was bundled inside fkcc_swept_staged (which
+also carries the losing swept mask). Isolated it by running fkcc_swept_staged with masks OFF =
+a FULL unmasked check driven by the staged FK, directly comparable to baseline fkcc:
+
+| robot | staged-FK full (all / free / colliding) vs base |
+|-------|-------------------------------------------------|
+| ur5    | 0.96x / 0.94x / 0.95x |
+| panda  | 0.96x / 0.96x / 0.97x |
+| fetch  | **1.02x** / 1.02x / 1.01x |
+| baxter | 0.92x / 0.89x / 0.97x |
+
+**The staged FK-tracing change is break-even-to-slightly-negative in practice** (only fetch a
+marginal +2%). The 1.1-1.4x from the isolated m41 microbenchmark did NOT translate: (a) m41
+compared against sphere_fk, which writes a full Spheres struct to memory that the fused fkcc
+never does -- an unfair baseline; (b) in the real fused kernel the compiler already optimizes
+ccfk well when inlined, and the staged lazy structure (bounding pass then leaves-on-hit) adds
+branch overhead that eats the placement savings on sparse scenes.
+
+**Verdict on the tracing modifications:** of the two, only the LEAF-TRIG RECURRENCE (fkcc_pretrig)
+is a real in-practice win (~1.03-1.06x on free edges, environment-independent, exact). The staged
+sphere-aware FK and the swept-mask kernels do not pay on real MBM. So the tracing work produced
+exactly one durable, shippable improvement: the recurrence.

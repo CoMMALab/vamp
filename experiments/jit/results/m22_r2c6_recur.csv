@@ -1,0 +1,4 @@
+robot,n_rakes,stock_fk_ns,recur_fk_ns,speedup,max_err
+r2c6,2,2723.5,2672.5,1.02,7.2e-7
+r2c6,4,5392.5,5095.7,1.06,1.7e-6
+r2c6,8,10730.5,10030.3,1.07,1.1e-6

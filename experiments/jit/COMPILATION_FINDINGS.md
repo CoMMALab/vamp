@@ -91,3 +91,23 @@ recurrence (m20, ~1.2x FK) captures it; the rest of FK is cheap shared arithmeti
 recompute handles better than independent per-sphere recurrence. Caveat: for robots with
 little chain-sharing (few spheres/link) or where trig dominates more, per-sphere/per-link
 screw advance could win -- worth checking per robot.
+
+---
+
+## r2c6 test (m22): does per-sphere win for a high-DoF/low-sharing robot? NO.
+
+r2c6 (36-DoF, 211 spheres, 29 revolute joints -> 58 leaf trig; median 3 spheres/link).
+- Per-sphere recurrence order still <=3 even at range scale (near-screw holds).
+- **Leaf-trig recurrence FK: 1.02x (n=2) -> 1.07x (n=8)** -- SMALLER than Fetch's 1.2x,
+  because r2c6's FK is placement-dominated (211 spheres, deep chain, ~1360 ns/rake) so
+  trig is only ~8.5% of FK (vs ~25% for Fetch). More trig, but even more placement.
+- **Per-sphere / per-link screw advance still loses:** advancing 211 sphere positions
+  independently (~15 ops each) or 65 link frames by screws (65 independent SE(3) mults)
+  is more work than FK's shared chain (36 chained joint transforms + ~4-6 ops/sphere).
+
+**Universal conclusion:** FK's shared kinematic chain is fundamentally more op-efficient
+than any independent per-sphere/per-link recurrence, regardless of DoF or sphere count.
+The extractable edge-continuity win is only the LEAVES (expensive sin/cos), and it's
+LARGER for trig-heavy/placement-light robots (moderate sphere count) -- Fetch 1.2x,
+r2c6 1.07x. The near-screw low-order structure (order<=3, robust across robots) is
+mathematically elegant but not exploitable for speed given the shared chain.

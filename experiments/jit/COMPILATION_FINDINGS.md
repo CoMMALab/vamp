@@ -639,3 +639,37 @@ that is the lever for high-pair robots, and it is an RRTC-integration change, no
   not bugs. Lazy leaf FK adds 58% leaf-FK reclaim for fetch/baxter (not panda).
 - The single biggest remaining lever for BOTH baxter and colliding edges is amortizing the
   setup across edges (node-level bound_fk/mask caching in RRTC), not more kernel work.
+
+---
+
+## Node-level caching prototype (m38) -- flips baxter to a win
+
+In RRTC an edge connects two EXISTING tree nodes, so both endpoints' bound_fk are cacheable.
+Using endpoints-only swept spheres (m34: 2 samples capture the extent) + a per-link sagitta
+remainder calibrated offline (C[k] = max bulge |c_mid-(c0+c1)/2| over sampled edges; REM=1.5x
+safety), the per-edge setup needs ZERO FK -- both endpoint bounding spheres are cache hits.
+Rigorous: mismatch=0, unsafe=0 across 9000 edges (3 robots x 3000, incl colliding).
+
+| robot | free | colliding | all | vs per-edge swept (m36 all) |
+|-------|-----:|----------:|----:|----------------------------:|
+| panda | 1.08x | 0.75x | 1.03x | 1.04 -> 1.03 (flat) |
+| fetch | 1.49x | 0.88x | **1.37x** | 1.34 -> 1.37 |
+| baxter| 1.23x | 0.58x | **1.07x** | **0.92 -> 1.07 (loss -> win)** |
+
+**Baxter flips from net-loss to net-win.** Node-caching removes the per-edge bound_fk (33
+bounding spheres over a dim-14 chain), which was baxter's setup killer; free 1.09->1.23x, all
+0.92->1.07x. Fetch's colliding profile also improves (0.80->0.88x). Panda stays flat (its cost
+is leaf-need, not setup). Baxter colliding is still 0.58x -- the 349 per-pair swept tests remain
+per-edge overhead (they depend on both endpoints, not node-cacheable); vectorizing them or a
+cheaper pair-prune is the next step there.
+
+**Amortization model.** The cache holds one bound_fk per node; an edge is 2 cache hits + masks +
+fkcc_swept, 0 FK. Break-even is immediate: node-caching replaces the per-edge bound_fk that the
+non-cached swept already paid, and each node is shared by many edges (RRTC connection attempts).
+So the amortized limit measured here is the realistic operating point.
+
+**Rigor caveat / production path.** C[k] is a calibrated max sagitta + 50% margin -- a heuristic
+bound, not a proof. Production rigor needs an ANALYTIC per-link sagitta bound (max Cartesian
+curvature x edge_angular_length^2 / 8), calibrated once at the planner's MAX edge length
+(conservative for shorter edges). That makes the endpoints-only swept sphere provably
+conservative without any midpoint FK.

@@ -152,3 +152,16 @@ Best for moderate-sphere workhorse arms; smallest for placement-dominated r2c6. 
 baxter's short (n=2) edges benefit (rake-0 full + 1 recurred). Realistic RRTC edges are
 range-length extension steps, so these are representative; shorter connect/goal edges get
 somewhat less.
+
+---
+
+## (c) Through the trace: cricket natively emits the compiled form
+
+Wired the leaf-trig hoist into cricket's codegen (`src/codegen.cc`: regex-hoist
+sin(x[j])/cos(x[j]) -> ps[j]/pc[j] from the traced spherefk code) + a `sphere_fk_pretrig`
+in `fk_template.hh` (gated by `exists(spherefk_pretrig_code)`). `generate_robot_source`
+now emits `sphere_fk_pretrig` natively. Verified (m25_native): the cricket-TRACED panda
+kernel gives **1.30x FK, exact (err 1.3e-7)** driven by the recurrence -- matching the
+post-transform result. The experiments are now demonstrated in their final compiled form.
+Next for production: emit the recurrence preamble inside the generated motion validator
+(compute rake-0 sin/cos, advance per rake) so validate_motion uses it end to end.

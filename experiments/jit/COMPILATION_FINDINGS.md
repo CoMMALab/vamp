@@ -246,3 +246,29 @@ drift off the unit circle (~n*eps: 2e-4 at n=48 cubic) -> needs periodic renorma
 stay exact (more cost). The big win is specifically the LINEAR RRTC case (single fixed
 rotation). So: yes it extends, elegantly and exactly, but the practical FK gain for FLASK is
 marginal-to-negative unless edges are long -- the linearity of RRTC edges is what made it pay.
+
+---
+
+## Tricks to buy back accuracy on long edges (m29 + analysis)
+
+Two distinct error sources on long edges, different fixes:
+
+**(1) FP drift (phasor cascade leaves the unit circle): SOLVED by renormalization.**
+Every ~8 steps apply w *= (3-|w|^2)/2 (first-order Newton for 1/sqrt, ~4 ops/phasor, no
+sqrt). Cubic cascade error: no-renorm 2.3e-4 (n=48) / 4.6e-3 (n=192) -> with renorm ~1e-6
+to 1e-5, flat in n. Cost ~0.5 op/phasor/step (negligible). So the cascade is exact-to-float
+over arbitrarily long edges. (Alternatives: double-precision phasor state; compensated sum.)
+
+**(2) Model error (per-sphere order-3 recurrence is order 4-5): only bounded, not cheaply fixed.**
+- Re-seeding/restart every K rakes: bounds error to the per-segment (short-segment) error
+  (~sub-mm), but the order-3 sphere recurrence only saves ~33%/rake vs FK (FK is already
+  efficient at ~10 ops/sphere), and re-seeding erodes that toward ~= the EXACT leaf-trig
+  recurrence (1.3x) -- while remaining approximate + needing inflation. Not a net win.
+- Structured higher order (2 known beat frequencies): stable but ~FK cost.
+- Defect/Richardson correction at checkpoints: marginal.
+
+**Bottom line:** renormalization cleanly buys back the FP drift (the phasor-cascade / FLASK
+long-edge issue). The per-sphere MODEL error has no cheap fix -- bounding it (re-seeding)
+costs about what it saves. The EXACT leaf-trig recurrence (linear RRTC edges) needs NONE of
+these -- it's exact by construction -- which is exactly why it, not the sphere recurrence,
+is the lever.

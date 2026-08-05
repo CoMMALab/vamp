@@ -69,23 +69,81 @@ pruning amortizes over **streaming/workcell** and **long/optimizing runs** (doc 
 
 ---
 
+### E-FK1 — FK vs collision cost split (`m4_fk_split.cc`, `results/m4_fk_split.csv`)
+`fk_fraction = t_fk/t_cc`; `collision_ceiling = t_cc/t_fk` (max speedup if collision → 0):
+
+| robot | FK fraction | collision ceiling | reading |
+|-------|-------------|-------------------|---------|
+| **UR5**   | 0.02–0.23 | **4.3–45×** | collision-bound → pruning pays (matches 2–4× observed) |
+| Panda | 0.28–0.99 | 1.0–3.6× | headroom only in sparse scenes, but AABB pruning weak there |
+| **Baxter**| 0.95–1.01 | **~1.0×** | **FK-bound → collision tricks can't help** |
+| **Fetch** | 0.96–0.99 | **~1.02×** | **FK-bound → must cut FK** (explains its ~1.0× exactly) |
+
+**This is the map of where the win can come from.** Collision-side specialization
+(pruning) helps only where collision is a large fraction of the check (UR5-class:
+low sphere count, light FK). High-sphere robots (Fetch 111, Baxter 75) spend ~all
+their time in `sphere_fk` → **the frontier for them is scene-conditioned FK reduction.**
+
+---
+
+## How the JIT can attack FK-dominance (the highest-ceiling novel lever)
+
+FK looks "robot-only" (AOT) — but only if you compute *all* spheres. Once the scene
+is known at query time, most spheres are irrelevant, and *that* is AOT-impossible to
+exploit. Four mechanisms, roughly increasing effort:
+
+1. **Scene-pruned FK (skip spheres/links with no reachable obstacle).** Extend the
+   broadphase from collision into FK: if sphere j's reachable AABB contains no
+   obstacle in this scene, sphere j can never collide → don't compute its position at
+   all (unless a downstream sphere needs its transform). cricket already traces FK as
+   a CppAD DAG → emit a scene-pruned trace keeping only nodes feeding surviving
+   spheres. Localized scenes (a table on one side, a shelf) leave whole limbs
+   obstacle-free → large FK cut. **Ceiling ≈ (surviving-sphere fraction).** This is
+   the direct answer for Fetch/Baxter.
+2. **Scene-ordered sphere checking (faster early-out).** In collision-heavy scenes
+   (Fetch dense → frac≈1, early-exit on sphere 0), *which* sphere you check first
+   decides cost. Bake an order that evaluates spheres nearest the (known) obstacles
+   first → hit the collision sooner → less FK walked. Free within a link; across
+   kinematic branches (Fetch torso+arm, Baxter dual-arm) it can skip whole branches.
+3. **Fused pruned-FK + pruned-CC straight-line kernel (doc §5 Option B, now justified).**
+   Emit one kernel computing only needed transforms and only surviving (sphere,
+   obstacle) pairs, in scene order, with early-out — the "compile the scene in"
+   idea applied to the *whole* fkcc, which is the version that pays for high-sphere robots.
+4. **Kinematic-branch gating.** For multi-limb robots, a scene touching only one arm
+   lets the JIT drop the other arm's entire FK+CC subtree per query.
+
+**Hard limit to quantify:** the kinematic chain forces you to compute all *ancestors*
+of any surviving sphere, so FK-pruning is bounded by the DAG, not the sphere count.
+Measure the "FK-DAG survival factor" per scene class before building the fused kernel.
+
+---
+
 ## Recommended next steps (in priority order)
 
-1. **Validate pruning on real MBM scenes, not synthetic boxes.** The 2–4× UR5 win is on uniform
+1. **Measure the FK-DAG survival factor per scene class** (cheap analysis, do first). For
+   localized/sparse scenes, what fraction of spheres have a non-empty obstacle set, and what
+   fraction of the FK DAG must still be computed for them? This is the ceiling for FK-pruning and
+   decides whether mechanism #1 above is worth building for Fetch/Baxter. Extends `m25_pruning.cc`.
+2. **Validate pruning on real MBM scenes, not synthetic boxes.** The 2–4× UR5 win is on uniform
    random obstacles; confirm on MBM/Robometrics and report the speedup *distribution* + break-even
    query count (E3/E5). Wire per-sphere pruned Environments into the actual `rrtc` solve path
-   (via `RobotOps`/`validate` dispatch) for end-to-end numbers.
-2. **Drop the copy-and-patch/LLVM-min-pipeline plan for now.** Reallocate to (a) a cheap partition
+   (via `RobotOps`/`validate` dispatch) for end-to-end numbers. Localized MBM scenes should also
+   reveal the FK-pruning headroom the uniform boxes hid.
+3. **Prototype scene-pruned FK for Fetch** (the FK-dominance attack). Start with mechanism #1
+   (drop obstacle-free spheres + their leaf FK) on a localized scene; measure FK reduction and
+   end-to-end speedup on free + mixed workloads. This is the only path to a win for high-sphere robots.
+4. **Drop the copy-and-patch/LLVM-min-pipeline plan for now.** Reallocate to (a) a cheap partition
    (spatial hash / precomputed obstacle-AABB / bitset membership → target ≤50 µs), and (b) the
-   cost model deciding *when* to partition (predict M/plan-time; amortize over Q streaming queries).
-3. **Attack FK-dominance to unlock Fetch/Baxter.** Their big pruning factor is wasted because
-   `sphere_fk` computes all spheres. A reachability pass could also prune *which spheres* need FK
-   per query, or fuse pruned-FK+CC. This is where high-sphere robots would finally win.
-4. **Tighten reachability with interval-FK** (doc §4 preferred) to replace sampled AABBs and get a
+   cost model deciding *when* to specialize (predict M/plan-time; amortize over Q streaming queries).
+5. **Revisit query-scoped (start/goal) reachability with the *real* planner-explored set**, not my
+   crude interpolate+jitter (which didn't tighten Panda past radial). Tighter per-query AABBs are
+   the way to make broad-reach arms (Panda/Baxter) prunable at all.
+6. **Tighten reachability with interval-FK** (doc §4 preferred) to replace sampled AABBs and get a
    *provable* conservative bound (removes the fn-rate risk entirely). Extend cricket's CppAD trace.
-5. **Reframe the paper thesis** around "*when* does scene specialization pay, and *by what
-   mechanism*" — the answer is broadphase pruning under amortization, not kernel codegen. The
-   const-fold null and the robot-dependence are themselves publishable characterizations.
+7. **Reframe the paper thesis** around "*when* does scene specialization pay, and *by what
+   mechanism*": collision pruning under amortization for low-sphere robots, **scene-pruned FK** for
+   high-sphere robots — not kernel codegen. The const-fold null, the FK/collision-split map, and the
+   robot-dependence are themselves the publishable characterization.
 
 ---
 

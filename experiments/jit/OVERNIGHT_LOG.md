@@ -126,4 +126,14 @@ exceeds UR5's ~40–100 µs median plan time, so single easy queries don't pay. 
 amortizes over **streaming/workcell** (scene reused across queries) and **long single
 runs** (hard problems, optimizing planners) — exactly the regimes the doc targets.
 
+---
+
+## Final state
+All four milestones + the added M2.5 complete; **no blockers hit** (halt-and-report was
+never triggered). Synthesis + recommendations in `OVERNIGHT_FINDINGS.md`. Headline: the
+winning lever is **broadphase pruning (data partition, no codegen)** with a **UR5 2–4×**
+correctness-verified speedup; **const-fold codegen is a dead end (~1×)**, so the
+copy-and-patch specializer is off the critical path. `cricket` unchanged (reachability
+pass deferred — see its `jit_patch` note).
+
 

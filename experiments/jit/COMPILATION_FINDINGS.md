@@ -796,3 +796,33 @@ than either). Margin 1.3x, 0 unsafe.
 choice is within timing noise -- its bottleneck is the 349-pair colliding setup, not the bound.
 So the low-rank cover is the right default: tight where it matters (fetch), cheap everywhere.
 The full O(dim^2) Hessian is not worth it.
+
+---
+
+## Staged sphere-aware FK (m41) -- roll-our-own FK, faster + enables single-pass lazy
+
+Traced `joint_tf(x)` = the joint placements oMi[j] (R,t; 12 floats each) for the sphere-carrying
+joints ONLY -- the shared/expensive part of FK. Spheres are then placed in C++ as
+world = R_slot*local + t_slot (place_sphere, ~9 mul + 6 add). Per-sphere (slot, local, radius)
+emitted as static data (leaf_place / bsphere_place). Bit-exact vs bound_fk (max_err ~6e-8).
+
+Per-config-block timing (ns):
+
+| robot | bound_fk | staged_bound | sphere_fk | staged_full | staged_lazy (bound+1 link) |
+|-------|---------:|-------------:|----------:|------------:|---------------------------:|
+| panda | 78  | 83 (0.94x) | 191 | 144 (**1.33x**) | 92 |
+| fetch | 75  | 76 (0.99x) | 265 | 191 (**1.39x**) | 96 |
+| baxter| 209 | 199 (1.05x)| 301 | 270 (1.11x) | 211 |
+
+Two wins:
+1. **Hand-rolled placement beats the traced fused FK by 1.1-1.4x** for all leaves -- it shares the
+   chain transforms cleanly and skips CppADCodeGen's intermediate temporaries + Spheres struct
+   writes. So "roll our own FK since the geometry is spheres" is a real speedup on its own.
+2. **staged_lazy ~92-96ns** (transforms once + bounding + ONE link's leaves) vs fused full FK
+   191-265ns. This is the SINGLE-PASS lazy the two-pass kernel (m39) couldn't do: transforms
+   computed once, leaves placed only where a bounding sphere hits, NO double transform compute.
+
+**Next (mechanical assembly):** fkcc_swept_staged -- joint_tf -> place bounding spheres ->
+masked broadphase -> place only hit links' leaves (from leaf_place + per_link_spheres) ->
+narrowphase. Single pass, no recompute. Expected to fix both panda (reclaim leaf FK) and the
+lazy backfire, on top of the node-cached + low-rank-sagitta + vectorized swept.

@@ -1,0 +1,5 @@
+robot,dim,n_spheres,range,n_rakes,stock_fk_ns,recur_fk_ns,speedup,max_err
+panda,7,59,1.25,5,931.5,699.5,1.33,1.3e-7
+fetch,8,111,1.0,4,1034.9,849.9,1.22,3.6e-7
+baxter,14,75,0.5,2,580.0,472.9,1.23,1.8e-7
+r2c6,36,211,1.0,4,5415.1,5148.9,1.05,9.5e-7

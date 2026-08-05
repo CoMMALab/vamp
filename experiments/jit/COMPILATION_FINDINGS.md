@@ -134,3 +134,21 @@ The sphere position is only approximately low-order with an ESTIMATED coefficien
 accumulates. **So the op-count was indeed too high (per-sphere is cheaper), but the
 blocker is accuracy/stability, not ops. Exact collision needs the leaf-trig recurrence;
 the sphere recurrence is a marginally-stable approximation that drifts to cm error.**
+
+---
+
+## (a)+(b) All robots at realistic RRTC edge lengths (m24)
+
+RRTC extends by up to `range`; at resolution 32 an edge ~ ceil(range*32/rake) rakes.
+Leaf-trig recurrence FK win, exact (err ~1e-7):
+| robot | range | n_rakes | speedup |
+|-------|------:|--------:|--------:|
+| panda  | 1.25 | 5 | **1.33x** |
+| fetch  | 1.0  | 4 | 1.22x |
+| baxter | 0.5  | 2 | 1.23x |
+| r2c6   | 1.0  | 4 | 1.05x |
+
+Best for moderate-sphere workhorse arms; smallest for placement-dominated r2c6. Even
+baxter's short (n=2) edges benefit (rake-0 full + 1 recurred). Realistic RRTC edges are
+range-length extension steps, so these are representative; shorter connect/goal edges get
+somewhat less.

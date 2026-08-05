@@ -272,3 +272,39 @@ long-edge issue). The per-sphere MODEL error has no cheap fix -- bounding it (re
 costs about what it saves. The EXACT leaf-trig recurrence (linear RRTC edges) needs NONE of
 these -- it's exact by construction -- which is exactly why it, not the sphere recurrence,
 is the lever.
+
+---
+
+## End-to-end: leaf-trig recurrence through the real fused kernel (m30)
+
+The leaf-trig recurrence is now emitted NATIVELY by cricket's trace (not a hand-patched
+header): `fkcc_pretrig(env, x, ps, pc)` -- the fused FK+CC kernel with `sin(x[j])/cos(x[j])`
+regex-hoisted to `ps[j]/pc[j]` inputs (codegen.cc after the ccfk trace; template gated on
+`exists("ccfk_pretrig_code")`). `gen_e2e.py` regenerates PandaE/FetchE; both emit it and
+`sphere_fk_pretrig`, each with trig_of_x=0, ps/pc=14 (fully hoisted).
+
+m30 validates random RRTC-style edges two ways on a 40-obstacle front-shelf scene, at
+realistic edge length n=ceil(range*32/rake) rakes:
+  - baseline: loop rakes, `fkcc(env, block)` (one sin/cos batch per rake)
+  - recurrence: rake 0 -> `ps=sin,pc=cos`; rakes 1..n-1 -> exact complex advance
+    (ps'=ps*C+pc*S, pc'=pc*C-ps*S, C/S = cos/sin of the 8-lane step); `fkcc_pretrig`
+Verdicts bit-exact (mm=0, both robots), verified per edge.
+
+| robot | dim | n | edge type | fkcc ns | recur ns | speedup |
+|-------|----:|--:|-----------|--------:|---------:|--------:|
+| panda | 7 | 5 | all       | 2359 | 2157 | 1.07x |
+| panda | 7 | 5 | free      | 2656 | 2428 | 1.09x |
+| panda | 7 | 5 | colliding | 830  | 779  | 1.06x |
+| fetch | 8 | 4 | all       | 2344 | 2250 | 1.06x |
+| fetch | 8 | 4 | free      | 2801 | 2672 | 1.03x |
+| fetch | 8 | 4 | colliding | 985  | 961  | 1.03x |
+
+**Honest system-level number: ~1.03-1.09x.** The isolated-FK figure (panda 1.33x) collapses
+because (a) collision checking is now IN the timed path and dominates -- fetch's 111 spheres
+dilute more than panda's 59, so fetch < panda; (b) real edges are short (n=4-5 rakes), so the
+rake-0 seed still pays a full sin/cos and is a large fixed fraction of a 4-5 rake edge;
+(c) colliding edges early-exit before most FK runs, so they benefit least. Free edges (full
+traverse) benefit most, as expected. The win is exact and free (no accuracy cost, native in
+the trace) -- but at the system level it is single-digit percent, not the isolated-FK 1.3x.
+The remaining time is collision (broadphase + narrowphase sphere tests), which the trig
+recurrence does not touch -- that is where a bigger end-to-end lever would have to come from.

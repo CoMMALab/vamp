@@ -673,3 +673,42 @@ bound, not a proof. Production rigor needs an ANALYTIC per-link sagitta bound (m
 curvature x edge_angular_length^2 / 8), calibrated once at the planner's MAX edge length
 (conservative for shorter edges). That makes the endpoints-only swept sphere provably
 conservative without any midpoint FK.
+
+---
+
+## (a) vectorized swept tests + (b) provable analytic sagitta (m39)
+
+Two upgrades on the node-cached swept broadphase (m38):
+
+**(b) Provable analytic sagitta -- no calibration.** The endpoints-only swept sphere needs a
+sagitta (chord-bulge) remainder. Linear-interp error gives sagitta_k <= (1/8) max||c_k''(t)||;
+for affine joint motion c'' = dtheta^T H dtheta, and bounding the Hessian by per-joint reach
+yields the PER-EDGE bound  sag_k <= (sum_j r_k[j]|dtheta_j|)(sum_j |dtheta_j|)/8 = M_link*Omega/8,
+where r_k[j] is bounding-sphere k's Cartesian displacement per radian of joint j (one FD sweep,
+offline). Verified conservative: worst true/bound ratio 1.76 (panda) / 2.32 (fetch) / 2.80
+(baxter) -> bound always >= true sagitta, 0 unsafe. (The earlier worst-case-direction form
+||r_k||*sqrt(dim)*L^2/8 was 3-5x loose and killed certification; the per-edge form is 1.8-2.8x.)
+
+**(a) Vectorized swept tests.** The per-edge mask setup is 33 bs x 40 obstacles (env) + 349
+pairs (baxter). Rewritten SoA + squared distances + branchless (clear iff dist^2 > (RAD+r)^2),
+so the obstacle/pair loops autovectorize. The ENV test (not the pairs) was the hog.
+
+Final (node cache + analytic bound + vectorized tests), rigorous (0 unsafe / 9000 edges):
+
+| robot | free | colliding | all | m38 all | m36 all (per-edge) |
+|-------|-----:|----------:|----:|--------:|-------------------:|
+| panda | 1.08x | 0.83x | 1.05x | 1.03x | 1.04x |
+| fetch | 1.36x | **0.98x** | 1.29x | 1.37x | 1.34x |
+| baxter| **1.50x** | 0.78x | **1.31x** | 1.07x | 0.92x |
+
+**Baxter: 0.92x (per-edge, m36) -> 1.31x** via node caching (b removes per-edge FK) + vectorized
+tests (a removes the setup hog). Colliding regression is now mild (fetch break-even 0.98x,
+baxter 0.78x). Rigor is provable (no calibration). fetch dips slightly from m38's calibrated
+1.37x because the provable bound is ~2.3x looser than the observed-max; a tighter provable bound
+would need the actual Hessian norm (diminishing returns). Panda stays flat (leaf-need bound).
+
+**State of the swept broadphase:** traced natively (bound_fk + fkcc_swept), node-cached,
+provably rigorous, vectorized -> fetch +29% / baxter +31% all-edges, free +36-50%, colliding
+~break-even. The one structural non-target is panda (coarse spherization -> leaves always
+needed). Remaining polish: tighter provable sagitta (Hessian) and lazy leaf FK (fetch/baxter
+58% leaf reclaim, orthogonal).

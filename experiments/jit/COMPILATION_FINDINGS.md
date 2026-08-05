@@ -421,3 +421,39 @@ Ceiling: collapses the ~63% collision slice roughly in proportion to the certifi
 net of the 2-endpoint bound_fk. Open risk: the sagitta/growth bound's tightness (too loose ->
 fewer certified); measure certified% under the analytic (endpoints-only) bound vs the exact
 trajectory bound used here.
+
+---
+
+## De-risking the swept bound (m34) -- Lipschitz remainder was the only problem
+
+The swept kernel must derive each link's bound (rho = trajectory extent, R = max bs radius)
+from a few sampled configs, not all n rakes. Sweep K = 2,3,5,9 samples, two remainder models:
+ - Lipschitz: rem = M_link*gap/2, M_link = sum_j reach[link][j]*|dtheta_j| (worst-case reach).
+ - none (sampling ceiling): rho = max sampled deviation from midpoint, no safety term.
+
+| robot | exact | Lipschitz K=2/3/5/9 | **no-remainder (ceiling) K=2/3/5/9** |
+|-------|------:|---------------------|--------------------------------------|
+| panda | 93.5% | 35 / 50 / 72 / 84%  | **93.5 / 93.5 / 93.5 / 93.5%** |
+| fetch | 85.1% | 44 / 55 / 69 / 77%  | **85.1 / 85.1 / 85.1 / 85.1%** |
+
+**The endpoints alone (K=2, no remainder) already hit the exact certified rate.** The
+bounding-sphere CENTER trajectory of a rigid link over a short RRTC edge barely bulges off its
+chord -- max deviation ~= endpoint deviation -- so 2 samples capture the extent. The Lipschitz
+remainder was pure over-conservatism: it inflates rho by the worst-case sweep (M_link/2), which
+a fast-but-far link never realizes, dropping certification to 35-44% at K=2.
+
+**Consequence: the swept broadphase is viable and cheap.** Use a curvature-aware (2nd-difference
+/ sagitta) remainder, NOT Lipschitz: from endpoints + midpoint bounding-sphere FK (K=3), the
+observed sagitta |c0 - 2*cmid + c1| bounds the between-sample bulge to a few mm, so certified
+rate ~= exact 85-94% rigorously. Cost = 2-3 bounding-sphere FK (11-15 spheres) + 1 env test per
+link, vs n=4-5 SIMD broadphase tests per link today.
+
+**Build plan (traced swept broadphase / `bound_fk`):**
+  1. cricket emits `bound_fk(x)` -> per-link bounding sphere center+radius (link transforms only,
+     no leaves). Evaluate at edge endpoints t=0,1 and midpoint t=0.5 (K=3).
+  2. per link: e = c(0.5); rho = max(|c0-e|,|c1-e|) + |c0-2*e_chord+c1|/c ; R = max(R0,Rm,R1)+same.
+  3. one sphere_environment test on the inflated (R+rho) swept sphere. Clear -> skip the link's
+     whole-edge broadphase AND leaf narrowphase; else fall back to per-rake fkcc for that link.
+**Rigor (build-time):** validate on COLLIDING/near edges that the swept bound NEVER skips a link
+that actually collides (inflate the sagitta remainder until zero false-skips over a large
+colliding-edge set). This probe only measured the certified RATE on free edges (the opportunity).

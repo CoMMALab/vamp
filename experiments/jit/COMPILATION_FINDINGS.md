@@ -220,3 +220,29 @@ chain is already at the op floor (~10-14 ops/sphere); any recurrence accurate en
 (stable order-4) costs about the same. The EXACT leaf-trig recurrence (known coefficient,
 exactly-periodic leaves, roots exactly on the unit circle) is the only free lunch, and it's
 the compiled lever.
+
+---
+
+## FLASK (polynomial edges): does the recurrence extend? (m28) Yes, but the win shrinks
+
+FLASK edges are polynomial in t (position+velocity BCs -> cubic), so theta_j(t) is a
+polynomial and sin(theta_j(t)) is a CHIRP, not a fixed sinusoid -- the linear-edge
+recurrence breaks. It generalizes EXACTLY via the phasor cascade (finite-difference chirp
+generator): maintain d+1 coupled unit phasors (d = polynomial degree), update w_m *= w_{m+1}
+(m=0..d-1) per step -> w_0 = (cos,sin) exactly. Uses FLASK's known polynomial directly
+(phase + velocity + accel = the forward differences). NOT spectral analysis -- a chirp has
+continuous spectrum; the finite-difference phasor cascade is the exact tool.
+
+| edge | degree | n=16 | n=48 |
+|------|-------:|-----:|-----:|
+| RRTC linear | 1 | 1.59x | 3.51x |
+| FLASK cubic | 3 | 0.50x | 1.17x |
+| quintic     | 5 | 0.22x | 0.61x |
+
+**Counterintuitive:** FLASK's richer (polynomial) structure makes this HARDER, not easier.
+Each degree adds a phasor -> d complex-mul/step, eroding the savings vs a single sin+cos. For
+cubic it only wins on long edges (1.17x trig -> ~1.04x FK); quintic loses. And the phasors
+drift off the unit circle (~n*eps: 2e-4 at n=48 cubic) -> needs periodic renormalization to
+stay exact (more cost). The big win is specifically the LINEAR RRTC case (single fixed
+rotation). So: yes it extends, elegantly and exactly, but the practical FK gain for FLASK is
+marginal-to-negative unless edges are long -- the linearity of RRTC edges is what made it pay.

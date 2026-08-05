@@ -739,3 +739,39 @@ make the tight bound cheap even at high dim -- the clean follow-up.
 
 **Best-of per robot (rigorous, node-cached, vectorized):** panda 1.07x, fetch 1.44x (Hessian),
 baxter 1.31x (M*Omega) all-edges; free 1.10 / 1.57 / 1.50x.
+
+---
+
+## (1) Lazy leaf FK -- backfires (m39 fkcc_swept_lazy, m40 FK cost)
+
+Built fkcc_swept_lazy: compute BOUNDING spheres only (bound_fk), run the masked bounding-sphere
+broadphase, and compute full leaf FK + narrowphase ONLY on an active bounding-sphere hit.
+Rigorous (0 unsafe) but SLOWER than plain swept everywhere:
+
+| robot | swept (all) | swept_lazy (all) |
+|-------|------------:|-----------------:|
+| panda | 1.07x | 0.73x |
+| fetch | 1.52x | 1.16x |
+| baxter| 0.98x | 0.78x |
+
+**Why (m40 FK-cost breakdown, per config block):**
+
+| robot | bound_fk | sphere_fk | leaf share | bound/sphere |
+|-------|---------:|----------:|-----------:|-------------:|
+| panda | 78  | 190 | 59% | 0.41 |
+| fetch | 76  | 261 | 71% | 0.29 |
+| baxter| 209 | 299 | 30% | 0.70 |
+
+Two distinct causes:
+- **baxter: transforms dominate** (dim-14 chain -> bound_fk is 70% of full FK, leaves only 30%),
+  so skipping leaves saves little.
+- **fetch/panda: leaves ARE most of FK (71%/59%)**, bound_fk is cheap -- but the TWO-PASS lazy
+  kernel pays bound_fk THEN full ccfk (double transforms) on the ~42% of rakes that need leaves
+  (m37), plus a second broadphase pass; that overhead exceeds the free-rake leaf savings.
+
+**Verdict:** lazy leaf FK needs a SINGLE-PASS kernel (compute transforms once -> bounding spheres
+-> branch -> leaves) to avoid recomputing transforms. CppADCodeGen fuses the whole FK into one
+SSA block, so a mid-block branch isn't expressible without restructuring the tracer to emit
+transforms and leaf-placement as separately-callable stages. That is the real (larger) piece of
+work; the two-pass shortcut measured here does not pay. Kept fkcc_swept_lazy as a documented
+variant.

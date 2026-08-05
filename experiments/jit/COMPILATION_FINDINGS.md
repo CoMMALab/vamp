@@ -65,3 +65,29 @@ of the per-rake FK and feed the recurrence. Next: wire it and measure the real F
 **Deeper (open):** the full sphere positions along the edge are trig polynomials in t; a
 higher-order recurrence could compute more of FK, but frequency count grows with chain depth
 -- the leaf-trig recurrence is the clean, cheap version.
+
+---
+
+## Integrated FK recurrence (m20) + per-sphere question (m21)
+
+**m20 (real sphere_fk, leaf trig hoisted + recurred):** FK speedup 1.13x (n=2) ->
+1.23x (n=8), positions exact (err ~1e-6). Real, modest, exact, scales with edge length.
+
+**m21 (can we recur each SPHERE, not just the trig?):** measured the Hankel rank (=
+exact recurrence order) of each sphere position along the edge. Striking result:
+**every sphere is order <= 5-6 even at range scale (1.0-1.5 rad edges); order 3 at 1e-4.**
+Over a bounded edge the motion is near-constant-twist (a screw), so each sphere traces
+DC + ~one sinusoid. So per-sphere direct recurrence is mathematically viable.
+
+**But it does NOT beat FK**, and the reason is instructive: FK amortizes the kinematic
+chain across all 111 spheres (shared subexpressions -> ~4 ops/sphere for placement).
+Advancing each sphere position independently by its screw is a full transform (~15
+ops/sphere), and there are 111 of them (+3 coords) -> ~5-7x more ops than FK's shared
+placement. The shared chain wins.
+
+**Conclusion:** the extractable edge-continuity win is specifically in the LEAVES --
+the sin/cos, which are the *expensive* ops (~4 ns each vs ~0.5 ns/mul). The leaf-trig
+recurrence (m20, ~1.2x FK) captures it; the rest of FK is cheap shared arithmetic that
+recompute handles better than independent per-sphere recurrence. Caveat: for robots with
+little chain-sharing (few spheres/link) or where trig dominates more, per-sphere/per-link
+screw advance could win -- worth checking per robot.

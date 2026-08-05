@@ -388,3 +388,36 @@ thin obstacles.)
 the per-link swept broadphase (skip the ~95% of links that stay clear across the whole edge).
 Next: measure it at the BOUNDING-SPHERE level (VAMP prunes per-link, not per-leaf) via a
 traced `bound_fk`, then build the swept-broadphase kernel.
+
+---
+
+## Per-LINK swept certifiability (m33) -- the number the swept broadphase actually acts on
+
+VAMP prunes per-link bounding sphere, so the swept lever acts per link, not per leaf. Group
+leaves by link (cricket per_link_spheres), build each link's bounding sphere per config
+(centroid + enclosing radius), enclose the bs-center trajectory over the edge (center=midpoint,
+rho=max deviation, R=max bs radius), certify free for the whole edge iff clearance(center)-R > rho.
+
+| robot | links | per-LINK swept-certifiable | (per-sphere ref) | broadphase tests eliminated |
+|-------|------:|---------------------------:|-----------------:|----------------------------:|
+| panda | 11 | **93.5%** | 95.9% | ~74.8% |
+| fetch | 15 | **85.1%** | 94.2% | ~63.8% |
+
+Per-link is a bit below per-leaf (larger spheres sweep more, smaller clearance) but still
+dominant: on a free edge ~85-94% of links are certified clear for the ENTIRE edge by one swept
+test, so their per-rake broadphase (n tests -> 1) is eliminated -- ~64-75% of broadphase work.
+With collision = 63% of the free-edge kernel (m31), this is the lever with real headroom.
+
+**Cost model / next build.** The win requires computing each link's swept bound CHEAPLY (not
+by FK-ing all n rakes). The swept bound needs: (a) the bs-center trajectory extent rho, and
+(b) max bs radius R. Both are bounded analytically from the two endpoint configs + a curvature
+(sagitta) term -- exactly what a traced `bound_fk` would emit: endpoint bounding-sphere FK
+(2 configs, ~links spheres) + a per-link rho/R bound. Kernel sketch:
+  1. bound_fk at edge endpoints -> per-link bs center_0, center_1, R_0, R_1.
+  2. per link: e = midpoint, rho <= |center_1-center_0|/2 + sagitta, R = max(R_0,R_1)+growth.
+  3. one sphere_environment test per link on the inflated (R+rho) swept sphere.
+  4. certified links: skip entirely. Uncertified (~1-2 links): fall back to per-rake fkcc.
+Ceiling: collapses the ~63% collision slice roughly in proportion to the certified fraction,
+net of the 2-endpoint bound_fk. Open risk: the sagitta/growth bound's tightness (too loose ->
+fewer certified); measure certified% under the analytic (endpoints-only) bound vs the exact
+trajectory bound used here.

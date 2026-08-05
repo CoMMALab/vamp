@@ -308,3 +308,32 @@ traverse) benefit most, as expected. The win is exact and free (no accuracy cost
 the trace) -- but at the system level it is single-digit percent, not the isolated-FK 1.3x.
 The remaining time is collision (broadphase + narrowphase sphere tests), which the trig
 recurrence does not touch -- that is where a bigger end-to-end lever would have to come from.
+
+---
+
+## Where the free-edge time actually is (m31) -- the collision-side ceiling
+
+Decompose a free-edge kernel: FK-only (`sphere_fk`, spheres forced live) vs full FK+CC
+(`fkcc`), same edges, n=ceil(range*32/rake) rakes, 40-obstacle shelf.
+
+| robot | n | FK-only | FK+CC | collision | collision % | cc-lever ceiling |
+|-------|--:|--------:|------:|----------:|------------:|-----------------:|
+| panda | 5 | 956 ns  | 2609 ns | 1653 ns | 63% | 2.73x |
+| fetch | 4 | 997 ns  | 2747 ns | 1750 ns | 64% | 2.75x |
+
+**Collision is ~63% of a free-edge kernel -- nearly 2x the FK cost.** The leaf-trig
+recurrence attacks only the FK third (and only its trig-leaf slice), which is exactly why
+the end-to-end win is ~1.05-1.09x. The real lever is the COLLISION side: a perfect
+collision elision would give up to ~2.7x. The FK-side lever is now exhausted (exact + native,
+but small); the open direction is compiling/tracing the collision check per-edge.
+
+### Next compile/trace target: per-edge swept broadphase
+VAMP already gates per-link (bounding sphere vs env) per rake, descending to per-sphere
+narrowphase only on a hit -- so a free edge is mostly n x links broadphase tests. The edge
+structure lets cricket emit a swept variant: for each link, enclose the bounding-sphere
+CENTER trajectory over the whole edge in one inflated sphere (endpoint centers + chord/sagitta
+bound) and test the environment ONCE. If clear, skip all n rakes of that link's broadphase
+AND narrowphase. Needs only endpoint bounding-sphere FK (2 configs, bounding subset) -- a
+`bound_fk` cricket could trace. Open question to probe first: on realistic free edges, what
+fraction of (link x edge) stay entirely clear of the environment (skippable), and how much
+inflation is needed to stay conservative -- that bounds the achievable slice of the 2.7x.

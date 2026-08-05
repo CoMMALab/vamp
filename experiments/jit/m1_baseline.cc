@@ -20,6 +20,8 @@
 #include <vamp/planning/validate.hh>
 #include <vamp/robots/panda.hh>
 #include <vamp/robots/ur5.hh>
+#include <vamp/robots/fetch.hh>
+#include <vamp/robots/baxter.hh>
 
 namespace
 {
@@ -132,8 +134,10 @@ auto main() -> int
     const std::vector<std::size_t> ns = {10, 25, 50, 100, 200, 400, 800};
     for (float extent : {0.6F, 1.5F})
     {
-        run<vamp::robots::Panda>("panda", ns, extent);
-        run<vamp::robots::UR5>("ur5", ns, extent);
+        run<vamp::robots::UR5>("ur5", ns, extent);      // 40 spheres
+        run<vamp::robots::Panda>("panda", ns, extent);  // 59
+        run<vamp::robots::Baxter>("baxter", ns, extent);  // 75, dim 14
+        run<vamp::robots::Fetch>("fetch", ns, extent);    // 111, dim 8
     }
     return 0;
 }

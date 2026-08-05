@@ -1,0 +1,4 @@
+scene,collision_frac,fk_ns,env_only_ns,full_ns,self_cost_ns
+sparse_n20_ext2.0,0.372,262.6,215.4,351.1,135.7
+dense_n200_ext0.6,1.000,262.6,2292.7,2359.1,66.4
+dense_n800_ext0.6,1.000,262.6,7671.9,7617.9,-54.0

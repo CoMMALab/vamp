@@ -1,0 +1,3 @@
+region,prunable_pct,note
+full_box,16.7,beyond-SRDF AOT (9 coarse links / 36 pairs)
+corridor,27.4,mean of 8 start-goal corridors (JIT); under-estimate at coarse granularity

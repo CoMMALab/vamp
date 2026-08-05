@@ -37,3 +37,30 @@ obstacles kept per sphere; amortized over ~40 sub-configs it nets 8–22× fewer
   edges (full traversal) but the fused early-exit is better on edges that reject on
   sub-config 0. A real kernel may branch on edge length / do a cheap endpoint-based sweep
   bound (2 FK + deviation bound) to avoid full-FK-first. Timing bench is the decisive next step.
+
+---
+
+## Timing (m17) — REFUTED against VAMP's real kernel
+
+Built the C++ timing bench (Fetch, env-only): VAMP's real `fkcc` vs a same-FK naive full
+check vs flowA (FK-all-then-prune, exact) vs flowB (3-pt bound + margin, keeps early-exit).
+Free/colliding mix (3276/4000 free), 0 correctness mismatches. `results/m17_edge_timing.csv`.
+
+| edge class | baseline VAMP | naive full | flowA | flowB |
+|-----------|--------------:|-----------:|------:|------:|
+| free      | 2245 ns | 14508 ns | 7744 ns | 6588 ns |
+| colliding |  750 ns |  4562 ns | 9730 ns | 8076 ns |
+
+**The per-edge broadphase is 3–4× SLOWER than VAMP's kernel on free edges** (worse on
+colliding, where baseline early-exits and the broadphase does full setup).
+
+**Why the m16 check-count was misleading:** it compared against a radial-only model. VAMP's
+kernel is already 6× faster than a naive full check (baseline 2245 vs naive 14508) because
+its **per-link bounding-sphere gate is itself a per-config broadphase** — tighter (per-config,
+not per-edge) and cheap (no partition). The per-edge swept-AABB only gets 1.9× over naive, so
+it strictly loses to the gate VAMP already has. The per-edge partition (ns×N) + setup overhead
+exceeds VAMP's entire fast edge cost, and Fetch is FK-dominated so pruning collision saves
+little anyway.
+
+**Verdict:** per-edge broadphase does not pay. VAMP's per-config per-link gate already does
+the broadphase job better and cheaper. This closes the pruning-lever thread for single queries.

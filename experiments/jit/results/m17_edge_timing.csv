@@ -1,0 +1,4 @@
+edge_class,baseline_vamp_ns,ref_full_naive_ns,flowA_ns,flowB_ns,A_vs_vamp,B_vs_vamp,mismatches
+free,2245,14508,7744,6588,0.29,0.34,0
+colliding,750,4562,9730,8076,0.08,0.09,0
+all,1990,12706,8120,6926,0.25,0.29,0

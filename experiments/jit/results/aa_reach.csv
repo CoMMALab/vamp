@@ -1,0 +1,5 @@
+robot,region,aa_over_sampled_volx,radial_over_sampled_volx,conservative
+panda,full_box,25.7,7.1,yes
+panda,corridor,2.0,3265.4,yes
+ur5,full_box,3.6,17.4,yes
+ur5,corridor,1.8,385.4,yes

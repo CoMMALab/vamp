@@ -600,3 +600,42 @@ explains panda's weak swept win: it isn't wasting leaf FK, and its collision bas
 hits; 40% of edges never need leaves at all). So lazy FK, like the swept broadphase, is a lever
 for FINELY-SPHERIZED robots. Points squarely at baxter (highest sphere count) as the ideal
 target -- both levers should be strongest there.
+
+---
+
+## Baxter + the swept sweet spot (m36/m37) -- setup amortization is the binding constraint
+
+Added baxter (dim 14, bimanual: 33 bounding spheres, 349 self-pairs, 75 leaves, RRTC range 0.5
+-> n=2 rakes). All three robots, unrolled swept kernel, SAFETY=2.0, mismatch=0/unsafe=0:
+
+| robot | n | bs | pairs | free | colliding | all | lazy-FK reclaimable |
+|-------|--:|---:|------:|-----:|----------:|----:|--------------------:|
+| panda | 5 | 11 | 21  | 1.08x | 0.68x | 1.04x | 0%  |
+| fetch | 4 | 15 | 48  | **1.48x** | 0.80x | **1.34x** | 58% |
+| baxter| 2 | 33 | 349 | 1.09x | 0.48x | **0.92x** | 58% |
+
+**Baxter has the MOST to skip (349 self-pairs) but nets a LOSS.** The swept setup is O(bs+pairs)
+per edge -- for baxter ~349 pair swept-tests + 33 bounding-FK, comparable to a whole rake of
+work -- and baxter's edges are only n=2 rakes (range 0.5), so the setup can't amortize.
+Colliding edges (setup wasted before early-exit) crater to 0.48x, dragging the net to 0.92x.
+
+**The swept broadphase wins only in a sweet spot: moderate pair count AND enough rakes to
+amortize the O(bs+pairs) setup.**
+- fetch (48 pairs, n=4): hits it -> +48% free, +34% all. The clear win.
+- panda (21 pairs, n=5, but coarse spheres/loose bounding -> little to skip + 100% leaf-need): flat.
+- baxter (349 pairs, n=2): setup-bound -> net loss.
+
+So the original "baxter is more interesting (higher sphere count)" hypothesis is only half right:
+higher sphere count gives more to skip, but baxter's SHORT RRTC edges (range 0.5 -> n=2) defeat
+the per-edge setup. Baxter would win with (a) longer edges, or (b) planner-level caching of
+bound_fk + masks at tree nodes so the setup is shared across the many edges from each node --
+that is the lever for high-pair robots, and it is an RRTC-integration change, not a kernel one.
+
+### Net synthesis of the swept-broadphase thread
+- Traced natively: `bound_fk` (bounding spheres only) + `fkcc_swept` (unrolled, per-link/pair
+  mask guards). Rigorous: 0 unsafe skips over 9000 edges (3 robots x 3000, incl colliding).
+- **Fetch: real +34% (free +48%) over the shipping kernel.** The deliverable.
+- Panda flat, baxter net-loss -- both for structural reasons (leaf-need / setup-amortization),
+  not bugs. Lazy leaf FK adds 58% leaf-FK reclaim for fetch/baxter (not panda).
+- The single biggest remaining lever for BOTH baxter and colliding edges is amortizing the
+  setup across edges (node-level bound_fk/mask caching in RRTC), not more kernel work.

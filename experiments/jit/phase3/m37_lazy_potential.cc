@@ -12,6 +12,7 @@
 #include <vamp/collision/factory.hh>
 #include "panda_e.hh"
 #include "fetch_e.hh"
+#include "baxter_e.hh"
 #include "swept_aux.hh"
 
 constexpr std::size_t rake = vamp::FloatVectorWidth;
@@ -93,5 +94,6 @@ int main()
 {
     run<vamp::robots::PandaE>("panda",1.25f,40,panda_pair_bs,2.0f);
     run<vamp::robots::FetchE>("fetch",1.0f,40,fetch_pair_bs,2.0f);
+    run<vamp::robots::BaxterE>("baxter",0.5f,40,baxter_pair_bs,2.0f);
     return 0;
 }

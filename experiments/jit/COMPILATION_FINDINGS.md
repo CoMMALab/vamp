@@ -712,3 +712,30 @@ provably rigorous, vectorized -> fetch +29% / baxter +31% all-edges, free +36-50
 ~break-even. The one structural non-target is panda (coarse spherization -> leaves always
 needed). Remaining polish: tighter provable sagitta (Hessian) and lazy leaf FK (fetch/baxter
 58% leaf reclaim, orthogonal).
+
+---
+
+## (b') Tighter Hessian sagitta bound (m39) -- wins for fetch, dim^2 cost hurts baxter
+
+Replaced M_link*Omega/8 with the actual Hessian-norm quadratic form:
+  sag_k <= (1/8) sum_{i,j} H[k][i][j] |dth_i||dth_j|,  H[k][i][j] = max_config ||d2 c_k/dth_i dth_j||
+precomputed per bounding sphere via second finite differences (eps=0.05 to dodge float32
+cancellation -- eps=3e-3 under-estimated H ~20x). Conservative with SAFETY=1.3 (covers FD error):
+worst true/bound over MOVING spheres (sag>3mm) = 1.3x, 0 unsafe. (The raw ratio is polluted by
+near-stationary base spheres where sag~0 and H~0 -> 0/0; they are far from obstacles, never skip.)
+
+| robot | dim | M*Omega bound (free / all) | Hessian bound (free / all) |
+|-------|----:|---------------------------:|---------------------------:|
+| panda | 7  | 1.08 / 1.05 | 1.10 / 1.07 |
+| fetch | 8  | 1.36 / 1.29 | **1.57 / 1.44** |
+| baxter| 14 | **1.50 / 1.31** | 1.13 / 0.95 |
+
+**Tighter bound is a win for fetch (1.29->1.44x all) but net-negative for baxter:** the per-edge
+quadratic form is O(NBS*dim^2) = 33*196 for baxter, and that setup cost exceeds the certification
+gain (all 1.31->0.95x, colliding 0.78->0.52x). fetch (dim 8) is cheap enough (15*64) to profit.
+So use the tighter bound for moderate dim, the O(dim) M*Omega bound for high dim. A low-rank
+approx of H (top 2-3 eigenvectors -> ad^T H ad ~ sum_r lambda_r (w_r.ad)^2, O(dim*rank)) would
+make the tight bound cheap even at high dim -- the clean follow-up.
+
+**Best-of per robot (rigorous, node-cached, vectorized):** panda 1.07x, fetch 1.44x (Hessian),
+baxter 1.31x (M*Omega) all-edges; free 1.10 / 1.57 / 1.50x.

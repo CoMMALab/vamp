@@ -1030,3 +1030,36 @@ practical mismatches. To make it the default RRTC path, point validate_motion at
 inline the sincos preamble into fkcc). Combined with the recurrence (recur+sincos) it reaches
 1.06-1.08x. This is the cleanest, most robust FK-side speedup found -- and the first one wired
 end-to-end through the trace and confirmed on MBM.
+
+---
+
+## END-TO-END RRTC on MBM: fkcc_sincos vs baseline (m47) -- the payoff
+
+Standalone RRTC benchmark on real MBM problems (start+goal+env, joint order from cricket, high
+validity confirms correct ordering). fkcc_block gated by -DVAMP_FKCC_SINCOS; baseline and sincos
+are separate binaries running the SAME problems with the SAME deterministic Halton sampler ->
+identical planning (same solved count, same iterations), so the difference is pure wall-clock.
+5 timing trials/problem (min), max_iterations = 10,000,000.
+
+| robot | solved | iters p50 | base mean us | sincos mean us | mean speedup | p95 speedup |
+|-------|-------:|----------:|-------------:|---------------:|-------------:|------------:|
+| ur5    | 138/140 | 161     | 172.0  | 166.1  | 1.04x | 1.08x |
+| panda  | 127/140 | 123     | 85.6   | 80.2   | **1.07x** | 1.08x |
+| fetch  | 133/140 | 4016    | 3089.1 | 2959.4 | 1.04x | 1.05x |
+| baxter | 45/60   | 168563  | 39126.9| 38922.9| 1.005x | 1.007x |
+
+**The fused-sincos FK win survives all the way to end-to-end RRTC planning:** ~1.04-1.07x on the
+mean and up to 1.08x on the harder (p95) problems for ur5/panda/fetch -- matching the ~1.05x
+collision-check speedup, because RRTC time on those is collision-check-dominated.
+
+**Baxter is the exception (~1.005x, flat).** Its MBM problems are hard (p50 = 168k iterations,
+39ms solves): at ~168k tree nodes the planner spends most of its time in nearest-neighbor search
+and tree bookkeeping, not collision checking, so the FK speedup is diluted. The FK improvement is
+real (m44: baxter fkcc 1.06x) but it is a small slice of baxter's end-to-end cost.
+
+**Net, in practice:** fused sincos -- a native traced-kernel change, environment-independent,
+exact-ish, verified bit-safe on 23k edges -- delivers a genuine **~4-7% RRTC planner speedup on
+panda/fetch/ur5** MBM problems, and ~1% on baxter (dominated by tree ops). This is the honest
+end-to-end payoff of the whole FK-tracing line of work: the recurrence and the fused sincos are
+the two real wins, and fused sincos is now confirmed at every level -- trig microbench (1.71x),
+FK kernel on MBM (1.05x), and full RRTC planning (1.04-1.07x on collision-bound robots).

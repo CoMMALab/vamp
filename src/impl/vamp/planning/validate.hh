@@ -37,9 +37,13 @@ namespace vamp::planning
         const collision::Environment<FloatVector<rake>> &environment,
         const typename Robot::template ConfigurationBlock<rake> &block) noexcept -> bool
     {
-        return (not environment.attachments.empty()) ?
-                   Robot::template fkcc_attach<rake>(environment, block) :
-                   Robot::template fkcc<rake>(environment, block);
+        if (not environment.attachments.empty())
+            return Robot::template fkcc_attach<rake>(environment, block);
+#ifdef VAMP_FKCC_SINCOS
+        return Robot::template fkcc_sincos<rake>(environment, block);
+#else
+        return Robot::template fkcc<rake>(environment, block);
+#endif
     }
 
     // Collision-check a single configuration by broadcasting it across every rake lane

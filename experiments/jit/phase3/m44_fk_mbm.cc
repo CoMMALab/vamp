@@ -80,27 +80,30 @@ static void run(const char *name, float range, std::size_t jlo, std::size_t jhi,
             if (not R::template fkcc_pretrig<rake>(envs[e.env], e.B[r], ps, pc)) return false; }
         return true; };
 
-    std::size_t nfree = 0; std::array<std::size_t, 3> mm{};
+    auto valid_native = [&](const Edge &e) { for (auto &b : e.B) if (not R::template fkcc_sincos<rake>(envs[e.env], b)) return false; return true; };
+
+    std::size_t nfree = 0; std::array<std::size_t, 4> mm{};
     for (auto &e : edges) { bool bv = valid_base(e); nfree += e.free;
-        if (valid_sincos(e) != bv) mm[0]++; if (valid_recur(e) != bv) mm[1]++; if (valid_recur_sc(e) != bv) mm[2]++; }
+        if (valid_sincos(e) != bv) mm[0]++; if (valid_recur(e) != bv) mm[1]++; if (valid_recur_sc(e) != bv) mm[2]++; if (valid_native(e) != bv) mm[3]++; }
 
     auto med = [&](auto fn, int mode) { std::vector<double> t; volatile std::uint64_t sk = 0; std::vector<Edge *> sub;
         for (auto &e : edges) if (mode == 0 || (mode == 1 && e.free) || (mode == 2 && not e.free)) sub.push_back(&e); if (sub.empty()) return 0.0;
         for (int rp = 0; rp < 7; ++rp) { auto a = std::chrono::steady_clock::now(); std::uint64_t ac = 0; for (auto *e : sub) ac += fn(*e); auto z = std::chrono::steady_clock::now(); sk += ac;
             t.push_back(std::chrono::duration<double>(z - a).count() / sub.size() * 1e9); } (void)sk; std::sort(t.begin(), t.end()); return t[t.size() / 2]; };
     auto B0 = [&](const Edge &e) { return valid_base(e) ? 1U : 0U; };
+    auto Nv = [&](const Edge &e) { return valid_native(e) ? 1U : 0U; };
     auto Sx = [&](const Edge &e) { return valid_sincos(e) ? 1U : 0U; };
     auto Rc = [&](const Edge &e) { return valid_recur(e) ? 1U : 0U; };
     auto Rs = [&](const Edge &e) { return valid_recur_sc(e) ? 1U : 0U; };
 
-    std::printf("\n== %-6s ==  dim=%zu n=%zu revolute=[%zu,%zu)  edges=%zu (free %zu)  mism sincos/recur/recur+sc = %zu/%zu/%zu\n",
-                name, dim, n, jlo, jhi, edges.size(), nfree, mm[0], mm[1], mm[2]);
+    std::printf("\n== %-6s ==  dim=%zu n=%zu revolute=[%zu,%zu)  edges=%zu (free %zu)  mism sincos/recur/recur+sc/native = %zu/%zu/%zu/%zu\n",
+                name, dim, n, jlo, jhi, edges.size(), nfree, mm[0], mm[1], mm[2], mm[3]);
     const char *lbls[3] = {"all", "free", "colliding"};
-    std::printf("   %-9s | %8s %8s %8s %10s\n", "edges", "base", "sincos", "recur", "recur+sc");
+    std::printf("   %-9s | %8s %10s %8s %8s %10s\n", "edges", "base", "fkcc_sincos", "sincos*", "recur", "recur+sc");
     for (int m = 0; m < 3; ++m) {
-        double bb = med(B0, m), sx = med(Sx, m), rc = med(Rc, m), rs = med(Rs, m);
-        std::printf("   %-9s | %8.0f %8.0f %8.0f %10.0f\n", lbls[m], bb, sx, rc, rs);
-        std::printf("   %-9s | %8s %7.2fx %7.2fx %9.2fx\n", "", "1.00x", bb / sx, bb / rc, bb / rs);
+        double bb = med(B0, m), nv = med(Nv, m), sx = med(Sx, m), rc = med(Rc, m), rs = med(Rs, m);
+        std::printf("   %-9s | %8.0f %10.0f %8.0f %8.0f %10.0f\n", lbls[m], bb, nv, sx, rc, rs);
+        std::printf("   %-9s | %8s %9.2fx %7.2fx %7.2fx %9.2fx\n", "", "1.00x", bb / nv, bb / sx, bb / rc, bb / rs);
     }
 }
 

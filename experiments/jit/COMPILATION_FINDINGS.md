@@ -1008,3 +1008,25 @@ Of the two FK-op-reduction ideas, **fused sincos is a real, shippable, environme
 ~1.03-1.07x** across all four robots on real MBM -- and, combined with the recurrence, the most
 robust FK-side win found. fp16 is correct in principle but blocked by this CPU's lack of native
 fp16 arithmetic.
+
+### Native fkcc_sincos in the trace (m44 native column) -- shipped
+
+cricket now emits fkcc_sincos: the FK trace's revolute joints get a fused-sincos preamble
+(x[j].sincos(ps[j], pc[j]) via the extracted sincos_joints set) feeding the hoisted-trig ccfk
+body -- one shared Cephes reduction per joint instead of separate sin+cos. Drop-in for fkcc,
+no external ps/pc. On MBM (native column), rigorous (0 mismatches), matches the validator-driven
+measurement:
+
+| robot | fkcc_sincos (all / free / colliding) |
+|-------|--------------------------------------|
+| ur5    | 1.05x / 1.04x / 1.07x |
+| panda  | 1.05x / 1.05x / 1.06x |
+| fetch  | 1.06x / 1.04x / 1.06x |
+| baxter | 1.06x / 1.05x / 1.07x |
+
+So the fused-sincos win is now a native traced kernel: **~1.05x uniformly across all four robots
+on real MBM, colliding edges included**, environment-independent, exact sin / ~4e-6 cos with zero
+practical mismatches. To make it the default RRTC path, point validate_motion at fkcc_sincos (or
+inline the sincos preamble into fkcc). Combined with the recurrence (recur+sincos) it reaches
+1.06-1.08x. This is the cleanest, most robust FK-side speedup found -- and the first one wired
+end-to-end through the trace and confirmed on MBM.

@@ -563,6 +563,57 @@ namespace vamp
             return vsq_sq.sin();
         }
 
+        // Fused sin+cos sharing one Cephes range reduction and one polynomial pair. The reduced
+        // angle already yields both poly_a (cos-of-reduced) and poly_b (sin-of-reduced); sin and
+        // cos differ only in which polynomial is selected and the quadrant sign. ~40% cheaper
+        // than sin() + cos() (which does the reduction twice).
+        template <
+            typename ScalarT = typename S::ScalarT,
+            typename =
+                std::enable_if_t<std::is_same_v<ScalarT, float> or std::is_same_v<ScalarT, double>, bool>>
+        inline auto sincos(D &s_out, D &c_out) const noexcept -> void
+        {
+            using Scalar = typename S::ScalarT;
+            using IntVec = Vector<typename S::IntT, num_rows, num_scalars_per_row>;
+
+            D x = *d();
+            D sign_bit_sin = x & Scalar(-0.0F);
+            x = x.abs();
+            D y = x * Scalar(1.27323954473516F);
+            IntVec emm2 = IntVec::template from<D>(y);
+            emm2 = (emm2 + IntVec::fill(1)) & IntVec::fill(~1);
+            y = D::template from<IntVec>(emm2);
+
+            const IntVec emm0 = (emm2 & IntVec::fill(4)) << 29U;
+            const IntVec poly_select = (emm2 & IntVec::fill(2)).equal(IntVec::fill(0));
+            const D swap_sign_bit_sin = emm0.template as<D>();
+            const D poly_mask = poly_select.template as<D>();
+            sign_bit_sin = sign_bit_sin ^ swap_sign_bit_sin;
+
+            // cos quadrant sign: equal to andnot(emm2-2, 4) for the even emm2 in {0,2,4,6},
+            // which is exactly (emm2+2)&4 -- computable with only + and & (no int xor/andnot).
+            const IntVec emm4 = ((emm2 + IntVec::fill(2)) & IntVec::fill(4)) << 29U;
+            const D sign_bit_cos = emm4.template as<D>();
+
+            x = x + y * Scalar(-0.78515625F);
+            x = x + y * Scalar(-2.4187564849853515625E-4F);
+            x = x + y * Scalar(-3.77489497744594108E-8F);
+
+            const D z = x * x;
+            D poly_a = D(Scalar(2.443315711809948E-5F));
+            poly_a = poly_a * z + Scalar(-1.388731625493765E-3F);
+            poly_a = poly_a * z + Scalar(4.166664568298827E-2F);
+            poly_a = poly_a * z * z - z * Scalar(0.5F) + Scalar(1.0F);
+
+            D poly_b = D(Scalar(-1.9515295891E-4F));
+            poly_b = poly_b * z + Scalar(8.3321608736E-3F);
+            poly_b = poly_b * z + Scalar(-1.6666654611E-1F);
+            poly_b = poly_b * z * x + x;
+
+            s_out = poly_a.blend(poly_b, poly_mask) ^ sign_bit_sin;
+            c_out = poly_b.blend(poly_a, poly_mask) ^ sign_bit_cos;
+        }
+
         template <
             typename ScalarT = typename S::ScalarT,
             typename =

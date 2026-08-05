@@ -956,3 +956,55 @@ So the accurate verdict per modification, in practice on MBM:
   "setup too expensive." Actionable: batch the n_bs swept-sphere env queries into fewer SIMD
   calls, or a coarse whole-robot swept pre-gate, or amortize masks across the RRT tree. Until
   then it does not pay; but the ceiling says a cheaper setup could make it a real win (esp. baxter).
+
+---
+
+## Two FK-op-reduction ideas, prototyped + evaluated on MBM (m43/m44/m45)
+
+### Idea 1: fused sincos -- SUCCESS, the best FK-side win
+
+VAMP's sin() is a Cephes polynomial that already computes BOTH the sin and cos polynomials of
+the reduced angle; cos() then calls sin(x+pi/2) -- a SECOND full range reduction. Added a fused
+sincos() to the vector interface that shares one reduction + one polynomial pair (cos sign via
+(emm2+2)&4, no int xor needed). Validated (m43): fused_sin bit-exact to sin(), fused_cos within
+4.1e-6 of cos(), and **1.71x on the trig pair** (8-wide SIMD): separate 7.16ns -> fused 4.19ns.
+
+On real MBM driving the full fkcc collision check (m44), rigorous (0 verdict mismatches / ~23k
+edges despite the 4e-6 cos delta):
+
+| robot | sincos (free/all) | recur (free/all) | recur+sincos (free/all) |
+|-------|------------------:|-----------------:|------------------------:|
+| ur5    | 1.03 / 1.03x | 1.06 / 1.04x | 1.06 / 1.05x |
+| panda  | 1.06 / 1.06x | 1.06 / 1.05x | **1.07 / 1.07x** |
+| fetch  | 1.05 / 1.05x | 1.05 / 1.05x | 1.06 / 1.07x |
+| baxter | **1.07 / 1.06x** | 1.02 / 0.99x | 1.05 / 1.03x |
+
+**Fused sincos is MORE robust than the recurrence:** it helps every rake (not just 1..n-1), so
+it helps colliding edges (1.04-1.06x vs recur's 0.94-1.03x) and helps baxter (1.06x, where recur
+is flat because n=2 doesn't amortize). recur+sincos combines to the best (1.05-1.07x everywhere).
+It is environment-independent, exact (bit-exact sin, 4e-6 cos with 0 practical mismatches), and
+simpler than the recurrence. Shippable; native integration = emit a fused-sincos preamble in the
+FK trace (a small codegen change, like the pretrig hoist).
+
+### Idea 2: fp16 bounding-sphere FK -- HARDWARE-GATED, not viable here
+
+The CPU is an i9-14900K: avx2 + f16c + fma, NO avx512-fp16 (Raptor Lake fuses AVX-512 off). F16C
+converts fp16<->fp32 but does no fp16 arithmetic, so _Float16 math is emulated via up-convert.
+Direct measurement (m45), rotate+translate a batch of points (the sphere-placement op):
+
+| points | float | _Float16 | fp16/float |
+|--------|------:|---------:|-----------:|
+| 75     | 0.374 ns/pt | 0.832 ns/pt | 2.22x SLOWER |
+| 512    | 0.329 ns/pt | 0.614 ns/pt | 1.87x SLOWER |
+
+So an fp16 bound_fk is **1.9-2.2x slower** on this machine, not the ~2x faster we wanted. The idea
+is sound only on hardware with native fp16 arithmetic -- AVX512-FP16 (Sapphire Rapids / Granite
+Rapids) or ARM NEON-fp16 -- where it would ~halve the broadphase transform cost and could unlock
+the setup-bound swept masking (1.9x ideal ceiling, esp. baxter). On AVX2 it is a non-starter;
+revisit only on fp16-capable hardware.
+
+### Net
+Of the two FK-op-reduction ideas, **fused sincos is a real, shippable, environment-independent
+~1.03-1.07x** across all four robots on real MBM -- and, combined with the recurrence, the most
+robust FK-side win found. fp16 is correct in principle but blocked by this CPU's lack of native
+fp16 arithmetic.

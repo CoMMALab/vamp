@@ -926,3 +926,33 @@ branch overhead that eats the placement savings on sparse scenes.
 is a real in-practice win (~1.03-1.06x on free edges, environment-independent, exact). The staged
 sphere-aware FK and the swept-mask kernels do not pay on real MBM. So the tracing work produced
 exactly one durable, shippable improvement: the recurrence.
+
+### Isolation table on MBM (m42) — CORRECTS the earlier "nothing to skip" diagnosis
+
+Each modification measured alone on real MBM, plus the masking CEILING (masks precomputed/free,
+timing only the masked kernel). Rigorous: total_unsafe = 0 for all robots. All-edges vs base:
+
+| modification | ur5 | panda | fetch | baxter |
+|--------------|----:|------:|------:|-------:|
+| recurrence (FK-side, fkcc_pretrig)        | 1.05x | 1.06x | 1.03x | 0.98x |
+| staged FK (FK-side, full unmasked check)  | 0.96x | 0.97x | 1.03x | 0.92x |
+| swept masking IDEAL (masks free)          | **1.09x** | **1.13x** | **1.26x** | **1.92x** |
+| swept masking REAL (cached setup)         | 0.89x | 1.01x | 0.90x | 0.66x |
+| combined (staged FK + masking)            | 0.91x | 1.01x | 0.94x | 0.65x |
+
+**This corrects the earlier claim that sparse scenes "leave nothing to skip."** They do not: the
+masking IDEAL shows real headroom on MBM — up to **1.92x on baxter** (its 349 self-pairs are the
+most to skip), 1.26x fetch, 1.09-1.13x ur5/panda. The idea is sound. **The killer is the per-edge
+mask SETUP cost.** Decomposing baxter (all-edges): IDEAL 619ns vs REAL 1786ns -> the masks() call
+costs ~1167ns/edge = 33 swept-sphere env queries (sphere_environment_in_collision) + 349 pair
+tests, amortized over only n=2 rakes. Node-caching already removed the endpoint bound_fk from
+setup; what remains — the O(n_bs) env-broadphase queries + O(n_pairs) pair tests — is the wall.
+
+So the accurate verdict per modification, in practice on MBM:
+- **recurrence**: real win, ~1.03-1.06x free edges, environment-independent, exact. SHIP-ABLE.
+- **staged FK**: neutral (0.90-1.03x) in the fused kernel; the m41 1.1-1.4x was an artifact.
+- **swept masking**: the IDEA has genuine headroom (1.1-1.9x ideal) but the mask SETUP
+  (n_bs env queries + n_pairs tests, /edge) exceeds it on short MBM edges. Not "no headroom" --
+  "setup too expensive." Actionable: batch the n_bs swept-sphere env queries into fewer SIMD
+  calls, or a coarse whole-robot swept pre-gate, or amortize masks across the RRT tree. Until
+  then it does not pay; but the ceiling says a cheaper setup could make it a real win (esp. baxter).

@@ -165,3 +165,28 @@ kernel gives **1.30x FK, exact (err 1.3e-7)** driven by the recurrence -- matchi
 post-transform result. The experiments are now demonstrated in their final compiled form.
 Next for production: emit the recurrence preamble inside the generated motion validator
 (compute rake-0 sin/cos, advance per rake) so validate_motion uses it end to end.
+
+---
+
+## Can the per-sphere error be absorbed as radius inflation? Conceptually yes, practically no (m26)
+
+Inflating radius by the max deviation eps makes the approximate recurrence CONSERVATIVE
+(no missed collisions -- the inflated approximate sphere contains the true sphere). Valid.
+But eps must be small (cm inflation on cm-radius spheres over-rejects valid motions).
+
+Measured the required inflation (= max accumulated position error) with crude vs best-fit
+alpha:
+| edge L | crude 4-pt alpha | best-fit alpha (LSQ over edge) |
+|--------|-----------------:|-------------------------------:|
+| 0.5    | 2.4 mm | 2.8 mm |
+| 1.0    | 4.8 cm | 4.3 cm |
+| 1.5    | 6.3 cm | 5.7 cm |
+
+**Alpha quality doesn't help** -- the error is the order-3 MODEL, not estimation. Over a
+range-length edge the twist is non-constant (not a single screw), so the true sphere motion
+is genuinely order 4-5; the cheap order-3 (9-op) recurrence leaves cm residual. Getting to
+sub-mm needs order 5-6 (~15-18 ops/sphere) ~ FK cost -> no win. Re-seeding bounds it but cuts
+savings. Short edges (L<=0.3) would be mm/sub-mm (inflatable) but have few sub-configs (little
+to save). So inflation is correct-but-impractical for realistic range-length edges. The EXACT
+leaf-trig recurrence (leaves are exactly order-3 with exact coefficient -> no error, no
+inflation) remains the right lever.

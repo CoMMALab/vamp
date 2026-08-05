@@ -1,0 +1,4 @@
+variant,fkcc_ns,vs_unrolled
+unrolled,650.2,1.00
+compact_default,824.3,0.79
+compact_reordered,797.3,0.82

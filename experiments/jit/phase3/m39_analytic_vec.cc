@@ -50,22 +50,28 @@ static void run(const char *name, float range, int nobs, const std::vector<std::
 
     // (b, tighter) per-bounding-sphere Hessian-norm matrix H[k][i][j] = max_config ||d2 c_k/dth_i dth_j||
     // via second finite differences. sag_k <= (1/8) sum_{i,j} H[k][i][j] |dth_i||dth_j| (interp error).
-    static std::array<std::array<std::array<float,dim>,dim>,NBS> H{}; { std::mt19937 g(0xA1);
+    static std::array<std::array<std::array<float,dim>,dim>,NBS> H{}; static std::array<std::array<float,dim>,NBS> reach{}; { std::mt19937 g(0xA1);
         std::uniform_real_distribution<float> uu(0.f,1.f); const float eps=5e-2f, ie2=1.0f/(eps*eps);
         for(int it=0;it<600;++it){ Block c; for(std::size_t j=0;j<dim;++j) c[j]=static_cast<DataV>(uu(g)); R::template scale_configuration_block<rake>(c);
             std::array<float,dim> q; for(std::size_t j=0;j<dim;++j) q[j]=c[j].to_array()[0];
             auto base=node_bound(q); std::array<std::array<BS,NBS>,dim> ci;
-            for(std::size_t i=0;i<dim;++i){ auto qi=q; qi[i]+=eps; ci[i]=node_bound(qi); }
+            for(std::size_t i=0;i<dim;++i){ auto qi=q; qi[i]+=eps; ci[i]=node_bound(qi);
+                for(std::size_t k=0;k<NBS;++k){ float dx=ci[i][k].x-base[k].x,dy=ci[i][k].y-base[k].y,dz=ci[i][k].z-base[k].z; reach[k][i]=std::max(reach[k][i],std::sqrt(dx*dx+dy*dy+dz*dz)/eps);} }
             for(std::size_t i=0;i<dim;++i){ auto q2=q; q2[i]+=2*eps; auto c2=node_bound(q2);   // diagonal d2/dth_i^2
                 for(std::size_t k=0;k<NBS;++k){ float dx=c2[k].x-2*ci[i][k].x+base[k].x,dy=c2[k].y-2*ci[i][k].y+base[k].y,dz=c2[k].z-2*ci[i][k].z+base[k].z;
                     H[k][i][i]=std::max(H[k][i][i],std::sqrt(dx*dx+dy*dy+dz*dz)*ie2); } }
             for(std::size_t i=0;i<dim;++i) for(std::size_t j=i+1;j<dim;++j){ auto qij=q; qij[i]+=eps; qij[j]+=eps; auto cij=node_bound(qij);
                 for(std::size_t k=0;k<NBS;++k){ float dx=cij[k].x-ci[i][k].x-ci[j][k].x+base[k].x,dy=cij[k].y-ci[i][k].y-ci[j][k].y+base[k].y,dz=cij[k].z-ci[i][k].z-ci[j][k].z+base[k].z;
                     float h=std::sqrt(dx*dx+dy*dy+dz*dz)*ie2; H[k][i][j]=std::max(H[k][i][j],h); H[k][j][i]=H[k][i][j]; } } } }
-    // per-edge tighter sagitta: sag_k <= (1/8) sum_{i,j} H[k][i][j] |dth_i||dth_j|
-    auto sag_bound=[&](std::size_t k, const std::array<float,dim>&dtheta){ std::array<float,dim> ad; float s=0;
-        for(std::size_t j=0;j<dim;++j) ad[j]=std::fabs(dtheta[j]);
-        for(std::size_t i=0;i<dim;++i){ float row=0; for(std::size_t j=0;j<dim;++j) row+=H[k][i][j]*ad[j]; s+=ad[i]*row; } return s/8.0f; };
+    // (low-rank) rank-1 entrywise cover: b[k][i]=sqrt(max_j H[k][i][j]) => b_i*b_j >= H[k][i][j]
+    // (both row-maxes dominate H[i][j]), so ad^T H ad <= (sum_i b_i ad_i)^2. O(dim), conservative.
+    static std::array<std::array<float,dim>,NBS> B1{};
+    for(std::size_t k=0;k<NBS;++k) for(std::size_t i=0;i<dim;++i){ float mx=0; for(std::size_t j=0;j<dim;++j) mx=std::max(mx,H[k][i][j]); B1[k][i]=std::sqrt(mx); }
+    // per-edge sagitta = min of two provable O(dim) upper bounds (min of uppers is still an upper):
+    //   rank-1 cover  (1/8)(sum_i b_i|dth_i|)^2   and   M*Omega  (1/8)(sum_i r_i|dth_i|)(sum_i |dth_i|)
+    auto sag_bound=[&](std::size_t k, const std::array<float,dim>&dtheta){ float s=0,M=0,Om=0;
+        for(std::size_t i=0;i<dim;++i){ float ad=std::fabs(dtheta[i]); s+=B1[k][i]*ad; M+=reach[k][i]*ad; Om+=ad; }
+        return std::min(s*s, M*Om)/8.0f; };
 
     // verify conservativeness. Restrict to bounding spheres that actually move (sag > 3mm): the
     // near-stationary base spheres have sag~0 and H~0 so their ratio is 0/0 noise (and they are

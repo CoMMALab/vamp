@@ -775,3 +775,24 @@ SSA block, so a mid-block branch isn't expressible without restructuring the tra
 transforms and leaf-placement as separately-callable stages. That is the real (larger) piece of
 work; the two-pass shortcut measured here does not pay. Kept fkcc_swept_lazy as a documented
 variant.
+
+---
+
+## Low-rank Hessian sagitta (m39) -- tight bound at O(dim)
+
+The full Hessian quadratic form (O(NBS*dim^2)) was net-negative for baxter. Replace it with a
+rank-1 entrywise COVER: b[k][i] = sqrt(max_j H[k][i][j]) => b_i*b_j >= H[k][i][j] (both row-maxes
+dominate), so ad^T H ad <= (sum_i b_i ad_i)^2 -- provably conservative, O(dim). Then take the MIN
+of the rank-1 and M*Omega bounds per bs (min of two valid uppers is still a valid upper, tighter
+than either). Margin 1.3x, 0 unsafe.
+
+| robot | M*Omega (all) | full Hessian O(dim^2) | rank-1/min O(dim) |
+|-------|--------------:|----------------------:|------------------:|
+| panda | 1.05 | 1.07 | 1.04 |
+| fetch | 1.29 | 1.44 | **1.47** (free 1.58) |
+| baxter| 1.31 | 0.95 | ~1.1-1.3 (timing-noise) |
+
+**fetch clearly prefers the tight O(dim) bound (1.29 -> 1.47x all).** For baxter the sagitta-bound
+choice is within timing noise -- its bottleneck is the 349-pair colliding setup, not the bound.
+So the low-rank cover is the right default: tight where it matters (fetch), cheap everywhere.
+The full O(dim^2) Hessian is not worth it.

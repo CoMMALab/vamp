@@ -479,3 +479,43 @@ FREE edges env dominates for fetch and env~=self for panda. So swept-ENV alone c
 over the edge iff their swept bounding spheres stay disjoint (dist(eA,eB) > rhoA+RA+rhoB+RB).
 Same per-link swept spheres, no extra FK. Covering env AND self raises the ceiling to the full
 collision slice ~2.7-2.8x (m31). This is the build target.
+
+---
+
+## Swept broadphase BUILT and measured end-to-end (m36) -- rigorous, compact-penalty-limited
+
+Traced two new cricket kernels: `bound_fk(x)` (per-link bounding spheres only, link transforms,
+no leaves) and `fkcc_swept(env, x, env_clear, pair_clear)` (compact FK+CC that skips env links /
+self pairs a per-edge swept test proved clear, keyed by bounding-sphere index). The validator
+computes masks ONCE per edge: bound_fk at 3 configs (t=0,0.5,1) -> per-bs swept sphere (center
+= midpoint, radius = max endpoint deviation + curvature remainder*SAFETY + max bs radius);
+env_clear[bs] = swept sphere clear of obstacles; pair_clear[pi] = the pair's swept spheres
+disjoint. Then fkcc_swept per rake.
+
+Verdicts vs unrolled baseline, 3000 edges (free + colliding), SAFETY=2.0: **mismatch=0,
+unsafe=0** -- the swept mask NEVER passes a colliding edge. Rigorous.
+
+| robot | edge | unrolled (ships) | compact | swept | swept/unrolled | swept/compact |
+|-------|------|-----------------:|--------:|------:|---------------:|--------------:|
+| panda | free | 2610 | 4129 | 4056 | 0.64x | 1.02x |
+| fetch | free | 2769 | 3500 | 2563 | **1.08x** | 1.37x |
+| panda | colliding | 794 | 1198 | 1544 | 0.51x | 0.78x |
+| fetch | colliding | 986 | 1245 | 1474 | 0.67x | 0.84x |
+
+**The mask works (swept/compact 1.24-1.37x on free edges) but the COMPACT-mode kernel it is
+built on is 1.5-1.6x slower than VAMP's UNROLLED kernel.** That penalty eats the algorithmic
+savings on panda; only fetch (48 self-pairs, much to skip) nets +8% over the shipping kernel.
+Colliding edges lose (bound_fk setup unamortized when the baseline early-exits).
+
+### Why compact loses and what the full win needs
+- **Unrolled masked kernel.** The mask must live in the UNROLLED ccfk (each per-link `if` block
+  wrapped in `if (!env_clear[bs])`), keeping unrolled speed AND skipping certified links. The
+  runtime branch is constant across the edge's rakes (well-predicted). This removes the 1.5-1.6x
+  compact tax -> free-edge estimate ~1.5-2.2x (skip ~85% of collision = 65% of kernel).
+- **Lazy leaf FK.** fkcc_swept still computes ALL leaves every rake though ~85% of links are
+  skipped; leaves of skipped links are never read. Compute only bounding spheres per rake
+  (bound_fk-style) + leaves lazily for active links -> also reclaims the FK third.
+- **Colliding-edge guard.** Skip the swept setup when cheap (short edges) or fold bound_fk's
+  first sample into rake 0; the setup only pays on longer free edges.
+- **rho=0 sanity:** SAFETY=2.0 on the observed sagitta gave 0 unsafe over 3000 edges; a
+  build must sweep SAFETY on a large colliding set to fix the conservative margin.

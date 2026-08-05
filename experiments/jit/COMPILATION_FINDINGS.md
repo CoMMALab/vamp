@@ -190,3 +190,33 @@ savings. Short edges (L<=0.3) would be mm/sub-mm (inflatable) but have few sub-c
 to save). So inflation is correct-but-impractical for realistic range-length edges. The EXACT
 leaf-trig recurrence (leaves are exactly order-3 with exact coefficient -> no error, no
 inflation) remains the right lever.
+
+---
+
+## What would order-4 take? (m27) — worse accuracy AND higher cost
+
+Measured accumulated error for a general order-M per-sphere recurrence (coeffs by LSQ over
+the edge), M=3..6, Fetch:
+| edge L | M=3 | M=4 | M=5 | M=6 |
+|--------|----:|----:|----:|----:|
+| 0.5 | 16cm | 17cm | 28cm | 24cm |
+| 1.0 | 30cm | 35cm | 20cm | 12cm |
+| 1.5 | 49cm | 43cm | 41cm | 31cm |
+
+Higher order is WORSE, not better -- fitting a general order-M recurrence to a near-low-order
+signal is ill-conditioned, so the estimated coefficients put roots slightly OFF the unit
+circle -> the recurrence is UNSTABLE and diverges over the steps. (The structured order-3
+alpha form forces roots on the unit circle -> merely inaccurate, not divergent.)
+
+**To do order-4 properly you must structure it: 2 sinusoids with KNOWN beat frequencies**
+(roots pinned on the unit circle). That requires per-sphere beat-frequency analysis from the
+kinematics (which sum/difference of joint rates dominates each sphere), and costs ~12-18
+ops/sphere (2 phasors) -- comparable to FK's effective ~10-14 ops/sphere, so no speedup --
+and it is STILL approximate (higher beats unmodeled -> needs inflation). Order M>=4 general
+(LSQ) is 21-33 ops/sphere AND unstable.
+
+**Bottom line:** there is no accurate-and-cheaper-than-FK sphere recurrence. FK's shared
+chain is already at the op floor (~10-14 ops/sphere); any recurrence accurate enough
+(stable order-4) costs about the same. The EXACT leaf-trig recurrence (known coefficient,
+exactly-periodic leaves, roots exactly on the unit circle) is the only free lunch, and it's
+the compiled lever.

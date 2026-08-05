@@ -88,10 +88,20 @@ static void run(const char *name, float range, int nobs, const std::vector<std::
         masks(e,env_clear,pc);
         std::array<bool,R::n_self_pairs> pcarr{}; for(std::size_t i=0;i<NP;++i) pcarr[i]=pc[i];
         for(auto&b:e.B) if(not R::template fkcc_swept<rake>(env,b,env_clear,pcarr)) return false; return true; };
+    // amortized: run rake 0 with plain fkcc (no setup); only if it passes pay the swept setup
+    // and run the rest masked -> early collisions cost nothing extra.
+    auto swept_amort=[&](const Edge&e){
+        if(not R::template fkcc<rake>(env,e.B[0])) return false;
+        if(e.B.size()==1) return true;
+        std::array<bool,NBS> env_clear; std::vector<char> pc; masks(e,env_clear,pc);
+        std::array<bool,R::n_self_pairs> pcarr{}; for(std::size_t i=0;i<NP;++i) pcarr[i]=pc[i];
+        for(std::size_t r=1;r<e.B.size();++r) if(not R::template fkcc_swept<rake>(env,e.B[r],env_clear,pcarr)) return false;
+        return true; };
 
-    // rigor: swept must match baseline exactly; unsafe = swept FREE but baseline COLLIDE
+    // rigor: swept variants must match baseline exactly; unsafe = swept FREE but baseline COLLIDE
     std::size_t mm=0, unsafe=0, nfree=0;
-    for(auto&e:edges){ bool bv=base_valid(e.B), sv=swept_valid(e); nfree+=e.free; if(bv!=sv){++mm; if(sv&&!bv)++unsafe;} }
+    for(auto&e:edges){ bool bv=base_valid(e.B), sv=swept_valid(e), av=swept_amort(e); nfree+=e.free;
+        if(bv!=sv||bv!=av){++mm; if((sv||av)&&!bv)++unsafe;} }
 
     auto med=[&](auto fn,int mode){ std::vector<double> t; volatile std::uint64_t sk=0; std::vector<Edge*> sub;
         for(auto&e:edges) if(mode==0||(mode==1&&e.free)||(mode==2&&!e.free)) sub.push_back(&e); if(sub.empty())return 0.0;
@@ -99,11 +109,12 @@ static void run(const char *name, float range, int nobs, const std::vector<std::
             t.push_back(std::chrono::duration<double>(z-a).count()/sub.size()*1e9);}(void)sk;std::sort(t.begin(),t.end());return t[t.size()/2];};
     auto Uf=[&](const Edge&e){return base_valid(e.B)?1U:0U;};    // unrolled baseline fkcc (ships)
     auto Sf=[&](const Edge&e){return swept_valid(e)?1U:0U;};     // unrolled + swept mask
+    auto Af=[&](const Edge&e){return swept_amort(e)?1U:0U;};     // + rake-0-plain amortization
     std::printf("%-6s n=%zu NBS=%zu pairs=%zu free=%zu/%zu SAFETY=%.1f  mismatch=%zu unsafe=%zu\n",
                 name,n,NBS,NP,nfree,edges.size(),SAFETY,mm,unsafe);
     for(int m=0;m<3;++m){ const char*lbl=m==0?"all":m==1?"free":"colliding";
-        double U=med(Uf,m),S=med(Sf,m);
-        std::printf("   %-9s: fkcc=%.0f  fkcc_swept=%.0f ns  swept-vs-baseline=%.2fx\n", lbl,U,S,U/S); }
+        double U=med(Uf,m),S=med(Sf,m),A=med(Af,m);
+        std::printf("   %-9s: fkcc=%.0f  swept=%.0f (%.2fx)  swept_amort=%.0f (%.2fx)\n", lbl,U,S,U/S,A,U/A); }
 }
 
 int main()

@@ -550,3 +550,31 @@ negative for low-sphere robots (panda) until two levers land:
 - **Colliding-edge amortization**: fold bound_fk's first sample into rake-0 FK, or gate swept on
   edge length, so short/colliding edges don't pay the full setup. Removes the regression.
 Both are the difference between "wins on fetch" and "wins everywhere".
+
+---
+
+## Colliding-edge amortization attempt (m36) -- backfires
+
+Tried "rake-0-plain": run rake 0 with plain fkcc (no swept setup); only if it passes pay the
+setup + run rakes 1..n-1 masked, so early collisions cost nothing extra.
+
+| variant | panda free | panda coll | fetch free | fetch coll |
+|---------|-----------:|-----------:|-----------:|-----------:|
+| plain swept  | 1.05x | 0.71x | 1.46x | 0.80x |
+| rake-0-plain | 0.96x | **0.89x** | 1.15x | **0.93x** |
+
+It DOES help colliding (0.71->0.89, 0.80->0.93) but running 1 of 4-5 rakes unmasked robs
+20-25% of the FREE-edge win, and free edges dominate total cost -> net "all" gets worse
+(fetch 1.33->1.13). Bad trade; reverted to plain swept (kept in m36 as a documented variant).
+
+**Root cause (same shape as the CA finding):** swept setup (bound_fk + swept tests) is O(1)
+per edge; the savings is O(n) over the rakes. At VAMP's short edges (n=4-5) the setup barely
+amortizes, and colliding edges early-exit before it can. Rake-0-plain just relocates the cost
+onto the free edges that were paying off.
+
+**The real fixes (don't rob free edges):**
+- **Lazy leaf FK** -- reduces per-rake cost for ALL edges (compute leaves only on a bounding-
+  sphere hit), so the setup amortizes better AND panda's 35% FK is reclaimed. This is the lever.
+- **Planner-level bound_fk caching** -- each tree node is an endpoint of MANY edges; bound_fk at
+  a node computed once and reused amortizes 2/3 of the setup (the two endpoint samples) across
+  all its edges. Architectural (RRTC integration), not a per-edge-bench change.

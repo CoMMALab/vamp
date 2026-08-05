@@ -578,3 +578,25 @@ onto the free edges that were paying off.
 - **Planner-level bound_fk caching** -- each tree node is an endpoint of MANY edges; bound_fk at
   a node computed once and reused amortizes 2/3 of the setup (the two endpoint samples) across
   all its edges. Architectural (RRTC integration), not a per-edge-bench change.
+
+---
+
+## Lazy-leaf-FK ceiling (m37) -- helps fetch, NOT panda
+
+Before building a lazy kernel: on free edges, how often would it need leaves (a non-certified
+link's bounding sphere actually hits env, or a non-certified pair's bounding spheres overlap)?
+
+| robot | rakes needing leaves | leaf-FK reclaimable | edges w/ 0 leaf-rakes |
+|-------|---------------------:|--------------------:|----------------------:|
+| panda | 100% | 0% | 0% |
+| fetch | 42% | 58% | 40% |
+
+**Panda's leaves are genuinely needed.** Its bounding spheres are loose (11 large links), so on
+every free-edge rake SOME link's bounding sphere overlaps an obstacle -> broadphase descends ->
+leaves used. VAMP's eager leaf FK is JUSTIFIED for panda; lazy FK reclaims nothing. This also
+explains panda's weak swept win: it isn't wasting leaf FK, and its collision base is small.
+
+**Fetch reclaims 58%** (finer spherization -> tighter bounding spheres -> fewer false broadphase
+hits; 40% of edges never need leaves at all). So lazy FK, like the swept broadphase, is a lever
+for FINELY-SPHERIZED robots. Points squarely at baxter (highest sphere count) as the ideal
+target -- both levers should be strongest there.

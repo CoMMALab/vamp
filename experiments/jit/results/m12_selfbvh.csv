@@ -1,0 +1,7 @@
+cluster_pair,self_pairs,bound_overlap_rate_pct
+body-prox,5,100.0
+body-dist,8,100.0
+prox-prox,1,100.0
+prox-dist,11,100.0
+dist-dist,3,100.0
+BVH_checks_over_flat_pct,,117.9

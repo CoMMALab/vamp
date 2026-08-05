@@ -1,0 +1,7 @@
+robot,region,frac_kept_AA,frac_kept_sampled,frac_kept_radial
+panda,full_box,0.789,0.647,0.607
+panda,corridor+0.3,0.771,0.545,0.596
+panda,corridor+0.1,0.755,0.416,0.586
+ur5,full_box,0.803,0.730,0.963
+ur5,corridor+0.3,0.706,0.329,0.963
+ur5,corridor+0.1,0.610,0.225,0.963

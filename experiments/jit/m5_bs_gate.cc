@@ -48,6 +48,27 @@ namespace
         return b;
     }
 
+    // Correlated motion rake: 8 lanes are 8 nearby configs along a short segment --
+    // this is how VAMP actually fills a rake (validate_vector). The SIMD all-lanes-clear
+    // gate fires far more often here than for 8 independent random configs.
+    template <typename Robot>
+    auto motion_block(std::mt19937 &rng) -> typename Robot::template ConfigurationBlock<rake>
+    {
+        std::uniform_real_distribution<float> u(0.F, 1.F);
+        std::normal_distribution<float> step(0.F, 0.02F);  // per lane-step in [0,1] space: a local segment
+        typename Robot::template ConfigurationBlock<rake> b;
+        for (std::size_t j = 0; j < Robot::dimension; ++j)
+        {
+            float base = u(rng), d = step(rng);
+            alignas(vamp::FloatVectorAlignment) std::array<float, rake> lane;
+            for (std::size_t l = 0; l < rake; ++l)
+                lane[l] = base + (static_cast<float>(l) - 3.5F) * d;  // in [0,1] pre-scale space
+            b[j] = DataV(lane.data());
+        }
+        Robot::template scale_configuration_block<rake>(b);
+        return b;
+    }
+
     // Recover rigid link groups by joint-dependency signature: a sphere's link is the
     // set of joints that move it (perturb each joint, see which spheres move). Same
     // signature = same rigid link (unique per link in a kinematic tree). Robust, unlike
@@ -116,12 +137,13 @@ namespace
     }
 
     template <typename Robot>
-    void run(const char *name, const char *scene)
+    void run(const char *name, const char *scene, const char *workload)
     {
         constexpr std::size_t ns = Robot::n_spheres, M = 50000;
         std::mt19937 grng(0x11), crng(0x22), wrng(0x33);
         auto groups = link_groups<Robot>(grng);
         auto env = make_env(scene, crng);
+        const bool motion = std::string(workload) == "motion";
 
         std::uniform_real_distribution<float> u(0.F, 1.F);
         typename Robot::template Spheres<rake> sph;
@@ -129,7 +151,7 @@ namespace
         std::vector<std::size_t> clear_cnt(groups.size(), 0);
         for (std::size_t s = 0; s < M; ++s)
         {
-            auto b = rand_block<Robot>(wrng, u);
+            auto b = motion ? motion_block<Robot>(wrng) : rand_block<Robot>(wrng, u);
             Robot::template sphere_fk<rake>(b, sph);
             for (std::size_t g = 0; g < groups.size(); ++g)
             {
@@ -159,8 +181,8 @@ namespace
             skip_num += rate * groups[g].size();  // fine-sphere FK skipped by this link
             if (clear_cnt[g] == M) ++always_clear;
         }
-        std::printf("%s,%zu,%zu,%s,%zu,%.4f,%.4f,%.0f\n",
-                    name, ns, Robot::dimension, scene, groups.size(),
+        std::printf("%s,%zu,%zu,%s,%s,%zu,%.4f,%.4f,%.0f\n",
+                    name, ns, Robot::dimension, scene, workload, groups.size(),
                     sum_rate / groups.size(), skip_num / ns, always_clear);
         std::fflush(stdout);
     }
@@ -168,13 +190,14 @@ namespace
 
 auto main() -> int
 {
-    std::printf("robot,n_spheres,dim,scene,n_links,mean_clear_rate,fine_fk_skip_frac,links_always_clear\n");
+    std::printf("robot,n_spheres,dim,scene,workload,n_links,mean_clear_rate,fine_fk_skip_frac,links_always_clear\n");
     for (const char *scene : {"uniform", "localized"})
-    {
-        run<vamp::robots::UR5>("ur5", scene);
-        run<vamp::robots::Panda>("panda", scene);
-        run<vamp::robots::Baxter>("baxter", scene);
-        run<vamp::robots::Fetch>("fetch", scene);
-    }
+        for (const char *wl : {"random", "motion"})
+        {
+            run<vamp::robots::UR5>("ur5", scene, wl);
+            run<vamp::robots::Panda>("panda", scene, wl);
+            run<vamp::robots::Baxter>("baxter", scene, wl);
+            run<vamp::robots::Fetch>("fetch", scene, wl);
+        }
     return 0;
 }

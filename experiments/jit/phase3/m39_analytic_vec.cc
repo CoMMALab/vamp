@@ -118,18 +118,20 @@ static void run(const char *name, float range, int nobs, const std::vector<std::
         for(auto&b:e.B) if(not R::template fkcc_swept<rake>(env,b,ec,pc)) return false; return true; };
     auto lazy_valid=[&](const Edge&e){ std::array<bool,NBS> ec; std::array<bool,R::n_self_pairs> pc{}; masks(e,ec,pc);
         for(auto&b:e.B) if(not R::template fkcc_swept_lazy<rake>(env,b,ec,pc)) return false; return true; };
+    auto staged_valid=[&](const Edge&e){ std::array<bool,NBS> ec; std::array<bool,R::n_self_pairs> pc{}; masks(e,ec,pc);
+        for(auto&b:e.B) if(not R::template fkcc_swept_staged<rake>(env,b,ec,pc)) return false; return true; };
 
     std::size_t mm=0, unsafe=0, nfree=0;
-    for(auto&e:edges){ bool bv=base_valid(e.B), cv=cached_valid(e), lv=lazy_valid(e); nfree+=e.free; if(bv!=cv||bv!=lv){++mm; if((cv||lv)&&!bv)++unsafe;} }
+    for(auto&e:edges){ bool bv=base_valid(e.B), cv=cached_valid(e), sv=staged_valid(e); nfree+=e.free; if(bv!=cv||bv!=sv){++mm; if((cv||sv)&&!bv)++unsafe;} }
     auto med=[&](auto fn,int mode){ std::vector<double> t; volatile std::uint64_t sk=0; std::vector<Edge*> sub;
         for(auto&e:edges) if(mode==0||(mode==1&&e.free)||(mode==2&&!e.free)) sub.push_back(&e); if(sub.empty())return 0.0;
         for(int rp=0;rp<7;++rp){auto a=std::chrono::steady_clock::now();std::uint64_t ac=0;for(auto*e:sub)ac+=fn(*e);auto z=std::chrono::steady_clock::now();sk+=ac;
             t.push_back(std::chrono::duration<double>(z-a).count()/sub.size()*1e9);}(void)sk;std::sort(t.begin(),t.end());return t[t.size()/2];};
-    auto Uf=[&](const Edge&e){return base_valid(e.B)?1U:0U;}; auto Cf=[&](const Edge&e){return cached_valid(e)?1U:0U;}; auto Lf=[&](const Edge&e){return lazy_valid(e)?1U:0U;};
+    auto Uf=[&](const Edge&e){return base_valid(e.B)?1U:0U;}; auto Cf=[&](const Edge&e){return cached_valid(e)?1U:0U;}; auto Sg=[&](const Edge&e){return staged_valid(e)?1U:0U;};
     std::printf("%-6s n=%zu NBS=%zu pairs=%zu free=%zu/%zu SAFETY=%.1f  sagitta_margin=%.2f  mismatch=%zu unsafe=%zu\n",
                 name,n,NBS,NP,nfree,edges.size(),SAFETY, worst_ratio>0?1.0f/worst_ratio:0.0f, mm,unsafe);
-    for(int m=0;m<3;++m){ const char*lbl=m==0?"all":m==1?"free":"colliding"; double U=med(Uf,m),Cc=med(Cf,m),Lz=med(Lf,m);
-        std::printf("   %-9s: fkcc=%.0f  swept=%.0f (%.2fx)  swept_lazy=%.0f (%.2fx)\n", lbl,U,Cc,U/Cc,Lz,U/Lz); }
+    for(int m=0;m<3;++m){ const char*lbl=m==0?"all":m==1?"free":"colliding"; double U=med(Uf,m),Cc=med(Cf,m),Sd=med(Sg,m);
+        std::printf("   %-9s: fkcc=%.0f  swept=%.0f (%.2fx)  swept_staged=%.0f (%.2fx)\n", lbl,U,Cc,U/Cc,Sd,U/Sd); }
 }
 
 int main()

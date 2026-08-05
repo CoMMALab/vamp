@@ -826,3 +826,34 @@ Two wins:
 masked broadphase -> place only hit links' leaves (from leaf_place + per_link_spheres) ->
 narrowphase. Single pass, no recompute. Expected to fix both panda (reclaim leaf FK) and the
 lazy backfire, on top of the node-cached + low-rank-sagitta + vectorized swept.
+
+---
+
+## Single-pass staged lazy swept kernel (m39 fkcc_swept_staged) -- the culmination
+
+Built fkcc_swept_staged: joint_tf(x) computes joint transforms ONCE, places bounding spheres
+(world = R*local + t), runs the masked broadphase, and places ONLY the hit links' leaves inline
+(no transform recompute). Combines the staged FK win + lazy leaf placement + node-cache +
+low-rank sagitta + vectorized masks. Rigorous: mismatch=0, unsafe=0.
+
+| robot | fkcc | swept (all) | swept_staged (all) | staged free | staged colliding |
+|-------|-----:|------------:|-------------------:|------------:|-----------------:|
+| fetch | 1.00 | 1.48x | **1.58x** | **1.71x** | **1.01x** |
+| baxter| 1.00 | 1.16x | 1.18x | 1.34x | 0.63x |
+| panda | 1.00 | 1.06x | 1.03x | 1.05x | 0.79x |
+
+**Fetch: 1.71x free / 1.58x all / colliding break-even (1.01x)** -- the single-pass staged FK
+reclaims fetch's 71% leaf FK that the TWO-PASS lazy kernel (1.16x, m39) wasted on double
+transforms. Colliding edges also improve (place only the hit link's leaves), reaching break-even.
+Baxter marginal (transform-dominated: leaves only 30% of FK, little to reclaim); panda flat
+(leaves needed every rake). Both exactly as m37/m40 predicted.
+
+**Final state of the swept broadphase (all rigorous, traced natively):**
+- Kernels: bound_fk, joint_tf + place_sphere, fkcc_swept (unrolled masked), fkcc_swept_staged
+  (single-pass staged lazy).
+- Techniques: node-level endpoint caching (0 FK/edge), provable low-rank sagitta bound (O(dim),
+  margin 1.3x), vectorized swept tests, single-pass staged lazy FK.
+- Result over the SHIPPING kernel: **fetch +58% (free +71%), baxter +18-34%, panda ~flat**.
+  Fetch is the sweet spot (moderate pairs, leaves = most of FK, tight bounding spheres).
+- Structural non-targets, both explained: panda (coarse spherization -> leaves always needed,
+  loose bounding spheres), baxter colliding (349-pair setup, transform-dominated FK).

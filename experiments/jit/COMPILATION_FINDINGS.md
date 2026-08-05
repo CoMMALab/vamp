@@ -1063,3 +1063,37 @@ panda/fetch/ur5** MBM problems, and ~1% on baxter (dominated by tree ops). This 
 end-to-end payoff of the whole FK-tracing line of work: the recurrence and the fused sincos are
 the two real wins, and fused sincos is now confirmed at every level -- trig microbench (1.71x),
 FK kernel on MBM (1.05x), and full RRTC planning (1.04-1.07x on collision-bound robots).
+
+### End-to-end RRTC: recurrence standalone + with sincos (m47) -- recurrence does NOT survive
+
+Added the leaf-trig recurrence to validate_vector under -DVAMP_RECUR / -DVAMP_RECUR_SINCOS: seed
+sin/cos (or fused sincos) at the first block, advance ps/pc per block by the constant per-block
+joint rotation, feed fkcc_pretrig. Setup (per-joint cos/sin advance coefficients) is deferred
+past the n==1 early-out so short edges pay nothing extra. All variants produce IDENTICAL plans
+(same solved / iterations) -- correct, pure wall-clock A/B. Stable metrics (panda/fetch means,
+all-robot p95; ur5/baxter means are noisy -- few, high-variance solves):
+
+| robot | sincos | recur (standalone) | recur+sincos |
+|-------|-------:|-------------------:|-------------:|
+| panda (mean) | **1.07x** | 1.02x | 1.06x |
+| fetch (mean) | **1.05x** | 0.98x | 1.03x |
+| panda (p95)  | 1.07x | 1.00x | 1.06x |
+| fetch (p95)  | 1.06x | 0.99x | 1.05x |
+| ur5 (p95)    | 1.06x | 0.99x | 1.06x |
+| baxter (p95) | 1.01x | 0.99x | ~1.0x (noisy) |
+
+**The leaf-trig recurrence is neutral-to-negative in real RRTC (~0.98-1.02x)** -- it does NOT
+survive end-to-end, and recur+sincos does NOT beat sincos alone. Why: the recurrence only pays on
+LONG edges (its seed amortizes over n rakes), but real RRTC validates mostly SHORT edges (the
+local planner connects/extends in small steps -> many n=1,2 blocks). On n==1 edges the recurrence
+reduces to its seed (= sincos or sin/cos) with no advance; on n=2 it barely amortizes. The
+earlier 1.03-1.06x for the recurrence (m30/m44) was measured on FULL-RANGE synthetic edges (n=4-6)
+-- not representative of the RRTC edge-length distribution. recur+sincos is carried entirely by
+the sincos SEED (which is why it ~= sincos); the recurrence adds essentially nothing in practice.
+
+**Final verdict on the FK-side wins, end-to-end on MBM:**
+- **fused sincos: the one robust win, ~1.05-1.07x RRTC planner speedup** (panda/fetch/ur5;
+  ~1.0x baxter where NN/tree ops dominate). Environment-independent, no per-edge setup, helps
+  every block regardless of edge length. SHIP THIS.
+- **leaf-trig recurrence: neutral in practice** -- a long-edge optimization that RRTC's short
+  edges never amortize; subsumed by sincos. Do not ship standalone; recur+sincos = sincos.

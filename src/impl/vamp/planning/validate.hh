@@ -87,6 +87,53 @@ namespace vamp::planning
 
         const std::size_t n = std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
 
+#if defined(VAMP_RECUR) || defined(VAMP_RECUR_SINCOS)
+        // Leaf-trig recurrence: seed sin/cos at the first block, then advance ps/pc per block by
+        // the constant per-block joint rotation (backstep) and feed fkcc_pretrig -- skipping the
+        // per-block sin/cos. ps/pc are computed for all joints; the kernel only reads the revolute
+        // ones. Seed via fused sincos when VAMP_RECUR_SINCOS.
+        std::array<FloatVector<rake, 1>, Robot::dimension> ps, pc;
+        for (auto j = 0U; j < Robot::dimension; ++j)
+        {
+#ifdef VAMP_RECUR_SINCOS
+            block[j].sincos(ps[j], pc[j]);
+#else
+            ps[j] = block[j].sin();
+            pc[j] = block[j].cos();
+#endif
+        }
+        bool valid = block_accept(block) and Robot::template fkcc_pretrig<rake>(environment, block, ps, pc);
+        if (not valid or n == 1)  // short edges: no recurrence setup at all
+        {
+            return valid;
+        }
+        // n > 1: pay the per-joint advance-coefficient setup once, then skip per-block trig.
+        std::array<float, Robot::dimension> cosD, sinD;
+        for (auto j = 0U; j < Robot::dimension; ++j)
+        {
+            const float bd = vector.broadcast(j).to_array()[0] / static_cast<float>(rake * n);
+            cosD[j] = std::cos(bd);
+            sinD[j] = std::sin(bd);
+        }
+        const auto backstep = vector / (rake * n);
+        for (auto i = 1U; i < n; ++i)
+        {
+            for (auto j = 0U; j < Robot::dimension; ++j)
+            {
+                block[j] = block[j] - backstep.broadcast(j);
+                const auto s = ps[j] * cosD[j] - pc[j] * sinD[j];  // sin(x - backstep)
+                const auto c = pc[j] * cosD[j] + ps[j] * sinD[j];  // cos(x - backstep)
+                ps[j] = s;
+                pc[j] = c;
+            }
+            valid = block_accept(block) and Robot::template fkcc_pretrig<rake>(environment, block, ps, pc);
+            if (not valid)
+            {
+                return false;
+            }
+        }
+        return true;
+#else
         bool valid = block_accept(block) and fkcc_block<Robot, rake>(environment, block);
         if (not valid or n == 1)
         {
@@ -109,6 +156,7 @@ namespace vamp::planning
         }
 
         return true;
+#endif
     }
 
     template <typename Robot, std::size_t rake, std::size_t resolution, typename BlockAccept = AlwaysTrue>

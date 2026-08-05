@@ -73,7 +73,11 @@ static void run(const char *name, float range, const std::vector<MbmProb> &probs
     }
     auto pct = [&](std::vector<double> &v, double q) { if (v.empty()) return 0.0; std::sort(v.begin(), v.end()); return v[(std::size_t)(q * (v.size() - 1))]; };
     double mean = 0; for (double x : times_us) mean += x; if (!times_us.empty()) mean /= times_us.size();
-#ifdef VAMP_FKCC_SINCOS
+#if defined(VAMP_RECUR_SINCOS)
+    const char *cfg = "rec+sc ";
+#elif defined(VAMP_RECUR)
+    const char *cfg = "recur  ";
+#elif defined(VAMP_FKCC_SINCOS)
     const char *cfg = "sincos ";
 #else
     const char *cfg = "base   ";

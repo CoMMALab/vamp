@@ -1,0 +1,9 @@
+robot,n_spheres,dim,scene,n_links,mean_clear_rate,fine_fk_skip_frac,links_always_clear
+ur5,40,6,uniform,7,0.3340,0.1383,2
+panda,59,7,uniform,8,0.0005,0.0006,0
+baxter,75,14,uniform,15,0.0086,0.0066,0
+fetch,111,8,uniform,9,0.0810,0.0316,0
+ur5,40,6,localized,7,0.5213,0.3908,2
+panda,59,7,localized,8,0.2145,0.1869,1
+baxter,75,14,localized,15,0.3020,0.2303,2
+fetch,111,8,localized,9,0.1259,0.0589,0

@@ -519,3 +519,34 @@ Colliding edges lose (bound_fk setup unamortized when the baseline early-exits).
   first sample into rake 0; the setup only pays on longer free edges.
 - **rho=0 sanity:** SAFETY=2.0 on the observed sagitta gave 0 unsafe over 3000 edges; a
   build must sweep SAFETY on a large colliding set to fix the conservative margin.
+
+---
+
+## Unrolled masked swept kernel (m36, unrolled) -- the real win
+
+Moved fkcc_swept from compact loops to the UNROLLED form: each per-link env block / per-pair
+self block wrapped in a runtime mask guard `if (not env_clear[bs])` / `if (not pair_clear[pi])`,
+keeping VAMP's unrolled speed. Now fkcc, fkcc_swept, and bound_fk all live in ONE (non-compact)
+class -> apples-to-apples vs the SHIPPING fkcc. Verdicts vs baseline, 3000 edges (free+colliding),
+SAFETY=2.0: mismatch=0, unsafe=0.
+
+| robot | free | colliding | all |
+|-------|-----:|----------:|----:|
+| fetch | **1.50x** | 0.83x | 1.36x |
+| panda | 1.04x | 0.70x | 1.05x |
+
+**Fetch: real 1.50x on free edges over the shipping unrolled kernel** (111 spheres, 48 self-pairs,
+env=68% of kernel -> eliding ~85% of it is huge). **Panda: modest 1.04x** -- FK-dominated (35%)
+with few links (11)/pairs (21) and a smaller collision base, so the bound_fk setup (1 SIMD FK of
+11 bounding spheres + 11 env + 21 pair swept tests) erodes the win. Both **regress on colliding
+edges** (0.70-0.83x): the swept setup is paid even when the baseline early-exits after ~1-2 rakes.
+
+Blended 50/50 free:colliding -> fetch ~1.24x net, panda ~0.93x (net loss). So the swept
+broadphase is a clear win for high-sphere robots (fetch, and by extension baxter) and marginal/
+negative for low-sphere robots (panda) until two levers land:
+- **Lazy leaf FK** (reclaim the 35% FK): fkcc_swept still computes ALL leaves every rake though
+  ~85% of links are skipped and their leaves are never read. Compute bounding spheres per rake +
+  leaves only for active links. Biggest help exactly where the swept win is small (panda).
+- **Colliding-edge amortization**: fold bound_fk's first sample into rake-0 FK, or gate swept on
+  edge length, so short/colliding edges don't pay the full setup. Removes the regression.
+Both are the difference between "wins on fetch" and "wins everywhere".

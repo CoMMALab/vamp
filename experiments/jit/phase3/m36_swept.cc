@@ -13,10 +13,8 @@
 #include <vector>
 #include <algorithm>
 #include <vamp/collision/factory.hh>
-#include "panda_e.hh"   // unrolled baseline (ships today): PandaE
+#include "panda_e.hh"   // unrolled: PandaE (fkcc baseline + fkcc_swept masked + bound_fk)
 #include "fetch_e.hh"   // FetchE
-#include "panda_c.hh"   // compact + swept: PandaEC
-#include "fetch_c.hh"   // FetchEC
 #include "swept_aux.hh"
 
 constexpr std::size_t rake = vamp::FloatVectorWidth;
@@ -33,7 +31,7 @@ static std::vector<Obs> shelf(std::mt19937 &rng, int nobs, vamp::collision::Envi
     ef.sort(); envv=vamp::collision::Environment<DataV>(ef); return obs;
 }
 
-template <class RB, class R>   // RB = unrolled baseline, R = compact+swept (same robot)
+template <class R>   // unrolled kernel with both fkcc (baseline) and fkcc_swept (masked)
 static void run(const char *name, float range, int nobs, const std::vector<std::array<int,2>> &pair_bs, float SAFETY)
 {
     constexpr std::size_t dim=R::dimension, NBS=R::n_bounding_spheres;
@@ -46,8 +44,7 @@ static void run(const char *name, float range, int nobs, const std::vector<std::
 
     struct Edge { std::vector<Block> B; std::array<float,dim> s,v; float dt; bool free; };
     std::vector<Edge> edges; int attempts=0;
-    auto base_valid=[&](const std::vector<Block>&B){ for(auto&b:B) if(not RB::template fkcc<rake>(env,b)) return false; return true; };
-    auto cbase_valid=[&](const std::vector<Block>&B){ for(auto&b:B) if(not R::template fkcc<rake>(env,b)) return false; return true; };
+    auto base_valid=[&](const std::vector<Block>&B){ for(auto&b:B) if(not R::template fkcc<rake>(env,b)) return false; return true; };
     while(edges.size()<3000 && attempts<600000){ ++attempts;
         Block tmp; for(std::size_t j=0;j<dim;++j) tmp[j]=static_cast<DataV>(u(wrng));
         R::template scale_configuration_block<rake>(tmp);
@@ -100,20 +97,18 @@ static void run(const char *name, float range, int nobs, const std::vector<std::
         for(auto&e:edges) if(mode==0||(mode==1&&e.free)||(mode==2&&!e.free)) sub.push_back(&e); if(sub.empty())return 0.0;
         for(int rp=0;rp<7;++rp){auto a=std::chrono::steady_clock::now();std::uint64_t ac=0;for(auto*e:sub)ac+=fn(*e);auto z=std::chrono::steady_clock::now();sk+=ac;
             t.push_back(std::chrono::duration<double>(z-a).count()/sub.size()*1e9);}(void)sk;std::sort(t.begin(),t.end());return t[t.size()/2];};
-    auto Uf=[&](const Edge&e){return base_valid(e.B)?1U:0U;};    // unrolled baseline (ships)
-    auto Cf=[&](const Edge&e){return cbase_valid(e.B)?1U:0U;};   // compact baseline (no mask)
-    auto Sf=[&](const Edge&e){return swept_valid(e)?1U:0U;};     // compact + swept mask
+    auto Uf=[&](const Edge&e){return base_valid(e.B)?1U:0U;};    // unrolled baseline fkcc (ships)
+    auto Sf=[&](const Edge&e){return swept_valid(e)?1U:0U;};     // unrolled + swept mask
     std::printf("%-6s n=%zu NBS=%zu pairs=%zu free=%zu/%zu SAFETY=%.1f  mismatch=%zu unsafe=%zu\n",
                 name,n,NBS,NP,nfree,edges.size(),SAFETY,mm,unsafe);
     for(int m=0;m<3;++m){ const char*lbl=m==0?"all":m==1?"free":"colliding";
-        double U=med(Uf,m),C=med(Cf,m),S=med(Sf,m);
-        std::printf("   %-9s: unrolled=%.0f compact=%.0f swept=%.0f ns | swept-vs-unrolled=%.2fx  swept-vs-compact=%.2fx\n",
-                    lbl,U,C,S,U/S,C/S); }
+        double U=med(Uf,m),S=med(Sf,m);
+        std::printf("   %-9s: fkcc=%.0f  fkcc_swept=%.0f ns  swept-vs-baseline=%.2fx\n", lbl,U,S,U/S); }
 }
 
 int main()
 {
-    run<vamp::robots::PandaE, vamp::robots::PandaEC>("panda",1.25f,40,panda_pair_bs,2.0f);
-    run<vamp::robots::FetchE, vamp::robots::FetchEC>("fetch",1.0f,40,fetch_pair_bs,2.0f);
+    run<vamp::robots::PandaE>("panda",1.25f,40,panda_pair_bs,2.0f);
+    run<vamp::robots::FetchE>("fetch",1.0f,40,fetch_pair_bs,2.0f);
     return 0;
 }

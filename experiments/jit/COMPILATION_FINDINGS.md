@@ -457,3 +457,25 @@ link, vs n=4-5 SIMD broadphase tests per link today.
 **Rigor (build-time):** validate on COLLIDING/near edges that the swept bound NEVER skips a link
 that actually collides (inflate the sagitta remainder until zero false-skips over a large
 colliding-edge set). This probe only measured the certified RATE on free edges (the opportunity).
+
+---
+
+## Env vs self split (m35) -- the swept-env ceiling, and extending swept to self
+
+The swept broadphase certifies clearance from the ENVIRONMENT; self-collisions are separate.
+Decompose a free-edge kernel: FK (sphere_fk) | self (fkcc on EMPTY env - FK) | env (full - empty).
+
+| robot | FK | self | env | swept-ENV-only ceiling |
+|-------|---:|-----:|----:|-----------------------:|
+| panda | 35% | 33% | 32% | 1.48x |
+| fetch | 36% | ~0% | 68% | 3.14x |
+
+(fetch self ~0 is real -- few/cheap self-pairs; the -4% is timing noise.) The earlier
+"self-collision is the bottleneck" was scene-specific (self-tangled configs); on front-shelf
+FREE edges env dominates for fetch and env~=self for panda. So swept-ENV alone caps at ~1.5x
+(panda) to ~3.1x (fetch).
+
+**Extend swept to SELF using the same bound_fk output:** a self-pair (link A vs B) is skippable
+over the edge iff their swept bounding spheres stay disjoint (dist(eA,eB) > rhoA+RA+rhoB+RB).
+Same per-link swept spheres, no extra FK. Covering env AND self raises the ceiling to the full
+collision slice ~2.7-2.8x (m31). This is the build target.

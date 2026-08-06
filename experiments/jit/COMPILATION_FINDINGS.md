@@ -1266,3 +1266,50 @@ the residual (const-fold) is SIMD-constexpr-blocked and compute-bound. This conf
 scene/environment-specialization line: real headroom exists only if env->0 (which the sorted-cull
 already approximates), so there is nothing left for JIT to bake. The one durable win across the
 entire investigation remains the FK-side fused sincos.
+
+---
+
+## Model-noise snap (m51) -- a second FK-side win, exact and free
+
+Idea #1 from the post-scene-spec brainstorm: sparsify the joint transforms. Inspecting the
+generated FK (baxter joint_tf) showed the joint axes are essentially coordinate-aligned but
+polluted with ~1e-12 numerical dirt (coefficients like `4.89663865010925e-12`) from the
+URDF->pinocchio conversion. Left in, CppADCodeGen emits dense 3-term rotation products
+(`y[27]*v[0] + y[30]*v[1] + y[18]*v[3]`, where `v[0]~=4.9e-12`) where a sparse 2-term product
+suffices. Snapping sub-1e-9 joint-placement entries to exactly 0.0 before the trace lets CppAD
+fold `0*x->0` symbolically, and the sparsity cascades through the chain (kills downstream var*var
+products too).
+
+**Op-count reduction in `sphere_fk`** (literal-coef muls that were spurious -> total muls dropped):
+
+| robot | spurious lit-coef muls | total muls: base -> snapped |
+|-------|-----------------------:|----------------------------:|
+| ur5    |   0 (0%)  | 305 -> 305 (already clean) |
+| panda  |  28 (6%)  | 545 -> 483 (-11%) |
+| fetch  |   0 (0%)  | 454 -> 454 (already clean) |
+| baxter | 122 (21%) | 768 -> 578 (-25%) |
+
+**Fused-kernel timing on real MBM edges** (ns/edge, baseline headers vs snapped; verdict
+fingerprint identical across builds on all 6720/2880 edges -> exact, mism=0):
+
+| robot | fkcc base -> snap | fkcc_sincos base -> snap | plain-base -> snap+sincos |
+|-------|------------------:|-------------------------:|--------------------------:|
+| ur5    | 1392 -> 1371 (1.02x) | 1331 -> 1324 | 1392 -> 1324 = **1.05x** |
+| panda  | 1923 -> 1875 (1.03x) | 1830 -> 1787 (1.02x) | 1923 -> 1787 = **1.08x** |
+| fetch  | 1032 -> 1032 (1.00x) |  985 ->  978 | 1032 ->  978 = **1.05x** |
+| baxter | 1176 -> 1148 (1.02x) | 1120 -> 1079 (1.04x) | 1176 -> 1079 = **1.09x** |
+
+The snap adds ~2-4% on top of sincos for the noisy models (panda, baxter), ~0.5% for the
+already-clean ur5/fetch. It **stacks with sincos** (orthogonal: sincos fuses the trig range
+reduction, the snap sparsifies the transform muls). Combined FK-side wins: 5-9% fused kernel,
+all robots.
+
+**Why it is a keeper (same profile as sincos):** exact (fingerprint-identical; the geometry
+change is <10nm), environment-independent, every-call, and *free* -- pure codegen-time model
+cleanup with zero runtime cost and zero per-scene/per-edge setup. No tradeoff; strictly dominates
+the raw model. Now the cricket default (commit cf3c409; CRICKET_NO_SNAP=1 for A/B).
+
+**Caveat (the familiar wall):** the robot with the most FK headroom (baxter, -25% muls) is the
+NN/tree-bound one end-to-end, so its RRTC gain is muted; the FK-bound robots (ur5/fetch) were
+already clean. Net end-to-end effect is small (kernel 2-4% -> a point or two of RRTC on the
+collision-bound easy problems), but it costs nothing and always applies.

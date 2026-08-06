@@ -1540,3 +1540,51 @@ among PRNGs the choice is noise, so the **simple dependency-free native xorshift
 (least code, no external lib). xoshiro128** is kept as a higher-quality option but is not needed.
 The generic recurring lesson holds once more: single-realization microbenchmarks lie -- the 3x
 was a lucky seed.
+
+---
+
+## How much would fully compiling the environment help (multi-query / replanning)? (m55)
+
+Question: in a long-term-planning / replanning-in-a-fixed-scene regime (where the per-scene JIT
+compile cost amortizes over many solves), how much does fully compiling the environment buy?
+
+Profiled the two regimes (perf self-time; panda = easy/collision-bound, baxter = hard/NN-bound):
+
+| component                        | panda (123 iters) | baxter (168k iters) |
+|----------------------------------|------------------:|--------------------:|
+| FK kernel (fkcc self)            |            39.8%  |               1.0%  |
+| **env-check (sphere_environment)** |          **33.0%**  |             **1.5%**  |
+| Halton sampler                   |             7.0%  |              32.3%  |
+| KD-tree NN (search_one)          |             6.5%  |              43.4%  |
+| solve body / steer / other       |            ~13%   |               ~22%  |
+
+The env-check is the ONLY part a compiled environment can reduce. Its share of the *solve* is
+33% (panda) vs 1.5% (baxter).
+
+**Absolute ceiling** (env-check -> 0, physically impossible since the SIMD distance arithmetic is
+irreducible): panda 1/(1-0.33)=**1.49x**, baxter 1/(1-0.015)=**1.015x**.
+
+**Realistic** (what a JIT'd env can actually remove): from m50, the compile-time broadphase prune
+is already ~neutral (0.83-1.16x) because VAMP's env is a sorted+culled broadphase -- the sorted
+min_distance early-exit already skips far obstacles for free. So the residual lever of a full
+compile is const-folding the checked obstacles' fields to immediates + unrolling the loop /
+dropping the broadphase branch. m48 found the SIMD distance *compute* dominates the loads, so
+const-fold trims only ~10-25% of the checked-obstacle cost. Net env-check speedup ~1.2-1.5x, so:
+- panda: 33% x (1 - 1/1.3) ~= 7-8% -> **~1.08x end-to-end** (ceiling 1.49x).
+- baxter: 1.5% -> **~1.005x** (ceiling 1.015x).
+- fetch (intermediate, 111 spheres, ~4k iters): ~1.04-1.06x.
+
+**Answer:** even with compile cost fully amortized by replanning, fully compiling the environment
+buys **~1.05-1.1x on collision-bound easy scenes and ~1.0x on hard scenes**. Two reasons it does
+not unlock a big win:
+1. **Regime inversion:** the env-check is a large share only for easy, few-iteration, low-dim
+   problems (panda 33%) -- exactly the ones that already solve in ~30us and least need speedup.
+   The hard problems that *do* need speedup (baxter) are NN(43%)+sampler(32%)-bound; the env-check
+   is 1.5%, and compiling the environment cannot touch NN or sampling.
+2. **The generic env is already efficient:** the sorted-cull does the broadphase for free (m50),
+   so const-fold+unroll is the only residual, and the collision arithmetic itself is irreducible.
+
+**For the multi-query / replanning regime, the real levers are NOT the environment:** (a) tree /
+roadmap reuse across replans (algorithmic -- avoid rebuilding the tree each solve), and (b) the
+sampler swap (1.4-1.8x on baxter, m47 multi-seed). Compiling the environment is the wrong target:
+it is amortizable but capped at ~1.1x, and inverted against where the time actually is.

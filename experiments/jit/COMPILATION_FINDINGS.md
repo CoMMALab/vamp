@@ -1742,3 +1742,38 @@ better-conditioned) or the decoupled analytic Jacobian (Jlog3 on the rotation ro
 tight proxy for runtime on these pure-arithmetic kernels, so ~2.8x fewer muls ~= ~2.8x on the
 Jacobian portion; end-to-end constrained-planning gain scales with the projection/Jacobian share.
 Standalone tool: cricket/src/tracing/jac_compare.cc.
+
+---
+
+## Analytic geometric Jacobian shipped in cricket + tested on constrained_example (cd9a41f)
+
+Wired the geometric-Jacobian path into cricket's `trace_tsr_error` (default; CRICKET_AUTODIFF_JAC=1
+reverts). It builds d(err)/dq from pinocchio's analytic frame Jacobian + the validated composition
+  J_trans = R_A (Jv - skew(R_X t_B) Jw),  J_rot = Jlog3(R_Y) R_B^T R_X^T Jw
+instead of CppAD-autodiffing the error.
+
+Correctness path (each step validated before the next):
+1. Formula vs central finite differences: max err ~1e-10 (panda + both bipanda EEs).
+2. pinocchio's Jlog3 traces (uses if_then_else) but emits **scalar `if`s** (CondExp) that do not
+   compile on FloatVector -- exactly why cricket uses branch-free `so3_log_smooth`. Wrote a
+   branch-free `so3_Jlog_from_log` (Jlog3 = I + 1/2[w]x + alpha[w]x^2, smooth alpha), validated vs
+   pinocchio Jlog3 to ~1e-11 and vs FD to ~1e-10.
+3. Generated panda kernel: **0 ifs**, tsr_error **2451 -> 634 muls (3.87x)**, 45 -> 18 trig.
+4. Analytic vs autodiff kernel numerically identical at realistic (near-manifold) configs (~1e-8);
+   they diverge only at pathological far-from-manifold configs where so3_log's theta~=pi branch cut
+   ill-conditions both -- irrelevant to projection.
+
+End-to-end (rebuilt vamp panda module, ran scripts/constrained_example.py):
+
+| mode  | autodiff | analytic | speedup | correct? |
+|-------|---------:|---------:|--------:|----------|
+| plane | 1.4-1.5 ms | 1.0-1.1 ms | **~1.4x** | solved, all waypoints on manifold |
+| line  | 0.2 ms | 0.2 ms | (too short to resolve) | solved, on manifold |
+
+**~1.4x end-to-end on projection-heavy constrained planning** (much larger than the ~1.05x the
+collision kernel gives unconstrained, because the Jacobian is a big share of projection). Kernel
+3.87x; end-to-end 1.4x since collision/NN/sampling/Cholesky-solve are the rest. Single-EE TSR
+done; the relative bimanual kernel (`tsr_bimanual_error`) is still autodiff -- the same treatment
+(2 frame Jacobians + relative-pose Jlog composition) is the remaining follow-up. vamp's committed
+robot headers are regenerable artifacts; regenerating them with current cricket picks up the win
+(the test above rebuilt panda.hh, then restored it to keep vamp's tracked state clean).

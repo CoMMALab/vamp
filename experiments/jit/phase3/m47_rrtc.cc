@@ -48,7 +48,7 @@ static void run(const char *name, float range, const std::vector<MbmProb> &probs
     settings.range = range;
     settings.max_iterations = 10'000'000;
     settings.max_samples = 1'000'000;
-    const int TRIALS = 5;
+    const int TRIALS = 10;
 
     std::size_t valid = 0, solved = 0;
     std::vector<double> times_us; std::vector<double> iters;

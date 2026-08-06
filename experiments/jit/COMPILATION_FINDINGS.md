@@ -1348,3 +1348,41 @@ axis_1_x==1 && axis_2_y==1) would give ~1.67x per box, but ONLY for axis-aligned
 (warehouse/table AABBs) -- MBM's yaw-rotated boxes don't qualify. Documented as a conditional
 lever for AABB-heavy deployments; not built (YAGNI for the benchmark). The FK-side snap (m51) and
 fused sincos remain the two durable, universally-applicable wins.
+
+---
+
+## End-to-end RRTC: the shipped FK-side wins in practice (m47, 10 trials)
+
+Full decomposition of the two durable FK-side wins on real MBM RRTConnect problems (deterministic
+Halton, 10 timing trials/problem min, 10M max iters, pinned core). base = un-snapped headers +
+base fkcc; +sincos = fused sincos kernel; +snap = model-noise snap (m51); snap+sincos = both
+(the shipped default). Solved counts (138/127/133/45) and iteration p50 identical across all four
+configs -> pure speedup, no behavior change.
+
+**p50 planner us (min over 10 trials):**
+
+| robot  | base | +sincos | +snap | snap+sincos | combined |
+|--------|-----:|--------:|------:|------------:|---------:|
+| ur5    |  36.5 |  35.0 (1.04x) |  36.5 (1.00x) |  35.1 | **1.04x** |
+| panda  |  32.0 |  30.6 (1.05x) |  31.4 (1.02x) |  30.0 | **1.07x** |
+| fetch  | 605.2 | 561.4 (1.08x) | 608.3 (1.00x) | 564.0 | **1.07x** |
+| baxter |  8714 |  8692 (1.00x) |  8668 (1.01x) |  8551 | **1.02x** |
+
+(mean planner us combined: ur5 1.06x, panda 1.09x, fetch 1.06x, baxter 1.00x.)
+
+**The decomposition matches the kernel mechanism exactly:**
+- **sincos** carries most of it: 1.04-1.08x on the collision-bound robots (ur5/panda/fetch),
+  1.00x on baxter.
+- **snap** adds ~1-2% *only* on panda -- the one collision-bound robot whose FK carried noise
+  (6% spurious muls). ~0 on ur5/fetch (their FK was already clean, 0 spurious), and diluted on
+  baxter. This is exactly the m51 kernel prediction propagated end-to-end.
+- **baxter** is ~1.00-1.02x despite -25% FK muls: its 168k-iteration solves are NN/tree-bound,
+  so collision-kernel wins wash out. The predicted wall, now confirmed at the planner level --
+  the FK-bound robots (ur5/fetch) had no FK noise to snap, and the robot with the most FK noise
+  (baxter) is NN-bound. The anti-correlation caps the snap's end-to-end reach at ~1-2%.
+
+**Bottom line for the session:** the two FK-side wins deliver ~4-9% end-to-end on collision-bound
+MBM problems (sincos the bulk, snap a small exact bonus on FK-noisy robots), and ~0-2% on the
+NN-bound hard problems. Both are exact-ish, environment-independent, zero-setup, and always-on.
+For further end-to-end headroom on the hard problems, the lever is the NN/tree search, not the
+FK+collision kernel.

@@ -1939,3 +1939,27 @@ base-invariant mask; a clean follow-up.
 sparse solve (2.24x on the dominant solver), both exact/on-manifold -- the whole per-iteration
 constraint cost is now materially cheaper, from codegen that exploits kinematic structure (frame/
 CoM Jacobians, free-flyer mapping, and Jacobian sparsity) the generic autodiff+dense-solve missed.
+
+---
+
+## End-to-end evaluation: baseline vs updated constrained planning (8 xorshift seeds)
+
+BASELINE (autodiff constraint Jacobians + dense solve) vs UPDATED (analytic geometric Jacobians +
+sparse TSR solve), regenerating panda/bimanual_panda/digit for each config, each constrained
+example over 8 xorshift seeds. Median [mean] planner wall-clock:
+
+| example  | robot          | baseline ms | updated ms | speedup (med / mean) |
+|----------|----------------|------------:|-----------:|---------------------:|
+| line     | panda          |        0.10 |       0.10 | 1.00x (too fast)     |
+| plane    | panda          |        2.50 |       1.70 | **1.47x** / 1.23x    |
+| bimanual | bimanual_panda |       30.2  |      24.8  | **1.22x** / 1.14x    |
+| digit    | digit (14+ff)  |       34.0  |      24.7  | **1.37x** / 1.49x    |
+
+digit iterations: baseline 236 vs updated 246 median (comparable -- the free-flyer tangential
+Jacobian's chart perturbation adds ~4%, more than covered by the cheaper kernels).
+
+**Result:** analytic-Jacobian + sparse-solve delivers ~1.2-1.5x end-to-end on the substantial
+constrained problems (plane's sphere cage, the bimanual grasp, the digit whole-body box transport),
+multi-seed averaged. The win scales with projection-heaviness. Payoff of the full constrained-
+planning codegen line: analytic frame/CoM/relative-pose Jacobians (producers 2.07x on Digit) +
+Jacobian-sparsity-aware solve (2.24x on the dominant solver), all exact/on-manifold.

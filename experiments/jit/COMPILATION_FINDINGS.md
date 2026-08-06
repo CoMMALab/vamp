@@ -1670,3 +1670,37 @@ snap hit joint_tf (-50%) harder than sphere_fk (-25%).
    built into cricket)** -- would mirror the fkcc_sincos codegen change in
    `emit_error_and_jacobian` + the template. This is the one remaining un-applied FK-side win, and
    it lands on the hot path of projection-heavy constrained planning for complex robots.
+
+---
+
+## Other op reductions for the TSR kernel? (m56 analysis) -- sincos is the only free one
+
+Op composition of `tsr_bimanual_error` (14-DOF bimanual, 6D task error+Jacobian, snap already
+applied): 1025 assignments, 3102 muls, 1764 adds, 87 trig.
+
+| lever                          | count | reducible? |
+|--------------------------------|------:|------------|
+| redundant TRIG RHS             |    56 | YES -> sincos-hoist (the m56 win, ~1.25x) |
+| redundant non-trig RHS         |    15 | no -- CppADCodeGen single-assigns arithmetic; -O3 CSEs the rest |
+| `-1. * v[k]` negations         |    71 | no -- `-1.0*x` is bit-identical to `-x`, folded to negate/FNMA by -O3 |
+| mul-by-float-const             |   375 | no -- FK link lengths + 0.5 factors, irreducible |
+
+**Beyond sincos there is no free op-reduction.** CppADCodeGen already single-assigns every
+arithmetic subexpression (only 15 non-trig duplicates, which -O3 CSEs), and the `-1.*` negations
+fold away. The one thing it does NOT dedup is the trig (`sin(x[0])` emitted 3x), which is exactly
+what the sincos-hoist fixes. The remaining 3102 muls are genuine FK+Jacobian arithmetic.
+
+**One structural lever (not free, needs measurement):** ~35 muls per Jacobian entry (~2900 muls
+for a 6x14 Jacobian) is high, because cricket builds the Jacobian by CppAD autodiff of the error
+(`error_func.Jacobian`) rather than pinocchio's analytic geometric frame Jacobian. A structured
+geometric Jacobian (column = joint axis x lever arm from the FK) is typically ~10-15 muls/entry,
+so this *could* be several-fold fewer ops -- but reverse-mode AD is usually efficient, so the gap
+may be smaller than the raw count implies; it would need cricket to emit `getFrameJacobian` and a
+head-to-head measurement before claiming a win. The other structural option -- specialize to only
+the active task DOF (a typical TSR pins 2-4 of 6) -- is plan-time per-TSR, with the usual
+amortization question.
+
+**Bottom line:** the FK-side op-reduction story for the TSR kernel is: snap (done, ~-50% FK muls)
++ sincos-hoist (~1.25x, measured, not yet built). After those, the arithmetic is CSE-tight; the
+only further headroom is the structural geometric-Jacobian question, which is uncertain and would
+need its own measurement.

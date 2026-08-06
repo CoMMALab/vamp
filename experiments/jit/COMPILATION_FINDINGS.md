@@ -1226,3 +1226,43 @@ dense MVT) but is compile-cost-bound (needs copy-and-patch or multi-query). The 
 shippable win from the entire line remains the FK-side fused sincos (~1.05-1.07x, exact, native,
 end-to-end confirmed) -- everything scene/environment-specialized needs infrastructure (fast
 specializer) or a cheaper MVT query that this codebase does not yet have.
+
+---
+
+## Primitive scene specialization on MBM (m50) -- the compile-time broadphase does NOT pay
+
+Built the novel scene-spec component (Component 1.3): the compile-time per-sphere broadphase --
+per robot bounding sphere, keep only obstacles inside its reachable region (a scene-spec-time
+prune, AOT-impossible). Measured as per-link PRUNED sub-environments vs the full env, timing the
+env-vs-robot check (bounding broadphase -> leaf narrowphase) on real MBM configs. Rigorous, mism=0.
+
+| robot | prune (obstacles kept) | env-check: full -> pruned | speedup |
+|-------|-----------------------:|--------------------------:|--------:|
+| ur5    | 86% (1.16x) | 329 -> 394 ns | 0.83x |
+| panda  | 64% (1.56x) | 165 -> 162 ns | 1.02x |
+| fetch  | 61% (1.64x) | 292 -> 251 ns | 1.16x |
+| baxter | 68% (1.46x) | 553 -> 660 ns | 0.84x |
+
+**The compile-time broadphase prune does NOT deliver on MBM** -- net-negative for ur5/baxter,
+break-even for panda, only 1.16x for fetch. Two reasons:
+1. **VAMP's generic env is already a runtime broadphase** -- sphere_environment_in_collision
+   iterates a SORTED obstacle list with an early-exit on min_distance, so it already skips far
+   obstacles cheaply. The compile-time prune removes obstacles the sorted-cull was already
+   skipping for free -> little gain. (This is why the original "reorder/prune 1.46-4x" numbers
+   only held vs UN-gated loops.)
+2. The env is only 26-53% of the kernel, so even the best env-check win (fetch 1.16x) is ~1.08x
+   at the kernel level -- and it is negative where NBS is large (ur5/baxter: 17/33 bounding
+   spheres, per-link overhead dominates the small prune).
+
+Combined with the const-fold component being blocked (obstacle fields are SIMD FloatVector, not
+constexpr -> can't fold to immediates; and the SIMD distance compute dominates the memory loads
+anyway), the primitive scene-spec ceiling (1.35-2.14x, which assumed env->0) is NOT reachable:
+the generic env is already efficient.
+
+**Verdict:** primitive scene specialization is not worth the copy-and-patch infrastructure for
+MBM -- the compile-time broadphase (its headline lever) is neutralized by VAMP's sorted-cull, and
+the residual (const-fold) is SIMD-constexpr-blocked and compute-bound. This confirms the original
+<=3-5% finding, now with the real MBM harness and the mechanism pinned down. The end of the
+scene/environment-specialization line: real headroom exists only if env->0 (which the sorted-cull
+already approximates), so there is nothing left for JIT to bake. The one durable win across the
+entire investigation remains the FK-side fused sincos.

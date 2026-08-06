@@ -1817,3 +1817,28 @@ robots default to autodiff (digit: 56 ms, no regression). The validated free-fly
 behind CRICKET_FF_ANALYTIC=1. Net: the analytic geometric Jacobian is a clean win where nq==nv;
 for over-parameterized (quaternion) configs it is correct-but-tangential and the chart sensitivity
 makes autodiff the right default.
+
+---
+
+## Correction: free-flyer analytic is a net WIN, not a regression (multi-seed) -- cricket 4d31a98
+
+The "digit regresses (1005 vs 353 iters)" result above was a single deterministic Halton draw.
+Re-ran with xorshift x 8 seeds on the same digit box-pickup->rack problem, both builds current-cricket:
+
+| config   | iters median [range] | ms median [range] | ms mean |
+|----------|---------------------:|------------------:|--------:|
+| autodiff |          236 [195-575] |      38.5 [31-92] |    46.4 |
+| analytic |          266 [212-371] |    **35.2 [26-48]** | **35.5** |
+
+Averaged over seeds the analytic is NOT a regression: iteration counts are comparable (analytic
++13% median but a *tighter* range -- autodiff has a 575-iter tail), and the analytic is net FASTER
+(median ~1.1x, mean ~1.3x) because the 2.5x cheaper kernel more than covers the small iteration
+increase. The single Halton 1005-iter draw was a pathological outlier -- above even the analytic's
+own xorshift range (212-371). The chart IS mildly perturbed by the omitted radial columns (hence
++13% median iters), but it is not the catastrophe one seed suggested.
+
+**Revised decision:** analytic is now the DEFAULT for free-flyer robots too (cricket 4d31a98). Net
+across the session: the analytic geometric TSR Jacobian ships for all robots -- 1.4x e2e on the
+revolute panda constrained problems, ~1.1-1.3x on the free-flyer digit whole-body problem, from a
+2.5-3.9x cheaper kernel. Same recurring lesson, third time: single-realization comparisons lie;
+average over seeds.

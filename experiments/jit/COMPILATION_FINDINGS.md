@@ -1097,3 +1097,52 @@ the sincos SEED (which is why it ~= sincos); the recurrence adds essentially not
   every block regardless of edge length. SHIP THIS.
 - **leaf-trig recurrence: neutral in practice** -- a long-edge optimization that RRTC's short
   edges never amortize; subsumed by sincos. Do not ship standalone; recur+sincos = sincos.
+
+---
+
+## Scene specialization (the environment JIT idea) re-evaluated on real MBM (m48)
+
+The design doc's Component 1: bake the scene's obstacles into the collision kernel (const-fold +
+type-prune + a compile-time per-sphere broadphase). Measured the HEADROOM on real MBM before
+building the JIT machinery.
+
+### Headroom -- real, and better than the swept broadphase
+| robot | env-check share of kernel | scene-spec ceiling | compile-time obstacle pruning |
+|-------|--------------------------:|-------------------:|------------------------------:|
+| ur5    | 53% | 2.14x | 1.16x (86% kept) |
+| panda  | 26% | 1.35x | 1.56x (64% kept) |
+| fetch  | 52% | 2.10x | 1.64x (61% kept) |
+| baxter | 41% | 1.70x | 1.46x (68% kept) |
+
+The environment check is **26-53% of the kernel** on real MBM (I had wrongly assumed sparse scenes
+left nothing here). Const-fold + type-prune speeds that whole slice; the novel compile-time
+broadphase prunes another 14-39% of obstacle checks per sphere (weakest for ur5, which reaches
+across the whole small scene -- exactly the design doc's caveat). So scene specialization's
+ceiling is 1.35-2.14x -- genuinely more promising than the swept broadphase (which was setup-bound).
+
+### The crux is the compile cost (design doc Component 3) -- and it kills single-query
+Full clang -O3 compile of one robot's fkcc kernel (a scene-specialized kernel compiles the same FK
+plus baked obstacle checks): **panda 1.65 s, baxter 2.96 s.** MBM solve times (m47): panda ~85 us,
+baxter ~39 ms. Max per-solve saving = env_share x collision-time ~= panda ~19 us, baxter ~14 ms.
+Break-even (compile cost / per-solve saving):
+- **panda: ~87,000 solves on the SAME scene** to amortize a 1.65 s compile.
+- **baxter: ~200 solves** on the same scene.
+
+So at **T2 (full LLVM compile), scene specialization is non-viable for single-query MBM** by 2-5
+orders of magnitude -- the compile cost dwarfs the per-solve saving.
+
+### Verdict
+Scene specialization has REAL headroom on MBM (unlike the swept broadphase), but only pays in
+regimes that amortize the compile:
+- **Copy-and-patch specializer (T1, ~us-ms)** -- the design doc's enabler. baxter's ~14 ms/solve
+  saving amortizes a ~ms patch even single-query; panda's ~19 us is marginal. This is the large
+  unbuilt piece that makes single-query JIT viable.
+- **Multi-query / repeated-scene** (workcell, streaming, optimizing planners re-checking the same
+  scene thousands of times) -- even T2's ~2 s amortizes.
+- **Single-query MBM with full compile: does NOT pay.**
+
+This matches the design doc's own thesis: the speedup source is real and AOT-impossible, but it
+needs the fast (copy-and-patch) specializer or a multi-query regime to be worth the compile. The
+headroom measurement (env 26-53%, ceiling 1.35-2.14x) is the green light for building T1; the
+break-even numbers are the spec for how fast T1 must be (< ~20 us for panda-class, < ~14 ms for
+baxter-class, per single-query solve).

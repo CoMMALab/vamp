@@ -1777,3 +1777,43 @@ done; the relative bimanual kernel (`tsr_bimanual_error`) is still autodiff -- t
 (2 frame Jacobians + relative-pose Jlog composition) is the remaining follow-up. vamp's committed
 robot headers are regenerable artifacts; regenerating them with current cricket picks up the win
 (the test above rebuilt panda.hh, then restored it to keep vamp's tracked state clean).
+
+---
+
+## Free-flyer (Digit) analytic Jacobian -- correct but tangential-only; a net regression (a5be4d5)
+
+Extended the analytic TSR Jacobian to free-flyer robots (nq != nv, Digit: nq=31 quaternion base,
+nv=30). VAMP's constraint Jacobian is rows x nq, so it needs d/dq w.r.t. the RAW quaternion
+components (Eigen unit formula), like autodiff. Derivation (all FD-validated in validate_ff.cc):
+- joint columns: map 1:1 from the frame Jacobian (tangent col -> config col), exact to ~1e-10.
+- base translation cols: world twist [e_k; 0].
+- base quaternion cols: world twist [w_c x (t_X - t_base); w_c], w_c = vee(dR/dq_c * R_base^T),
+  with a branch-free dR/dq (Eigen unit formula). Frame convention took several FD-guided fixes
+  (LWA linear = velocity of the FRAME origin; angular in world; quaternion order x,y,z,w).
+
+**The catch (rigorously characterized):** a RAW quaternion perturbation makes R_base non-orthonormal,
+so autodiff's de/dq_quat includes a RADIAL (norm-changing) response that a rigid twist cannot
+capture. Confirmed: (Jfd - Janalytic) for the 4 quaternion columns is exactly proportional to q_c
+(spread of the ratio ~1e-8), and the TANGENTIAL residual after removing it is ~1e-10. So the
+analytic Jacobian is tangentially exact -- identical to autodiff on the unit-quaternion tangent,
+differing only in the manifold-normal direction the planner renormalizes away.
+
+**End-to-end (digit_example.py, box pickup -> rack):**
+
+| Jacobian  | kernel muls | solve time | iterations | on-manifold |
+|-----------|------------:|-----------:|-----------:|-------------|
+| autodiff  |        9232 |    55.6 ms |        353 | yes |
+| analytic  | 3646 (2.53x)|   128.6 ms |       1005 | yes |
+
+Both solve and stay on the manifold, but the analytic takes ~3x more RRTC iterations and is a net
+**regression** (128 vs 56 ms). Cause: the chart is the null space of the stacked constraint
+Jacobian (pivoted QR); the omitted radial columns perturb that basis, so the local planner steers
+differently. Matching autodiff exactly would need the radial columns = the response of
+so3_log to a quaternion SCALING (non-rotation dR), which is as involved as autodiff for those 4
+columns -- no longer a simplification.
+
+**Decision:** analytic is the default for revolute robots (panda: 1.4x e2e, validated); free-flyer
+robots default to autodiff (digit: 56 ms, no regression). The validated free-flyer analytic is kept
+behind CRICKET_FF_ANALYTIC=1. Net: the analytic geometric Jacobian is a clean win where nq==nv;
+for over-parameterized (quaternion) configs it is correct-but-tangential and the chart sensitivity
+makes autodiff the right default.

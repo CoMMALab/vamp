@@ -1625,3 +1625,48 @@ benchmark set up -- but `joint_tf` is the measured pure-FK proxy and the mechani
 (analytic Jacobian, ~order of magnitude vs finite-diff on complex robots). The only thing left on
 the table was the FK-transform snap not reaching the constraint trace -- now fixed, worth ~-50%
 FK muls on the constraint kernels for a 14-DOF robot.
+
+---
+
+## sincos on the TSR constraint kernels (m56) -- a ~1.25x kernel win, not yet applied
+
+Question: are the TSR (constraint) kernels using fused sincos, and is there general perf headroom?
+
+The TSR error+Jacobian kernels are a SEPARATE trace path from `fkcc_sincos` (cricket
+`emit_error_and_jacobian` -> raw CppADCodeGen), so they use un-fused `sin()`/`cos()`. Generated
+the bimanual panda (14-DOF dual-arm, `constraints:true`) and inspected `tsr_bimanual_error`:
+- **snap reached it** (0 sub-1e-9 noise terms -> last turn's global-snap fix works on constraints).
+- **sincos NOT applied**: 44 `sin` + 43 `cos` calls, 0 fused.
+- **~3x redundant trig**: `sin(x[0])` emitted 3x (v[45], v[133], v[162]) -- CppADCodeGen does not
+  CSE the trig across the error/Jacobian output blocks, and VAMP's `sin()` isn't marked const so
+  the C++ compiler can't fully dedup it either.
+
+Prototyped the same hoist used for `fkcc_sincos` (preamble `x[j].sincos(ps[j], pc[j])` per joint,
+then replace every `sin(x[j])`->`ps[j]`, `cos(x[j])`->`pc[j]`): 84 separate sin/cos -> **14 fused
+sincos** (dedup + fuse in one transform). Microbench on the real kernel:
+
+| variant                    | ns/call | speedup |
+|----------------------------|--------:|--------:|
+| orig (84 sin/cos)          | ~660    | --      |
+| hoisted (14 fused sincos)  | ~520    | **~1.25x** (1.21-1.30x across runs) |
+
+**Correctness:** the transform is algebraically exact -- 0/90 output diff at well-conditioned
+(small) inputs. The only numerical difference is sincos's ~1e-7 cos error; at pathological
+far-from-manifold random configs the ill-conditioned TSR Jacobian amplifies it (max-abs 7.9e3 on
+~1e4 entries, max-rel blows up only where an output ~= 0), but near the manifold -- where
+projection actually operates and where the error must reach ~1e-4 tolerance -- it is negligible.
+Same accuracy tradeoff as the shipped `fkcc_sincos` (validated fine for planning).
+
+**Why bigger than collision's 1.05x:** the TSR kernel is pure FK + analytic Jacobian, no collision
+loop to dilute the trig -- so the trig fraction (and thus the sincos win) is much larger, like the
+snap hit joint_tf (-50%) harder than sphere_fk (-25%).
+
+**Summary of TSR-kernel performance levers:**
+1. Already compiled with analytic Jacobian -- the biggest win, realized (~order of magnitude vs
+   finite-diff on complex robots).
+2. Model-noise snap now reaches them (global snap, cricket 29aed34): ~-50% FK-transform muls for
+   a 14-DOF robot.
+3. **sincos-hoist: a further ~1.25x on the constraint error+Jacobian kernel (measured, not yet
+   built into cricket)** -- would mirror the fkcc_sincos codegen change in
+   `emit_error_and_jacobian` + the template. This is the one remaining un-applied FK-side win, and
+   it lands on the hot path of projection-heavy constrained planning for complex robots.

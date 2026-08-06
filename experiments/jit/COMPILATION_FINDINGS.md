@@ -1146,3 +1146,47 @@ needs the fast (copy-and-patch) specializer or a multi-query regime to be worth 
 headroom measurement (env 26-53%, ceiling 1.35-2.14x) is the green light for building T1; the
 break-even numbers are the spec for how fast T1 must be (< ~20 us for panda-class, < ~14 ms for
 baxter-class, per single-query solve).
+
+---
+
+## Real-time regime: JIT ideas against a dense pointcloud MVT (m49)
+
+Represented MBM scenes as DENSE surface pointclouds (~1.5cm spacing, ~42k pts/scene; baxter 89k)
+behind an MVT (Multi-level Voxel Table, the sensor-based-planning structure), vs the sparse
+primitives. This is the "where JIT wins" regime the design doc and the swept-broadphase finding
+pointed at (baseline collision cost is high).
+
+| robot | pts/scene | base sparse->MVT | env share | scene-spec ceiling | swept IDEAL | swept REAL |
+|-------|----------:|-----------------:|----------:|-------------------:|------------:|-----------:|
+| ur5    | 42k | 1.2x | 61% | 2.57x | 1.08x | 0.32x |
+| panda  | 42k | 1.4x | 48% | 1.94x | 1.32x | 0.45x |
+| fetch  | 42k | 2.3x | 79% | 4.79x | 1.57x | 0.42x |
+| baxter | 89k | 2.7x | 78% | 4.55x | 1.06x | 0.34x |
+
+**Confirmed:** against a dense MVT the ENVIRONMENT query dominates (48-79% of the kernel, up from
+26-53% on sparse primitives), so the env-side headroom is bigger (ceiling 1.9-4.8x). The MVT is
+efficient though -- 42k points is only 1.2-2.7x costlier than 12 primitives.
+
+**Refuted (the important part):** the swept broadphase gets WORSE, not better -- **0.32-0.45x**
+(vs 0.57-1.03x on sparse). The IDEAL (free masks) still shows headroom (1.06-1.57x), so the SKIP
+idea is sound, but the SETUP is now catastrophic: each swept mask does NBS environment queries
+with LARGE swept-sphere radii, and a large-radius query on a fine-voxel MVT (voxel edge =
+max_query_radius + point_radius ~ 9cm) scans many voxels -- query cost grows super-linearly with
+radius. So the swept setup replaces n small per-rake queries with NBS *large* per-edge queries,
+which is far more expensive on a voxel structure. This is the precise refinement of the earlier
+"swept is setup-bound" finding: it is not "baseline collision cost" that matters but the cost of a
+LARGE-radius query vs many small ones -- and voxel structures punish large radii.
+
+**Also:** scene-spec const-folding does NOT apply to pointclouds (baking 42k points as constants
+is infeasible; the MVT *is* the specialization). And fused sincos, while still exact and env-
+independent, has a smaller RELATIVE payoff here because FK is only 21-52% of the kernel when the
+pointcloud query dominates.
+
+**Real-time verdict:** the win in the dense-pointcloud regime is making the MVT QUERY cheaper or
+issuing fewer queries with TIGHT bounds -- NOT the swept broadphase (large queries are punished by
+voxels) and NOT scene-spec const-fold (infeasible for points). A promising untested direction: a
+COARSE-level query for the swept broadphase against the MVT's multi-level hierarchy (query the
+coarse voxels matching the swept sphere's size, cheap), which is the one way to make the sound
+IDEAL headroom (1.06-1.57x) realizable. fused sincos remains a real but smaller (FK-fraction)
+win. This is the honest end of the environment/robot JIT-idea line: bigger headroom in real-time,
+but the current swept/scene-spec mechanisms do not capture it -- the MVT query itself is the target.

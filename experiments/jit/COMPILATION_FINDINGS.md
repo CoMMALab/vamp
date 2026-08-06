@@ -1704,3 +1704,41 @@ amortization question.
 + sincos-hoist (~1.25x, measured, not yet built). After those, the arithmetic is CSE-tight; the
 only further headroom is the structural geometric-Jacobian question, which is uncertain and would
 need its own measurement.
+
+---
+
+## Geometric-Jacobian path for the TSR kernel (jac_compare) -- measured 2.79x fewer ops
+
+Prototyped the structural lever from the m56 analysis: replace CppAD's autodiff of the constraint
+error (`error_func.Jacobian`) with pinocchio's ANALYTIC geometric frame Jacobian composed with the
+log-map derivative. Built a standalone head-to-head on the bimanual panda (nq=14) using cricket's
+exact toolchain (pinocchio ADCG + CppADCodeGen), counting generated multiplies:
+
+| Jacobian (per end-effector)                    | temps | muls | vs autodiff |
+|------------------------------------------------|------:|-----:|------------:|
+| raw frame Jacobian d(pose)/dq -- autodiff      |   144 | 1264 | --          |
+| raw frame Jacobian d(pose)/dq -- analytic (computeFrameJacobian) | 40 | 174 | **7.26x** |
+| full TSR err-Jacobian (6x14) -- autodiff (CURRENT cricket) | 167 | 2150 | -- |
+| full TSR err-Jacobian (6x14) -- analytic `Jlog6(Y)*Ad_rTe*J_local` | 102 | 771 | **2.79x** |
+
+**Result:** the geometric path cuts the per-EE TSR Jacobian from 2150 -> 771 muls (**2.79x**), and
+fewer temporaries (167 -> 102, less register pressure). The raw kinematic Jacobian alone is 7.26x
+cheaper analytically -- the full-kernel ratio is smaller (2.79x) because the log-map (Jlog6) +
+adjoint composition is needed by both paths and is ~half the analytic cost. This is by far the
+biggest op-reduction lever found for the TSR kernel -- vs the sincos-hoist's 1.25x -- and it
+stacks (the analytic frame Jacobian's own FK still benefits from the snap and from sincos).
+
+**Why cricket is currently 2.79x heavier:** it computes the Jacobian by CppAD reverse-mode
+autodiff of the whole error function, which does not exploit that d(pose)/dq is the geometric
+frame Jacobian (a well-known structured object). The analytic form is the textbook constrained-
+kinematics Jacobian (`Jlog6 * Adjoint * frame-Jacobian`), exactly what pinocchio's own constrained
+solvers use.
+
+**To ship it** cricket's `emit_error_and_jacobian` / `trace_tsr_error` would compute the Jacobian
+analytically (computeFrameJacobian + Jlog6 + adjoint) instead of `error_func.Jacobian`. Caveat:
+the prototype uses the full se(3) log6 error; cricket currently uses a decoupled
+[translation; so3_log] error, so a drop-in needs either switching to log6 (standard, arguably
+better-conditioned) or the decoupled analytic Jacobian (Jlog3 on the rotation rows). Op-count is a
+tight proxy for runtime on these pure-arithmetic kernels, so ~2.8x fewer muls ~= ~2.8x on the
+Jacobian portion; end-to-end constrained-planning gain scales with the projection/Jacobian share.
+Standalone tool: cricket/src/tracing/jac_compare.cc.

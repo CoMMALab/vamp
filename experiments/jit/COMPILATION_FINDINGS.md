@@ -1504,3 +1504,39 @@ external lib.
 xoshiro128** / xorshift128 (128-bit state per lane), buildable from the same ops (rotate =
 (x<<r)|(x>>(32-r)) plus the existing mullo). Expected to match external quality with zero
 dependency. The `xor_` backend op added here is the reusable piece.
+
+---
+
+## Multi-seed sampler sweep (m47) -- corrects the single-seed conclusions
+
+The single-realization sampler numbers above were noisy. Ran 8 seeds per PRNG on the two
+high-variance robots (Halton is deterministic -> one point), TRIALS=3, median [min-max]:
+
+**baxter:**
+
+| gen           | solved med | iters med       | mean-us med [range]     | vs Halton |
+|---------------|-----------:|----------------:|------------------------:|----------:|
+| Halton (1 pt) |         45 |         168563  | 39239                   |     --    |
+| ext xorshift128+ | 48 [45-49] |   150420 [117k-183k] | 27303 [20854-41472] | 1.44x |
+| native xorshift32 | 47 [44-50] | 176990 [156k-203k] | 22327 [17277-32455] | **1.76x** |
+| xoshiro128**  | 46 [42-48] |   170832 [109k-203k] | 21906 [18988-30326] | **1.79x** |
+
+**fetch:** all four within noise (ht 2971, xs 2748, xsn 3159, xo 2455 us).
+
+**This overturns two earlier claims:**
+1. **The "external xs = 3x on baxter" (73k iters / 12.5ms) was seed luck** -- that draw was *below
+   the minimum* of the 8-seed sample (117k). The external-xs median is ~150k iters / 27ms. The
+   robust Halton->PRNG win on baxter is **~1.4-1.8x**, not 3x. Per-seed mean spread is ~2x, which
+   is exactly why single realizations mislead.
+2. **Generator quality barely matters here.** native xorshift32 (22.3ms) and xoshiro128** (21.9ms)
+   are indistinguishable and slightly *better* than external xorshift128+ (27.3ms) -- all inside
+   seed noise. The previous-turn claim that xorshift32 is a "partial regression" was itself a
+   seed-noise artifact. **xoshiro128 buys nothing measurable over the simpler xorshift32.**
+
+**Conclusion:** the robust story is (a) swapping Halton for any cheap PRNG is worth ~1.4-1.8x on
+the hard/high-dim robot (baxter) and ~neutral on the rest -- from removing the 32% sampler cost
+plus PRNGs dodging high-dim Halton correlation (modestly fewer iters, a few more solves); (b)
+among PRNGs the choice is noise, so the **simple dependency-free native xorshift32 is the pick**
+(least code, no external lib). xoshiro128** is kept as a higher-quality option but is not needed.
+The generic recurring lesson holds once more: single-realization microbenchmarks lie -- the 3x
+was a lucky seed.

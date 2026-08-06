@@ -3,7 +3,10 @@
 // timing trials/problem, 10M max iterations. Reports solved/total, planner time, iterations.
 #include <array>
 #include <cstdio>
+#include <cstdint>
+#include <cstdlib>
 #include <memory>
+#include <string>
 #include <vector>
 #include <algorithm>
 #include <vamp/collision/factory.hh>
@@ -11,7 +14,11 @@
 #include <vamp/planning/planners/rrtc.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/random/halton.hh>
-#if defined(VAMP_XORSHIFT_NATIVE)
+#if defined(VAMP_XOSHIRO)
+#include <vamp/random/xoshiro128.hh>
+template <class R> using Sampler = vamp::rng::Xoshiro128<R>;
+static const char *sampler_tag = "xo";
+#elif defined(VAMP_XORSHIFT_NATIVE)
 #include <vamp/random/xorshift_native.hh>
 template <class R> using Sampler = vamp::rng::XORShiftNative<R>;
 static const char *sampler_tag = "xsn";
@@ -44,6 +51,25 @@ static vamp::collision::Environment<DataV> build_env(const std::vector<PPrim> &p
     return vamp::collision::Environment<DataV>(ef);
 }
 
+static std::uint32_t g_seed = 0;
+static int g_trials = 10;
+
+template <class R>
+static std::shared_ptr<Sampler<R>> make_sampler(std::uint32_t seed)
+{
+#if defined(VAMP_XOSHIRO) || defined(VAMP_XORSHIFT_NATIVE)
+    return std::make_shared<Sampler<R>>(seed ? seed : 0x9e3779b9u);
+#elif defined(VAMP_XORSHIFT)
+    // two distinct odd keys derived from the seed
+    return std::make_shared<Sampler<R>>(
+        static_cast<std::uint64_t>(seed) * 2862933555777941757ull + 3ull,
+        static_cast<std::uint64_t>(seed) * 3202034522624059733ull + 7ull);
+#else
+    (void)seed;  // Halton is deterministic; seed ignored
+    return std::make_shared<Sampler<R>>();
+#endif
+}
+
 template <class R>
 static typename R::Configuration to_cfg(const std::vector<float> &v)
 {
@@ -60,7 +86,7 @@ static void run(const char *name, float range, const std::vector<MbmProb> &probs
     settings.range = range;
     settings.max_iterations = 10'000'000;
     settings.max_samples = 1'000'000;
-    const int TRIALS = 10;
+    const int TRIALS = g_trials;
 
     std::size_t valid = 0, solved = 0;
     std::vector<double> times_us; std::vector<double> iters;
@@ -76,7 +102,7 @@ static void run(const char *name, float range, const std::vector<MbmProb> &probs
         ++valid;
         double best = 1e18; bool any = false; double it = 0;
         for (int t = 0; t < TRIALS; ++t) {
-            auto rng = std::make_shared<Sampler<R>>();
+            auto rng = make_sampler<R>(g_seed);
             auto result = vamp::planning::RRTC<R, rake, res>::solve(start, goals, env, settings, rng);
             best = std::min(best, result.nanoseconds / 1000.0);   // us, min over timing trials
             any = result.solved; it = (double)result.iterations;
@@ -98,11 +124,14 @@ static void run(const char *name, float range, const std::vector<MbmProb> &probs
                 name, sampler_tag, cfg, valid, solved, probs.size(), mean, pct(times_us, 0.5), pct(times_us, 0.95), pct(iters, 0.5));
 }
 
-int main()
+int main(int argc, char **argv)
 {
-    run<vamp::robots::Ur5>("ur5", 1.5f, ur5_probs);
-    run<vamp::robots::PandaE>("panda", 1.25f, panda_probs);
-    run<vamp::robots::FetchE>("fetch", 1.0f, fetch_probs);
-    run<vamp::robots::BaxterE>("baxter", 0.5f, baxter_probs);
+    if (argc > 1) g_seed = static_cast<std::uint32_t>(std::strtoul(argv[1], nullptr, 10));
+    if (argc > 2) g_trials = std::atoi(argv[2]);
+    const char *only = (argc > 3) ? argv[3] : nullptr;  // optional: run one robot
+    if (!only || std::string(only) == "ur5") run<vamp::robots::Ur5>("ur5", 1.5f, ur5_probs);
+    if (!only || std::string(only) == "panda") run<vamp::robots::PandaE>("panda", 1.25f, panda_probs);
+    if (!only || std::string(only) == "fetch") run<vamp::robots::FetchE>("fetch", 1.0f, fetch_probs);
+    if (!only || std::string(only) == "baxter") run<vamp::robots::BaxterE>("baxter", 0.5f, baxter_probs);
     return 0;
 }

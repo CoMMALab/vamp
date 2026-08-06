@@ -5,6 +5,7 @@
 #include <cmath>
 #include <array>
 #include <vamp/random/xorshift_native.hh>
+#include <vamp/random/xoshiro128.hh>
 #include "baxter_e.hh"
 
 using R = vamp::robots::BaxterE;
@@ -13,7 +14,11 @@ const int N = 500000;
 
 int main()
 {
+#ifdef TEST_XOSHIRO
+    vamp::rng::Xoshiro128<R> rng;
+#else
     vamp::rng::XORShiftNative<R> rng;
+#endif
     // pass 1: means
     std::array<double, D> sum{};
     for (int i = 0; i < N; ++i) { auto a = rng.next().to_array(); for (std::size_t j = 0; j < D; ++j) sum[j] += a[j]; }

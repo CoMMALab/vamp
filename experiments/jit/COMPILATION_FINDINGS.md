@@ -1905,3 +1905,37 @@ whole-body stack plans on-manifold. The solve_* kernels (larger, Cholesky/LM) re
 independent -- pure linear algebra, no Jacobian to make analytic. Net: the analytic geometric
 Jacobian now covers every constraint Jacobian VAMP generates (single/relative TSR, CoM, closed
 loop), 1.3-2.5x each, from a shared frame-Jacobian + free-flyer-mapping template.
+
+---
+
+## Solve kernels: exploit Jacobian sparsity (f36679b) -- 2.2x, and it IS a codegen win
+
+Earlier claim was that the solve_* kernels (Cholesky/LM) have "no analytic angle -- pure linear
+algebra." That was wrong: they form J J^T densely, but J is structurally SPARSE. On Digit's feet
+TSR the Jacobian is only 40% nonzero -- each end-effector's 6 error rows are nonzero only in that
+frame's supporting joints (+ the free-flyer base): arm EEs 10/30 tangent cols, feet 14/30. Because
+off-diagonal J J^T blocks (different limbs) share only the base columns, forming J J^T sparsely is
+~4x cheaper.
+
+`trace_solve_tsr` now computes a per-row nonzero mask from `model.supports[frame.parentJoint]`
+(skipping the universe joint, whose idx_q is -1 -- a mask[-1] write was the initial double-free),
+and `trace_solve_jacobian` builds structurally-zero J entries as constant 0 so CppADCodeGen folds
+0*x out of J J^T and the Cholesky. The input layout is unchanged (VAMP still passes the full dense
+J from the producer; the solver just ignores the known-zero slots).
+
+| Digit TSR solver                 | dense | sparse | speedup |
+|----------------------------------|------:|-------:|--------:|
+| solve_tsr_error_lm_inner (default) | 12896 |  5768 |  2.24x  |
+| solve_tsr_error_lm_outer         | 18538 |  8434 |  2.20x  |
+| solve_tsr_error_gradient_descent |   744 |   312 |  2.38x  |
+
+**Bit-exact** (the structural zeros are exact zeros in the producer output, so the solve result is
+identical): same 348 RRTC iterations, on-manifold, ~1.19x additional end-to-end (34.0 vs 40.4 ms
+single Halton) on top of the analytic producers. The relative-bimanual, CoM, and closed-loop
+solvers are left dense (small: 902/158/158 muls) -- the relative case needs a two-chain,
+base-invariant mask; a clean follow-up.
+
+**Session net on constrained planning:** analytic producers (2.07x on the 4 Jacobian kernels) +
+sparse solve (2.24x on the dominant solver), both exact/on-manifold -- the whole per-iteration
+constraint cost is now materially cheaper, from codegen that exploits kinematic structure (frame/
+CoM Jacobians, free-flyer mapping, and Jacobian sparsity) the generic autodiff+dense-solve missed.

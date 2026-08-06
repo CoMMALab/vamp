@@ -1588,3 +1588,40 @@ not unlock a big win:
 roadmap reuse across replans (algorithmic -- avoid rebuilding the tree each solve), and (b) the
 sampler swap (1.4-1.8x on baxter, m47 multi-seed). Compiling the environment is the wrong target:
 it is amortizable but capped at ~1.1x, and inverted against where the time actually is.
+
+---
+
+## Compiling the constraints for complex robots -- already done, plus a snap gap now closed
+
+Question: how much would compiling the constraints help for complex robots?
+
+**They are already fully compiled.** cricket traces the constraint error AND its analytic Jacobian
+(CppAD `error_func.Jacobian`, shared subexpressions) and emits SIMD-batched, rake-parallel,
+per-robot kernels (VAMP `ConstraintSet::evaluate_error_jacobian`), including bimanual/TSR for
+dual-arm robots. VAMP's manifold planner (MCFLASK: chart = pivoted-QR of the stacked constraint
+Jacobian) calls these compiled kernels directly. So "compile the constraints" is not a future
+opportunity -- it is a core, already-realized feature, and the single biggest JIT win in the
+system: for a complex robot the analytic compiled Jacobian replaces a finite-difference Jacobian
+that would need ~dim+1 (~15 for baxter) FK passes per Newton step, and constrained planning is
+projection-dominated (many Newton steps per sample). That is roughly an order of magnitude,
+already banked.
+
+**The residual gap (now closed).** The model-noise snap (m51) and fused sincos lived only in the
+FK/collision trace path (`trace_sphere_cc_fk`). All 7 constraint trace sites -- plus distance and
+FLASK -- cast the raw `info.model` and missed the sparsification. Fix: moved the snap to
+`RobotInfo` construction (`snap_placement_noise`), so every trace inherits the sparse model
+(cricket 29aed34). Verified: collision kernels byte-identical (sphere_fk unchanged, still exact),
+and `joint_tf` -- a pure-FK kernel that previously missed the snap -- drops **381 -> 191 muls
+(-50%)** for baxter with the ~1e-12 dirt eliminated.
+
+**Magnitude for constraints:** the constraint error+Jacobian kernels are pure FK/kinematics (no
+collision loop to dilute them), like `joint_tf`. So they see ~the full FK-transform reduction --
+about **-50% muls for baxter**, roughly 2x the collision kernel's -25% (which was diluted by the
+sphere/broadphase work). This lands exactly where projection-heavy constrained planning on complex
+robots spends its time. (End-to-end constrained-planning measurement not run here -- no constrained
+benchmark set up -- but `joint_tf` is the measured pure-FK proxy and the mechanism is identical.)
+
+**Answer:** compiling the constraints is already the design and is the biggest JIT lever in VAMP
+(analytic Jacobian, ~order of magnitude vs finite-diff on complex robots). The only thing left on
+the table was the FK-transform snap not reaching the constraint trace -- now fixed, worth ~-50%
+FK muls on the constraint kernels for a 14-DOF robot.

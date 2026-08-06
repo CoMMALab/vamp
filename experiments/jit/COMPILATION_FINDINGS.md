@@ -1386,3 +1386,43 @@ MBM problems (sincos the bulk, snap a small exact bonus on FK-noisy robots), and
 NN-bound hard problems. Both are exact-ish, environment-independent, zero-setup, and always-on.
 For further end-to-end headroom on the hard problems, the lever is the NN/tree search, not the
 FK+collision kernel.
+
+---
+
+## Sizing the hard-problem bottleneck (m53) -- it is NN + sampler, not collision
+
+perf profile of an isolated baxter RRTC workload (50 problems x 4 reps, ~348M iterations,
+-F1999, pinned). Self-time breakdown:
+
+| component                                   | self-time |
+|---------------------------------------------|----------:|
+| KD-tree NN search (`KDTree::search_one`)    | **43.4%** |
+| Halton sampler (`Halton::next`)             | **32.3%** |
+| solve body (Robot::distance, insert/grow, bookkeeping) | 21.4% |
+| collision (fkcc + sphere_environment_in_collision + validate + steer) | **~2.5%** |
+
+**The headline:** for the NN-bound hard problems, the collision kernel we spent the session
+optimizing is only ~2.5% of the time. That is *why* sincos+snap gave baxter ~1.00-1.02x
+end-to-end -- there was never more than ~2.5% to win. The 97% is planner machinery.
+
+**Two real levers, sized:**
+1. **NN search (43%)** -- already a strong SIMD kd-tree: SoA leaf blocks scanned with vector row
+   ops, AABB lower-bound pruning, (1+eps)-approximate queries, leaf-scan checkpoints, prefetch,
+   huge pages, compile-time dimension. The 43% is dominated by leaf scans (scan_leaf ~16% + the
+   per-lane extraction), i.e. the curse of dimensionality: at 14-D the box bounds prune weakly so
+   many leaves get scanned. This is **algorithmic, not codegen** -- the loops are already
+   templated + vectorized; the lever is a better ANN / larger nn_epsilon / a different metric, all
+   of which trade path quality or determinism. Not a JIT win.
+2. **Halton sampler (32%)** -- the surprise. The incremental Halton `next()` is division- and
+   floor-heavy: `(d/b).floor()`, a variable-length carry loop `while(x_le_y.any()){ (y/b).floor() }`,
+   and a final `n/d`, over a 14-D (2x AVX register) sample every iteration. Two of the three
+   division sites divide by the **constant** prime bases `b`, so `/(b)` can become `* (1/b)` with a
+   precomputed reciprocal (SIMD divps ~11-14cy vs mulps ~4cy). This is a **numerical-kernel win in
+   the same profile as sincos/snap** (environment-independent, every-call, exact if the floor
+   tolerance holds) -- and it only helps the high-iteration hard problems, which is exactly where
+   the collision wins don't reach. The most promising NEW lever the session has surfaced.
+
+Note this split is baxter-specific (NN/sampler cost scales with iterations x dimension). The easy
+robots (panda/ur5/fetch, ~30us / hundreds of iters) are collision-bound, which is why sincos won
+there. So the two robot regimes want different optimizations: collision kernel for the easy/
+collision-bound problems (done), sampler+NN for the hard/high-iteration ones.

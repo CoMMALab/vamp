@@ -1874,3 +1874,34 @@ the relative/loop error's Jlog composition, with the same free-flyer quaternion 
 mechanical to add now that the pattern + free-flyer mapping are validated -- left as follow-ups.
 Net: the analytic geometric Jacobian now covers the two largest Digit constraint kernels (tsr 2.53x,
 com 1.41x); the remaining two are ~2x each on the same template.
+
+---
+
+## All Digit constraint Jacobians analytic (ada444a) -- bimanual + closed-loop done
+
+Completed the analytic geometric Jacobian for Digit's last two constraint producers.
+
+| producer            | autodiff | analytic | speedup |
+|---------------------|---------:|---------:|--------:|
+| tsr_error (feet)    |     9232 |     3646 |   2.53x |
+| tsr_bimanual_error  |     3482 |     1492 |   2.33x |
+| com_jacobian        |     3013 |     2131 |   1.41x |
+| closed_loop_error   |     1228 |      918 |   1.34x |
+| **total producers** | **16955**| **8187** | **2.07x** |
+
+- **bimanual (relative pose)** e = se3_disp(X_l^-1 X_r C): the relative-pose Jacobian
+  de/dv = D_disp(errT) Ad(C^-1) (xi_r - Ad(Z^-1) xi_l) from LOCAL frame Jacobians of the two EEs,
+  D_disp(T)=[[R_T,0],[0,Jlog3(R_T)]], Z=X_l^-1 X_r, C=lTr^-1.
+- **closed-loop (distance)** e = ||end-start|| - L: de/dq = u^T (Jpos_end - Jpos_start).
+
+Both are invariant to a rigid base transform (relative pose / inter-frame distance don't change
+when the whole robot moves), so the free-flyer base columns are exactly zero on the manifold --
+FD-validated tangentially exact (validate_bicl.cc: translation cols ~0, quaternion discrepancy
+radial-only, tangential residual ~5e-9). This is the *cleanest* free-flyer case: no quaternion
+column derivation, just base=0.
+
+All four producers now analytic (0 ifs, default; CRICKET_AUTODIFF_JAC=1 opts out); Digit's full
+whole-body stack plans on-manifold. The solve_* kernels (larger, Cholesky/LM) remain autodiff-
+independent -- pure linear algebra, no Jacobian to make analytic. Net: the analytic geometric
+Jacobian now covers every constraint Jacobian VAMP generates (single/relative TSR, CoM, closed
+loop), 1.3-2.5x each, from a shared frame-Jacobian + free-flyer-mapping template.

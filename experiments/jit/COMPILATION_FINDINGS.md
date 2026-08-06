@@ -1313,3 +1313,38 @@ the raw model. Now the cricket default (commit cf3c409; CRICKET_NO_SNAP=1 for A/
 NN/tree-bound one end-to-end, so its RRTC gain is muted; the FK-bound robots (ur5/fetch) were
 already clean. Net end-to-end effect is small (kernel 2-4% -> a point or two of RRTC on the
 collision-bound easy problems), but it costs nothing and always applies.
+
+---
+
+## Per-primitive collision math (m52) -- already tight, no headroom on MBM
+
+Idea #2: profile the per-obstacle collision kernels (sphere-cuboid / sphere-capsule) for a faster
+every-call formulation. Two questions: are real MBM obstacles dispatched to the fast paths, and is
+there a further fast-path worth adding?
+
+**Bucket distribution on MBM** (across all scenes): boxes 162/165 z-aligned, capsules 81/81
+z-aligned, 0 spheres. The 3 "general" boxes per robot have axis_3_z ~= 0.7067 = cos(45 deg) --
+genuinely 45deg-tilted boxes that correctly need the OBB path. **No noise misclassification**
+(`general-but-actually-z=0`): unlike the FK trace, the euler->matrix path here is clean -- MBM's
+yaw-only boxes (euler ex=ey=0) produce axis_3=(0,0,1) *exactly*, so the `axis_3_z == 1.` gate
+routes them to z_aligned correctly. baxter: all 54 boxes z-aligned.
+
+**Per-call cost (ns), yaw-rotated box, near queries:**
+
+| primitive | general OBB | z-aligned (in use) | AABB (hypothetical) |
+|-----------|------------:|-------------------:|--------------------:|
+| cuboid    | 5.18 | 3.26 (**1.59x** already saved) | 1.95 (1.67x vs z) |
+| capsule   | 3.70 | 1.96 (**1.89x** already saved) | -- |
+
+The z-aligned fast path is already dispatched and already banks 1.59-1.89x. The only cheaper
+path -- pure AABB (no dot products) -- is **1.67x faster than z-aligned but inapplicable**: MBM
+boxes are genuinely yaw-rotated (ez=1.71827, ...), so they need the two xy-plane dots; an AABB
+test would be geometrically wrong for them.
+
+**Verdict:** no headroom on MBM. The collision primitives are already tight squared-distance
+tests, already correctly fast-pathed (98% z-aligned), with no noise misclassification to snap
+away. The one further lever (an AABB `fully_axis_aligned_cuboid` bucket, gated on
+axis_1_x==1 && axis_2_y==1) would give ~1.67x per box, but ONLY for axis-aligned-box scenes
+(warehouse/table AABBs) -- MBM's yaw-rotated boxes don't qualify. Documented as a conditional
+lever for AABB-heavy deployments; not built (YAGNI for the benchmark). The FK-side snap (m51) and
+fused sincos remain the two durable, universally-applicable wins.

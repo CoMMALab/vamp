@@ -1842,3 +1842,35 @@ across the session: the analytic geometric TSR Jacobian ships for all robots -- 
 revolute panda constrained problems, ~1.1-1.3x on the free-flyer digit whole-body problem, from a
 2.5-3.9x cheaper kernel. Same recurring lesson, third time: single-realization comparisons lie;
 average over seeds.
+
+---
+
+## The other Digit constraint kernels -- same analytic pattern (a885b2e)
+
+Digit's whole-body stack uses four constraint Jacobian-PRODUCER kernels (all were autodiff). The
+analytic geometric-Jacobian pattern (frame/CoM Jacobian + free-flyer tangential quaternion columns)
+applies to all of them:
+
+| kernel                | autodiff muls | analytic | status |
+|-----------------------|--------------:|---------:|--------|
+| tsr_error (feet, 4EE) |          9232 |     3646 | done (2.53x) |
+| tsr_bimanual_error    |          3482 |    ~1800 | follow-up (relative-pose: 2 frame Jacs + Jlog) |
+| com_jacobian          |          3013 |     2131 | **done (1.41x)** -- pinocchio jacobianCenterOfMass |
+| closed_loop_error     |          1228 |    ~700  | follow-up (frame-Jacobian based) |
+
+The **solve_* kernels** (solve_tsr_lm_inner 12896, _outer 18538, com/loop solvers, etc.) are the
+larger per-iteration cost but take the Jacobian as INPUT and do a Cholesky/LM solve -- pure linear
+algebra, no analytic-Jacobian angle. Their size is set by the projection method (InnerLM 24x24 vs
+OuterLM 31x31 vs GradDesc); a cheaper method is the lever there, not codegen.
+
+**CoM done:** d(com - mean(feet))/dq from pinocchio's analytic jacobianCenterOfMass + frame
+Jacobians. FD-validated tangentially exact for the free-flyer (radial-spread 7e-10, tangential
+residual 1e-10; joints exact 1e-10; base-translation columns vanish because com and feet translate
+together). 3013->2131 muls (1.41x -- less than the frame Jacobian's since pinocchio's CRBA-based
+CoM Jacobian is already fairly tight). Digit plans on-manifold with analytic tsr+com.
+
+**Bimanual + closed-loop** follow the identical pattern (frame Jacobians of the involved frames +
+the relative/loop error's Jlog composition, with the same free-flyer quaternion handling) and are
+mechanical to add now that the pattern + free-flyer mapping are validated -- left as follow-ups.
+Net: the analytic geometric Jacobian now covers the two largest Digit constraint kernels (tsr 2.53x,
+com 1.41x); the remaining two are ~2x each on the same template.

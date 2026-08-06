@@ -11,7 +11,11 @@
 #include <vamp/planning/planners/rrtc.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/random/halton.hh>
-#ifdef VAMP_XORSHIFT
+#if defined(VAMP_XORSHIFT_NATIVE)
+#include <vamp/random/xorshift_native.hh>
+template <class R> using Sampler = vamp::rng::XORShiftNative<R>;
+static const char *sampler_tag = "xsn";
+#elif defined(VAMP_XORSHIFT)
 #include <vamp/random/xorshift.hh>
 template <class R> using Sampler = vamp::rng::XORShift<R>;
 static const char *sampler_tag = "xs";

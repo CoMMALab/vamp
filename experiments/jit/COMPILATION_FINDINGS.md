@@ -1469,3 +1469,38 @@ multiple xorshift seeds. This is a BEHAVIORAL change (different samples/paths), 
 drop-in, so it is a VAMP-defaults decision, not a silent commit. The clean takeaway for the JIT
 line of work: for hard problems the win is the sampler/NN, not the collision kernel -- and the
 sampler win here is algorithmic (which sequence), not codegen.
+
+---
+
+## Native (dependency-free) xorshift sampler (m54) -- works, but a quality gap vs external
+
+Implemented a self-contained SIMD xorshift with no external simdxorshift dependency: one Marsaglia
+xorshift32 per 32-bit lane (one stream per sampled dimension), advanced together each next() via
+the vamp vector ops. Required adding `xor_` to the AVX integer backend (SIMDVector<__m256i> had
+and_/or_/bitneg but no exposed xor_ -- the same gap the sincos work hit). Lanes seeded with
+decorrelated nonzero splitmix32 values. Sanity check (m54, 500k samples on baxter): per-dimension
+serial autocorrelation < 0.002 and cross-dim correlation 0.0002 -> statistically sound.
+
+**10-trial, 3-way RRTC (same snap+sincos kernel):**
+
+| robot  | metric | Halton | ext xorshift128+ | native xorshift32 |
+|--------|--------|-------:|-----------------:|------------------:|
+| baxter | solved |     45 |               45 |            **50** |
+|        | mean us |  38895 |            12522 |             27511 |
+|        | p50 us |   8564 |             3664 |              5370 |
+| ur5    | mean us |  162.6 |             72.3 |             166.1 |
+| panda  | mean us |   78.4 |             88.1 |             106.2 |
+| fetch  | mean us |   2949 |             2394 |              3358 |
+
+**Read:** native xs removes the dependency and beats Halton on the hard problem (baxter 1.41x mean,
+1.60x p50, +5 solved), but is neutral-to-slightly-worse than Halton on the easy robots and
+consistently slower than the external xorshift128+. Cause: xorshift32 (32-bit state, period 2^32,
+fails parts of BigCrush) has weaker equidistribution than xorshift128+ (128-bit state, passes
+BigCrush), so it costs iterations -- good median, higher variance (panda p50 is the best of all
+three at 27us but its p95 is the worst). As a drop-in replacement it is a partial regression vs the
+external lib.
+
+**Fix (not yet built):** keep the identical abstraction but use a higher-quality native generator --
+xoshiro128** / xorshift128 (128-bit state per lane), buildable from the same ops (rotate =
+(x<<r)|(x>>(32-r)) plus the existing mullo). Expected to match external quality with zero
+dependency. The `xor_` backend op added here is the reusable piece.

@@ -89,6 +89,12 @@ namespace vamp
         }
 
         template <unsigned int = 0>
+        inline static constexpr auto xor_(VectorT l, VectorT r) noexcept -> VectorT
+        {
+            return _mm256_xor_si256(l, r);
+        }
+
+        template <unsigned int = 0>
         inline static constexpr auto cmp_equal(VectorT l, VectorT r) noexcept -> VectorT
         {
             return _mm256_cmpeq_epi32(l, r);

@@ -12,6 +12,7 @@
 #include <random>
 #include <vector>
 #include <algorithm>
+#include <unordered_set>
 #include <vamp/collision/factory.hh>
 #include <vamp/collision/validity.hh>
 #include "ur5_e.hh"
@@ -67,6 +68,40 @@ static std::vector<Point> surface_points(const MbmEnv &me)
     return pts;
 }
 
+// Coarse occupancy grid (voxel ~ swept-sphere size) for a CHEAP swept certification: instead of
+// scanning fine MVT voxels + points with a large radius, test the swept sphere against occupied
+// COARSE voxels. Conservative: clear() true => no point within radius (uses radius+point_radius).
+struct CoarseGrid
+{
+    float vs = 0.3f, pr = 0.0075f; std::array<float,3> o{0,0,0}; int nx=0, ny=0, nz=0;
+    std::vector<std::uint8_t> g;
+    inline int idx(int ix,int iy,int iz) const { return ix + nx*(iy + ny*iz); }
+    void build(const std::vector<Point> &pts, float voxel, float point_r)
+    {
+        vs = voxel; pr = point_r; if (pts.empty()) { nx=ny=nz=1; g.assign(1,0); return; }
+        std::array<float,3> mn{1e9f,1e9f,1e9f}, mx{-1e9f,-1e9f,-1e9f};
+        for (auto &p : pts) for (int d=0;d<3;++d){ mn[d]=std::min(mn[d],p[d]); mx[d]=std::max(mx[d],p[d]); }
+        for (int d=0;d<3;++d) o[d]=mn[d]-vs;
+        nx=(int)((mx[0]-o[0])/vs)+2; ny=(int)((mx[1]-o[1])/vs)+2; nz=(int)((mx[2]-o[2])/vs)+2;
+        g.assign((std::size_t)nx*ny*nz, 0);
+        for (auto &p : pts){ int ix=(int)((p[0]-o[0])/vs),iy=(int)((p[1]-o[1])/vs),iz=(int)((p[2]-o[2])/vs); g[idx(ix,iy,iz)]=1; }
+    }
+    bool clear(float cx, float cy, float cz, float r) const
+    {
+        const float rr = r + pr;
+        int lx=std::max(0,(int)((cx-rr-o[0])/vs)), hx=std::min(nx-1,(int)((cx+rr-o[0])/vs));
+        int ly=std::max(0,(int)((cy-rr-o[1])/vs)), hy=std::min(ny-1,(int)((cy+rr-o[1])/vs));
+        int lz=std::max(0,(int)((cz-rr-o[2])/vs)), hz=std::min(nz-1,(int)((cz+rr-o[2])/vs));
+        for (int iz=lz;iz<=hz;++iz) for (int iy=ly;iy<=hy;++iy) for (int ix=lx;ix<=hx;++ix) {
+            if (not g[idx(ix,iy,iz)]) continue;
+            float ax=o[0]+ix*vs, ay=o[1]+iy*vs, az=o[2]+iz*vs;
+            float qx=std::max(ax,std::min(cx,ax+vs)), qy=std::max(ay,std::min(cy,ay+vs)), qz=std::max(az,std::min(cz,az+vs));
+            float dx=cx-qx,dy=cy-qy,dz=cz-qz; if (dx*dx+dy*dy+dz*dz < rr*rr) return false;
+        }
+        return true;
+    }
+};
+
 template <class R>
 static vamp::collision::Environment<DataV> build_sparse(const MbmEnv &me)
 {
@@ -116,9 +151,10 @@ static void run(const char *name, float range, const std::vector<MbmEnv> &mbm)
     std::size_t NPP=pair_bs.size();
 
     // build both env representations + a shared pointcount tally
-    std::vector<vamp::collision::Environment<DataV>> mvt, sparse; std::size_t total_pts=0;
+    std::vector<vamp::collision::Environment<DataV>> mvt, sparse; std::vector<CoarseGrid> coarse; std::size_t total_pts=0;
     const float max_q=R::max_radius, r_point=0.0075f;
-    for(auto&me:mbm){ auto pts=surface_points(me); total_pts+=pts.size(); mvt.push_back(build_mvt(pts,max_q,r_point)); sparse.push_back(build_sparse<R>(me)); }
+    for(auto&me:mbm){ auto pts=surface_points(me); total_pts+=pts.size(); mvt.push_back(build_mvt(pts,max_q,r_point)); sparse.push_back(build_sparse<R>(me));
+        CoarseGrid cg; cg.build(pts, 0.3f, r_point); coarse.push_back(std::move(cg)); }
     vamp::collision::Environment<DataV> empty;
 
     // realistic edges (free under MVT), with cached endpoint bounding spheres
@@ -147,6 +183,22 @@ static void run(const char *name, float range, const std::vector<MbmEnv> &mbm)
         for(std::size_t k=0;k<NBS;++k) ec[k]=not vamp::sphere_environment_in_collision(mvt[e.e],DataV::fill(E[k][0]),DataV::fill(E[k][1]),DataV::fill(E[k][2]),DataV::fill(RAD[k]));
         for(std::size_t pi=0;pi<NPP;++pi){int a=pair_bs[pi][0],b=pair_bs[pi][1];float dx=E[a][0]-E[b][0],dy=E[a][1]-E[b][1],dz=E[a][2]-E[b][2];pc[pi]=(std::sqrt(dx*dx+dy*dy+dz*dz)>RAD[a]+RAD[b]);}
     };
+    // COARSE certification: env_clear via the coarse occupancy grid (cheap) instead of a large-
+    // radius fine-MVT query. Self-pair test unchanged (robot-robot).
+    auto masks_coarse=[&](const Edge&e, std::array<bool,NBS>&ec, std::array<bool,R::n_self_pairs>&pc){
+        std::array<std::array<float,3>,NBS> E; std::array<float,NBS> RAD;
+        for(std::size_t k=0;k<NBS;++k){ auto&A=e.ca[k];auto&Bb=e.cb[k];
+            float half=0.5f*std::sqrt((A.x-Bb.x)*(A.x-Bb.x)+(A.y-Bb.y)*(A.y-Bb.y)+(A.z-Bb.z)*(A.z-Bb.z));
+            E[k]={(A.x+Bb.x)*0.5f,(A.y+Bb.y)*0.5f,(A.z+Bb.z)*0.5f}; RAD[k]=half+std::max(A.r,Bb.r)+sag(k,e.v); }
+        for(std::size_t k=0;k<NBS;++k) ec[k]=coarse[e.e].clear(E[k][0],E[k][1],E[k][2],RAD[k]);
+        for(std::size_t pi=0;pi<NPP;++pi){int a=pair_bs[pi][0],b=pair_bs[pi][1];float dx=E[a][0]-E[b][0],dy=E[a][1]-E[b][1],dz=E[a][2]-E[b][2];pc[pi]=(std::sqrt(dx*dx+dy*dy+dz*dz)>RAD[a]+RAD[b]);}
+    };
+    // rigor: coarse-swept must match baseline on every edge
+    std::size_t mm=0;
+    for(std::size_t i=0;i<edges.size();++i){ std::array<bool,NBS> ec; std::array<bool,R::n_self_pairs> pc{}; masks_coarse(edges[i],ec,pc);
+        bool sv=true; for(auto&b:edges[i].B){ if(not R::template fkcc_swept<rake>(mvt[edges[i].e],b,ec,pc)){sv=false;break;} }
+        bool bv=true; for(auto&b:edges[i].B){ if(not R::template fkcc<rake>(mvt[edges[i].e],b)){bv=false;break;} }
+        if(sv!=bv) ++mm; }
     // precompute masks (free) for the IDEAL ceiling
     std::vector<std::array<bool,NBS>> ecp(edges.size()); std::vector<std::array<bool,R::n_self_pairs>> pcp(edges.size());
     for(std::size_t i=0;i<edges.size();++i) masks(edges[i],ecp[i],pcp[i]);
@@ -162,12 +214,14 @@ static void run(const char *name, float range, const std::vector<MbmEnv> &mbm)
     double envc=base_mvt-emp, self=emp-fk;
     double ideal = med([&](std::size_t i){for(auto&b:edges[i].B) if(not R::template fkcc_swept<rake>(mvt[edges[i].e],b,ecp[i],pcp[i])) return (std::uint64_t)0; return (std::uint64_t)1;});
     double real  = med([&](std::size_t i){std::array<bool,NBS> ec;std::array<bool,R::n_self_pairs> pc{};masks(edges[i],ec,pc);for(auto&b:edges[i].B) if(not R::template fkcc_swept<rake>(mvt[edges[i].e],b,ec,pc)) return (std::uint64_t)0; return (std::uint64_t)1;});
+    double crs   = med([&](std::size_t i){std::array<bool,NBS> ec;std::array<bool,R::n_self_pairs> pc{};masks_coarse(edges[i],ec,pc);for(auto&b:edges[i].B) if(not R::template fkcc_swept<rake>(mvt[edges[i].e],b,ec,pc)) return (std::uint64_t)0; return (std::uint64_t)1;});
 
-    std::printf("%-6s n=%zu NBS=%zu pts/scene=%.0f edges=%zu | base: sparse=%.0f  MVT=%.0f ns (%.1fx costlier)\n",
-                name,n,NBS,(double)total_pts/mbm.size(),edges.size(), base_spa, base_mvt, base_mvt/base_spa);
+    std::printf("%-6s n=%zu NBS=%zu pts/scene=%.0f edges=%zu mism=%zu | base: sparse=%.0f  MVT=%.0f ns (%.1fx costlier)\n",
+                name,n,NBS,(double)total_pts/mbm.size(),edges.size(),mm, base_spa, base_mvt, base_mvt/base_spa);
     std::printf("        MVT kernel: FK=%.0f self=%.0f ENV=%.0f  env_share=%.0f%%  scene-spec ceiling=%.2fx\n",
                 fk, self, envc, 100.0*envc/base_mvt, base_mvt/(base_mvt-envc));
-    std::printf("        swept vs base(MVT): IDEAL=%.0f (%.2fx)  REAL=%.0f (%.2fx)\n", ideal, base_mvt/ideal, real, base_mvt/real);
+    std::printf("        swept vs base(MVT): IDEAL=%.0f (%.2fx)  REAL/fine=%.0f (%.2fx)  COARSE=%.0f (%.2fx)\n",
+                ideal, base_mvt/ideal, real, base_mvt/real, crs, base_mvt/crs);
 }
 
 int main()

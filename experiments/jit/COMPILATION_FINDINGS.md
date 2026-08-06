@@ -1190,3 +1190,39 @@ coarse voxels matching the swept sphere's size, cheap), which is the one way to 
 IDEAL headroom (1.06-1.57x) realizable. fused sincos remains a real but smaller (FK-fraction)
 win. This is the honest end of the environment/robot JIT-idea line: bigger headroom in real-time,
 but the current swept/scene-spec mechanisms do not capture it -- the MVT query itself is the target.
+
+### Coarse-level swept certification against the MVT (m49) -- rescues, doesn't win
+
+Tested the one lever that could make the swept broadphase pay against a dense pointcloud: certify
+each link with a CHEAP coarse occupancy grid (dense bool grid, voxel ~ swept-sphere size) instead
+of a large-radius fine-MVT query, falling back to the fine MVT only for non-certified links.
+Conservative (occupied coarse voxel bounds all its points; uses radius+point_radius) -- rigorous,
+mismatch=0 vs baseline on all robots.
+
+| robot | swept IDEAL | REAL/fine-MVT | COARSE grid |
+|-------|------------:|--------------:|------------:|
+| ur5    | 1.08x | 0.32x | 0.85x |
+| panda  | 1.32x | 0.45x | **0.99x** |
+| fetch  | 1.56x | 0.42x | 0.95x |
+| baxter | 1.06x | 0.34x | 0.88x |
+
+**The coarse certification rescues the swept broadphase from catastrophic (0.32-0.45x) to
+break-even (0.85-0.99x)** -- a 2-3x improvement, confirming the diagnosis (the fine large-radius
+query was the killer) and that the coarse-hierarchy fix is correct. A dense bool grid was
+essential: an unordered_set version was far slower (0.13-0.54x). Voxel size 0.25-0.6m all land
+~0.85-1.00x (plateau).
+
+**But it does NOT clear break-even.** The residual cost is (a) the coarse queries themselves --
+NBS large-radius range scans per edge -- and (b) the per-rake fine-MVT narrowphase for the
+~10-40% non-certified links. The gap to the IDEAL (1.06-1.57x) is exactly this. And these are
+FULL-RANGE synthetic edges (large swept spheres); real RRTC edges are short (small swept spheres,
+nothing to amortize), where the swept broadphase gives no benefit regardless.
+
+**Final verdict on the whole environment/robot JIT line, incl. real-time MVT:** the swept
+broadphase is not shippable in any measured regime -- setup-bound on sparse scenes, large-query-
+bound on dense MVT (fixable to break-even with a coarse grid, but no further), and unamortized on
+real short RRTC edges. Scene-spec const-fold has real headroom (1.35-2.14x sparse, up to 4.8x on
+dense MVT) but is compile-cost-bound (needs copy-and-patch or multi-query). The one durable,
+shippable win from the entire line remains the FK-side fused sincos (~1.05-1.07x, exact, native,
+end-to-end confirmed) -- everything scene/environment-specialized needs infrastructure (fast
+specializer) or a cheaper MVT query that this codebase does not yet have.

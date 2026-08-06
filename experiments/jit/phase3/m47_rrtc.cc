@@ -11,6 +11,14 @@
 #include <vamp/planning/planners/rrtc.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/random/halton.hh>
+#ifdef VAMP_XORSHIFT
+#include <vamp/random/xorshift.hh>
+template <class R> using Sampler = vamp::rng::XORShift<R>;
+static const char *sampler_tag = "xs";
+#else
+template <class R> using Sampler = vamp::rng::Halton<R>;
+static const char *sampler_tag = "ht";
+#endif
 #include "ur5_e.hh"
 #include "panda_e.hh"
 #include "fetch_e.hh"
@@ -64,7 +72,7 @@ static void run(const char *name, float range, const std::vector<MbmProb> &probs
         ++valid;
         double best = 1e18; bool any = false; double it = 0;
         for (int t = 0; t < TRIALS; ++t) {
-            auto rng = std::make_shared<vamp::rng::Halton<R>>();
+            auto rng = std::make_shared<Sampler<R>>();
             auto result = vamp::planning::RRTC<R, rake, res>::solve(start, goals, env, settings, rng);
             best = std::min(best, result.nanoseconds / 1000.0);   // us, min over timing trials
             any = result.solved; it = (double)result.iterations;
@@ -82,8 +90,8 @@ static void run(const char *name, float range, const std::vector<MbmProb> &probs
 #else
     const char *cfg = "base   ";
 #endif
-    std::printf("%-6s [%s] valid=%zu solved=%zu/%zu  planner us: mean=%.1f  p50=%.1f  p95=%.1f  iters p50=%.0f\n",
-                name, cfg, valid, solved, probs.size(), mean, pct(times_us, 0.5), pct(times_us, 0.95), pct(iters, 0.5));
+    std::printf("%-6s [%s/%s] valid=%zu solved=%zu/%zu  planner us: mean=%.1f  p50=%.1f  p95=%.1f  iters p50=%.0f\n",
+                name, sampler_tag, cfg, valid, solved, probs.size(), mean, pct(times_us, 0.5), pct(times_us, 0.95), pct(iters, 0.5));
 }
 
 int main()

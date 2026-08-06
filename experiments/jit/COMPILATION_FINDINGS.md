@@ -1426,3 +1426,46 @@ Note this split is baxter-specific (NN/sampler cost scales with iterations x dim
 robots (panda/ur5/fetch, ~30us / hundreds of iters) are collision-bound, which is why sincos won
 there. So the two robot regimes want different optimizations: collision kernel for the easy/
 collision-bound problems (done), sampler+NN for the hard/high-iteration ones.
+
+---
+
+## Sampler swap: XORShift vs Halton on all robots (m47) -- 2-3x on the hard problems
+
+Follow-up to the m53 sizing (Halton = 32% of baxter). Swapped Halton for the SIMD xorshift128+
+PRNG (same interface, same snap+sincos kernel, 10 trials min, only the sampler differs):
+
+| robot | sampler | solved | iters p50 | p50 us | mean us | p95 us |
+|-------|---------|-------:|----------:|-------:|--------:|-------:|
+| ur5 (6D)    | halton |  138 |    161 |  35.8 |  163.6 |   1084 |
+|             | xorshift | 138 |  231 |  41.8 | **72.4** | **191** |
+| panda (7D)  | halton |  127 |    123 |  29.7 |   78.4 |    416 |
+|             | xorshift | 127 |  168 |  30.5 |   88.1 |    401 |
+| fetch (8D)  | halton |  133 |   4016 | 557.8 |   2953 |  12484 |
+|             | xorshift | 132 | 3481 | **395** | **2394** | **5973** |
+| baxter (14D)| halton |   45 | 168563 |  8570 |  38911 | 173369 |
+|             | xorshift |  45 | 73045 | **3662** | **12519** | **53990** |
+
+**Two effects, and for high-dim the second dominates:**
+1. Cheaper per-sample (the 32% -> ~0): baxter per-iter cost 0.231 -> 0.171 us (~1.35x).
+2. **Fewer iterations** -- the surprise: baxter needs **2.31x fewer** iterations with xorshift
+   (168k -> 73k), fetch 1.15x fewer. High-dimensional Halton has a known correlation pathology
+   (large prime bases -> samples correlated over short windows), so at 14-D it explores the
+   configuration space *worse* than plain random. The two effects multiply: baxter 2.34x p50,
+   3.11x mean, 3.2x p95.
+
+**By regime:** low-dim easy (ur5/panda) -- Halton's low-discrepancy helps the median (fewer iters),
+so xorshift is slightly slower at p50, but ur5's hard tail collapses 5.7x (p95); panda ~neutral
+(0.89x mean, a small loss). High-dim hard (fetch/baxter) -- xorshift wins everywhere, hugely on
+baxter. Solve rate essentially preserved (fetch -1).
+
+**Significance:** on the NN-bound hard problems the sampler swap is worth 2-3x end-to-end -- an
+order of magnitude more than the entire FK+collision kernel effort (~1.02x on baxter). It confirms
+the m53 sizing (kernel is 2.5% of baxter; the planner machinery is everything) and identifies the
+sampler as by far the highest-leverage change for hard/high-dim planning.
+
+**Caveats / not shipped:** one realization each (Halton deterministic; xorshift one fixed key) --
+the iteration deltas are far too large to be seed noise, but a rigorous solve-rate claim needs
+multiple xorshift seeds. This is a BEHAVIORAL change (different samples/paths), not an exact
+drop-in, so it is a VAMP-defaults decision, not a silent commit. The clean takeaway for the JIT
+line of work: for hard problems the win is the sampler/NN, not the collision kernel -- and the
+sampler win here is algorithmic (which sequence), not codegen.

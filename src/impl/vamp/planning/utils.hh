@@ -22,8 +22,8 @@ namespace vamp::planning::utils
 
     // Basic union-find
     // TODO: We may be able to improve these implementations
-    inline auto find_root(std::vector<ConnectedComponent> &components, unsigned int c_idx) noexcept
-        -> unsigned int
+    inline auto
+    find_root(std::vector<ConnectedComponent> &components, unsigned int c_idx) noexcept -> unsigned int
     {
         while (c_idx != components[c_idx].parent)
         {

@@ -49,13 +49,13 @@
 
 namespace vamp::planning
 {
-    template <typename Robot, std::size_t rake, std::size_t resolution>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename Space = Robot>
     struct GRRTStar
     {
-        using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
-        using RNG = typename vamp::rng::RNG<Robot>;
-        using NNTree = NN<Robot>;
+        using Configuration = typename Space::State;
+        static constexpr auto dimension = Space::dimension;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
+        using NNTree = NN<Space>;
 
         template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution>>
         inline static auto solve(
@@ -117,11 +117,11 @@ namespace vamp::planning
             const auto solution_heuristic = [&](std::size_t idx) -> float
             {
                 Configuration cfg(buffer_index(idx));
-                float g_hat = planning::cost<Robot>(start, cfg);
+                float g_hat = planning::cost<Space>(start, cfg);
                 float h_hat = std::numeric_limits<float>::max();
                 for (const auto &goal : goals)
                 {
-                    h_hat = std::min(h_hat, planning::cost<Robot>(cfg, goal));
+                    h_hat = std::min(h_hat, planning::cost<Space>(cfg, goal));
                 }
                 return g_hat + h_hat;
             };
@@ -226,12 +226,12 @@ namespace vamp::planning
             // PHS for informed sampling (single goal only; an L2 construction, so disabled for
             // robots with a non-metric edge cost)
             bool has_solution = false;
-            std::unique_ptr<ProlateHyperspheroid<Robot>> phs_ptr;
-            std::shared_ptr<ProlateHyperspheroidRNG<Robot>> phs_rng_ptr;
-            if (settings.use_phs and goals.size() == 1 and not has_cost_v<Robot>)
+            std::unique_ptr<ProlateHyperspheroid<Robot, Space>> phs_ptr;
+            std::shared_ptr<ProlateHyperspheroidRNG<Robot, Space>> phs_rng_ptr;
+            if (settings.use_phs and goals.size() == 1 and not has_cost_v<Space>)
             {
-                phs_ptr = std::make_unique<ProlateHyperspheroid<Robot>>(start, goals[0]);
-                phs_rng_ptr = std::make_shared<ProlateHyperspheroidRNG<Robot>>(*phs_ptr, rng);
+                phs_ptr = std::make_unique<ProlateHyperspheroid<Robot, Space>>(start, goals[0]);
+                phs_rng_ptr = std::make_shared<ProlateHyperspheroidRNG<Robot, Space>>(*phs_ptr, rng);
             }
 
             // Rewiring constants
@@ -241,7 +241,7 @@ namespace vamp::planning
                                       vamp::utils::constants::e * (1.0 + 1.0 / dim_d);
 
             // r_rrt > (2*(1+1/d))^(1/d) * (measure/ballvolume)^(1/d)
-            const double space_measure = Robot::space_measure();
+            const double space_measure = Space::space_measure();
             const double inverse_dim = 1.0 / dim_d;
             const double r_rrt_star =
                 settings.rewire_factor *
@@ -322,8 +322,8 @@ namespace vamp::planning
             const auto chain_edge_cost =
                 [&tree_a_is_start](const Configuration &parent, const Configuration &child) -> float
             {
-                return (tree_a_is_start) ? planning::cost<Robot>(parent, child) :
-                                           planning::cost<Robot>(child, parent);
+                return (tree_a_is_start) ? planning::cost<Space>(parent, child) :
+                                           planning::cost<Space>(child, parent);
             };
 
             // Insert one waypoint into tree_a with its accumulated directed cost and full
@@ -378,11 +378,11 @@ namespace vamp::planning
                 // Cost gating (directed heuristics; admissible under the directed triangle inequality)
                 if (has_solution)
                 {
-                    float g_hat = planning::cost<Robot>(start, temp);
+                    float g_hat = planning::cost<Space>(start, temp);
                     float h_hat = std::numeric_limits<float>::max();
                     for (const auto &goal : goals)
                     {
-                        h_hat = std::min(h_hat, planning::cost<Robot>(temp, goal));
+                        h_hat = std::min(h_hat, planning::cost<Space>(temp, goal));
                     }
                     float f_hat = g_hat + h_hat;
                     if (f_hat >= best_cost)
@@ -397,7 +397,7 @@ namespace vamp::planning
                     continue;
                 }
 
-                typename Robot::ConfigurationBuffer temp_array;
+                typename Space::StateBuffer temp_array;
                 temp.to_array(temp_array.data());
 
                 auto nearest_result = tree_a->nearest(temp_array.data());
@@ -438,12 +438,12 @@ namespace vamp::planning
                         h_hat = std::numeric_limits<float>::max();
                         for (const auto &g : goals)
                         {
-                            h_hat = std::min(h_hat, planning::cost<Robot>(candidate, g));
+                            h_hat = std::min(h_hat, planning::cost<Space>(candidate, g));
                         }
                     }
                     else
                     {
-                        h_hat = planning::cost<Robot>(start, candidate);
+                        h_hat = planning::cost<Space>(start, candidate);
                     }
 
                     return new_cost + h_hat < best_cost;
@@ -538,7 +538,7 @@ namespace vamp::planning
                     for (const auto &[nbr_index, nbr_dist] : neighbors)
                     {
                         float edge = nbr_dist;
-                        if constexpr (has_cost_v<Robot>)
+                        if constexpr (has_cost_v<Space>)
                         {
                             const auto nbr_config = Configuration(buffer_index(nbr_index));
                             edge = chain_edge_cost(nbr_config, extension.endpoint());
@@ -629,7 +629,7 @@ namespace vamp::planning
                         // Rewired edges run new node -> neighbor: opposite direction to the
                         // candidate-parent edge, mirroring the motion_valid ternary below
                         float rewire_edge_cost = nbr_dist;
-                        if constexpr (has_cost_v<Robot>)
+                        if constexpr (has_cost_v<Space>)
                         {
                             const auto nbr_config = Configuration(buffer_index(nbr_index));
                             rewire_edge_cost = chain_edge_cost(extension.endpoint(), nbr_config);
@@ -702,7 +702,7 @@ namespace vamp::planning
                 // Check if connection would improve best solution (directed connection edge:
                 // tree_a's new node precedes tree_b's node iff tree_a is the start tree)
                 float connection_edge = other_nearest_distance;
-                if constexpr (has_cost_v<Robot>)
+                if constexpr (has_cost_v<Space>)
                 {
                     connection_edge =
                         chain_edge_cost(extension.endpoint(), other_nearest_configuration);
@@ -726,7 +726,7 @@ namespace vamp::planning
                 std::size_t prior_index = new_index;
                 while (not connected and i_extension < n_extensions and free_index < settings.max_samples)
                 {
-                    const float remaining = Robot::distance(prior, other_nearest_configuration);
+                    const float remaining = Space::distance(prior, other_nearest_configuration);
                     const bool final_step =
                         (i_extension == n_extensions - 1) or (remaining <= settings.range);
 
@@ -810,8 +810,8 @@ namespace vamp::planning
                                     greedy_best_cost = 0.F;
                                     for (std::size_t i = 0; i < best_path.size(); ++i)
                                     {
-                                        float g_hat = Robot::distance(best_path[i], start);
-                                        float h_hat = Robot::distance(best_path[i], goals[0]);
+                                        float g_hat = Space::distance(best_path[i], start);
+                                        float h_hat = Space::distance(best_path[i], goals[0]);
                                         float f_hat = g_hat + h_hat;
                                         greedy_best_cost = std::max(greedy_best_cost, f_hat);
                                     }

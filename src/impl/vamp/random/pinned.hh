@@ -14,12 +14,15 @@ namespace vamp::rng
     // dimensions shared by both endpoints and identical dimensions contribute zero to
     // distances, planners and simplification need no changes — the whole tree stays
     // constant on the pinned dimensions. `mask` is 1 on pinned dimensions, 0 on free ones.
-    template <typename Robot>
-    struct PinnedRNG : public RNG<Robot>
+    template <typename Robot, typename Space = Robot>
+    struct PinnedRNG : public RNG<Robot, Space>
     {
-        using Configuration = FloatVector<Robot::dimension>;
+        using Configuration = FloatVector<Space::dimension>;
 
-        PinnedRNG(typename RNG<Robot>::Ptr inner, const Configuration &mask, const Configuration &values)
+        PinnedRNG(
+            typename RNG<Robot, Space>::Ptr inner,
+            const Configuration &mask,
+            const Configuration &values)
           : inner(std::move(inner))
           , mask(mask)
           , values(values)
@@ -43,13 +46,13 @@ namespace vamp::rng
 
         // Pinned-dimension flags, for consumers that mask per scalar dimension (e.g.
         // constraint-projection Jacobian columns).
-        auto pinned_dims() const noexcept -> std::array<bool, Robot::dimension>
+        auto pinned_dims() const noexcept -> std::array<bool, Space::dimension>
         {
             alignas(FloatVectorAlignment) std::array<float, Configuration::num_scalars_rounded> ms;
             mask.to_array(ms.data());
 
-            std::array<bool, Robot::dimension> out;
-            for (auto i = 0U; i < Robot::dimension; ++i)
+            std::array<bool, Space::dimension> out;
+            for (auto i = 0U; i < Space::dimension; ++i)
             {
                 out[i] = ms[i] != 0.F;
             }
@@ -66,7 +69,7 @@ namespace vamp::rng
             mask.to_array(ms.data());
             values.to_array(vs.data());
 
-            for (auto i = 0U; i < Robot::dimension; ++i)
+            for (auto i = 0U; i < Space::dimension; ++i)
             {
                 if (ms[i] != 0.F and std::abs(xs[i] - vs[i]) > tolerance)
                 {

@@ -5,25 +5,23 @@
 
 namespace vamp::rng
 {
-    template <typename Robot>
-    struct Halton : public RNG<Robot>
+    template <typename Robot, typename Space = Robot>
+    struct Halton : public RNG<Robot, Space>
     {
         // Numerical precision degrades around 1.4M iterations, this value can be increased up to that point.
         static constexpr const std::size_t max_iterations = 1000000U;
 
-        using Configuration = typename Robot::Configuration;
-        using Sample = FloatVector<Robot::sample_dimension>;
+        using Configuration = typename Space::State;
+        using Sample = FloatVector<Space::sample_dimension>;
 
         // First 40 primes (excluding 2 — Halton avoids it because the base-2
         // sequence has poor stratification at coarse subdivisions). 40 entries
         // covers the largest robots we ship (R2C6 minimal has
         // sample_dimension=35 with its free-flyer base); extend if you need more.
         static constexpr const std::array<float, 40> primes{
-            3.F,   5.F,   7.F,   11.F,  13.F,  17.F,  19.F,  23.F,
-            29.F,  31.F,  37.F,  41.F,  43.F,  47.F,  53.F,  59.F,
-            61.F,  67.F,  71.F,  73.F,  79.F,  83.F,  89.F,  97.F,
-            101.F, 103.F, 107.F, 109.F, 113.F, 127.F, 131.F, 137.F,
-            139.F, 149.F, 151.F, 157.F, 163.F, 167.F, 173.F, 179.F};
+            3.F,   5.F,   7.F,   11.F,  13.F,  17.F,  19.F,  23.F,  29.F,  31.F,  37.F,  41.F,  43.F,  47.F,
+            53.F,  59.F,  61.F,  67.F,  71.F,  73.F,  79.F,  83.F,  89.F,  97.F,  101.F, 103.F, 107.F, 109.F,
+            113.F, 127.F, 131.F, 137.F, 139.F, 149.F, 151.F, 157.F, 163.F, 167.F, 173.F, 179.F};
 
         explicit Halton(Sample b_in) noexcept : b_init(b_in), b(b_in)
         {
@@ -41,8 +39,8 @@ namespace vamp::rng
 
         inline constexpr auto bases() noexcept -> Sample
         {
-            alignas(FloatVectorAlignment) std::array<float, Robot::sample_dimension> a;
-            std::copy_n(primes.cbegin(), Robot::sample_dimension, a.begin());
+            alignas(FloatVectorAlignment) std::array<float, Space::sample_dimension> a;
+            std::copy_n(primes.cbegin(), Space::sample_dimension, a.begin());
             return Sample(a);
         }
 
@@ -50,7 +48,7 @@ namespace vamp::rng
         {
             alignas(FloatVectorAlignment) std::array<float, Sample::num_scalars_rounded> a;
             b.to_array(a.data());
-            std::rotate(a.begin(), a.begin() + 1, a.begin() + Robot::sample_dimension);
+            std::rotate(a.begin(), a.begin() + 1, a.begin() + Space::sample_dimension);
             b = Sample(a.data());
         }
 
@@ -98,7 +96,7 @@ namespace vamp::rng
 
             n = (((b + 1.F) * y).floor() - xf).blend(Sample::fill(1), x_eq_1);
 
-            return Robot::sample((n / d).trim());
+            return Space::sample((n / d).trim());
         }
     };
 }  // namespace vamp::rng

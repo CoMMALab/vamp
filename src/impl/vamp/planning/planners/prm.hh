@@ -25,11 +25,12 @@ namespace vamp::planning
         typename Robot,
         std::size_t rake,
         std::size_t resolution,
-        typename NeighborParamsT = PRMStarNeighborParams>
+        typename NeighborParamsT = PRMStarNeighborParams,
+        typename Space = Robot>
     struct PRM
     {
-        using Configuration = typename Robot::Configuration;
-        using RNG = typename vamp::rng::RNG<Robot>;
+        using Configuration = typename Space::State;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
 
         inline static auto solve(
             const Configuration &start,
@@ -69,7 +70,7 @@ namespace vamp::planning
         {
             PlanningResult<Robot> result;
 
-            NN<Robot> roadmap;
+            NN<Space> roadmap;
             roadmap.reserve(settings.max_samples);
             roadmap.set_epsilon(settings.nn_epsilon);
 
@@ -216,7 +217,7 @@ namespace vamp::planning
             const RoadmapSettings<NeighborParamsT> &settings,
             typename RNG::Ptr rng) noexcept -> Roadmap<Robot>
         {
-            NN<Robot> roadmap;
+            NN<Space> roadmap;
             roadmap.reserve(settings.max_samples);
             roadmap.set_epsilon(settings.nn_epsilon);
 

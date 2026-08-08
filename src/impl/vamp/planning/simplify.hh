@@ -61,8 +61,7 @@ namespace vamp::planning
     }
 
     template <typename Robot>
-    inline static auto
-    segment_cost(const Path<Robot> &path, std::size_t from, std::size_t to) -> float
+    inline static auto segment_cost(const Path<Robot> &path, std::size_t from, std::size_t to) -> float
     {
         float total = 0.F;
         for (auto i = from; i < to; ++i)
@@ -139,12 +138,13 @@ namespace vamp::planning
             bool updated = false;
             for (auto index = 2U; index < path.size() - 1; index += 2)
             {
-                const auto temp_1 = Robot::interpolate(path[index], path[index - 1], settings.midpoint_interpolation);
-                const auto temp_2 = Robot::interpolate(path[index], path[index + 1], settings.midpoint_interpolation);
+                const auto temp_1 =
+                    Robot::interpolate(path[index], path[index - 1], settings.midpoint_interpolation);
+                const auto temp_2 =
+                    Robot::interpolate(path[index], path[index + 1], settings.midpoint_interpolation);
                 auto midpoint = Robot::interpolate(temp_1, temp_2, 0.5);
 
-                if (lp.project(midpoint) and
-                    Robot::distance(path[index], midpoint) > settings.min_change and
+                if (lp.project(midpoint) and Robot::distance(path[index], midpoint) > settings.min_change and
                     cost_nonincreasing<Robot>(path[index - 1], path[index], midpoint, path[index + 1]) and
                     lp.validate(path[index - 1], midpoint, environment) and
                     lp.validate(midpoint, path[index + 1], environment))
@@ -236,9 +236,7 @@ namespace vamp::planning
             {
                 path.erase(path.begin() + point_0 + 1, path.begin() + point_1);
                 path.insert(
-                    path.begin() + point_0 + 1,
-                    extension.waypoints.begin(),
-                    extension.waypoints.end());
+                    path.begin() + point_0 + 1, extension.waypoints.begin(), extension.waypoints.end());
                 no_change = 0;
                 result = true;
             }
@@ -277,9 +275,7 @@ namespace vamp::planning
                 ranked.emplace_back(planning::cost<Robot>(path[i], path[i + 1]), i);
             }
             std::sort(
-                ranked.begin(),
-                ranked.end(),
-                [](const auto &a, const auto &b) { return a.first > b.first; });
+                ranked.begin(), ranked.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
 
             bool did_shortcut = false;
             for (const auto &entry : ranked)
@@ -300,9 +296,7 @@ namespace vamp::planning
                     {
                         path.erase(path.begin() + i + 1, path.begin() + j);
                         path.insert(
-                            path.begin() + i + 1,
-                            extension.waypoints.begin(),
-                            extension.waypoints.end());
+                            path.begin() + i + 1, extension.waypoints.begin(), extension.waypoints.end());
                         result = true;
                         did_shortcut = true;
                         break;
@@ -390,8 +384,7 @@ namespace vamp::planning
                         continue;
                     }
 
-                    alignas(FloatVectorAlignment) std::array<float, Configuration::num_scalars_rounded>
-                        buf{};
+                    alignas(FloatVectorAlignment) std::array<float, Configuration::num_scalars_rounded> buf{};
                     const auto cur_arr = cur.to_array();
                     for (std::size_t j = 0; j < dim; ++j)
                     {
@@ -495,8 +488,7 @@ namespace vamp::planning
                     continue;
                 }
 
-                float new_cost =
-                    cost<Robot>(before_state, new_state) + cost<Robot>(new_state, after_state);
+                float new_cost = cost<Robot>(before_state, new_state) + cost<Robot>(new_state, after_state);
 
                 if (new_cost < old_cost and lp.validate(before_state, new_state, environment) and
                     lp.validate(new_state, after_state, environment))
@@ -545,8 +537,7 @@ namespace vamp::planning
                     return perturb_path<Robot, rake, resolution>(
                         result.path, environment, settings.perturb, rng, lp);
                 case INTERP:
-                    return interpolate_and_project<Robot>(
-                        result.path, settings.interpolate, environment, lp);
+                    return interpolate_and_project<Robot>(result.path, settings.interpolate, environment, lp);
                 case VELOPT:
                     return velopt_path<Robot, rake, resolution>(
                         result.path, environment, settings.velopt, lp);

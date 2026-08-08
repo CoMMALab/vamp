@@ -197,9 +197,9 @@ namespace vamp::planning
 
             const bool reach = distance < range;
             const float step = range / distance;
-            const auto next = (reach)    ? steer_target :
-                              (forward)  ? Robot::interpolate(from, steer_target, step) :
-                                           Robot::interpolate(steer_target, from, 1.F - step);
+            const auto next = (reach)   ? steer_target :
+                              (forward) ? Robot::interpolate(from, steer_target, step) :
+                                          Robot::interpolate(steer_target, from, 1.F - step);
 
             if (not accept(next))
             {

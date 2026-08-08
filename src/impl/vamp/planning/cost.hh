@@ -7,32 +7,31 @@ namespace vamp::planning
     VAMP_DEFINE_HAS_METHOD(cost)
     VAMP_DEFINE_HAS_METHOD(cost_grad)
 
-    template <typename Robot>
-    [[nodiscard]] inline auto cost(
-        const typename Robot::Configuration &a,
-        const typename Robot::Configuration &b) noexcept -> float
+    template <typename Space>
+    [[nodiscard]] inline auto
+    cost(const typename Space::State &a, const typename Space::State &b) noexcept -> float
     {
-        if constexpr (has_cost_v<Robot>)
+        if constexpr (has_cost_v<Space>)
         {
-            return Robot::cost(a, b);
+            return Space::cost(a, b);
         }
         else
         {
-            return Robot::distance(a, b);
+            return Space::distance(a, b);
         }
     }
 
-    template <typename Robot>
+    template <typename Space>
     [[nodiscard]] inline auto cost_nonincreasing(
-        const typename Robot::Configuration &prev,
-        const typename Robot::Configuration &mid_old,
-        const typename Robot::Configuration &mid_new,
-        const typename Robot::Configuration &next) noexcept -> bool
+        const typename Space::State &prev,
+        const typename Space::State &mid_old,
+        const typename Space::State &mid_new,
+        const typename Space::State &next) noexcept -> bool
     {
-        if constexpr (has_cost_v<Robot>)
+        if constexpr (has_cost_v<Space>)
         {
-            return cost<Robot>(prev, mid_new) + cost<Robot>(mid_new, next) <=
-                   cost<Robot>(prev, mid_old) + cost<Robot>(mid_old, next);
+            return cost<Space>(prev, mid_new) + cost<Space>(mid_new, next) <=
+                   cost<Space>(prev, mid_old) + cost<Space>(mid_old, next);
         }
         else
         {

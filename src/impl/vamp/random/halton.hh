@@ -11,7 +11,7 @@ namespace vamp::rng
         // Numerical precision degrades around 1.4M iterations, this value can be increased up to that point.
         static constexpr const std::size_t max_iterations = 1000000U;
 
-        using Configuration = typename Robot::Configuration;
+        using Configuration = typename Robot::State;
 
         static constexpr const std::array<float, 16> primes{
             3.F,
@@ -47,8 +47,8 @@ namespace vamp::rng
 
         inline constexpr auto bases() noexcept -> Configuration
         {
-            alignas(FloatVectorAlignment) std::array<float, Robot::dimension> a;
-            std::copy_n(primes.cbegin(), Robot::dimension, a.begin());
+            alignas(FloatVectorAlignment) std::array<float, Robot::State::num_scalars> a;
+            std::copy_n(primes.cbegin(), Robot::State::num_scalars, a.begin());
             return Configuration(a);
         }
 
@@ -56,7 +56,7 @@ namespace vamp::rng
         {
             alignas(FloatVectorAlignment) std::array<float, Configuration::num_scalars_rounded> a;
             b.to_array(a.data());
-            std::rotate(a.begin(), a.begin() + 1, a.begin() + Robot::dimension);
+            std::rotate(a.begin(), a.begin() + 1, a.begin() + Robot::State::num_scalars);
             b = Configuration(a.data());
         }
 

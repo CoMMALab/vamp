@@ -33,6 +33,15 @@ namespace vamp::robots
         {
         };
 
+        // Planning-space types: what planners (RRTC, PRM, FCIT, ...) sample and interpolate over.
+        // Defaults to Configuration; robots that plan in a different space (e.g. task space) can
+        // redefine this family independently of the FK/FKCC-facing Configuration types above.
+        using State = Configuration;
+        using StateArray = ConfigurationArray;
+        using StateBuffer = ConfigurationBuffer;
+        template <std::size_t rake>
+        using StateBlock = ConfigurationBlock<rake>;
+
         static constexpr std::array<std::string_view, dimension> joint_names = {"x", "y", "z"};
         static constexpr const char *end_effector = "";
 

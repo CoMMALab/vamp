@@ -516,18 +516,19 @@ namespace vamp::binding
                 "numpy",
                 [](const Path &p) noexcept
                 {
+                    constexpr auto state_dimension = Robot::State::num_scalars;
                     auto *path_arr = new FloatT
-                        [Robot::dimension * p.size() +
-                         (Robot::Configuration::num_scalars_rounded - Robot::dimension)];
+                        [state_dimension * p.size() +
+                         (Robot::State::num_scalars_rounded - state_dimension)];
                     for (auto i = 0U; i < p.size(); ++i)
                     {
-                        p[i].to_array_unaligned(path_arr + i * Robot::dimension);
+                        p[i].to_array_unaligned(path_arr + i * state_dimension);
                     }
 
                     nb::capsule arr_owner(
                         path_arr, [](void *a) noexcept { delete[] reinterpret_cast<FloatT *>(a); });
                     return nb::ndarray<nb::numpy, const FloatT, nb::device::cpu>(
-                        path_arr, {p.size(), Robot::dimension}, arr_owner);
+                        path_arr, {p.size(), state_dimension}, arr_owner);
                 },
                 "Convert this path to a numpy matrix.");
 

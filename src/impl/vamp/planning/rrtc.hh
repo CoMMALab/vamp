@@ -16,8 +16,8 @@ namespace vamp::planning
     template <typename Robot, std::size_t rake, std::size_t resolution>
     struct RRTC
     {
-        using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
+        using Configuration = typename Robot::State;
+        static constexpr auto dimension = Robot::State::num_scalars;
         using RNG = typename vamp::rng::RNG<Robot>;
 
         inline static auto solve(
@@ -108,7 +108,7 @@ namespace vamp::planning
                 }
 
                 auto temp = rng->next();
-                typename Robot::ConfigurationBuffer temp_array;
+                typename Robot::StateBuffer temp_array;
                 temp.to_array(temp_array.data());
 
                 const auto nearest = tree_a->nearest(NNFloatArray<dimension>{temp_array.data()});

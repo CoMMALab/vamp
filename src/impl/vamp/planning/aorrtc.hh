@@ -20,8 +20,8 @@ namespace vamp::planning
     template <typename Robot, std::size_t rake, std::size_t resolution>
     struct AOX_RRTC
     {
-        using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
+        using Configuration = typename Robot::State;
+        static constexpr auto dimension = Robot::State::num_scalars;
         using RNG = typename vamp::rng::RNG<Robot>;
 
         using NNNode = GNATNode<dimension>;
@@ -356,8 +356,8 @@ namespace vamp::planning
     template <typename Robot, std::size_t rake, std::size_t resolution>
     struct AORRTC
     {
-        using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
+        using Configuration = typename Robot::State;
+        static constexpr auto dimension = Robot::State::num_scalars;
         using RNG = typename vamp::rng::RNG<Robot>;
         using AOX_RRTC = typename vamp::planning::AOX_RRTC<Robot, rake, resolution>;
         using RRTC = typename vamp::planning::RRTC<Robot, rake, resolution>;

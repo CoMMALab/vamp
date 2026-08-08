@@ -26,8 +26,8 @@ namespace vamp::planning
         typename NeighborParamsT = PRMStarNeighborParams>
     struct PRM
     {
-        using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
+        using Configuration = typename Robot::State;
+        static constexpr auto dimension = Robot::State::num_scalars;
         using RNG = typename vamp::rng::RNG<Robot>;
 
         inline static auto solve(
@@ -71,7 +71,7 @@ namespace vamp::planning
 
             std::size_t iter = 0;
             std::vector<std::pair<NNNode<dimension>, float>> neighbors;
-            typename Robot::template ConfigurationBlock<rake> temp_block;
+            typename Robot::template StateBlock<rake> temp_block;
             auto states = std::unique_ptr<float>(
                 vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
                     settings.max_samples * Configuration::num_scalars_rounded));
@@ -211,7 +211,7 @@ namespace vamp::planning
 
             std::size_t iter = 0;
             std::vector<std::pair<NNNode<dimension>, float>> neighbors;
-            typename Robot::template ConfigurationBlock<rake> temp_block;
+            typename Robot::template StateBlock<rake> temp_block;
             auto states = std::unique_ptr<float, decltype(&free)>(
                 vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
                     settings.max_samples * Configuration::num_scalars_rounded),

@@ -48,8 +48,8 @@ namespace vamp::planning
     template <typename Robot, std::size_t rake, std::size_t resolution>
     struct GRRTStar
     {
-        using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
+        using Configuration = typename Robot::State;
+        static constexpr auto dimension = Robot::State::num_scalars;
         using RNG = typename vamp::rng::RNG<Robot>;
         using NNNodeType = NNNode<dimension>;
         using NNTree = NN<dimension>;
@@ -343,7 +343,7 @@ namespace vamp::planning
                     continue;
                 }
 
-                typename Robot::ConfigurationBuffer temp_array;
+                typename Robot::StateBuffer temp_array;
                 temp.to_array(temp_array.data());
 
                 auto nearest_result = tree_a->nearest(NNFloatArray<dimension>{temp_array.data()});

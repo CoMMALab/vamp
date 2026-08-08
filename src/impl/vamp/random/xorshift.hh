@@ -26,7 +26,7 @@ namespace vamp::rng
         uint64_t key2_init;
 
         avx_xorshift128plus_key_t key{};
-        using IntVector = Vector<SIMDVector<__m256i>, 1, Robot::dimension>;
+        using IntVector = Vector<SIMDVector<__m256i>, 1, Robot::State::num_scalars>;
         IntVector buffer;
 
         inline void reset() noexcept override final
@@ -34,14 +34,14 @@ namespace vamp::rng
             avx_xorshift128plus_init(key1_init, key2_init, &key);
         }
 
-        inline auto next() noexcept -> FloatVector<Robot::dimension> override final
+        inline auto next() noexcept -> FloatVector<Robot::State::num_scalars> override final
         {
             for (auto i = 0U; i < IntVector::num_vectors; ++i)
             {
                 buffer.data[i] = avx_xorshift128plus(&key);
             }
 
-            auto result = FloatVector<Robot::dimension>::map_to_range(buffer, 0.F, 1.F);
+            auto result = FloatVector<Robot::State::num_scalars>::map_to_range(buffer, 0.F, 1.F);
             Robot::scale_configuration(result);
             return result;
         }

@@ -8,7 +8,7 @@
 namespace vamp::planning
 {
     template <typename Robot>
-    struct Path : public std::vector<FloatVector<Robot::dimension>>
+    struct Path : public std::vector<FloatVector<Robot::State::num_scalars>>
     {
         [[nodiscard]] inline auto cost() const noexcept -> float
         {
@@ -181,7 +181,7 @@ namespace vamp::planning
     template <typename Robot>
     struct Roadmap
     {
-        std::vector<FloatVector<Robot::dimension>> vertices;
+        std::vector<FloatVector<Robot::State::num_scalars>> vertices;
         std::vector<std::vector<std::size_t>> edges;
         std::size_t nanoseconds{0};
         std::size_t iterations{0};

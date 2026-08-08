@@ -11,7 +11,7 @@ namespace vamp::rng
     {
         using Ptr = std::shared_ptr<RNG<Robot>>;
         virtual inline void reset() noexcept = 0;
-        virtual inline auto next() noexcept -> FloatVector<Robot::dimension> = 0;
+        virtual inline auto next() noexcept -> FloatVector<Robot::State::num_scalars> = 0;
 
         Distribution dist;
     };

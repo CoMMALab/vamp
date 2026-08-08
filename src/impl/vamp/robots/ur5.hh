@@ -37,6 +37,15 @@ namespace vamp::robots
         template <std::size_t rake>
         using ConfigurationBlock = FloatVector<rake, dimension>;
 
+        // Planning-space types: what planners (RRTC, PRM, FCIT, ...) sample and interpolate over.
+        // Defaults to Configuration; robots that plan in a different space (e.g. task space) can
+        // redefine this family independently of the FK/FKCC-facing Configuration types above.
+        using State = Configuration;
+        using StateArray = ConfigurationArray;
+        using StateBuffer = ConfigurationBuffer;
+        template <std::size_t rake>
+        using StateBlock = ConfigurationBlock<rake>;
+
         template <std::size_t rake>
         struct Spheres
         {

@@ -45,12 +45,12 @@
 
 namespace vamp::planning
 {
-    template <typename Robot, std::size_t rake, std::size_t resolution>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename Space = Robot>
     struct GRRTStar
     {
-        using Configuration = typename Robot::State;
-        static constexpr auto dimension = Robot::State::num_scalars;
-        using RNG = typename vamp::rng::RNG<Robot>;
+        using Configuration = typename Space::State;
+        static constexpr auto dimension = Space::State::num_scalars;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
         using NNNodeType = NNNode<dimension>;
         using NNTree = NN<dimension>;
 
@@ -210,12 +210,12 @@ namespace vamp::planning
 
             // PHS for informed sampling (single goal only)
             bool has_solution = false;
-            std::unique_ptr<ProlateHyperspheroid<Robot>> phs_ptr;
-            std::shared_ptr<ProlateHyperspheroidRNG<Robot>> phs_rng_ptr;
+            std::unique_ptr<ProlateHyperspheroid<Robot, Space>> phs_ptr;
+            std::shared_ptr<ProlateHyperspheroidRNG<Robot, Space>> phs_rng_ptr;
             if (settings.use_phs and goals.size() == 1)
             {
-                phs_ptr = std::make_unique<ProlateHyperspheroid<Robot>>(start, goals[0]);
-                phs_rng_ptr = std::make_shared<ProlateHyperspheroidRNG<Robot>>(*phs_ptr, rng);
+                phs_ptr = std::make_unique<ProlateHyperspheroid<Robot, Space>>(start, goals[0]);
+                phs_rng_ptr = std::make_shared<ProlateHyperspheroidRNG<Robot, Space>>(*phs_ptr, rng);
             }
 
             // Rewiring constants
@@ -225,7 +225,7 @@ namespace vamp::planning
                                       vamp::utils::constants::e * (1.0 + 1.0 / dim_d);
 
             // r_rrt > (2*(1+1/d))^(1/d) * (measure/ballvolume)^(1/d)
-            const double space_measure = Robot::space_measure();
+            const double space_measure = Space::space_measure();
             const double inverse_dim = 1.0 / dim_d;
             const double r_rrt_star =
                 settings.rewire_factor *
@@ -343,7 +343,7 @@ namespace vamp::planning
                     continue;
                 }
 
-                typename Robot::StateBuffer temp_array;
+                typename Space::StateBuffer temp_array;
                 temp.to_array(temp_array.data());
 
                 auto nearest_result = tree_a->nearest(NNFloatArray<dimension>{temp_array.data()});

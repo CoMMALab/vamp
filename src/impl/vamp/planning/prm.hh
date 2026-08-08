@@ -23,12 +23,13 @@ namespace vamp::planning
         typename Robot,
         std::size_t rake,
         std::size_t resolution,
-        typename NeighborParamsT = PRMStarNeighborParams>
+        typename NeighborParamsT = PRMStarNeighborParams,
+        typename Space = Robot>
     struct PRM
     {
-        using Configuration = typename Robot::State;
-        static constexpr auto dimension = Robot::State::num_scalars;
-        using RNG = typename vamp::rng::RNG<Robot>;
+        using Configuration = typename Space::State;
+        static constexpr auto dimension = Space::State::num_scalars;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
 
         inline static auto solve(
             const Configuration &start,
@@ -71,7 +72,7 @@ namespace vamp::planning
 
             std::size_t iter = 0;
             std::vector<std::pair<NNNode<dimension>, float>> neighbors;
-            typename Robot::template StateBlock<rake> temp_block;
+            typename Space::template StateBlock<rake> temp_block;
             auto states = std::unique_ptr<float>(
                 vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
                     settings.max_samples * Configuration::num_scalars_rounded));
@@ -137,9 +138,8 @@ namespace vamp::planning
                 {
                     if (validate_motion<Robot, rake, resolution>(neighbor.as_vector(), temp, environment))
                     {
-                        node.neighbors.emplace_back(
-                            typename RoadmapNode::Neighbor{
-                                static_cast<unsigned int>(neighbor.index), distance});
+                        node.neighbors.emplace_back(typename RoadmapNode::Neighbor{
+                            static_cast<unsigned int>(neighbor.index), distance});
                         nodes[neighbor.index].neighbors.emplace_back(
                             typename RoadmapNode::Neighbor{node.index, distance});
                     }
@@ -211,7 +211,7 @@ namespace vamp::planning
 
             std::size_t iter = 0;
             std::vector<std::pair<NNNode<dimension>, float>> neighbors;
-            typename Robot::template StateBlock<rake> temp_block;
+            typename Space::template StateBlock<rake> temp_block;
             auto states = std::unique_ptr<float, decltype(&free)>(
                 vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
                     settings.max_samples * Configuration::num_scalars_rounded),
@@ -265,9 +265,8 @@ namespace vamp::planning
                 {
                     if (validate_motion<Robot, rake, resolution>(neighbor.as_vector(), temp, environment))
                     {
-                        node.neighbors.emplace_back(
-                            typename RoadmapNode::Neighbor{
-                                static_cast<unsigned int>(neighbor.index), distance});
+                        node.neighbors.emplace_back(typename RoadmapNode::Neighbor{
+                            static_cast<unsigned int>(neighbor.index), distance});
                         nodes[neighbor.index].neighbors.emplace_back(
                             typename RoadmapNode::Neighbor{node.index, distance});
                     }

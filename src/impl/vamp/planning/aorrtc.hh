@@ -17,12 +17,12 @@
 
 namespace vamp::planning
 {
-    template <typename Robot, std::size_t rake, std::size_t resolution>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename Space = Robot>
     struct AOX_RRTC
     {
-        using Configuration = typename Robot::State;
-        static constexpr auto dimension = Robot::State::num_scalars;
-        using RNG = typename vamp::rng::RNG<Robot>;
+        using Configuration = typename Space::State;
+        static constexpr auto dimension = Space::State::num_scalars;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
 
         using NNNode = GNATNode<dimension>;
         using NN = NearestNeighborsGNAT<NNNode>;
@@ -91,11 +91,10 @@ namespace vamp::planning
         }
 
         AOX_RRTC(std::size_t max_samples)
-          : buffer(
-                std::unique_ptr<float, decltype(&free)>(
-                    vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
-                        max_samples * Configuration::num_scalars_rounded),
-                    &free))
+          : buffer(std::unique_ptr<float, decltype(&free)>(
+                vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
+                    max_samples * Configuration::num_scalars_rounded),
+                &free))
         {
             parents.resize(max_samples);
             radii.resize(max_samples);
@@ -353,14 +352,14 @@ namespace vamp::planning
     // --------------------------------------------- AOX Meta Algorithm
     // ---------------------------------------------
 
-    template <typename Robot, std::size_t rake, std::size_t resolution>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename Space = Robot>
     struct AORRTC
     {
-        using Configuration = typename Robot::State;
-        static constexpr auto dimension = Robot::State::num_scalars;
-        using RNG = typename vamp::rng::RNG<Robot>;
-        using AOX_RRTC = typename vamp::planning::AOX_RRTC<Robot, rake, resolution>;
-        using RRTC = typename vamp::planning::RRTC<Robot, rake, resolution>;
+        using Configuration = typename Space::State;
+        static constexpr auto dimension = Space::State::num_scalars;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
+        using AOX_RRTC = typename vamp::planning::AOX_RRTC<Robot, rake, resolution, Space>;
+        using RRTC = typename vamp::planning::RRTC<Robot, rake, resolution, Space>;
 
         inline static auto solve(
             const Configuration &start,

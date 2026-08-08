@@ -202,8 +202,7 @@ namespace vamp::planning
 
         const auto bspline = [&result, &environment, settings]()
         { return smooth_bspline<Robot, rake, resolution>(result.path, environment, settings.bspline); };
-        const auto reduce = [&result, &environment, settings, rng]()
-        {
+        const auto reduce = [&result, &environment, settings, rng]() {
             return reduce_path_vertices<Robot, rake, resolution>(
                 result.path, environment, settings.reduce, rng);
         };

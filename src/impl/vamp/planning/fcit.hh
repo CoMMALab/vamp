@@ -62,12 +62,13 @@ namespace vamp::planning
         typename Robot,
         std::size_t rake,
         std::size_t resolution,
-        typename NeighborParamsT = FCITStarNeighborParams>
+        typename NeighborParamsT = FCITStarNeighborParams,
+        typename Space = Robot>
     struct FCIT
     {
-        using Configuration = typename Robot::State;
-        static constexpr auto dimension = Robot::State::num_scalars;
-        using RNG = typename vamp::rng::RNG<Robot>;
+        using Configuration = typename Space::State;
+        static constexpr auto dimension = Space::State::num_scalars;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
 
         inline static auto solve(
             const Configuration &start,
@@ -92,7 +93,7 @@ namespace vamp::planning
             NN<dimension> roadmap;
 
             std::size_t iter = 0;
-            typename Robot::template StateBlock<rake> temp_block;
+            typename Space::template StateBlock<rake> temp_block;
             auto states = std::unique_ptr<float, decltype(&free)>(
                 vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
                     settings.max_samples * Configuration::num_scalars_rounded),
@@ -173,11 +174,10 @@ namespace vamp::planning
                         [](const auto &a, const auto &b) { return a.distance < b.distance; });
                     start_node.neighbor_iterator = start_node.neighbors.begin();
 
-                    open_set.emplace_back(
-                        QueueEdge{
-                            (*start_node.neighbor_iterator).index,
-                            start_index,
-                            (*start_node.neighbor_iterator).distance});
+                    open_set.emplace_back(QueueEdge{
+                        (*start_node.neighbor_iterator).index,
+                        start_index,
+                        (*start_node.neighbor_iterator).distance});
                     start_node.neighbor_iterator++;
 
                     while (not open_set.empty())
@@ -204,11 +204,10 @@ namespace vamp::planning
                             if ((*parent_node.neighbor_iterator).distance <
                                 node.g + goal.distance(state_index(node.index)))
                             {
-                                open_set.emplace_back(
-                                    QueueEdge{
-                                        (*parent_node.neighbor_iterator).index,
-                                        current_p,
-                                        (*parent_node.neighbor_iterator).distance});
+                                open_set.emplace_back(QueueEdge{
+                                    (*parent_node.neighbor_iterator).index,
+                                    current_p,
+                                    (*parent_node.neighbor_iterator).distance});
                                 parent_node.neighbor_iterator++;
                                 break;
                             }
@@ -303,11 +302,10 @@ namespace vamp::planning
                                 [](const auto &a, const auto &b) { return a.distance < b.distance; });
                             current_node.neighbor_iterator = current_node.neighbors.begin();
 
-                            open_set.emplace_back(
-                                QueueEdge{
-                                    (*current_node.neighbor_iterator).index,
-                                    current_index,
-                                    (*current_node.neighbor_iterator).distance});
+                            open_set.emplace_back(QueueEdge{
+                                (*current_node.neighbor_iterator).index,
+                                current_index,
+                                (*current_node.neighbor_iterator).distance});
                             current_node.neighbor_iterator++;
                         }
                     }

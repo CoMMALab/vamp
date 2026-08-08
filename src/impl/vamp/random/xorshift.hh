@@ -11,8 +11,8 @@ extern "C"
 
 namespace vamp::rng
 {
-    template <typename Robot>
-    struct XORShift : public RNG<Robot>
+    template <typename Robot, typename Space = Robot>
+    struct XORShift : public RNG<Robot, Space>
     {
         explicit XORShift(uint64_t key1 = 2UL, uint64_t key2 = 3UL) noexcept
           : key1_init(key1), key2_init(key2)
@@ -26,7 +26,7 @@ namespace vamp::rng
         uint64_t key2_init;
 
         avx_xorshift128plus_key_t key{};
-        using IntVector = Vector<SIMDVector<__m256i>, 1, Robot::State::num_scalars>;
+        using IntVector = Vector<SIMDVector<__m256i>, 1, Space::State::num_scalars>;
         IntVector buffer;
 
         inline void reset() noexcept override final
@@ -34,15 +34,15 @@ namespace vamp::rng
             avx_xorshift128plus_init(key1_init, key2_init, &key);
         }
 
-        inline auto next() noexcept -> FloatVector<Robot::State::num_scalars> override final
+        inline auto next() noexcept -> FloatVector<Space::State::num_scalars> override final
         {
             for (auto i = 0U; i < IntVector::num_vectors; ++i)
             {
                 buffer.data[i] = avx_xorshift128plus(&key);
             }
 
-            auto result = FloatVector<Robot::State::num_scalars>::map_to_range(buffer, 0.F, 1.F);
-            Robot::scale_configuration(result);
+            auto result = FloatVector<Space::State::num_scalars>::map_to_range(buffer, 0.F, 1.F);
+            Space::scale_configuration(result);
             return result;
         }
     };

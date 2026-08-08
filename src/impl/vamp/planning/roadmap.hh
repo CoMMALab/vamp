@@ -24,8 +24,8 @@ namespace vamp::planning
 
     struct ConstantNeighborParams
     {
-        [[nodiscard]] inline auto _max_neighbors_impl(std::size_t /*num_states*/) const noexcept
-            -> std::size_t
+        [[nodiscard]] inline auto
+        _max_neighbors_impl(std::size_t /*num_states*/) const noexcept -> std::size_t
         {
             return k;
         }
@@ -46,8 +46,8 @@ namespace vamp::planning
         {
         }
 
-        [[nodiscard]] inline constexpr auto max_neighbors(std::size_t num_states) const noexcept
-            -> std::size_t
+        [[nodiscard]] inline constexpr auto
+        max_neighbors(std::size_t num_states) const noexcept -> std::size_t
         {
             const auto prmstar_constant =
                 vamp::utils::constants::e + (vamp::utils::constants::e / dimension());
@@ -84,8 +84,8 @@ namespace vamp::planning
         }
 
         // We use *all* the neighbors
-        [[nodiscard]] inline constexpr auto max_neighbors(std::size_t /* num_states */) const noexcept
-            -> std::size_t
+        [[nodiscard]] inline constexpr auto
+        max_neighbors(std::size_t /* num_states */) const noexcept -> std::size_t
         {
             return std::numeric_limits<size_t>::max();
         }
@@ -113,8 +113,8 @@ namespace vamp::planning
         {
         }
 
-        [[nodiscard]] inline constexpr auto max_neighbors(std::size_t num_states) const noexcept
-            -> std::size_t
+        [[nodiscard]] inline constexpr auto
+        max_neighbors(std::size_t num_states) const noexcept -> std::size_t
         {
             // NOTE: Adapted from OMPL
             const auto fmtstar_constant =

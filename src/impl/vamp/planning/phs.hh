@@ -32,10 +32,10 @@ namespace vamp::planning
 
     }  // namespace utils
 
-    template <typename Robot>
+    template <typename Robot, typename Space = Robot>
     class ProlateHyperspheroid
     {
-        static constexpr auto dimension = Robot::State::num_scalars;
+        static constexpr auto dimension = Space::State::num_scalars;
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     public:
@@ -55,8 +55,8 @@ namespace vamp::planning
             update_transformation();
         }
 
-        inline auto transform(const vamp::FloatVector<dimension> &sphere) const noexcept
-            -> vamp::FloatVector<dimension>
+        inline auto
+        transform(const vamp::FloatVector<dimension> &sphere) const noexcept -> vamp::FloatVector<dimension>
         {
             alignas(FloatVectorAlignment) auto sphere_data = sphere.to_array();
             vamp::EigenFloatVectorMap<dimension>(sphere_data.data()) =
@@ -144,10 +144,12 @@ namespace vamp::planning
         }
     };
 
-    template <typename Robot>
-    struct ProlateHyperspheroidRNG : public rng::RNG<Robot>
+    template <typename Robot, typename Space = Robot>
+    struct ProlateHyperspheroidRNG : public rng::RNG<Robot, Space>
     {
-        ProlateHyperspheroidRNG(ProlateHyperspheroid<Robot> phs, typename vamp::rng::RNG<Robot>::Ptr &rng)
+        ProlateHyperspheroidRNG(
+            ProlateHyperspheroid<Robot, Space> phs,
+            typename vamp::rng::RNG<Robot, Space>::Ptr &rng)
           : phs(phs), rng(rng)
         {
         }
@@ -160,39 +162,39 @@ namespace vamp::planning
             rng->dist.reset();
         }
 
-        inline auto next() noexcept -> FloatVector<Robot::State::num_scalars> override
+        inline auto next() noexcept -> FloatVector<Space::State::num_scalars> override
         {
             auto x = phs.transform(uniform_in_ball());
 
             // Clamp values
-            Robot::descale_configuration(x);
+            Space::descale_configuration(x);
             x = x.clamp(0.F, 1.F);
-            Robot::scale_configuration(x);
+            Space::scale_configuration(x);
 
             return x;
         }
 
-        inline auto logit() noexcept -> vamp::FloatVector<Robot::State::num_scalars>
+        inline auto logit() noexcept -> vamp::FloatVector<Space::State::num_scalars>
         {
             auto U1 = rng->next();
-            Robot::descale_configuration(U1);
+            Space::descale_configuration(U1);
             return (U1 * (1 - U1).rcp()).log() * std::sqrt(vamp::utils::constants::pi / 8.F);
         }
 
-        inline auto uniform_on_ball() noexcept -> vamp::FloatVector<Robot::State::num_scalars>
+        inline auto uniform_on_ball() noexcept -> vamp::FloatVector<Space::State::num_scalars>
         {
             const auto unv = logit().trim();
             return unv / unv.l2_norm();
         }
 
-        inline auto uniform_in_ball() noexcept -> vamp::FloatVector<Robot::State::num_scalars>
+        inline auto uniform_in_ball() noexcept -> vamp::FloatVector<Space::State::num_scalars>
         {
-            return std::pow(rng->dist.uniform_01(), 1.0 / static_cast<float>(Robot::State::num_scalars)) *
+            return std::pow(rng->dist.uniform_01(), 1.0 / static_cast<float>(Space::State::num_scalars)) *
                    uniform_on_ball();
         }
 
-        ProlateHyperspheroid<Robot> phs;
-        typename vamp::rng::RNG<Robot>::Ptr rng;
+        ProlateHyperspheroid<Robot, Space> phs;
+        typename vamp::rng::RNG<Robot, Space>::Ptr rng;
     };
 
 }  // namespace vamp::planning

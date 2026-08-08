@@ -41,6 +41,16 @@ struct Baxter
     template <std::size_t rake>
     using ConfigurationBlock = FloatVector<rake, dimension>;
 
+    // Planning-space types: what planners (RRTC, PRM, FCIT, ...) sample and interpolate
+    // over. Defaults to Configuration; a robot can define an additional space (e.g. a
+    // nested struct with its own State) to be passed explicitly as a planner's Space
+    // parameter, independent of the FK/FKCC-facing Configuration types above.
+    using State = Configuration;
+    using StateArray = ConfigurationArray;
+    using StateBuffer = ConfigurationBuffer;
+    template <std::size_t rake>
+    using StateBlock = ConfigurationBlock<rake>;
+
     template <std::size_t rake>
     struct Spheres
     {

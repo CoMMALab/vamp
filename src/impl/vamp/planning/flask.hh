@@ -146,7 +146,7 @@ namespace vamp::planning::flask
         for (std::size_t i = 0; i < n_roots; ++i)
         {
             double T = roots[i];
-            if (not (T > min_time))
+            if (not(T > min_time))
             {
                 continue;
             }
@@ -162,7 +162,7 @@ namespace vamp::planning::flask
                 }
             }
 
-            if (not (T > min_time))
+            if (not(T > min_time))
             {
                 continue;
             }
@@ -175,7 +175,7 @@ namespace vamp::planning::flask
             }
         }
 
-        if (not (best_T > 0.))
+        if (not(best_T > 0.))
         {
             return {static_cast<float>(min_time), static_cast<float>(cost(min_time))};
         }
@@ -221,9 +221,8 @@ namespace vamp::planning::flask
 
     // LQMT edge cost C_loc(a -> b); asymmetric.
     template <typename Robot>
-    inline auto cost(
-        const typename Robot::Configuration &a,
-        const typename Robot::Configuration &b) noexcept -> float
+    inline auto
+    cost(const typename Robot::Configuration &a, const typename Robot::Configuration &b) noexcept -> float
     {
         return solve<Robot>(a, b).cost;
     }
@@ -248,8 +247,7 @@ namespace vamp::planning::flask
     template <typename Robot>
     inline auto cost_grad(
         const typename Robot::Configuration &a_in,
-        const typename Robot::Configuration &b_in) noexcept
-        -> LQMTCostGrad<2 * Robot::flat_dimension>
+        const typename Robot::Configuration &b_in) noexcept -> LQMTCostGrad<2 * Robot::flat_dimension>
     {
         constexpr std::size_t n = Robot::flat_dimension;
         const auto sol = solve<Robot>(a_in, b_in);
@@ -277,9 +275,9 @@ namespace vamp::planning::flask
             const double g_va = -12.0 * d1 * invT2 + 4.0 * d2 * invT;
             const double g_vb = -12.0 * d1 * invT2 + 8.0 * d2 * invT;
 
-            out.grad_a[j]     = static_cast<float>(-g_q);
+            out.grad_a[j] = static_cast<float>(-g_q);
             out.grad_a[n + j] = static_cast<float>(g_va);
-            out.grad_b[j]     = static_cast<float>(g_q);
+            out.grad_b[j] = static_cast<float>(g_q);
             out.grad_b[n + j] = static_cast<float>(g_vb);
         }
         return out;

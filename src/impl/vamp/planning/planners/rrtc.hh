@@ -15,12 +15,12 @@
 
 namespace vamp::planning
 {
-    template <typename Robot, std::size_t rake, std::size_t resolution>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename Space = Robot>
     struct RRTC
     {
-        using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
-        using RNG = typename vamp::rng::RNG<Robot>;
+        using Configuration = typename Space::State;
+        static constexpr auto dimension = Space::dimension;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
 
         template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution>>
         inline static auto solve(
@@ -45,8 +45,8 @@ namespace vamp::planning
         {
             PlanningResult<Robot> result;
 
-            NN<Robot> start_tree;
-            NN<Robot> goal_tree;
+            NN<Space> start_tree;
+            NN<Space> goal_tree;
             start_tree.reserve(settings.max_samples);
             goal_tree.reserve(settings.max_samples);
             start_tree.set_epsilon(settings.nn_epsilon);
@@ -143,7 +143,7 @@ namespace vamp::planning
                 }
 
                 auto temp = rng->next();
-                typename Robot::ConfigurationBuffer temp_array;
+                typename Space::StateBuffer temp_array;
                 temp.to_array(temp_array.data());
 
                 const auto nearest = tree_a->nearest(temp_array.data());
@@ -209,7 +209,7 @@ namespace vamp::planning
                            free_index < settings.max_samples)
                     {
                         const float remaining =
-                            Robot::distance(prior, other_nearest_configuration);
+                            Space::distance(prior, other_nearest_configuration);
                         const bool final_step =
                             (i_extension == n_extensions - 1) or (remaining <= settings.range);
 
@@ -247,7 +247,7 @@ namespace vamp::planning
                         {
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.cost += Robot::distance(
+                            result.cost += Space::distance(
                                 result.path[result.path.size() - 1],
                                 result.path[result.path.size() - 2]);
                             current = parent;
@@ -260,7 +260,7 @@ namespace vamp::planning
                         {
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.cost += Robot::distance(
+                            result.cost += Space::distance(
                                 result.path[result.path.size() - 1],
                                 result.path[result.path.size() - 2]);
                             current = parent;

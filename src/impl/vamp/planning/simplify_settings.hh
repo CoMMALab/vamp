@@ -42,10 +42,10 @@ namespace vamp::planning
 
     struct VeloptSettings
     {
-        std::size_t max_steps{3};             // gradient-descent passes over interior vertices
-        std::size_t line_search_max{6};       // backtracking halvings per vertex per step
-        float initial_step{1.0};              // starting alpha for backtracking
-        float min_improvement{1e-4};          // stop early when a pass improves < this fraction
+        std::size_t max_steps{3};        // gradient-descent passes over interior vertices
+        std::size_t line_search_max{6};  // backtracking halvings per vertex per step
+        float initial_step{1.0};         // starting alpha for backtracking
+        float min_improvement{1e-4};     // stop early when a pass improves < this fraction
     };
 
     struct SimplifySettings

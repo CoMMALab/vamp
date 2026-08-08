@@ -37,9 +37,8 @@ namespace vamp::planning
         const collision::Environment<FloatVector<rake>> &environment,
         const typename Robot::template ConfigurationBlock<rake> &block) noexcept -> bool
     {
-        return (not environment.attachments.empty()) ?
-                   Robot::template fkcc_attach<rake>(environment, block) :
-                   Robot::template fkcc<rake>(environment, block);
+        return (not environment.attachments.empty()) ? Robot::template fkcc_attach<rake>(environment, block) :
+                                                       Robot::template fkcc<rake>(environment, block);
     }
 
     // Collision-check a single configuration by broadcasting it across every rake lane
@@ -125,8 +124,7 @@ namespace vamp::planning
             // Joint-aware motion validation: interpolate via Robot::interpolate_block.
             // Total sub-states needed: ceil(distance * resolution); processed in batches of `rake`.
             const float distance = Robot::distance(start, goal);
-            const std::size_t n =
-                std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
+            const std::size_t n = std::max(std::ceil(distance / static_cast<float>(rake) * resolution), 1.F);
             const auto percents = FloatVector<rake>(Percents<rake>::percents);
             const auto t_step = FloatVector<rake>::fill(1.F / static_cast<float>(rake * n));
 

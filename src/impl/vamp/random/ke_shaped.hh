@@ -18,13 +18,13 @@ namespace vamp::rng
     // demands a fast arrival and the local planner's arcs sweep wide; shaping the
     // energy distribution rest-biases targets at the source. KE is homogeneous of
     // degree 2 in the velocity, so hitting a target energy is a single scalar rescale.
-    template <typename Robot>
-    struct KineticEnergyShaped : public RNG<Robot>
+    template <typename Robot, typename Space = Robot>
+    struct KineticEnergyShaped : public RNG<Robot, Space>
     {
-        using Configuration = FloatVector<Robot::dimension>;
-        static constexpr std::size_t n_q = Robot::flat_dimension;
+        using Configuration = FloatVector<Space::dimension>;
+        static constexpr std::size_t n_q = Space::flat_dimension;
 
-        KineticEnergyShaped(typename RNG<Robot>::Ptr inner, float max_energy) noexcept
+        KineticEnergyShaped(typename RNG<Robot, Space>::Ptr inner, float max_energy) noexcept
           : inner_(std::move(inner)), max_energy_(max_energy)
         {
         }
@@ -45,9 +45,9 @@ namespace vamp::rng
             alignas(FloatVectorAlignment) std::array<float, Configuration::num_scalars_rounded> buf;
             z.to_array(buf);
 
-            std::array<float, Robot::dimension> x;
-            std::copy_n(buf.begin(), Robot::dimension, x.begin());
-            const float energy = Robot::kinetic_energy(x);
+            std::array<float, Space::dimension> x;
+            std::copy_n(buf.begin(), Space::dimension, x.begin());
+            const float energy = Space::kinetic_energy(x);
             if (energy <= 0.F)
             {
                 return z;
@@ -58,9 +58,9 @@ namespace vamp::rng
             for (auto i = 0U; i < n_q; ++i)
             {
                 const auto v = std::abs(buf[n_q + i]);
-                if (scale * v > Robot::velocity_limits[i])
+                if (scale * v > Space::velocity_limits[i])
                 {
-                    scale = Robot::velocity_limits[i] / v;
+                    scale = Space::velocity_limits[i] / v;
                 }
             }
 
@@ -77,7 +77,7 @@ namespace vamp::rng
         // low-discrepancy uniform on (0, 1), so halton-driven runs stay reproducible
         // under skip()/reset(). Base 2 is free here since the inner Halton bases
         // start at 3.
-        static inline auto van_der_corput(std::size_t n) noexcept -> float
+        inline static auto van_der_corput(std::size_t n) noexcept -> float
         {
             float r = 0.F;
             float f = 0.5F;
@@ -91,7 +91,7 @@ namespace vamp::rng
             return r;
         }
 
-        typename RNG<Robot>::Ptr inner_;
+        typename RNG<Robot, Space>::Ptr inner_;
         float max_energy_;
         std::size_t index_ = 0;
     };

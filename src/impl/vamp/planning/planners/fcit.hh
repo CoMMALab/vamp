@@ -76,7 +76,7 @@ namespace vamp::planning
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
-            typename RNG::Ptr &rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr &rng) noexcept -> PlanningResult<Robot, Space>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
         }
@@ -91,7 +91,7 @@ namespace vamp::planning
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
             typename RNG::Ptr &rng,
-            const LocalPlanner &) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &) noexcept -> PlanningResult<Robot, Space>
         {
             static_assert(
                 std::is_same_v<LocalPlanner, UnconstrainedLocalPlanner<Robot, rake, resolution>>,
@@ -105,11 +105,11 @@ namespace vamp::planning
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
-            typename RNG::Ptr &rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr &rng) noexcept -> PlanningResult<Robot, Space>
         {
             auto start_time = std::chrono::steady_clock::now();
 
-            PlanningResult<Robot> result;
+            PlanningResult<Robot, Space> result;
             NN<Space> roadmap;
             roadmap.reserve(settings.max_samples);
             roadmap.set_epsilon(settings.nn_epsilon);

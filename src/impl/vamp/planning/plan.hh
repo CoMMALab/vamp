@@ -10,7 +10,7 @@ namespace vamp::planning
 {
     namespace path_helpers
     {
-        template <typename Robot, typename Container>
+        template <typename Space, typename Container>
         [[nodiscard]] inline auto cost_robot(const Container &wps) noexcept -> float
         {
             const auto n = wps.size();
@@ -19,18 +19,18 @@ namespace vamp::planning
                 float total = 0;
                 for (auto i = 0U; i + 1 < n; ++i)
                 {
-                    total += planning::cost<Robot>(wps[i], wps[i + 1]);
+                    total += planning::cost<Space>(wps[i], wps[i + 1]);
                 }
                 return total;
             }
             if (n == 2)
             {
-                return planning::cost<Robot>(wps.front(), wps.back());
+                return planning::cost<Space>(wps.front(), wps.back());
             }
             return std::numeric_limits<float>::infinity();
         }
 
-        template <typename Robot, typename Container>
+        template <typename Space, typename Container>
         inline auto subdivide_robot(Container &wps) noexcept
         {
             const auto n = wps.size();
@@ -43,13 +43,13 @@ namespace vamp::planning
             for (auto i = 0U; i + 1 < n; ++i)
             {
                 next.emplace_back(wps[i]);
-                next.emplace_back(Robot::interpolate(wps[i], wps[i + 1], 0.5F));
+                next.emplace_back(Space::interpolate(wps[i], wps[i + 1], 0.5F));
             }
             next.emplace_back(wps.back());
             wps = std::move(next);
         }
 
-        template <typename Robot, typename Container>
+        template <typename Space, typename Container>
         inline auto interpolate_to_n_states_robot(Container &wps, std::size_t n) noexcept
         {
             const auto n_p = wps.size();
@@ -61,7 +61,7 @@ namespace vamp::planning
             float remaining_length = 0.;
             for (auto i = 0U; i + 1 < n_p; ++i)
             {
-                seg_lengths[i] = Robot::distance(wps[i], wps[i + 1]);
+                seg_lengths[i] = Space::distance(wps[i], wps[i + 1]);
                 remaining_length += seg_lengths[i];
             }
             if (remaining_length < std::numeric_limits<float>::epsilon())
@@ -87,7 +87,7 @@ namespace vamp::planning
                     for (auto k = 1U; k <= ns; ++k)
                     {
                         next.emplace_back(
-                            Robot::interpolate(a, b, static_cast<float>(k) / static_cast<float>(ns)));
+                            Space::interpolate(a, b, static_cast<float>(k) / static_cast<float>(ns)));
                     }
                     n -= ns + 1;
                     remaining_length -= seg_lengths[i];
@@ -101,7 +101,7 @@ namespace vamp::planning
             wps = std::move(next);
         }
 
-        template <typename Robot, typename Container>
+        template <typename Space, typename Container>
         inline auto interpolate_to_resolution_robot(Container &wps, std::size_t resolution) noexcept
         {
             const auto n_p = wps.size();
@@ -114,7 +114,7 @@ namespace vamp::planning
             {
                 const auto &a = wps[i];
                 const auto &b = wps[i + 1];
-                const float segment_cost = Robot::distance(a, b);
+                const float segment_cost = Space::distance(a, b);
                 const auto segment_states =
                     static_cast<std::size_t>(segment_cost * static_cast<float>(resolution));
                 next.emplace_back(a);
@@ -125,7 +125,7 @@ namespace vamp::planning
                 for (auto k = 1U; k < segment_states; ++k)
                 {
                     next.emplace_back(
-                        Robot::interpolate(a, b, static_cast<float>(k) / static_cast<float>(segment_states)));
+                        Space::interpolate(a, b, static_cast<float>(k) / static_cast<float>(segment_states)));
                 }
             }
             next.emplace_back(wps.back());
@@ -133,27 +133,33 @@ namespace vamp::planning
         }
     }  // namespace path_helpers
 
-    template <typename Robot>
-    struct Path : public std::vector<FloatVector<Robot::dimension>>
+    // Path/PlanningResult/Roadmap are parameterized on both the FK-owning Robot and the Space
+    // planned over (defaulting to Robot). Elements are Space::State-typed since that's what
+    // planners actually sample/interpolate/insert into these containers; validate() is the one
+    // exception -- it goes straight to Robot::Configuration via validate_motion, so it only
+    // compiles for the default Space == Robot case (the FK/FKCC boundary), not a generic
+    // task-space Space, whose validity check belongs to a LocalPlanner instead.
+    template <typename Robot, typename Space = Robot>
+    struct Path : public std::vector<FloatVector<Space::dimension>>
     {
         [[nodiscard]] inline auto cost() const noexcept -> float
         {
-            return path_helpers::cost_robot<Robot>(*this);
+            return path_helpers::cost_robot<Space>(*this);
         }
 
         inline auto subdivide() noexcept
         {
-            path_helpers::subdivide_robot<Robot>(*this);
+            path_helpers::subdivide_robot<Space>(*this);
         }
 
         inline auto interpolate_to_n_states(std::size_t n) noexcept
         {
-            path_helpers::interpolate_to_n_states_robot<Robot>(*this, n);
+            path_helpers::interpolate_to_n_states_robot<Space>(*this, n);
         }
 
         inline auto interpolate_to_resolution(std::size_t resolution) noexcept
         {
-            path_helpers::interpolate_to_resolution_robot<Robot>(*this, resolution);
+            path_helpers::interpolate_to_resolution_robot<Space>(*this, resolution);
         }
 
         template <std::size_t rake>
@@ -172,10 +178,10 @@ namespace vamp::planning
         }
     };
 
-    template <typename Robot>
+    template <typename Robot, typename Space = Robot>
     struct PlanningResult
     {
-        Path<Robot> path;
+        Path<Robot, Space> path;
         bool solved{false};
         float cost{0.};
         std::size_t nanoseconds{0};
@@ -183,10 +189,10 @@ namespace vamp::planning
         std::vector<std::size_t> size;
     };
 
-    template <typename Robot>
+    template <typename Robot, typename Space = Robot>
     struct Roadmap
     {
-        std::vector<FloatVector<Robot::dimension>> vertices;
+        std::vector<FloatVector<Space::dimension>> vertices;
         std::vector<std::vector<std::size_t>> edges;
         std::size_t nanoseconds{0};
         std::size_t iterations{0};

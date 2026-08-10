@@ -29,7 +29,7 @@ namespace vamp::planning
             const collision::Environment<FloatVector<rake>> &environment,
             const RRTCSettings &settings,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot, Space>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng, lp);
         }
@@ -41,9 +41,9 @@ namespace vamp::planning
             const collision::Environment<FloatVector<rake>> &environment,
             const RRTCSettings &settings,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot, Space>
         {
-            PlanningResult<Robot> result;
+            PlanningResult<Robot, Space> result;
 
             NN<Space> start_tree;
             NN<Space> goal_tree;
@@ -65,30 +65,30 @@ namespace vamp::planning
 
             auto start_time = std::chrono::steady_clock::now();
 
-            constexpr auto unbounded = [] { return std::numeric_limits<float>::infinity(); };
+            // constexpr auto unbounded = [] { return std::numeric_limits<float>::infinity(); };
 
-            for (const auto &goal : goals)
-            {
-                const auto direct = lp.connect_within(
-                    start, goal, environment, unbounded, std::numeric_limits<std::size_t>::max());
-                if (direct.status == SteerStatus::Reached)
-                {
-                    result.path.emplace_back(start);
-                    for (const auto &c : direct.waypoints)
-                    {
-                        result.path.emplace_back(c);
-                    }
-                    result.path.emplace_back(goal);
-                    result.solved = true;
-                    result.cost = result.path.cost();
-                    result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
-                    result.iterations = 0;
-                    result.size.emplace_back(1);
-                    result.size.emplace_back(1);
+            // for (const auto &goal : goals)
+            // {
+            //     const auto direct = lp.connect_within(
+            //         start, goal, environment, unbounded, std::numeric_limits<std::size_t>::max());
+            //     if (direct.status == SteerStatus::Reached)
+            //     {
+            //         result.path.emplace_back(start);
+            //         for (const auto &c : direct.waypoints)
+            //         {
+            //             result.path.emplace_back(c);
+            //         }
+            //         result.path.emplace_back(goal);
+            //         result.solved = true;
+            //         result.cost = result.path.cost();
+            //         result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
+            //         result.iterations = 0;
+            //         result.size.emplace_back(1);
+            //         result.size.emplace_back(1);
 
-                    return result;
-                }
-            }
+            //         return result;
+            //     }
+            // }
 
             // trees
             bool tree_a_is_start = not settings.start_tree_first;
@@ -176,7 +176,7 @@ namespace vamp::planning
                 if (extension.status != SteerStatus::Trapped)
                 {
                     const auto [new_index, extend_truncated] =
-                        insert_chain<Robot>(extension.waypoints, nearest_index, add_node);
+                        insert_chain<Robot, Space>(extension.waypoints, nearest_index, add_node);
 
                     if (settings.dynamic_domain and nearest_radius != std::numeric_limits<float>::max())
                     {
@@ -227,7 +227,7 @@ namespace vamp::planning
                         }
 
                         const auto [step_index, step_truncated] =
-                            insert_chain<Robot>(step.waypoints, prior_index, add_node);
+                            insert_chain<Robot, Space>(step.waypoints, prior_index, add_node);
                         if (step_truncated)
                         {
                             break;

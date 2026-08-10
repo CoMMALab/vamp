@@ -153,10 +153,19 @@ endif()
 if(VAMP_BUILD_CPP_DEMO)
   add_executable(vamp_rrtc_example scripts/cpp/rrtc_example.cc)
   target_link_libraries(vamp_rrtc_example PRIVATE vamp_cpp)
-  
+
   # Disable strict warnings for demos to maintain compatibility
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_rrtc_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+  endif()
+
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/impl/vamp/robots/rby1.hh")
+    add_executable(vamp_rby1_task_space_planner scripts/cpp/rby1_task_space_planner.cc)
+    target_link_libraries(vamp_rby1_task_space_planner PRIVATE vamp_cpp)
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      target_compile_options(vamp_rby1_task_space_planner PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+    endif()
   endif()
 endif()
 

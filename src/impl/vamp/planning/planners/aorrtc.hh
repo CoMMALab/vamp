@@ -167,11 +167,11 @@ namespace vamp::planning
             const AORRTCSettings &settings,
             const float max_cost,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot, Space>
         {
             static constexpr std::size_t start_index = 0;
             const RRTCSettings &rrtc_settings = settings.rrtc;
-            PlanningResult<Robot> result;
+            PlanningResult<Robot, Space> result;
 
             NN start_tree;
             NN goal_tree;
@@ -426,7 +426,7 @@ namespace vamp::planning
                         }
 
                         const auto [step_index, step_truncated] =
-                            insert_chain<Robot>(step.waypoints, prior_index, add_node);
+                            insert_chain<Robot, Space>(step.waypoints, prior_index, add_node);
                         if (step_truncated)
                         {
                             break;
@@ -512,7 +512,7 @@ namespace vamp::planning
             const collision::Environment<FloatVector<rake>> &environment,
             const AORRTCSettings &settings,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot, Space>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng, lp);
         }
@@ -524,7 +524,7 @@ namespace vamp::planning
             const collision::Environment<FloatVector<rake>> &environment,
             const AORRTCSettings &settings_in,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot, Space>
         {
             auto start_time = std::chrono::steady_clock::now();
 
@@ -538,7 +538,7 @@ namespace vamp::planning
             rrtc_settings.max_iterations = std::min(rrtc_settings.max_iterations, settings.max_iterations);
             rrtc_settings.max_samples = std::min(rrtc_settings.max_samples, settings.max_samples);
 
-            PlanningResult<Robot> result;
+            PlanningResult<Robot, Space> result;
             float best_path_cost = std::numeric_limits<float>::max();
             std::size_t iters = 0;
 
@@ -566,7 +566,7 @@ namespace vamp::planning
             }
 
             // We have a new best solution
-            PlanningResult<Robot> final_result;
+            PlanningResult<Robot, Space> final_result;
             final_result.path = result.path;
             final_result.solved = true;
             best_path_cost = result.path.cost();

@@ -235,6 +235,12 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
             "Constructor for an attachment centered at a relative transform from the given "
             "end-effector (by index into the robot's end-effector list).")
         .def_rw("end_effector", &vc::Attachment<float>::end_effector)
+        .def_rw(
+            "excluded_end_effectors",
+            &vc::Attachment<float>::excluded_end_effectors,
+            "Additional end-effector indices this attachment is never collision-checked "
+            "against (e.g. other end-effectors jointly grasping the same object). The "
+            "planner is responsible for keeping those end-effectors' relative pose consistent.")
         .def_prop_ro("relative_frame", [](vc::Attachment<float> &a) { return a.tf; })
         .def(
             "add_sphere",

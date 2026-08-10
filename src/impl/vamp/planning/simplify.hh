@@ -17,9 +17,9 @@ namespace vamp::planning
     // state is projected back onto the constraint manifold and every resulting edge is
     // revalidated (projection bends states off their validated chords, so the new edges
     // do not inherit validity), reverting on any failure.
-    template <typename Robot, std::size_t rake, typename LocalPlanner>
+    template <typename Robot, std::size_t rake, typename LocalPlanner, typename Space = Robot>
     inline static auto interpolate_and_project(
-        Path<Robot> &path,
+        Path<Robot, Space> &path,
         std::size_t n,
         const collision::Environment<FloatVector<rake>> &environment,
         const LocalPlanner &lp) -> bool
@@ -60,21 +60,21 @@ namespace vamp::planning
         }
     }
 
-    template <typename Robot>
-    inline static auto segment_cost(const Path<Robot> &path, std::size_t from, std::size_t to) -> float
+    template <typename Robot, typename Space = Robot>
+    inline static auto segment_cost(const Path<Robot, Space> &path, std::size_t from, std::size_t to) -> float
     {
         float total = 0.F;
         for (auto i = from; i < to; ++i)
         {
-            total += cost<Robot>(path[i], path[i + 1]);
+            total += cost<Space>(path[i], path[i + 1]);
         }
 
         return total;
     }
 
-    template <typename Robot, std::size_t rake, std::size_t resolution, typename LocalPlanner>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename LocalPlanner, typename Space = Robot>
     inline static auto smooth_bspline(
-        Path<Robot> &path,
+        Path<Robot, Space> &path,
         const collision::Environment<FloatVector<rake>> &environment,
         const BSplineSettings &settings,
         const LocalPlanner &lp) -> bool
@@ -89,12 +89,12 @@ namespace vamp::planning
         // midpoints off their validated chords, and non-euclidean robots (flask)
         // re-solve each half edge as its own steering problem (own T*), so the halves
         // are different curves than the validated whole.
-        constexpr bool preserves_edges = Robot::euclidean and not LocalPlanner::projecting;
+        constexpr bool preserves_edges = Space::euclidean and not LocalPlanner::projecting;
 
         // Subdivision can also lengthen the path even when every later midpoint move is
         // cost-nonincreasing, so snapshot the input and revert the whole pass if it
         // does not pay off.
-        [[maybe_unused]] Path<Robot> original;
+        [[maybe_unused]] Path<Robot, Space> original;
         [[maybe_unused]] float original_cost = 0.F;
         if constexpr (not preserves_edges)
         {
@@ -139,13 +139,13 @@ namespace vamp::planning
             for (auto index = 2U; index < path.size() - 1; index += 2)
             {
                 const auto temp_1 =
-                    Robot::interpolate(path[index], path[index - 1], settings.midpoint_interpolation);
+                    Space::interpolate(path[index], path[index - 1], settings.midpoint_interpolation);
                 const auto temp_2 =
-                    Robot::interpolate(path[index], path[index + 1], settings.midpoint_interpolation);
-                auto midpoint = Robot::interpolate(temp_1, temp_2, 0.5);
+                    Space::interpolate(path[index], path[index + 1], settings.midpoint_interpolation);
+                auto midpoint = Space::interpolate(temp_1, temp_2, 0.5);
 
-                if (lp.project(midpoint) and Robot::distance(path[index], midpoint) > settings.min_change and
-                    cost_nonincreasing<Robot>(path[index - 1], path[index], midpoint, path[index + 1]) and
+                if (lp.project(midpoint) and Space::distance(path[index], midpoint) > settings.min_change and
+                    cost_nonincreasing<Space>(path[index - 1], path[index], midpoint, path[index + 1]) and
                     lp.validate(path[index - 1], midpoint, environment) and
                     lp.validate(midpoint, path[index + 1], environment))
                 {
@@ -172,12 +172,12 @@ namespace vamp::planning
         return changed;
     }
 
-    template <typename Robot, std::size_t rake, std::size_t resolution, typename LocalPlanner>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename LocalPlanner, typename Space = Robot>
     inline static auto reduce_path_vertices(
-        Path<Robot> &path,
+        Path<Robot, Space> &path,
         const collision::Environment<FloatVector<rake>> &environment,
         const ReduceSettings &settings,
-        const typename vamp::rng::RNG<Robot>::Ptr rng,
+        const typename vamp::rng::RNG<Robot, Space>::Ptr rng,
         const LocalPlanner &lp) -> bool
     {
         if (path.size() < 3)
@@ -229,7 +229,7 @@ namespace vamp::planning
                 path[point_0],
                 path[point_1],
                 environment,
-                [&] { return segment_cost<Robot>(path, point_0, point_1); },
+                [&] { return segment_cost(path, point_0, point_1); },
                 static_cast<std::size_t>(point_1 - point_0 - 1));
 
             if (extension.status == SteerStatus::Reached)
@@ -245,9 +245,9 @@ namespace vamp::planning
         return result;
     }
 
-    template <typename Robot, std::size_t rake, std::size_t resolution, typename LocalPlanner>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename LocalPlanner, typename Space = Robot>
     inline static auto shortcut_path(
-        Path<Robot> &path,
+        Path<Robot, Space> &path,
         const collision::Environment<FloatVector<rake>> &environment,
         const ShortcutSettings & /*settings*/,
         const LocalPlanner &lp) -> bool
@@ -272,7 +272,7 @@ namespace vamp::planning
             ranked.reserve(path.size() - 1);
             for (std::size_t i = 0; i + 1 < path.size(); ++i)
             {
-                ranked.emplace_back(planning::cost<Robot>(path[i], path[i + 1]), i);
+                ranked.emplace_back(planning::cost<Space>(path[i], path[i + 1]), i);
             }
             std::sort(
                 ranked.begin(), ranked.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
@@ -289,7 +289,7 @@ namespace vamp::planning
                         path[i],
                         path[j],
                         environment,
-                        [&] { return segment_cost<Robot>(path, i, j); },
+                        [&] { return segment_cost(path, i, j); },
                         j - i - 1);
 
                     if (extension.status == SteerStatus::Reached)
@@ -327,14 +327,14 @@ namespace vamp::planning
     // the joint velocity limits, (b) for projecting local planners is projected back onto the
     // manifold (tangent-projecting its velocity), and (c) revalidates both incident edges.
     // No-op for robots without Robot::cost_grad.
-    template <typename Robot, std::size_t rake, std::size_t resolution, typename LocalPlanner>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename LocalPlanner, typename Space = Robot>
     inline static auto velopt_path(
-        Path<Robot> &path,
+        Path<Robot, Space> &path,
         const collision::Environment<FloatVector<rake>> &environment,
         const VeloptSettings &settings,
         const LocalPlanner &lp) -> bool
     {
-        if constexpr (not has_cost_grad_v<Robot>)
+        if constexpr (not has_cost_grad_v<Space>)
         {
             (void)path;
             (void)environment;
@@ -349,9 +349,9 @@ namespace vamp::planning
                 return false;
             }
 
-            constexpr std::size_t n = Robot::flat_dimension;
+            constexpr std::size_t n = Space::flat_dimension;
             constexpr std::size_t dim = 2 * n;
-            using Configuration = typename Robot::Configuration;
+            using Configuration = typename Space::State;
 
             bool any_changed = false;
 
@@ -366,8 +366,8 @@ namespace vamp::planning
                     const auto &next = path[i + 1];
                     const Configuration cur = path[i];
 
-                    const auto g_left = Robot::cost_grad(prev, cur);
-                    const auto g_right = Robot::cost_grad(cur, next);
+                    const auto g_left = Space::cost_grad(prev, cur);
+                    const auto g_right = Space::cost_grad(cur, next);
                     const float c_current = g_left.cost + g_right.cost;
                     total_before += c_current;
 
@@ -399,7 +399,7 @@ namespace vamp::planning
                         for (std::size_t j = 0; j < n; ++j)
                         {
                             const float v_new = cur_arr[n + j] - alpha * grad_v[j];
-                            const float v_lim = Robot::velocity_limits[j];
+                            const float v_lim = Space::velocity_limits[j];
                             buf[n + j] = std::clamp(v_new, -v_lim, v_lim);
                         }
                         Configuration trial(buf.data());
@@ -416,7 +416,7 @@ namespace vamp::planning
                             }
                         }
                         const float trial_cost =
-                            planning::cost<Robot>(prev, trial) + planning::cost<Robot>(trial, next);
+                            planning::cost<Space>(prev, trial) + planning::cost<Space>(trial, next);
                         if (trial_cost < best_cost and lp.validate(prev, trial, environment) and
                             lp.validate(trial, next, environment))
                         {
@@ -450,12 +450,12 @@ namespace vamp::planning
         }
     }
 
-    template <typename Robot, std::size_t rake, std::size_t resolution, typename LocalPlanner>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename LocalPlanner, typename Space = Robot>
     inline static auto perturb_path(
-        Path<Robot> &path,
+        Path<Robot, Space> &path,
         const collision::Environment<FloatVector<rake>> &environment,
         const PerturbSettings &settings,
-        const typename vamp::rng::RNG<Robot>::Ptr rng,
+        const typename vamp::rng::RNG<Robot, Space>::Ptr rng,
         const LocalPlanner &lp) -> bool
     {
         if (path.size() < 3)
@@ -476,19 +476,19 @@ namespace vamp::planning
             auto after_state = path[to_perturb_idx + 1];
 
             float old_cost =
-                cost<Robot>(before_state, perturb_state) + cost<Robot>(perturb_state, after_state);
+                cost<Space>(before_state, perturb_state) + cost<Space>(perturb_state, after_state);
 
             for (auto attempt = 0U; attempt < settings.perturbation_attempts; ++attempt)
             {
                 // next() already returns a joint-space configuration; do not rescale it.
                 const auto perturbation = rng->next();
-                auto new_state = Robot::interpolate(perturb_state, perturbation, settings.range);
+                auto new_state = Space::interpolate(perturb_state, perturbation, settings.range);
                 if (not lp.project(new_state))
                 {
                     continue;
                 }
 
-                float new_cost = cost<Robot>(before_state, new_state) + cost<Robot>(new_state, after_state);
+                float new_cost = cost<Space>(before_state, new_state) + cost<Space>(new_state, after_state);
 
                 if (new_cost < old_cost and lp.validate(before_state, new_state, environment) and
                     lp.validate(new_state, after_state, environment))
@@ -508,17 +508,18 @@ namespace vamp::planning
         typename Robot,
         std::size_t rake,
         std::size_t resolution,
-        typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution>>
+        typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution>,
+        typename Space = Robot>
     inline auto simplify(
-        const Path<Robot> &path,
+        const Path<Robot, Space> &path,
         const collision::Environment<FloatVector<rake>> &environment,
         const SimplifySettings &settings,
-        const typename vamp::rng::RNG<Robot>::Ptr rng,
-        const LocalPlanner &lp = LocalPlanner()) -> PlanningResult<Robot>
+        const typename vamp::rng::RNG<Robot, Space>::Ptr rng,
+        const LocalPlanner &lp = LocalPlanner()) -> PlanningResult<Robot, Space>
     {
         auto start_time = std::chrono::steady_clock::now();
 
-        PlanningResult<Robot> result;
+        PlanningResult<Robot, Space> result;
 
         const auto run = [&](SimplifyRoutine op) -> bool
         {

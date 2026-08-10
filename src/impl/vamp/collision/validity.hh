@@ -314,7 +314,11 @@ namespace vamp
     }
 
     // Checks attachments on different end-effectors against each other; attachments riding
-    // on the same end-effector move rigidly together and are never tested.
+    // on the same end-effector, or explicitly marked as excluded via `excluded_end_effectors`
+    // (e.g. multiple attachments representing one object jointly held by several
+    // end-effectors), move rigidly together and are never tested against one another. The
+    // caller (planner) is responsible for keeping the relative pose between such
+    // end-effectors consistent.
     template <typename DataT>
     inline constexpr auto attachment_attachment_collision(const collision::Environment<DataT> &e) noexcept
         -> bool
@@ -325,7 +329,7 @@ namespace vamp
             for (auto j = i + 1; j < e.attachments.size(); ++j)
             {
                 const auto &b = e.attachments[j];
-                if (a.end_effector == b.end_effector)
+                if (a.excludes(b.end_effector) or b.excludes(a.end_effector))
                 {
                     continue;
                 }

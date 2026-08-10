@@ -37,7 +37,7 @@ namespace vamp::planning
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot, Space>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
         }
@@ -52,7 +52,7 @@ namespace vamp::planning
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
             typename RNG::Ptr rng,
-            const LocalPlanner &) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &) noexcept -> PlanningResult<Robot, Space>
         {
             static_assert(
                 std::is_same_v<LocalPlanner, UnconstrainedLocalPlanner<Robot, rake, resolution>>,
@@ -66,9 +66,9 @@ namespace vamp::planning
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot, Space>
         {
-            PlanningResult<Robot> result;
+            PlanningResult<Robot, Space> result;
 
             NN<Space> roadmap;
             roadmap.reserve(settings.max_samples);
@@ -189,7 +189,7 @@ namespace vamp::planning
                     }
 
                     const auto &goal = goals[i - 1];
-                    auto parents = utils::astar<Robot>(nodes, start, goal, state_index, i);
+                    auto parents = utils::astar<Robot, Space>(nodes, start, goal, state_index, i);
                     // NOTE: If the connected component check is correct, we can assume that a solution
                     // was found by A* when we've reached this point
                     utils::recover_path<Robot>(parents.get(), state_index, result.path, i);
@@ -215,7 +215,7 @@ namespace vamp::planning
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
-            typename RNG::Ptr rng) noexcept -> Roadmap<Robot>
+            typename RNG::Ptr rng) noexcept -> Roadmap<Robot, Space>
         {
             NN<Space> roadmap;
             roadmap.reserve(settings.max_samples);
@@ -281,7 +281,7 @@ namespace vamp::planning
                 roadmap.insert(node.index, state);
             }
 
-            Roadmap<Robot> result;
+            Roadmap<Robot, Space> result;
             result.vertices.reserve(nodes.size());
 
             for (const auto &node : nodes)

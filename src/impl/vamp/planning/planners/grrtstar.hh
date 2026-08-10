@@ -64,7 +64,7 @@ namespace vamp::planning
             const collision::Environment<FloatVector<rake>> &environment,
             const GRRTStarSettings &settings,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot, Space>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng, lp);
         }
@@ -76,9 +76,9 @@ namespace vamp::planning
             const collision::Environment<FloatVector<rake>> &environment,
             const GRRTStarSettings &settings,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot, Space>
         {
-            PlanningResult<Robot> result;
+            PlanningResult<Robot, Space> result;
 
             auto start_time = std::chrono::steady_clock::now();
 
@@ -111,7 +111,7 @@ namespace vamp::planning
             // Best solution tracking
             float best_cost = std::numeric_limits<float>::max();
             float greedy_best_cost = std::numeric_limits<float>::max();
-            Path<Robot> best_path;
+            Path<Robot, Space> best_path;
 
             // Heuristic cost lower bound for a node (directed: start precedes it, goals follow)
             const auto solution_heuristic = [&](std::size_t idx) -> float
@@ -262,9 +262,9 @@ namespace vamp::planning
 
             // Extract path through a start-side and goal-side connection point
             const auto extract_path = [&](std::size_t start_side_node,
-                                          std::size_t goal_side_node) -> Path<Robot>
+                                          std::size_t goal_side_node) -> Path<Robot, Space>
             {
-                Path<Robot> path;
+                Path<Robot, Space> path;
 
                 std::vector<std::size_t> start_chain;
                 auto current = start_side_node;
@@ -744,7 +744,7 @@ namespace vamp::planning
                     }
 
                     const auto [step_index, step_truncated] =
-                        insert_chain<Robot>(step.waypoints, prior_index, add_node);
+                        insert_chain<Robot, Space>(step.waypoints, prior_index, add_node);
                     if (step_truncated)
                     {
                         break;

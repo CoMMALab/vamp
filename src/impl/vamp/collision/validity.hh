@@ -8,6 +8,8 @@
 #include <vamp/collision/sphere_heightfield.hh>
 #include <vamp/collision/math.hh>
 
+#include <optional>
+
 namespace vamp
 {
     template <
@@ -279,6 +281,10 @@ namespace vamp
     }
 
     // Checks a robot sphere against every attachment riding on end-effector `end_effector`.
+    // `owner_end_effector`, if set, identifies the end-effector whose own geometry the queried
+    // sphere belongs to (e.g. a second hand's own finger link); an attachment that excludes
+    // that end-effector (Attachment::excluded_end_effectors, e.g. because it's jointly grasped
+    // by both hands) skips the check against it, mirroring attachment_attachment_collision.
     template <typename DataT, typename ArgT1, typename ArgT2, typename ArgT3, typename ArgT4>
     inline constexpr auto attachment_sphere_collision(
         const collision::Environment<DataT> &e,
@@ -286,7 +292,8 @@ namespace vamp
         ArgT1 sx_,
         ArgT2 sy_,
         ArgT3 sz_,
-        ArgT4 sr_) noexcept -> bool
+        ArgT4 sr_,
+        std::optional<std::size_t> owner_end_effector = std::nullopt) noexcept -> bool
     {
         // TODO: Figure out a way to avoid needing to upcast floats to vectors
         auto sx = static_cast<DataT>(sx_);
@@ -296,6 +303,11 @@ namespace vamp
         for (const auto &attachment : e.attachments)
         {
             if (attachment.end_effector != end_effector)
+            {
+                continue;
+            }
+
+            if (owner_end_effector.has_value() and attachment.excludes(*owner_end_effector))
             {
                 continue;
             }

@@ -272,10 +272,9 @@ namespace vamp::planning::constraint
             const Environment &environment) const noexcept -> bool
         {
             // just reject if the sampled eefs are in collision
-            auto eef_coll_res = Space::template eefs_in_collision<rake>(environment, interp_block);
+            auto eef_coll_res = Space::template eefs_collision_free<rake>(environment, interp_block);
             if (not eef_coll_res)
             {
-                std::cout << "End-effector collision detected; rejecting local path." << std::endl;
                 return false;
             }
 

@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -7,11 +9,14 @@
 #include <utility>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include <vamp/collision/environment.hh>
 #include <vamp/collision/factory.hh>
 #include <vamp/planning/constraints/parameterized_local_planner.hh>
 #include <vamp/planning/planners/rrtc.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
+#include <vamp/planning/simplify.hh>
 #include <vamp/random/halton.hh>
 #include <vamp/robots/rby1.hh>
 #include <vamp/vector.hh>
@@ -29,7 +34,12 @@ using CSpaceRRTC = vamp::planning::RRTC<Robot, rake, Robot::resolution>;
 // Resolves a task-space State through IK and prints whether it's valid; used to sanity-check
 // start/goal before handing them to RRTC (RRTC itself will silently fail to find a path if
 // start/goal don't resolve, so it's worth knowing which case you're in).
-auto resolve_and_report(const ParameterizedSpace::State &state, const std::string &label)
+auto resolve_and_report(
+    const ParameterizedSpace::State &state, 
+    const std::string &label,
+    const EnvironmentVector &environment_v,
+    const bool check_env_cc = false
+)
     -> std::pair<bool, Robot::ConfigurationBlock<rake>>
 {
     ParameterizedSpace::StateBlock<rake> block;
@@ -38,8 +48,24 @@ auto resolve_and_report(const ParameterizedSpace::State &state, const std::strin
         block[i] = state.broadcast(i);
     }
 
+    if (check_env_cc){
+        // now call eefs_collision_free on the start and goal ambient configurations to see if they are in collision
+        auto eef_coll_res = ParameterizedSpace::eefs_collision_free<rake>(environment_v, block);
+        if (not eef_coll_res)
+        {
+            std::cout << label << " eefs in collision: " << std::boolalpha << (not eef_coll_res) << std::endl;
+        }
+        // std::cout << label << " eefs in collision: " << std::boolalpha << (not eef_coll_res) << std::endl;
+    }
+
+
     auto [valid, ambient_block] = ParameterizedSpace::resolve_block<rake>(block);
-    std::cout << label << " resolve_block valid: " << std::boolalpha << valid << std::endl;
+    if (not valid)
+    {
+        std::cout << label << " resolve_block failed; invalid task-space state." << std::endl;
+        return {false, ambient_block};
+    }
+    // std::cout << label << " resolve_block valid: " << std::boolalpha << valid << std::endl;
     return {valid, ambient_block};
 }
 
@@ -51,15 +77,21 @@ auto check_collision_free(
     const std::string &label,
     const EnvironmentVector &environment_v) -> bool
 {
-    const bool collision_free = Robot::fkcc<rake>(environment_v, ambient_block);
-    std::cout << label << " resolved configuration is collision free: " << std::boolalpha << collision_free
-               << std::endl;
+    // const bool collision_free = Robot::fkcc<rake>(environment_v, ambient_block);
+    const bool collision_free = (environment_v.attachments.empty()) ?
+                Robot::template fkcc<rake>(environment_v, ambient_block) :
+                Robot::template fkcc_attach<rake>(environment_v, ambient_block);
 
-    std::cout << label << " resolved ambient configuration (lane 0): ";
-    for (std::size_t i = 0; i < Robot::dimension; ++i)
+    if (not collision_free)
     {
-        std::cout << ambient_block[{i, 0}] << (i + 1 < Robot::dimension ? ", " : "\n");
+        std::cout << label << " resolved configuration is in collision." << std::endl;
     }
+
+    // std::cout << label << " resolved ambient configuration (lane 0): ";
+    // for (std::size_t i = 0; i < Robot::dimension; ++i)
+    // {
+    //     std::cout << ambient_block[{i, 0}] << (i + 1 < Robot::dimension ? ", " : "\n");
+    // }
 
     if (not collision_free)
     {
@@ -141,8 +173,16 @@ struct RBY1FixedBaseSampler : public vamp::rng::RNG<Robot, ParameterizedSpace>
 // solve using ParameterizedLocalPlanner as the IK-resolving local planner. No sampler wrapper is
 // needed -- vamp::rng::Halton<Robot, ParameterizedSpace> already draws directly from
 // ParameterizedSpace::sample().
-auto main(int, char **) -> int
+auto main(int argc, char **argv) -> int
 {
+    if (argc != 3)
+    {
+        std::cerr << "usage: " << argv[0] << " <input_problems.json> <output_results.json>" << std::endl;
+        return 1;
+    }
+
+    const std::string input_json_path = argv[1];
+    const std::string output_json_path = argv[2];
     std::cout << std::boolalpha;
     std::cout << "Robot::dimension (ambient/joint space): " << Robot::dimension << std::endl;
     std::cout << "ParameterizedSpace::dimension (task space): " << ParameterizedSpace::dimension << std::endl;
@@ -221,6 +261,10 @@ auto main(int, char **) -> int
 
     vamp::collision::Attachment<float> box_attachment(box_attachment_tf);
     box_attachment.end_effector = 1;  // right hand
+    // Exclude end-effector 0 (left_ee_body, left_ee_finger_1, left_ee_finger_2 -- the left
+    // hand) so a second attachment representing the same box riding on the left hand (if one
+    // is added later) is never checked against this one in attachment_attachment_collision.
+    box_attachment.excluded_end_effectors = {0};
 
     for (const auto cx : grid_centers(box_size[0], box_sphere_radius))
     {
@@ -230,7 +274,7 @@ auto main(int, char **) -> int
         }
     }
 
-    // environment.attachments.emplace_back(box_attachment);
+    environment.attachments.emplace_back(box_attachment);
 
     EnvironmentVector environment_v(environment);
 
@@ -243,7 +287,7 @@ auto main(int, char **) -> int
     };
 
     ParameterizedSpace::State state(state_array.data());
-    auto [valid, ambient_block] = resolve_and_report(state, "Smoke test");
+    auto [valid, ambient_block] = resolve_and_report(state, "Smoke test", environment_v, false);
 
     if (valid)
     {
@@ -297,108 +341,182 @@ auto main(int, char **) -> int
     // ----------------- CSPACE PLANNING END -----------------
 
 
-    // --- Planning problem: start/goal in ParameterizedSpace's task space.
-    std::array<float, ParameterizedSpace::dimension> start_array = {
-        0.00000000e+00,  0.00000000e+00,  1.00000000e+00, 0.00000000e+00,
-        -2.16360474e-03, 1.45860954e+00, -1.97468998e+00,  1.55147668e+00,  2.66302773e-01, -5.04128611e-01,
-        0.4461F, 1.2082F,
-        0.5F, 0.0F, 0.22F, 0.0F, 0.0F, 0.0F, 1.0F
-    };
-    std::array<float, ParameterizedSpace::dimension> goal_array = {
-        0.00000000e+00,  0.00000000e+00,  1.00000000e+00, 0.00000000e+00,
-        0.1682F, 0.7809F, -1.3941F, 0.8259F, -0.1562F, -0.0383F,
-        -0.3154F, 0.9617F,
-        0.5F, 0.0F, 0.92F, 0.0F, 0.0F, 0.0F, 1.0F
-    };
-
-    // std::array<float, ParameterizedSpace::dimension> goal_array = {
-    //     0.00000000e+00,  0.00000000e+00,  1.00000000e+00, 0.00000000e+00,
-    //     -0.0028, 1.4554, -1.9235, 1.5299, 0.2669, -0.4952,
-    //     0.4662, 1.1943,
-    //     0.5006, 0.0026, 0.2290, 0.0043, -0.0072, 0.0138, 0.9999
-    // };
-
-    ParameterizedSpace::State start_state(start_array.data());
-    ParameterizedSpace::State goal_state(goal_array.data());
-
-    std::cout << "\n--- Planning problem ---" << std::endl;
-    const auto [start_valid, start_ambient] = resolve_and_report(start_state, "Start");
-    const auto [goal_valid, goal_ambient] = resolve_and_report(goal_state, "Goal");
-
-    if (not start_valid or not goal_valid)
+    // --- Planning problems: start/goal pairs in ParameterizedSpace's task space, read from
+    // input_json_path. Expected format:
+    // {
+    //   "problems": [
+    //     { "start": [<ParameterizedSpace::dimension floats>], "goal": [<... floats>] },
+    //     ...
+    //   ]
+    // }
+    std::ifstream input_file(input_json_path);
+    if (not input_file)
     {
-        std::cout << "Start or goal did not resolve through IK; skipping RRTC." << std::endl;
-        return 0;
+        std::cerr << "Failed to open input JSON file: " << input_json_path << std::endl;
+        return 1;
     }
 
-    if (not check_collision_free(goal_ambient, "Goal", environment_v) or
-        not check_collision_free(start_ambient, "Start", environment_v))
+    nlohmann::json input_json;
+    input_file >> input_json;
+    const auto &problems_json = input_json.at("problems");
+
+    nlohmann::json output_json = nlohmann::json::array();
+
+    for (std::size_t problem_index = 0; problem_index < problems_json.size(); ++problem_index)
     {
-        std::cout << "Start or goal resolves to a colliding ambient configuration; skipping RRTC." << std::endl;
-        return 0;
-    }
+        std::cout << "\n=== Planning problem " << problem_index << " ===" << std::endl;
 
-    // --- RRTC over ParameterizedSpace, with ParameterizedLocalPlanner as the IK-resolving
-    // local planner. NN<ParameterizedSpace> (the KD-tree) is built implicitly inside RRTC::solve
-    // from ParameterizedSpace::dimension/so3_offsets -- nothing to construct by hand here.
-    //
-    // Sampler: RBY1FixedBaseSampler wraps a plain Halton<Robot, ParameterizedSpace> and
-    // restricts it to this problem -- base fixed at the origin, t_mid_pose position confined
-    // to +/-0.4 around the start pose, everything else (torso, psi, orientation) unrestricted.
-    auto inner_rng = std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>();
-    const std::array<float, 3> start_position = {start_array[12], start_array[13], start_array[14]};
-    auto rng = std::make_shared<RBY1FixedBaseSampler>(inner_rng, start_position, 0.4F);
-    vamp::planning::RRTCSettings settings;
+        const auto &problem_json = problems_json[problem_index];
+        nlohmann::json problem_result;
+        problem_result["index"] = problem_index;
 
-    // plan only for 20 steps for debugging
-    settings.max_iterations = 2000;
-    settings.range = 0.1F;
+        const auto start_vec = problem_json.at("start").get<std::vector<float>>();
+        const auto goal_vec = problem_json.at("goal").get<std::vector<float>>();
 
-    auto result = TaskRRTC::solve<TaskLocalPlanner>(
-        start_state, goal_state, environment_v, settings, rng, TaskLocalPlanner());
-
-    // Print the resolved ambient configurations along the path, if any.
-    if (result.solved)
-    {
-        std::cout << "\n--- Resolved ambient configurations along the path ---" << std::endl;
-        for (std::size_t i = 0; i < result.path.size(); ++i)
+        if (start_vec.size() != ParameterizedSpace::dimension or goal_vec.size() != ParameterizedSpace::dimension)
         {
-            const auto &state = result.path[i];
-            // annoyingly resolve is only implemented for a full block, so we have to broadcast the state into a block first
-            ParameterizedSpace::StateBlock<rake> block;
-            for (std::size_t j = 0; j < ParameterizedSpace::dimension; ++j)
-            {
-                block[j] = state.broadcast(j);
-            }
-            auto [valid, ambient_block] = ParameterizedSpace::resolve_block<rake>(block);
-            // std::cout << "Path index " << i << ": resolve valid = " << std::boolalpha << valid << ", ambient configuration = ";
-            for (std::size_t j = 0; j < Robot::dimension; ++j)
-            {
-                // for j == 2,3 which is a continuous representation of a rotation, print the angle instead of the raw value
-                if (j == 2)
-                {
-                    float angle = std::atan2(ambient_block[{3, 0}], ambient_block[{2, 0}]);
-                    std::cout << angle << (j + 1 < Robot::dimension ? ", " : "\n");
-                }
-                else if (j == 3)
-                {
-                    // skip printing j == 3 since it's redundant with j == 2 for the angle
-                    continue;
-                }
-                else
-                {
-                    std::cout << ambient_block[{j, 0}] << (j + 1 < Robot::dimension ? ", " : "\n");
-                }
-            }
+            std::cerr << "Problem " << problem_index << ": start/goal must have "
+                       << ParameterizedSpace::dimension << " elements; skipping." << std::endl;
+            problem_result["solved"] = false;
+            problem_result["error"] = "start or goal has the wrong number of elements";
+            output_json.push_back(std::move(problem_result));
+            continue;
         }
+
+        std::array<float, ParameterizedSpace::dimension> start_array;
+        std::array<float, ParameterizedSpace::dimension> goal_array;
+        std::copy(start_vec.begin(), start_vec.end(), start_array.begin());
+        std::copy(goal_vec.begin(), goal_vec.end(), goal_array.begin());
+
+        ParameterizedSpace::State start_state(start_array.data());
+        ParameterizedSpace::State goal_state(goal_array.data());
+
+        const auto [start_valid, start_ambient] = resolve_and_report(start_state, "Start", environment_v, true);
+        const auto [goal_valid, goal_ambient] = resolve_and_report(goal_state, "Goal", environment_v, true);
+        problem_result["start_valid"] = start_valid;
+        problem_result["goal_valid"] = goal_valid;
+
+        if (not start_valid or not goal_valid)
+        {
+            std::cout << "Start or goal did not resolve through IK; skipping RRTC." << std::endl;
+            problem_result["solved"] = false;
+            problem_result["error"] = "start or goal did not resolve through IK";
+            output_json.push_back(std::move(problem_result));
+            continue;
+        }
+
+        const bool goal_collision_free = check_collision_free(goal_ambient, "Goal", environment_v);
+        const bool start_collision_free = check_collision_free(start_ambient, "Start", environment_v);
+        problem_result["start_collision_free"] = start_collision_free;
+        problem_result["goal_collision_free"] = goal_collision_free;
+
+        if (not goal_collision_free or not start_collision_free)
+        {
+            std::cout << "Start or goal resolves to a colliding ambient configuration; skipping RRTC." << std::endl;
+            problem_result["solved"] = false;
+            problem_result["error"] = "start or goal resolves to a colliding ambient configuration";
+            output_json.push_back(std::move(problem_result));
+            continue;
+        }
+
+        // --- RRTC over ParameterizedSpace, with ParameterizedLocalPlanner as the IK-resolving
+        // local planner. NN<ParameterizedSpace> (the KD-tree) is built implicitly inside RRTC::solve
+        // from ParameterizedSpace::dimension/so3_offsets -- nothing to construct by hand here.
+        //
+        // Sampler: RBY1FixedBaseSampler wraps a plain Halton<Robot, ParameterizedSpace> and
+        // restricts it to this problem -- base fixed at the origin, t_mid_pose position confined
+        // to +/-0.4 around the start pose, everything else (torso, psi, orientation) unrestricted.
+        auto inner_rng = std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>();
+        const std::array<float, 3> start_position = {start_array[12], start_array[13], start_array[14]};
+        auto rng = std::make_shared<RBY1FixedBaseSampler>(inner_rng, start_position, 0.4F);
+        vamp::planning::RRTCSettings settings;
+        settings.range = 0.25F;
+
+        auto result = TaskRRTC::solve<TaskLocalPlanner>(
+            start_state, goal_state, environment_v, settings, rng, TaskLocalPlanner());
+
+        std::cout << "\n--- RRTC result ---" << std::endl;
+        std::cout << "solved: " << result.solved << std::endl;
+        std::cout << "cost: " << result.cost << std::endl;
+        std::cout << "iterations: " << result.iterations << std::endl;
+        std::cout << "nanoseconds: " << result.nanoseconds << std::endl;
+        std::cout << "tree sizes (start, goal): " << result.size[0] << ", " << result.size[1] << std::endl;
+        std::cout << "path size: " << result.path.size() << std::endl;
+
+        problem_result["solved"] = result.solved;
+        problem_result["cost"] = result.cost;
+        problem_result["iterations"] = result.iterations;
+        problem_result["nanoseconds"] = result.nanoseconds;
+        problem_result["tree_size_start"] = result.size[0];
+        problem_result["tree_size_goal"] = result.size[1];
+        problem_result["path_size"] = result.path.size();
+
+        // --- Shortcut the resolved task-space path. shortcut_path mutates result.path in place;
+        // TaskLocalPlanner's connect_within revalidates every collapsed edge through the same
+        // resolve_and_check as RRTC (IK resolve, eef-collision prefilter, support-polygon check,
+        // fkcc/fkcc_attach), so shortcutting can only ever remove waypoints, never bypass a check.
+        if (result.solved)
+        {
+            const float cost_before_shortcut = result.path.cost();
+            vamp::planning::ShortcutSettings shortcut_settings;
+            vamp::planning::shortcut_path<Robot, rake, Robot::resolution, TaskLocalPlanner, ParameterizedSpace>(
+                result.path, environment_v, shortcut_settings, TaskLocalPlanner());
+
+            std::cout << "\n--- Shortcut result ---" << std::endl;
+            std::cout << "path size: " << result.path.size() << std::endl;
+            std::cout << "cost (before, after): " << cost_before_shortcut << ", " << result.path.cost() << std::endl;
+
+            problem_result["shortcut_path_size"] = result.path.size();
+            problem_result["shortcut_cost_before"] = cost_before_shortcut;
+            problem_result["shortcut_cost_after"] = result.path.cost();
+
+            // Densify the shortcutted path to Robot::resolution before writing it out, so the
+            // written trajectory is at a fixed step resolution rather than just the shortcutted
+            // waypoints.
+            result.path.interpolate_to_resolution(Robot::resolution);
+            problem_result["interpolated_path_size"] = result.path.size();
+
+            // Resolve every waypoint on the (interpolated, shortcutted) path through IK and
+            // record the full ambient (joint-space) configuration, mirroring what print_result
+            // used to print.
+            nlohmann::json trajectory_json = nlohmann::json::array();
+            for (std::size_t i = 0; i < result.path.size(); ++i)
+            {
+                const auto &state = result.path[i];
+                ParameterizedSpace::StateBlock<rake> block;
+                for (std::size_t j = 0; j < ParameterizedSpace::dimension; ++j)
+                {
+                    block[j] = state.broadcast(j);
+                }
+                auto [valid, ambient_block] = ParameterizedSpace::resolve_block<rake>(block);
+
+                nlohmann::json ambient_configuration_json = nlohmann::json::array();
+                for (std::size_t j = 0; j < Robot::dimension; ++j)
+                {
+                    ambient_configuration_json.push_back(ambient_block[{j, 0}]);
+                }
+
+                nlohmann::json waypoint_json;
+                waypoint_json["resolved"] = valid;
+                waypoint_json["ambient_configuration"] = std::move(ambient_configuration_json);
+                trajectory_json.push_back(std::move(waypoint_json));
+            }
+
+            problem_result["trajectory"] = std::move(trajectory_json);
+        }
+
+        output_json.push_back(std::move(problem_result));
     }
-    std::cout << "\n--- RRTC result ---" << std::endl;
-    std::cout << "solved: " << result.solved << std::endl;
-    std::cout << "cost: " << result.cost << std::endl;
-    std::cout << "iterations: " << result.iterations << std::endl;
-    std::cout << "nanoseconds: " << result.nanoseconds << std::endl;
-    std::cout << "tree sizes (start, goal): " << result.size[0] << ", " << result.size[1] << std::endl;
-    std::cout << "path size: " << result.path.size() << std::endl;
+
+    std::ofstream output_file(output_json_path);
+    if (not output_file)
+    {
+        std::cerr << "Failed to open output JSON file: " << output_json_path << std::endl;
+        return 1;
+    }
+    output_file << output_json.dump(2) << std::endl;
+
+    std::cout << "\nWrote " << output_json.size() << " planning result(s) to " << output_json_path << std::endl;
 
     return 0;
 }

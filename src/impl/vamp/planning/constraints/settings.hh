@@ -19,6 +19,13 @@ namespace vamp::planning::constraint
         // Step size along the projection gradient.
         float descend_rate = 1.F;
 
+        // Use a coupled Gauss-Newton projection step -- one solve on the stacked Jacobian of all
+        // constraints -- instead of the default block-Jacobi (each constraint steps independently).
+        // Quadratic vs linear convergence: far fewer iterations when constraints couple (e.g. a
+        // floating-base humanoid's feet/CoM/loops through the shared base). Overrides `method`
+        // (always Gauss-Newton). No effect for a single constraint.
+        bool coupled = false;
+
         // Convergence threshold on the squared constraint-violation error.
         float tolerance = 1e-6F;
 

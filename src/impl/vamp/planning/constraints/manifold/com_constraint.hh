@@ -120,6 +120,13 @@ namespace vamp::planning::constraint
             }
         }
 
+        // squared_error() left solve.err/solve.jac as the (intrinsically masked) polygon violation.
+        void stacked_cache(FloatVector<rake, 1> *err, FloatVector<rake, 1> *jac) const noexcept final
+        {
+            for (std::size_t i = 0; i < err_size; ++i) err[i] = solve.err[i];
+            for (std::size_t i = 0; i < jac_size; ++i) jac[i] = solve.jac[i];
+        }
+
     private:
         void evaluate(const Block &q) const noexcept
         {

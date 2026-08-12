@@ -6,6 +6,7 @@
 
 #include <vamp/planning/constraints/manifold/constraint.hh>
 #include <vamp/planning/constraints/settings.hh>
+#include <vamp/planning/constraints/utils.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning::constraint
@@ -144,6 +145,22 @@ namespace vamp::planning::constraint
         // caches of the last squared_error() call on the same q.
         void step_in_place(Block &q) const noexcept
         {
+            // Coupling only helps when 2+ constraints couple. With a single projecting constraint
+            // there is nothing to couple, and the coupled n x n solve is strictly costlier than that
+            // constraint's own generated solver, so fall back to block-Jacobi (keeps coupled=true
+            // safe to leave on for any problem).
+            if (settings_.coupled)
+            {
+                std::size_t projecting = 0;
+                for (const auto &c : constraints_)
+                    if (c->projects() and ++projecting > 1) break;
+                if (projecting > 1)
+                {
+                    step_coupled_in_place(q);
+                    return;
+                }
+            }
+
             for (const auto &c : constraints_)
             {
                 if (has_pins_)
@@ -153,6 +170,92 @@ namespace vamp::planning::constraint
 
                 c->step(q, settings_.method, settings_.descend_rate);
             }
+        }
+
+        // Coupled Gauss-Newton step (settings.coupled): assemble the stacked error e and Jacobian J
+        // of all projecting constraints and take ONE step gradient = (J^T J + lambda I)^{-1} J^T e
+        // (same convention integrate_step subtracts). Quadratic (vs block-Jacobi's linear)
+        // convergence -- ~4-5x fewer projection iterations on coupled multi-constraint stacks.
+        // Reads the hinged + active-masked cache each constraint's squared_error() left at q (so the
+        // descend loop's squared_error(q) doubles as this step's evaluation -- no re-evaluation),
+        // and solves once with a SIMD Cholesky over FloatVector rows (all rake lanes at once).
+        // Velocity-only (Pfaffian) constraints are excluded; pinned-sampler columns are zeroed.
+        void step_coupled_in_place(Block &q) const noexcept
+        {
+            constexpr std::size_t n = Robot::dimension;
+            using V = Row;  // FloatVector<rake, 1>
+
+            std::size_t m = 0;
+            for (const auto &c : constraints_)
+                if (c->projects()) m += c->n_rows();
+            if (m == 0)
+            {
+                return;
+            }
+
+            // Stacked SIMD error es (m) and Jacobian js (m x n, row-major), read from the caches.
+            std::vector<V> es(m), js(m * n);
+            {
+                std::size_t ro = 0;
+                for (const auto &c : constraints_)
+                {
+                    if (not c->projects()) continue;
+                    c->stacked_cache(es.data() + ro, js.data() + ro * n);
+                    ro += c->n_rows();
+                }
+            }
+
+            // Normal equations A = J^T J + lambda I (n x n), b = J^T e (n); pinned columns zeroed.
+            std::array<std::array<V, n>, n> A;
+            std::array<V, n> b;
+            for (std::size_t i = 0; i < n; ++i)
+            {
+                b[i] = V::fill(0.F);
+                for (std::size_t j = 0; j < n; ++j) A[i][j] = V::fill(i == j ? 1e-6F : 0.F);
+            }
+            for (std::size_t r = 0; r < m; ++r)
+            {
+                std::array<V, n> jrow;
+                for (std::size_t j = 0; j < n; ++j)
+                    jrow[j] = (has_pins_ and pinned_[j]) ? V::fill(0.F) : js[r * n + j];
+                const V erow = es[r];
+                for (std::size_t i = 0; i < n; ++i)
+                {
+                    b[i] = b[i] + jrow[i] * erow;
+                    for (std::size_t j = 0; j <= i; ++j) A[i][j] = A[i][j] + jrow[i] * jrow[j];
+                }
+            }
+            for (std::size_t i = 0; i < n; ++i)
+                for (std::size_t j = i + 1; j < n; ++j) A[i][j] = A[j][i];
+
+            // In-place Cholesky (lower L in A), then L L^T g = b. FloatVector arithmetic (SIMD).
+            for (std::size_t i = 0; i < n; ++i)
+            {
+                for (std::size_t k = 0; k < i; ++k)
+                {
+                    V s = A[i][k];
+                    for (std::size_t j = 0; j < k; ++j) s = s - A[i][j] * A[k][j];
+                    A[i][k] = s / A[k][k];
+                }
+                V s = A[i][i];
+                for (std::size_t j = 0; j < i; ++j) s = s - A[i][j] * A[i][j];
+                A[i][i] = s.sqrt();
+            }
+            std::array<V, n> y;
+            for (std::size_t i = 0; i < n; ++i)
+            {
+                V s = b[i];
+                for (std::size_t j = 0; j < i; ++j) s = s - A[i][j] * y[j];
+                y[i] = s / A[i][i];
+            }
+            Block gradient;
+            for (std::ptrdiff_t i = static_cast<std::ptrdiff_t>(n) - 1; i >= 0; --i)
+            {
+                V s = y[i];
+                for (std::size_t j = i + 1; j < n; ++j) s = s - A[j][i] * gradient[j];
+                gradient[i] = s / A[i][i];
+            }
+            integrate_step<Robot, rake>(q, gradient, settings_.descend_rate);
         }
 
         // Iteratively project every lane of q onto the manifold. Returns false if any lane

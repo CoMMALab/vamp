@@ -93,6 +93,13 @@ namespace vamp::planning::constraint
             }
         }
 
+        // Equality (loop-closure) rows: no hinge, always active. Read the squared_error() cache.
+        void stacked_cache(FloatVector<rake, 1> *err, FloatVector<rake, 1> *jac) const noexcept final
+        {
+            for (std::size_t i = 0; i < err_size; ++i) err[i] = solve.err[i];
+            for (std::size_t i = 0; i < jac_size; ++i) jac[i] = solve.jac[i];
+        }
+
     private:
         // Input layout of the generated closed_loop_error: just the configuration.
         struct Input

@@ -60,6 +60,25 @@ namespace vamp::planning::constraint
         {
         }
 
+        // Whether this constraint contributes a position error to manifold projection. Pfaffian
+        // (velocity-only) constraints do not -- their step() is a no-op -- so the coupled
+        // Gauss-Newton step (ConstraintSet::step_coupled_in_place) excludes them. Default: true.
+        virtual auto projects() const noexcept -> bool
+        {
+            return true;
+        }
+
+        // Append this constraint's cached SIMD error (n_rows() rows) and Jacobian (n_rows() x
+        // Robot::dimension, row-major) from the last squared_error() call to the stacked buffers,
+        // for the coupled Gauss-Newton step. The cache is already hinged + active-masked per this
+        // constraint's semantics (satisfied hinge rows dropped; equality rows kept), so it is read
+        // directly -- no re-evaluation, no re-masking. Default no-op (only projecting constraints
+        // override). Requires squared_error() to have run at the current q.
+        virtual void stacked_cache(
+            FloatVector<rake, 1> * /*err*/, FloatVector<rake, 1> * /*jac*/) const noexcept
+        {
+        }
+
         // Run the error/Jacobian kernel on the whole block, caching every lane for
         // extract_error_jacobian(). One evaluation serves all rake lanes, so batch callers
         // (chart construction over a block of samples) pay the kernel once instead of per
@@ -218,6 +237,13 @@ namespace vamp::planning::constraint
             {
                 jac[i] = solve.jac[{i, lane}];
             }
+        }
+
+        // squared_error() left solve.err hinged and solve.jac active-masked; read them directly.
+        void stacked_cache(FloatVector<rake, 1> *err, FloatVector<rake, 1> *jac) const noexcept final
+        {
+            for (std::size_t i = 0; i < err_size; ++i) err[i] = solve.err[i];
+            for (std::size_t i = 0; i < jac_size; ++i) jac[i] = solve.jac[i];
         }
 
     protected:

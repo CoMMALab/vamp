@@ -40,6 +40,13 @@ namespace vamp::planning::constraint
         {
         }
 
+        // Velocity-only: carries no position error, so it is excluded from the coupled
+        // Gauss-Newton projection step (as its step() is already a no-op for block-Jacobi).
+        auto projects() const noexcept -> bool final
+        {
+            return false;
+        }
+
         auto n_rows() const noexcept -> std::size_t final
         {
             return err_size;

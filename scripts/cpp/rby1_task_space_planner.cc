@@ -286,13 +286,18 @@ auto main(int argc, char **argv) -> int
 
 
     // --- Planning problems: start/goal pairs in ParameterizedSpace's task space, read from
-    // input_json_path. Expected format:
-    // {
-    //   "problems": [
-    //     { "start": [<ParameterizedSpace::dimension floats>], "goal": [<... floats>] },
-    //     ...
-    //   ]
-    // }
+    // input_json_path. Two formats are accepted:
+    //
+    // A bare array, each entry optionally carrying a "file" field for traceability back to
+    // whatever generated the problem (this is the current format, e.g.
+    // resources/ruby/problem_set_skipped_intermediate.json):
+    // [
+    //   { "file": <string>, "start": [<ParameterizedSpace::dimension floats>], "goal": [<... floats>] },
+    //   ...
+    // ]
+    //
+    // or the earlier { "problems": [...] } wrapper, with the same per-entry shape (minus
+    // "file"), kept for backward compatibility.
     std::ifstream input_file(input_json_path);
     if (not input_file)
     {
@@ -302,17 +307,24 @@ auto main(int argc, char **argv) -> int
 
     nlohmann::json input_json;
     input_file >> input_json;
-    const auto &problems_json = input_json.at("problems");
+    const auto &problems_json = input_json.is_array() ? input_json : input_json.at("problems");
 
     nlohmann::json output_json = nlohmann::json::array();
 
     for (std::size_t problem_index = 0; problem_index < problems_json.size(); ++problem_index)
     {
-        std::cout << "\n=== Planning problem " << problem_index << " ===" << std::endl;
-
         const auto &problem_json = problems_json[problem_index];
+        const auto file_field = problem_json.value("file", std::string());
+
+        std::cout << "\n=== Planning problem " << problem_index
+                   << (file_field.empty() ? "" : " (" + file_field + ")") << " ===" << std::endl;
+
         nlohmann::json problem_result;
         problem_result["index"] = problem_index;
+        if (not file_field.empty())
+        {
+            problem_result["file"] = file_field;
+        }
 
         const auto start_vec = problem_json.at("start").get<std::vector<float>>();
         const auto goal_vec = problem_json.at("goal").get<std::vector<float>>();

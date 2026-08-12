@@ -38,6 +38,11 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       Digit
       R2c6
     )
+
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/impl/vamp/robots/rby1.hh")
+      list(APPEND VAMP_ROBOT_MODULES rby1)
+      list(APPEND VAMP_ROBOT_STRUCTS RBY1)
+    endif()
   endif()
 
   foreach(robot ${VAMP_ROBOT_MODULES})

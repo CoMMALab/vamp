@@ -6,6 +6,7 @@
 
 #include <vamp/bindings/python/api_binder.hh>
 #include <vamp/bindings/python/array_helpers.hh>
+#include <vamp/bindings/python/parameterized_space_binder.hh>
 
 #include <vamp/collision/filter.hh>
 #include <vamp/collision/sphere_sphere.hh>
@@ -100,6 +101,7 @@ VAMP_DEFINE_ROBOT_FLAG(has_twist)
 // z-space sibling as a nested Flask struct.
 VAMP_DEFINE_HAS_TYPE(Ambient)
 VAMP_DEFINE_HAS_TYPE(Flask)
+VAMP_DEFINE_HAS_TYPE(ParameterizedSpace)
 
 // The is_same check rejects the injected-class-name: for the nested Flask struct itself,
 // T::Flask names T, which would otherwise recurse init_robot forever.
@@ -1362,6 +1364,26 @@ namespace vamp::binding
         if constexpr (has_set_radius_v<Robot>)
         {
             submodule.def("set_radius", &Robot::set_radius, "Set radius.");
+        }
+
+        // Robots with a ParameterizedSpace (a task-space parameterization that IK-resolves
+        // into this robot's own ambient Configuration space, e.g. RBY1) get task-space
+        // planning bound as a nested submodule (e.g. vamp.rby1.parameterized_space).
+        if constexpr (has_type_ParameterizedSpace_v<Robot>)
+        {
+            using PTraits = ParameterizedSpaceTraits<Robot>;
+
+            auto param_submodule =
+                submodule.def_submodule("parameterized_space", "Task-space planning submodule");
+
+            bind_sampler<PTraits>(param_submodule, "RNG");
+
+            auto param_path_k = bind_path_class<PTraits>(param_submodule, "Path");
+            bind_path_io<PTraits>(param_path_k);
+
+            bind_planning_result<PTraits>(param_submodule, "PlanningResult");
+
+            bind_parameterized_space_methods<PTraits>(param_submodule);
         }
 
         // FLASK z-space sibling generated as a nested struct: bind it as a nested

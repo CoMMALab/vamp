@@ -173,7 +173,7 @@ auto main(int argc, char **argv) -> int
     // SIZE   = (0.386, 0.264, 0.11)   # (lx, ly, lz) full box dimensions [m]
     // OFFSET = (-0.193, 0, -0.13)    # box centre in the ee frame; -z points past the fingers
     // RPY    = (0.0, 0.0, 0.0)      # box orientation in the ee frame [rad]
-    constexpr std::array<float, 3> box_size = {0.386F, 0.264F, 0.11F};
+    constexpr std::array<float, 3> box_size = {0.386F, 0.264F, 0.10F};
     constexpr std::array<float, 3> box_offset = {-0.193F, 0.0F, -0.13F};
 
     // RPY is zero, so the box is axis-aligned in the ee frame; approximate it with a grid of
@@ -221,21 +221,25 @@ auto main(int argc, char **argv) -> int
     environment.attachments.emplace_back(box_attachment);
 
     EnvironmentVector environment_v(environment);
+    std::cout << "Environment has " << environment_v.cuboids.size() << " cuboids, "
+              << environment_v.spheres.size() << " spheres, and " << environment_v.attachments.size()
+              << " attachments." << std::endl;
 
     // --- resolve_block() + fkcc() smoke test on a single hand-picked point.
-    std::array<float, ParameterizedSpace::dimension> state_array = {
-        0.00000000e+00,  0.00000000e+00,  1.00000000e+00, 0.00000000e+00,
-        -2.16360474e-03, 1.45860954e+00, -1.97468998e+00,  1.55147668e+00,  2.66302773e-01, -5.04128611e-01,
-        -0.3154F, 0.9617F,
-        0.5F, 0.0F, 0.92F, 0.0F, 0.0F, 0.0F, 1.0F  // t_mid_pose: x, y, z, qx, qy, qz, qw
-    };
+    ParameterizedSpace::StateArray state_array = {{
+        0.0, 0.0, 1.0, 0.0, 0.0207, -0.3034, 0.882, 1.1434, 0.0344, 0.0677, 0.1354, -0.0944, 0.553, 0.0073, 0.22, 0.0, 0.0, 0.0, 1.0
+    }};
 
+    std::cout << "\n--- Smoke test: Creating a state ---" << std::endl;
     ParameterizedSpace::State state(state_array.data());
+    std::cout << "\n--- Smoke test: resolve_block() + fkcc() ---" << std::endl;
     auto [valid, ambient_block] = resolve_and_report(state, "Smoke test", environment_v, false);
 
     if (valid)
     {
+        std::cout << "Smoke test resolved ambient configuration (lane 0): ";
         check_collision_free(ambient_block, "Smoke test", environment_v);
+        std::cout << std::endl;
     }
 
     // ----------------- CSPACE PLANNING START -----------------
@@ -339,8 +343,8 @@ auto main(int argc, char **argv) -> int
             continue;
         }
 
-        std::array<float, ParameterizedSpace::dimension> start_array;
-        std::array<float, ParameterizedSpace::dimension> goal_array;
+        ParameterizedSpace::StateArray start_array{};
+        ParameterizedSpace::StateArray goal_array{};
         std::copy(start_vec.begin(), start_vec.end(), start_array.begin());
         std::copy(goal_vec.begin(), goal_vec.end(), goal_array.begin());
 
@@ -349,6 +353,19 @@ auto main(int argc, char **argv) -> int
 
         const auto [start_valid, start_ambient] = resolve_and_report(start_state, "Start", environment_v, true);
         const auto [goal_valid, goal_ambient] = resolve_and_report(goal_state, "Goal", environment_v, true);
+
+        // print out the start and goal ambient configurations for debugging
+        // std::cout << "Start ambient configuration: ";
+        // for (std::size_t i = 0; i < Robot::dimension; ++i)
+        // {
+        //     std::cout << start_ambient[{i, 0}] << (i + 1 < Robot::dimension ? ", " : "\n");
+        // }
+        // std::cout << "Goal ambient configuration: ";
+        // for (std::size_t i = 0; i < Robot::dimension; ++i)
+        // {
+        //     std::cout << goal_ambient[{i, 0}] << (i + 1 < Robot::dimension ? ", " : "\n");
+        // }
+
         problem_result["start_valid"] = start_valid;
         problem_result["goal_valid"] = goal_valid;
 
@@ -375,6 +392,42 @@ auto main(int argc, char **argv) -> int
             continue;
         }
 
+        // Run TaskLocalPlanner's own resolve_and_check() (eef-collision prefilter + resolve_block
+        // + support-polygon stability + fkcc/fkcc_attach -- the same gauntlet every interpolated
+        // sample along the path will have to pass) against start/goal directly, so a failure here
+        // is caught before RRTC, rather than surfacing later as "no path found" with no cause.
+        ParameterizedSpace::StateBlock<rake> start_block;
+        ParameterizedSpace::StateBlock<rake> goal_block;
+        for (std::size_t i = 0; i < ParameterizedSpace::dimension; ++i)
+        {
+            start_block[i] = start_state.broadcast(i);
+            goal_block[i] = goal_state.broadcast(i);
+        }
+
+        const TaskLocalPlanner initial_condition_planner;
+        const bool start_satisfies_initial_conditions =
+            initial_condition_planner.resolve_and_check(start_block, environment_v);
+        const bool goal_satisfies_initial_conditions =
+            initial_condition_planner.resolve_and_check(goal_block, environment_v);
+
+        // std::cout << "Start satisfies initial conditions (resolve_and_check): "
+        //            << start_satisfies_initial_conditions << std::endl;
+        // std::cout << "Goal satisfies initial conditions (resolve_and_check): "
+        //            << goal_satisfies_initial_conditions << std::endl;
+
+        problem_result["start_satisfies_initial_conditions"] = start_satisfies_initial_conditions;
+        problem_result["goal_satisfies_initial_conditions"] = goal_satisfies_initial_conditions;
+
+        if (not start_satisfies_initial_conditions or not goal_satisfies_initial_conditions)
+        {
+            std::cout << "Start or goal fails resolve_and_check's initial-condition gauntlet; skipping RRTC."
+                       << std::endl;
+            problem_result["solved"] = false;
+            problem_result["error"] = "start or goal fails resolve_and_check's initial conditions";
+            output_json.push_back(std::move(problem_result));
+            continue;
+        }
+
         // --- RRTC over ParameterizedSpace, with ParameterizedLocalPlanner as the IK-resolving
         // local planner. NN<ParameterizedSpace> (the KD-tree) is built implicitly inside RRTC::solve
         // from ParameterizedSpace::dimension/so3_offsets -- nothing to construct by hand here.
@@ -384,20 +437,21 @@ auto main(int argc, char **argv) -> int
         // to +/-0.4 around the start pose, everything else (torso, psi, orientation) unrestricted.
         auto inner_rng = std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>();
         const std::array<float, 3> start_position = {start_array[12], start_array[13], start_array[14]};
-        auto rng = std::make_shared<RBY1FixedBaseSampler>(inner_rng, start_position, 0.4F);
+        auto rng = std::make_shared<RBY1FixedBaseSampler>(inner_rng, start_position, 1.25F);
         vamp::planning::RRTCSettings settings;
         settings.range = 0.25F;
+        settings.max_iterations = 1000000;
 
         auto result = TaskRRTC::solve<TaskLocalPlanner>(
             start_state, goal_state, environment_v, settings, rng, TaskLocalPlanner());
 
-        std::cout << "\n--- RRTC result ---" << std::endl;
+        // std::cout << "\n--- RRTC result ---" << std::endl;
         std::cout << "solved: " << result.solved << std::endl;
-        std::cout << "cost: " << result.cost << std::endl;
+        // std::cout << "cost: " << result.cost << std::endl;
         std::cout << "iterations: " << result.iterations << std::endl;
         std::cout << "nanoseconds: " << result.nanoseconds << std::endl;
-        std::cout << "tree sizes (start, goal): " << result.size[0] << ", " << result.size[1] << std::endl;
-        std::cout << "path size: " << result.path.size() << std::endl;
+        // std::cout << "tree sizes (start, goal): " << result.size[0] << ", " << result.size[1] << std::endl;
+        // std::cout << "path size: " << result.path.size() << std::endl;
 
         problem_result["solved"] = result.solved;
         problem_result["cost"] = result.cost;
@@ -418,9 +472,9 @@ auto main(int argc, char **argv) -> int
             vamp::planning::shortcut_path<Robot, rake, Robot::resolution, TaskLocalPlanner, ParameterizedSpace>(
                 result.path, environment_v, shortcut_settings, TaskLocalPlanner());
 
-            std::cout << "\n--- Shortcut result ---" << std::endl;
-            std::cout << "path size: " << result.path.size() << std::endl;
-            std::cout << "cost (before, after): " << cost_before_shortcut << ", " << result.path.cost() << std::endl;
+            // std::cout << "\n--- Shortcut result ---" << std::endl;
+            // std::cout << "path size: " << result.path.size() << std::endl;
+            // std::cout << "cost (before, after): " << cost_before_shortcut << ", " << result.path.cost() << std::endl;
 
             problem_result["shortcut_path_size"] = result.path.size();
             problem_result["shortcut_cost_before"] = cost_before_shortcut;

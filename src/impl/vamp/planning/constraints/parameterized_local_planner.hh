@@ -141,6 +141,18 @@ namespace vamp::planning::constraint
             return true;
         }
 
+        // Runs the same per-block checks validate_resolved() applies to every interpolated
+        // sample -- eef-collision prefilter, IK resolve_block, support-polygon stability, then
+        // fkcc/fkcc_attach -- against a single caller-supplied block. Exposed publicly so
+        // callers can sanity-check a start/goal state against every condition RRTC will
+        // eventually enforce along the path, not just resolvability and fkcc individually.
+        inline auto resolve_and_check(
+            const typename Space::template StateBlock<rake> &interp_block,
+            const Environment &environment) const noexcept -> bool
+        {
+            return resolve_and_check_impl(interp_block, environment);
+        }
+
     private:
         mutable std::vector<Configuration> chain_;
 
@@ -243,7 +255,7 @@ namespace vamp::planning::constraint
             auto t_block = percents;
             Space::template interpolate_block<rake>(start, goal, t_block, interp_block);
 
-            if (not resolve_and_check(interp_block, environment))
+            if (not resolve_and_check_impl(interp_block, environment))
             {
                 return false;
             }
@@ -258,7 +270,7 @@ namespace vamp::planning::constraint
                 t_block = t_block - t_step;
                 Space::template interpolate_block<rake>(start, goal, t_block, interp_block);
 
-                if (not resolve_and_check(interp_block, environment))
+                if (not resolve_and_check_impl(interp_block, environment))
                 {
                     return false;
                 }
@@ -267,7 +279,7 @@ namespace vamp::planning::constraint
             return true;
         }
 
-        inline auto resolve_and_check(
+        inline auto resolve_and_check_impl(
             const typename Space::template StateBlock<rake> &interp_block,
             const Environment &environment) const noexcept -> bool
         {
@@ -286,7 +298,6 @@ namespace vamp::planning::constraint
 
             if (not com_within_support_polygon(ambient_block))
             {
-                std::cout << "Center of mass outside support polygon; rejecting local path." << std::endl;
                 return false;
             }
 

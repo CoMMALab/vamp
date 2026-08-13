@@ -164346,7 +164346,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[3],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. base sphere 0" << std::endl;
                 return false;
             }
             
@@ -164358,7 +164357,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[7],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. base sphere 1" << std::endl;
                 return false;
             }
             
@@ -164370,7 +164368,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[11],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. base sphere 2" << std::endl;
                 return false;
             }
             
@@ -164382,7 +164379,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[15],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. base sphere 3" << std::endl;
                 return false;
             }
             
@@ -164394,7 +164390,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[19],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. base sphere 4" << std::endl;
                 return false;
             }
             
@@ -164406,7 +164401,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[23],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. base sphere 5" << std::endl;
                 return false;
             }
             
@@ -164418,7 +164412,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[27],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. base sphere 6" << std::endl;
                 return false;
             }
             
@@ -164446,7 +164439,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[31],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. wheel_l sphere 7" << std::endl;
                 return false;
             }
             
@@ -164474,7 +164466,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[35],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. lidar_mid360 sphere 8" << std::endl;
                 return false;
             }
             
@@ -164486,7 +164477,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[39],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. lidar_mid360 sphere 9" << std::endl;
                 return false;
             }
             
@@ -164498,7 +164488,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[43],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. lidar_mid360 sphere 10" << std::endl;
                 return false;
             }
             
@@ -164526,7 +164515,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[47],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. wheel_r sphere 11" << std::endl;
                 return false;
             }
             
@@ -164554,7 +164542,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[51],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_base sphere 12" << std::endl;
                 return false;
             }
             
@@ -164566,7 +164553,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[55],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_base sphere 13" << std::endl;
                 return false;
             }
             
@@ -164578,7 +164564,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[59],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_base sphere 14" << std::endl;
                 return false;
             }
             
@@ -164590,7 +164575,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[63],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_base sphere 15" << std::endl;
                 return false;
             }
             
@@ -164602,7 +164586,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[67],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_base sphere 16" << std::endl;
                 return false;
             }
             
@@ -164630,7 +164613,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[71],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_0 sphere 17" << std::endl;
                 return false;
             }
             
@@ -164642,7 +164624,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[75],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_0 sphere 18" << std::endl;
                 return false;
             }
             
@@ -164654,7 +164635,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[79],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_0 sphere 19" << std::endl;
                 return false;
             }
             
@@ -164666,7 +164646,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[83],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_0 sphere 20" << std::endl;
                 return false;
             }
             
@@ -164678,7 +164657,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[87],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_0 sphere 21" << std::endl;
                 return false;
             }
             
@@ -164706,7 +164684,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[91],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_1 sphere 22" << std::endl;
                 return false;
             }
             
@@ -164718,7 +164695,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[95],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_1 sphere 23" << std::endl;
                 return false;
             }
             
@@ -164730,7 +164706,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[99],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_1 sphere 24" << std::endl;
                 return false;
             }
             
@@ -164742,7 +164717,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[103],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_1 sphere 25" << std::endl;
                 return false;
             }
             
@@ -164754,7 +164728,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[107],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_1 sphere 26" << std::endl;
                 return false;
             }
             
@@ -164766,7 +164739,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[111],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_1 sphere 27" << std::endl;
                 return false;
             }
             
@@ -164778,7 +164750,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[115],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_1 sphere 28" << std::endl;
                 return false;
             }
             
@@ -164806,7 +164777,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[119],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_2 sphere 29" << std::endl;
                 return false;
             }
             
@@ -164818,7 +164788,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[123],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_2 sphere 30" << std::endl;
                 return false;
             }
             
@@ -164830,7 +164799,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[127],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_2 sphere 31" << std::endl;
                 return false;
             }
             
@@ -164842,7 +164810,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[131],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_2 sphere 32" << std::endl;
                 return false;
             }
             
@@ -164854,7 +164821,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[135],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_2 sphere 33" << std::endl;
                 return false;
             }
             
@@ -164866,7 +164832,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[139],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_2 sphere 34" << std::endl;
                 return false;
             }
             
@@ -164878,7 +164843,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[143],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_2 sphere 35" << std::endl;
                 return false;
             }
             
@@ -164890,7 +164854,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[147],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_2 sphere 36" << std::endl;
                 return false;
             }
             
@@ -164918,7 +164881,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[151],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_4 sphere 37" << std::endl;
                 return false;
             }
             
@@ -164930,7 +164892,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[155],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_4 sphere 38" << std::endl;
                 return false;
             }
             
@@ -164942,7 +164903,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[159],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_4 sphere 39" << std::endl;
                 return false;
             }
             
@@ -164954,7 +164914,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[163],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_4 sphere 40" << std::endl;
                 return false;
             }
             
@@ -164966,7 +164925,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[167],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_4 sphere 41" << std::endl;
                 return false;
             }
             
@@ -164978,7 +164936,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[171],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_4 sphere 42" << std::endl;
                 return false;
             }
             
@@ -165006,7 +164963,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[175],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_5 sphere 43" << std::endl;
                 return false;
             }
             
@@ -165018,7 +164974,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[179],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_5 sphere 44" << std::endl;
                 return false;
             }
             
@@ -165030,7 +164985,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[183],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_5 sphere 45" << std::endl;
                 return false;
             }
             
@@ -165042,7 +164996,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[187],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_5 sphere 46" << std::endl;
                 return false;
             }
             
@@ -165054,7 +165007,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[191],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_torso_5 sphere 47" << std::endl;
                 return false;
             }
             
@@ -165082,7 +165034,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[195],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_head_0 sphere 48" << std::endl;
                 return false;
             }
             
@@ -165094,7 +165045,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[199],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_head_0 sphere 49" << std::endl;
                 return false;
             }
             
@@ -165106,7 +165056,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[203],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_head_0 sphere 50" << std::endl;
                 return false;
             }
             
@@ -165118,7 +165067,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[207],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_head_0 sphere 51" << std::endl;
                 return false;
             }
             
@@ -165130,7 +165078,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[211],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_head_0 sphere 52" << std::endl;
                 return false;
             }
             
@@ -165158,7 +165105,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[215],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_left_arm_0 sphere 53" << std::endl;
                 return false;
             }
             
@@ -165186,7 +165132,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[219],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_left_arm_1 sphere 54" << std::endl;
                 return false;
             }
             
@@ -165198,7 +165143,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[223],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_left_arm_1 sphere 55" << std::endl;
                 return false;
             }
             
@@ -165226,7 +165170,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[227],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_left_arm_2 sphere 56" << std::endl;
                 return false;
             }
             
@@ -165254,7 +165197,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[231],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_left_arm_3 sphere 57" << std::endl;
                 return false;
             }
             
@@ -165266,7 +165208,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[235],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_left_arm_3 sphere 58" << std::endl;
                 return false;
             }
             
@@ -165294,7 +165235,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[239],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_left_arm_4 sphere 59" << std::endl;
                 return false;
             }
             
@@ -165322,7 +165262,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[283],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_right_arm_0 sphere 70" << std::endl;
                 return false;
             }
             
@@ -165350,7 +165289,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[287],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_right_arm_1 sphere 71" << std::endl;
                 return false;
             }
             
@@ -165362,7 +165300,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[291],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_right_arm_1 sphere 72" << std::endl;
                 return false;
             }
             
@@ -165390,7 +165327,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[295],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_right_arm_2 sphere 73" << std::endl;
                 return false;
             }
             
@@ -165418,7 +165354,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[299],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_right_arm_3 sphere 74" << std::endl;
                 return false;
             }
             
@@ -165430,7 +165365,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[303],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_right_arm_3 sphere 75" << std::endl;
                 return false;
             }
             
@@ -165458,7 +165392,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[307],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_right_arm_4 sphere 76" << std::endl;
                 return false;
             }
             
@@ -165486,7 +165419,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[311],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_right_arm_5 sphere 77" << std::endl;
                 return false;
             }
             
@@ -165514,7 +165446,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[315],
                                                             1)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_right_arm_6 sphere 78" << std::endl;
                 return false;
             }
             
@@ -165526,7 +165457,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[319],
                                                             1)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_right_arm_6 sphere 79" << std::endl;
                 return false;
             }
             
@@ -165554,7 +165484,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[323],
                                                             1)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. FT_sensor_R sphere 80" << std::endl;
                 return false;
             }
             
@@ -165582,7 +165511,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[327],
                                                             1)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. right_ee_body sphere 81" << std::endl;
                 return false;
             }
             
@@ -165594,7 +165522,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[331],
                                                             1)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. right_ee_body sphere 82" << std::endl;
                 return false;
             }
             
@@ -165622,7 +165549,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[335],
                                                             1)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. right_ee_finger_1 sphere 83" << std::endl;
                 return false;
             }
             
@@ -165650,7 +165576,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[339],
                                                             1)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. right_ee_finger_2 sphere 84" << std::endl;
                 return false;
             }
             
@@ -165678,7 +165603,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[343],
                                                             1)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_right_arm_camera sphere 85" << std::endl;
                 return false;
             }
             
@@ -165690,7 +165614,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[347],
                                                             1)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_left vs. link_right_arm_camera sphere 86" << std::endl;
                 return false;
             }
             
@@ -165722,7 +165645,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[3],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. base sphere 0" << std::endl;
                 return false;
             }
             
@@ -165734,7 +165656,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[7],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. base sphere 1" << std::endl;
                 return false;
             }
             
@@ -165746,7 +165667,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[11],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. base sphere 2" << std::endl;
                 return false;
             }
             
@@ -165758,7 +165678,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[15],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. base sphere 3" << std::endl;
                 return false;
             }
             
@@ -165770,7 +165689,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[19],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. base sphere 4" << std::endl;
                 return false;
             }
             
@@ -165782,7 +165700,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[23],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. base sphere 5" << std::endl;
                 return false;
             }
             
@@ -165794,7 +165711,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[27],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. base sphere 6" << std::endl;
                 return false;
             }
             
@@ -165822,7 +165738,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[31],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. wheel_l sphere 7" << std::endl;
                 return false;
             }
             
@@ -165850,7 +165765,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[35],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. lidar_mid360 sphere 8" << std::endl;
                 return false;
             }
             
@@ -165862,7 +165776,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[39],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. lidar_mid360 sphere 9" << std::endl;
                 return false;
             }
             
@@ -165874,7 +165787,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[43],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. lidar_mid360 sphere 10" << std::endl;
                 return false;
             }
             
@@ -165902,7 +165814,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[47],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. wheel_r sphere 11" << std::endl;
                 return false;
             }
             
@@ -165930,7 +165841,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[51],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_base sphere 12" << std::endl;
                 return false;
             }
             
@@ -165942,7 +165852,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[55],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_base sphere 13" << std::endl;
                 return false;
             }
             
@@ -165954,7 +165863,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[59],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_base sphere 14" << std::endl;
                 return false;
             }
             
@@ -165966,7 +165874,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[63],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_base sphere 15" << std::endl;
                 return false;
             }
             
@@ -165978,7 +165885,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[67],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_base sphere 16" << std::endl;
                 return false;
             }
             
@@ -166006,7 +165912,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[71],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_0 sphere 17" << std::endl;
                 return false;
             }
             
@@ -166018,7 +165923,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[75],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_0 sphere 18" << std::endl;
                 return false;
             }
             
@@ -166030,7 +165934,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[79],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_0 sphere 19" << std::endl;
                 return false;
             }
             
@@ -166042,7 +165945,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[83],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_0 sphere 20" << std::endl;
                 return false;
             }
             
@@ -166054,7 +165956,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[87],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_0 sphere 21" << std::endl;
                 return false;
             }
             
@@ -166082,7 +165983,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[91],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_1 sphere 22" << std::endl;
                 return false;
             }
             
@@ -166094,7 +165994,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[95],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_1 sphere 23" << std::endl;
                 return false;
             }
             
@@ -166106,7 +166005,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[99],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_1 sphere 24" << std::endl;
                 return false;
             }
             
@@ -166118,7 +166016,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[103],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_1 sphere 25" << std::endl;
                 return false;
             }
             
@@ -166130,7 +166027,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[107],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_1 sphere 26" << std::endl;
                 return false;
             }
             
@@ -166142,7 +166038,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[111],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_1 sphere 27" << std::endl;
                 return false;
             }
             
@@ -166154,7 +166049,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[115],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_1 sphere 28" << std::endl;
                 return false;
             }
             
@@ -166182,7 +166076,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[119],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_2 sphere 29" << std::endl;
                 return false;
             }
             
@@ -166194,7 +166087,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[123],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_2 sphere 30" << std::endl;
                 return false;
             }
             
@@ -166206,7 +166098,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[127],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_2 sphere 31" << std::endl;
                 return false;
             }
             
@@ -166218,7 +166109,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[131],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_2 sphere 32" << std::endl;
                 return false;
             }
             
@@ -166230,7 +166120,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[135],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_2 sphere 33" << std::endl;
                 return false;
             }
             
@@ -166242,7 +166131,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[139],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_2 sphere 34" << std::endl;
                 return false;
             }
             
@@ -166254,7 +166142,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[143],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_2 sphere 35" << std::endl;
                 return false;
             }
             
@@ -166266,7 +166153,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[147],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_2 sphere 36" << std::endl;
                 return false;
             }
             
@@ -166294,7 +166180,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[151],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_4 sphere 37" << std::endl;
                 return false;
             }
             
@@ -166306,7 +166191,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[155],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_4 sphere 38" << std::endl;
                 return false;
             }
             
@@ -166318,7 +166202,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[159],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_4 sphere 39" << std::endl;
                 return false;
             }
             
@@ -166330,7 +166213,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[163],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_4 sphere 40" << std::endl;
                 return false;
             }
             
@@ -166342,7 +166224,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[167],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_4 sphere 41" << std::endl;
                 return false;
             }
             
@@ -166354,7 +166235,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[171],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_4 sphere 42" << std::endl;
                 return false;
             }
             
@@ -166382,7 +166262,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[175],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_5 sphere 43" << std::endl;
                 return false;
             }
             
@@ -166394,7 +166273,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[179],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_5 sphere 44" << std::endl;
                 return false;
             }
             
@@ -166406,7 +166284,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[183],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_5 sphere 45" << std::endl;
                 return false;
             }
             
@@ -166418,7 +166295,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[187],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_5 sphere 46" << std::endl;
                 return false;
             }
             
@@ -166430,7 +166306,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[191],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_torso_5 sphere 47" << std::endl;
                 return false;
             }
             
@@ -166458,7 +166333,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[195],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_head_0 sphere 48" << std::endl;
                 return false;
             }
             
@@ -166470,7 +166344,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[199],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_head_0 sphere 49" << std::endl;
                 return false;
             }
             
@@ -166482,7 +166355,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[203],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_head_0 sphere 50" << std::endl;
                 return false;
             }
             
@@ -166494,7 +166366,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[207],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_head_0 sphere 51" << std::endl;
                 return false;
             }
             
@@ -166506,7 +166377,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[211],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_head_0 sphere 52" << std::endl;
                 return false;
             }
             
@@ -166534,7 +166404,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[215],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_left_arm_0 sphere 53" << std::endl;
                 return false;
             }
             
@@ -166562,7 +166431,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[219],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_left_arm_1 sphere 54" << std::endl;
                 return false;
             }
             
@@ -166574,7 +166442,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[223],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_left_arm_1 sphere 55" << std::endl;
                 return false;
             }
             
@@ -166602,7 +166469,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[227],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_left_arm_2 sphere 56" << std::endl;
                 return false;
             }
             
@@ -166630,7 +166496,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[231],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_left_arm_3 sphere 57" << std::endl;
                 return false;
             }
             
@@ -166642,7 +166507,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[235],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_left_arm_3 sphere 58" << std::endl;
                 return false;
             }
             
@@ -166670,7 +166534,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[239],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_left_arm_4 sphere 59" << std::endl;
                 return false;
             }
             
@@ -166698,7 +166561,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[243],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_left_arm_5 sphere 60" << std::endl;
                 return false;
             }
             
@@ -166726,7 +166588,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[247],
                                                             0)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_left_arm_6 sphere 61" << std::endl;
                 return false;
             }
             
@@ -166738,7 +166599,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[251],
                                                             0)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_left_arm_6 sphere 62" << std::endl;
                 return false;
             }
             
@@ -166766,7 +166626,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[255],
                                                             0)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. FT_sensor_L sphere 63" << std::endl;
                 return false;
             }
             
@@ -166794,7 +166653,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[259],
                                                             0)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. left_ee_body sphere 64" << std::endl;
                 return false;
             }
             
@@ -166806,7 +166664,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[263],
                                                             0)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. left_ee_body sphere 65" << std::endl;
                 return false;
             }
             
@@ -166834,7 +166691,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[267],
                                                             0)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. left_ee_finger_1 sphere 66" << std::endl;
                 return false;
             }
             
@@ -166862,7 +166718,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[271],
                                                             0)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. left_ee_finger_2 sphere 67" << std::endl;
                 return false;
             }
             
@@ -166890,7 +166745,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[275],
                                                             0)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_left_arm_camera sphere 68" << std::endl;
                 return false;
             }
             
@@ -166902,7 +166756,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[279],
                                                             0)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_left_arm_camera sphere 69" << std::endl;
                 return false;
             }
             
@@ -166930,7 +166783,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[283],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_right_arm_0 sphere 70" << std::endl;
                 return false;
             }
             
@@ -166958,7 +166810,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[287],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_right_arm_1 sphere 71" << std::endl;
                 return false;
             }
             
@@ -166970,7 +166821,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[291],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_right_arm_1 sphere 72" << std::endl;
                 return false;
             }
             
@@ -166998,7 +166848,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[295],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_right_arm_2 sphere 73" << std::endl;
                 return false;
             }
             
@@ -167026,7 +166875,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[299],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_right_arm_3 sphere 74" << std::endl;
                 return false;
             }
             
@@ -167038,7 +166886,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[303],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_right_arm_3 sphere 75" << std::endl;
                 return false;
             }
             
@@ -167066,7 +166913,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                                                             y[307],
                                                             std::nullopt)) [[unlikely]]
             {
-                std::cout << "attachment vs. robot collision: ee_right vs. link_right_arm_4 sphere 76" << std::endl;
                 return false;
             }
             

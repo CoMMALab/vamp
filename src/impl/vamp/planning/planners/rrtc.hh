@@ -65,30 +65,30 @@ namespace vamp::planning
 
             auto start_time = std::chrono::steady_clock::now();
 
-            // constexpr auto unbounded = [] { return std::numeric_limits<float>::infinity(); };
+            constexpr auto unbounded = [] { return std::numeric_limits<float>::infinity(); };
 
-            // for (const auto &goal : goals)
-            // {
-            //     const auto direct = lp.connect_within(
-            //         start, goal, environment, unbounded, std::numeric_limits<std::size_t>::max());
-            //     if (direct.status == SteerStatus::Reached)
-            //     {
-            //         result.path.emplace_back(start);
-            //         for (const auto &c : direct.waypoints)
-            //         {
-            //             result.path.emplace_back(c);
-            //         }
-            //         result.path.emplace_back(goal);
-            //         result.solved = true;
-            //         result.cost = result.path.cost();
-            //         result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
-            //         result.iterations = 0;
-            //         result.size.emplace_back(1);
-            //         result.size.emplace_back(1);
+            for (const auto &goal : goals)
+            {
+                const auto direct = lp.connect_within(
+                    start, goal, environment, unbounded, std::numeric_limits<std::size_t>::max());
+                if (direct.status == SteerStatus::Reached)
+                {
+                    result.path.emplace_back(start);
+                    for (const auto &c : direct.waypoints)
+                    {
+                        result.path.emplace_back(c);
+                    }
+                    result.path.emplace_back(goal);
+                    result.solved = true;
+                    result.cost = result.path.cost();
+                    result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
+                    result.iterations = 0;
+                    result.size.emplace_back(1);
+                    result.size.emplace_back(1);
 
-            //         return result;
-            //     }
-            // }
+                    return result;
+                }
+            }
 
             // trees
             bool tree_a_is_start = not settings.start_tree_first;

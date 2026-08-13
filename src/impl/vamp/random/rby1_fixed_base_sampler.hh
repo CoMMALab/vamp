@@ -47,7 +47,8 @@ namespace vamp::rng
         inline auto next() noexcept -> ParameterizedSpace::State override
         {
             auto sample = inner->next();
-            auto y = sample.to_array();
+            ParameterizedSpace::StateBuffer y;
+            sample.to_array(y.data());
 
             // base: fixed at the origin (x, y, cos(rz), sin(rz)).
             y[0] = 0.0F;

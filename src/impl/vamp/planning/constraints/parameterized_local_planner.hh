@@ -17,19 +17,21 @@ namespace vamp::planning::constraint
 {
     namespace detail
     {
-        // Detects whether Space exposes a compute_com(Ambient::ConfigurationArray) static
+        // Detects whether Space exposes a compute_com(Ambient::ConfigurationBlock<rake>) static
         // utility (currently only RBY1::ParameterizedSpace does); guards the static-stability
         // check below so ParameterizedLocalPlanner stays usable for Spaces without one.
-        template <typename Space, typename = void>
+        template <typename Space, std::size_t rake, typename = void>
         struct has_compute_com : std::false_type
         {
         };
 
-        template <typename Space>
+        template <typename Space, std::size_t rake>
         struct has_compute_com<
             Space,
-            std::void_t<decltype(Space::compute_com(
-                std::declval<const typename Space::Ambient::ConfigurationArray &>()))>> : std::true_type
+            rake,
+            std::void_t<decltype(Space::template compute_com<rake>(
+                std::declval<const typename Space::Ambient::template ConfigurationBlock<rake> &>()))>>
+            : std::true_type
         {
         };
     }  // namespace detail
@@ -166,55 +168,46 @@ namespace vamp::planning::constraint
             {-0.248686F, -0.066310F},  // right caster
         }};
 
-        // Even-odd (crossing-number) point-in-polygon test; robust to either vertex winding.
-        static inline auto point_in_support_polygon(float x, float y) noexcept -> bool
+        static inline auto point_in_support_polygon(FloatVector<rake> x, FloatVector<rake> y) noexcept -> bool
         {
-            bool inside = false;
+            using V = FloatVector<rake>;
+
+            V inside = V::zero_vector();
             for (std::size_t i = 0, j = support_polygon_xy.size() - 1; i < support_polygon_xy.size(); j = i++)
             {
                 const auto &pi = support_polygon_xy[i];
                 const auto &pj = support_polygon_xy[j];
-                const bool crosses = (pi[1] > y) != (pj[1] > y) and
-                                     x < (pj[0] - pi[0]) * (y - pi[1]) / (pj[1] - pi[1]) + pi[0];
-                if (crosses)
-                {
-                    inside = not inside;
-                }
+
+                const V pi_y(pi[1]);
+                const V pj_y(pj[1]);
+                const V crosses_y = (pi_y > y) ^ (pj_y > y);
+                const V slope((pj[0] - pi[0]) / (pj[1] - pi[1]));
+                const V x_at_y = V(pi[0]) + slope * (y - pi_y);
+
+                inside = inside ^ (crosses_y & (x < x_at_y));
             }
 
-            return inside;
+            return inside.all();
         }
 
         // Checks that every lane's center of mass (in the base-local frame Space::compute_com
-        // returns) lies within the static support polygon. No-op (always true) for Spaces
+        // returns) lies within the static support polygon. compute_com is batched over the
+        // whole block directly, and the polygon test itself is vectorized over lanes, so there
+        // is no per-lane splitting anywhere in this check. No-op (always true) for Spaces
         // without a compute_com utility.
         template <typename S = Space>
         static inline auto com_within_support_polygon(
             const typename Ambient::template ConfigurationBlock<rake> &block) noexcept
-            -> std::enable_if_t<detail::has_compute_com<S>::value, bool>
+            -> std::enable_if_t<detail::has_compute_com<S, rake>::value, bool>
         {
-            for (std::size_t lane = 0; lane < rake; ++lane)
-            {
-                typename Ambient::ConfigurationArray q;
-                for (std::size_t i = 0; i < Ambient::dimension; ++i)
-                {
-                    q[i] = block[{i, lane}];
-                }
-
-                const auto com = S::compute_com(q);
-                if (not point_in_support_polygon(com[0], com[1]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            const auto com = S::template compute_com<rake>(block);
+            return point_in_support_polygon(com[0], com[1]);
         }
 
         template <typename S = Space>
         static inline auto com_within_support_polygon(
             const typename Ambient::template ConfigurationBlock<rake> &) noexcept
-            -> std::enable_if_t<not detail::has_compute_com<S>::value, bool>
+            -> std::enable_if_t<not detail::has_compute_com<S, rake>::value, bool>
         {
             return true;
         }

@@ -167181,13 +167181,65 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
 
         // GCP (branch) selectors for each rainbow arm's redundant self-motion manifold:
         // (elbow_sel, shoulder_sel, wrist_sel) -- see RainbowLeftArmParameterization /
-        // RainbowRightArmParameterization in rainbow_arm_parameterization.hh. Fixed for the
-        // whole planning problem (not part of State), so param_ik_code reads these class
-        // members directly by name (`left_gcp[i]` / `right_gcp[i]`) instead of taking them as
-        // part of resolve_block's input. Overwrite directly, e.g. from a binding as
-        // `robot.parameterized.left_gcp = [...]`.
-        inline static thread_local std::array<float, 3> left_gcp = {0.0f, 1.0f, 1.0f};
-        inline static thread_local std::array<float, 3> right_gcp = {0.0f, 1.0f, 1.0f};
+        // RainbowRightArmParameterization in rainbow_arm_parameterization.hh. Not part of
+        // State, so param_ik_code reads these class members directly by name (`left_gcp[i]` /
+        // `right_gcp[i]`) instead of taking them as part of resolve_block's input. Stored as a
+        // FloatVector (one lane per rake slot) rather than a single scalar triple, so a lane
+        // can hold its own branch -- the "same task-space state, many GCP candidates" sweep
+        // (set_gcp_lanes below, paired with resolve_block_mask) -- as well as the "many
+        // states, one shared branch" mode (set_gcp below) every other resolve_block caller
+        // uses. param_ik_code's generated `V(left_gcp[0])`-style wrapping is just a copy in
+        // this case (its operand is already a FloatVector), not a scalar broadcast. Fixed at
+        // vamp::FloatVectorWidth: resolve_block/resolve_block_mask are, in practice, only ever
+        // instantiated at rake == vamp::FloatVectorWidth (every caller in the codebase derives
+        // its `rake` from that constant), so there is no need to carry a separate width per
+        // instantiation. Don't overwrite directly; go through set_gcp/set_gcp_lanes so every
+        // lane stays consistent.
+        inline static thread_local std::array<FloatVector<vamp::FloatVectorWidth, 1>, 3> left_gcp = {
+            FloatVector<vamp::FloatVectorWidth, 1>::fill(0.0f),
+            FloatVector<vamp::FloatVectorWidth, 1>::fill(1.0f),
+            FloatVector<vamp::FloatVectorWidth, 1>::fill(1.0f)};
+        inline static thread_local std::array<FloatVector<vamp::FloatVectorWidth, 1>, 3> right_gcp = {
+            FloatVector<vamp::FloatVectorWidth, 1>::fill(0.0f),
+            FloatVector<vamp::FloatVectorWidth, 1>::fill(1.0f),
+            FloatVector<vamp::FloatVectorWidth, 1>::fill(1.0f)};
+
+        // Set the same GCP branch for every lane: the "many task-space states, one shared
+        // branch" mode ParameterizedLocalPlanner/resolve_and_check use while extending the
+        // tree, where the whole planning problem is meant to stay on a single branch. `left`/
+        // `right` are each (elbow_sel, shoulder_sel, wrist_sel).
+        static inline void set_gcp(const std::array<float, 3> &left, const std::array<float, 3> &right) noexcept
+        {
+            for (std::size_t k = 0; k < 3; ++k)
+            {
+                left_gcp[k] = FloatVector<vamp::FloatVectorWidth, 1>::fill(left[k]);
+                right_gcp[k] = FloatVector<vamp::FloatVectorWidth, 1>::fill(right[k]);
+            }
+        }
+
+        // Set a distinct GCP branch per lane: the "one (broadcast) task-space state, many GCP
+        // candidates" sweep mode -- pair with resolve_block_mask below to test up to
+        // vamp::FloatVectorWidth branch candidates for the same state in a single call, e.g.
+        // to pick a branch for the start state before locking it in with set_gcp and running
+        // RRTC.
+        static inline void set_gcp_lanes(
+            const std::array<std::array<float, 3>, vamp::FloatVectorWidth> &left,
+            const std::array<std::array<float, 3>, vamp::FloatVectorWidth> &right) noexcept
+        {
+            for (std::size_t k = 0; k < 3; ++k)
+            {
+                std::array<float, vamp::FloatVectorWidth> lc{};
+                std::array<float, vamp::FloatVectorWidth> rc{};
+                for (std::size_t lane = 0; lane < vamp::FloatVectorWidth; ++lane)
+                {
+                    lc[lane] = left[lane][k];
+                    rc[lane] = right[lane][k];
+                }
+
+                left_gcp[k] = FloatVector<vamp::FloatVectorWidth, 1>(lc);
+                right_gcp[k] = FloatVector<vamp::FloatVectorWidth, 1>(rc);
+            }
+        }
 
         // Fixed per-planning-problem SE3 offsets from the mid-frame T_mid to each hand (x, y,
         // z, qx, qy, qz, qw): T_l = T_mid * t_mid_left, T_r = T_mid * t_mid_right. Not part of
@@ -167755,13 +167807,19 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                 ql.x(), ql.y(), ql.z(), ql.w()};
         }
 
-        // World-frame center-of-mass position for a reference whole-body configuration `q`.
-        // Scalar (non-rake) utility, same call pattern as compute_mid_pose above; traced with
-        // compute_jac=false so no Jacobian rows are computed or emitted.
-        static inline auto compute_com(const Ambient::ConfigurationArray &q) noexcept -> std::array<float, 3>
+        // World-frame center-of-mass position for a configuration block. Templated on rake,
+        // like eef_world_poses below, rather than taking a scalar ConfigurationArray: the
+        // underlying FK/CoM tape (see trace_com_jacobian, traced with compute_jac=false) is
+        // branch-free, so -- same reasoning as RainbowEefWorldPosesFromMidCG's header comment
+        // in rainbow_ik_cg.hh -- the "c++"-generated arithmetic is valid unchanged whether V is
+        // `float` (rake == 1) or a batched FloatVector<rake, 1>; no "c++_block" variant needed.
+        template <std::size_t rake>
+        static inline auto compute_com(const Ambient::ConfigurationBlock<rake> &q) noexcept
+            -> std::array<FloatVector<rake, 1>, 3>
         {
-            std::array<float, 26> v;
-            std::array<float, 3> y;
+            using V = FloatVector<rake, 1>;
+            std::array<V, 26> v;
+            std::array<V, 3> y;
             const auto &x = q;
 
                v[0] = cos(x[5]);
@@ -168866,6 +168924,606 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
             
 
             return {true, q};
+        }
+
+        // Per-lane variant of resolve_block: instead of collapsing validity across the whole
+        // block into a single bool (resolve_block's "every lane must resolve" contract, the
+        // one edge interpolation wants), returns a per-lane validity mask -- for the "one
+        // (broadcast) task-space state, many GCP candidates" sweep (see set_gcp_lanes above):
+        // each lane can carry a different left_gcp/right_gcp, and callers need to know *which*
+        // lanes resolved, not just whether every one of them did. Same validity conditions as
+        // resolve_block (zero reach_violation, ambient q within joint limits), just
+        // accumulated into a mask instead of short-circuiting. Requires rake ==
+        // vamp::FloatVectorWidth, same reason as resolve_block.
+        template <std::size_t rake>
+        static inline auto resolve_block_mask(const StateBlock<rake> &x) noexcept
+            -> std::pair<FloatVector<rake, 1>, Ambient::ConfigurationBlock<rake>>
+        {
+            using V = FloatVector<rake, 1>;
+
+            std::array<V, 4> base{x[0], x[1], x[2], x[3]};
+            std::array<V, 6> torso{x[4], x[5], x[6], x[7], x[8], x[9]};
+            const auto psi_left = x[10];
+            const auto psi_right = x[11];
+            std::array<V, 7> t_mid_pose{x[12], x[13], x[14], x[15], x[16], x[17], x[18]};
+
+            FloatVector<rake, 59> v;
+            Ambient::ConfigurationBlock<rake> q;
+            FloatVector<rake, 3> u_left;
+            FloatVector<rake, 1> reach_violation_left;
+            FloatVector<rake, 1> loss_left;
+            FloatVector<rake, 3> u_right;
+            FloatVector<rake, 1> reach_violation_right;
+            FloatVector<rake, 1> loss_right;
+
+               v[0] = - base[3];
+   v[1] = cos(torso[0]);
+   v[2] = v[0] * v[1];
+   v[3] = sin(torso[4]);
+   v[4] = - v[3];
+   v[5] = cos(torso[1]);
+   v[6] = sin(torso[0]);
+   v[7] = - v[6];
+   v[0] = v[0] * v[7];
+   v[8] = sin(torso[1]);
+   v[9] = - v[8];
+   v[10] = base[2] * v[5] + v[0] * v[9];
+   v[11] = cos(torso[2]);
+   v[0] = base[2] * v[8] + v[0] * v[5];
+   v[12] = sin(torso[2]);
+   v[13] = - v[12];
+   v[14] = v[10] * v[11] + v[0] * v[13];
+   v[15] = sin(torso[3]);
+   v[10] = v[10] * v[12] + v[0] * v[11];
+   v[16] = cos(torso[3]);
+   v[17] = v[14] * v[15] + v[10] * v[16];
+   v[18] = cos(torso[4]);
+   v[19] = v[2] * v[4] + v[17] * v[18];
+   v[20] = 2. * t_mid_pose[4];
+   v[21] = v[20] * t_mid_pose[4];
+   v[22] = 2. * t_mid_pose[5];
+   v[23] = v[22] * t_mid_pose[5];
+   v[24] = 1. - (v[21] + v[23]);
+   v[25] = 2. * t_mid_left[5];
+   v[26] = v[25] * t_mid_left[3];
+   v[27] = 2. * t_mid_left[4];
+   v[28] = v[27] * t_mid_left[6];
+   v[29] = v[26] + v[28];
+   v[30] = v[20] * t_mid_pose[3];
+   v[31] = v[22] * t_mid_pose[6];
+   v[32] = v[30] - v[31];
+   v[33] = v[25] * t_mid_left[4];
+   v[34] = 2. * t_mid_left[3];
+   v[35] = v[34] * t_mid_left[6];
+   v[36] = v[33] - v[35];
+   v[37] = v[22] * t_mid_pose[3];
+   v[20] = v[20] * t_mid_pose[6];
+   v[38] = v[37] + v[20];
+   v[34] = v[34] * t_mid_left[3];
+   v[39] = v[27] * t_mid_left[4];
+   v[40] = 1. - (v[34] + v[39]);
+   v[41] = v[24] * v[29] + v[32] * v[36] + v[38] * v[40];
+   v[42] = base[2] * v[1];
+   v[7] = base[2] * v[7];
+   v[43] = base[3] * v[5] + v[7] * v[9];
+   v[7] = base[3] * v[8] + v[7] * v[5];
+   v[8] = v[43] * v[11] + v[7] * v[13];
+   v[43] = v[43] * v[12] + v[7] * v[11];
+   v[44] = v[8] * v[15] + v[43] * v[16];
+   v[45] = v[42] * v[4] + v[44] * v[18];
+   v[31] = v[30] + v[31];
+   v[30] = 2. * t_mid_pose[3];
+   v[46] = v[30] * t_mid_pose[3];
+   v[23] = 1. - (v[46] + v[23]);
+   v[22] = v[22] * t_mid_pose[4];
+   v[30] = v[30] * t_mid_pose[6];
+   v[47] = v[22] - v[30];
+   v[48] = v[31] * v[29] + v[23] * v[36] + v[47] * v[40];
+   v[9] = v[1] * v[9];
+   v[5] = v[1] * v[5];
+   v[13] = v[9] * v[11] + v[5] * v[13];
+   v[9] = v[9] * v[12] + v[5] * v[11];
+   v[12] = v[13] * v[15] + v[9] * v[16];
+   v[4] = v[6] * v[4] + v[12] * v[18];
+   v[20] = v[37] - v[20];
+   v[30] = v[22] + v[30];
+   v[46] = 1. - (v[46] + v[21]);
+   v[40] = v[20] * v[29] + v[30] * v[36] + v[46] * v[40];
+   v[36] = v[19] * v[41] + v[45] * v[48] + v[4] * v[40];
+   v[0] = base[0] + 0.35 * v[0] + 0.35 * v[10] + 0.309426548461 * v[19];
+   v[7] = base[1] + 0.35 * v[7] + 0.35 * v[43] + 0.309426548461 * v[45];
+   v[5] = 0.2805 + 0.35 * v[5] + 0.35 * v[9] + 0.309426548461 * v[4];
+   v[29] = t_mid_pose[0] + v[24] * t_mid_left[0] + v[32] * t_mid_left[1] + v[38] * t_mid_left[2];
+   v[21] = t_mid_pose[1] + v[31] * t_mid_left[0] + v[23] * t_mid_left[1] + v[47] * t_mid_left[2];
+   v[22] = t_mid_pose[2] + v[20] * t_mid_left[0] + v[30] * t_mid_left[1] + v[46] * t_mid_left[2];
+   v[37] = (- v[19]) * v[0] + (- v[45]) * v[7] + (- v[4]) * v[5] + v[19] * v[29] + v[45] * v[21] + v[4] * v[22];
+   v[15] = - v[15];
+   v[10] = v[14] * v[16] + v[10] * v[15];
+   v[14] = sin(torso[5]);
+   v[11] = - v[14];
+   v[17] = v[2] * v[18] + v[17] * v[3];
+   v[2] = cos(torso[5]);
+   v[1] = v[10] * v[11] + v[17] * v[2];
+   v[43] = v[8] * v[16] + v[43] * v[15];
+   v[44] = v[42] * v[18] + v[44] * v[3];
+   v[42] = v[43] * v[11] + v[44] * v[2];
+   v[15] = v[13] * v[16] + v[9] * v[15];
+   v[12] = v[6] * v[18] + v[12] * v[3];
+   v[11] = v[15] * v[11] + v[12] * v[2];
+   v[18] = v[1] * v[41] + v[42] * v[48] + v[11] * v[40];
+   v[6] = (- v[1]) * v[0] + (- v[42]) * v[7] + (- v[11]) * v[5] + v[1] * v[29] + v[42] * v[21] + v[11] * v[22];
+   v[3] = -2.72185494444282e-07 + -0.145464356471299 * v[36] + -0.93969222526679 * v[37] + 0.0529448864045513 * v[18] + 0.342021230003561 * v[6];
+   v[9] = - v[3];
+   v[17] = v[10] * v[2] + v[17] * v[14];
+   v[44] = v[43] * v[2] + v[44] * v[14];
+   v[12] = v[15] * v[2] + v[12] * v[14];
+   v[40] = v[17] * v[41] + v[44] * v[48] + v[12] * v[40];
+   v[22] = (- v[17]) * v[0] + (- v[44]) * v[7] + (- v[12]) * v[5] + v[17] * v[29] + v[44] * v[21] + v[12] * v[22] + 0.1548 * v[40];
+   v[21] = - v[22];
+   v[29] = V(- v[9]).blend(V(v[9]), (V(v[9]) >= V(0.)));
+   v[48] = V(- v[21]).blend(V(v[21]), (V(v[21]) >= V(0.)));
+   v[48] = V(1.5707963267949 - atan(v[29] / v[48])).blend(V(atan(v[48] / v[29])), (V(v[29]) > V(v[48])));
+   v[29] = V(- v[48]).blend(V(v[48]), (V(v[21]) >= V(0.)));
+   v[48] = V(-3.14159265358979 + v[48]).blend(V(3.14159265358979 - v[48]), (V(v[21]) >= V(0.)));
+   v[48] = V(v[48]).blend(V(v[29]), (V(v[9]) >= V(0.)));
+   v[29] = v[22] * v[22] + v[3] * v[3];
+   v[29] = V(v[29]).blend(V(0.), (V(v[29]) <= V(0.)));
+   v[29] = sqrt(v[29]);
+   v[9] = V(v[29]).blend(V(1.), (V(v[29]) == V(0.)));
+   v[9] = V(1. / v[9]).blend(V(1e+30), (V(v[29]) == V(0.)));
+   v[29] = cos(psi_left);
+   v[21] = 0.031 * v[29];
+   v[6] = -0.234119109418322 + 0.145464356471299 * v[18] + 0.93969222526679 * v[6] + 0.0529448864045513 * v[36] + 0.342021230003561 * v[37];
+   u_left[0] = -1.00275505726673 + 6.98132097739206 * (v[22] * v[22] + v[3] * v[3] + v[6] * v[6]);
+   v[37] = V(u_left[0]).blend(V(-1.), (V(u_left[0]) < V(-1.)));
+   v[37] = V(v[37]).blend(V(1.), (V(v[37]) > V(1.)));
+   v[37] = asin(v[37]);
+   v[37] = V(1.33843925355319 - v[37]).blend(V(-1.80315340003661 + v[37]), (V(left_gcp[0]) == V(0.)));
+   v[37] = V(v[37]).blend(V(v[37] - 6.28318530717959), (V(v[37]) > V(3.14159265358979)));
+   q[13] = V(v[37]).blend(V(6.28318530717959 + v[37]), (V(v[37]) < V(-3.14159265358979)));
+   v[37] = cos(q[13]);
+   v[41] = sin(q[13]);
+   u_left[1] = v[9] * (v[21] + -1. * v[37] * v[21] + -0.256 * v[29] * v[41]);
+   v[21] = V(u_left[1]).blend(V(-1.), (V(u_left[1]) < V(-1.)));
+   v[21] = V(v[21]).blend(V(1.), (V(v[21]) > V(1.)));
+   v[21] = asin(v[21]);
+   v[21] = V(3.14159265358979 + v[21] + -1. * v[48]).blend(V(-1. * v[48] + -1. * v[21]), (V(left_gcp[1]) == V(0.)));
+   v[21] = V(v[21]).blend(V(v[21] - 6.28318530717959), (V(v[21]) > V(3.14159265358979)));
+   q[10] = V(v[21]).blend(V(6.28318530717959 + v[21]), (V(v[21]) < V(-3.14159265358979)));
+   v[21] = 0.0875574348809117 * v[29] * v[37];
+   v[48] = cos(q[10]);
+   v[9] = v[48] * v[3];
+   v[15] = v[29] * v[41];
+   v[2] = sin(psi_left);
+   v[14] = 0.93969222526679 * v[2];
+   v[43] = v[48] * v[22] * v[6];
+   v[10] = 0.0943978594809829 * v[29];
+   v[13] = sin(q[10]);
+   v[16] = 0.342021230003561 * v[13] * v[2];
+   v[8] = v[22] * v[22];
+   v[49] = v[48] * v[8];
+   v[50] = v[22] * v[13];
+   v[51] = 0.259355054173634 * v[29];
+   v[52] = v[3] * v[6];
+   v[53] = 0.240561209668298 * v[29] * v[37];
+   v[54] = v[48] * v[48];
+   v[55] = v[22] * v[3] * v[2];
+   v[56] = v[3] * v[3];
+   v[57] = v[48] * v[56];
+   v[58] = v[6] * v[21] + 0.0291304589832705 * v[9] * v[15] + -0.0106026581301104 * v[6] * v[15] + -1. * v[14] * v[43] + v[6] * v[10] + v[16] * v[49] + -0.0291304589832705 * v[15] * v[50] + v[50] * v[51] + -1. * v[13] * v[52] * v[14] + v[50] * v[53] + -0.684042460007122 * v[54] * v[55] + 0.342021230003561 * v[55] + -1. * v[9] * v[53] + -1. * v[9] * v[51] + -1. * v[16] * v[57];
+   v[57] = -1. * v[13] * v[14] * v[49] + -0.342021230003561 * v[2] * v[43] + -0.0106026581301104 * v[15] * v[50] + v[13] * v[14] * v[57] + 1.87938445053358 * v[54] * v[55] + 0.0106026581301104 * v[9] * v[15] + -1. * v[6] * v[53] + -1. * v[52] * v[16] + v[50] * v[21] + -1. * v[10] * v[9] + -1. * v[9] * v[21] + -1. * v[6] * v[51] + v[10] * v[50] + 0.0291304589832705 * v[6] * v[15] + -1. * v[22] * v[3] * v[14];
+   v[55] = V(- v[58]).blend(V(v[58]), (V(v[58]) >= V(0.)));
+   v[53] = V(- v[57]).blend(V(v[57]), (V(v[57]) >= V(0.)));
+   v[53] = V(1.5707963267949 - atan(v[55] / v[53])).blend(V(atan(v[53] / v[55])), (V(v[55]) > V(v[53])));
+   v[55] = V(- v[53]).blend(V(v[53]), (V(v[57]) >= V(0.)));
+   v[53] = V(-3.14159265358979 + v[53]).blend(V(3.14159265358979 - v[53]), (V(v[57]) >= V(0.)));
+   v[53] = V(v[53]).blend(V(v[55]), (V(v[58]) >= V(0.)));
+   v[56] = -1. * v[29] * v[6] * v[6] + -1. * v[54] * v[56] * v[29] + -1. * v[8] * v[29] + v[54] * v[29] * v[8] + 2. * v[29] * v[9] * v[50];
+   v[54] = V(0.).blend(V(-1.), (V(v[56]) < V(0.)));
+   v[54] = V(v[54]).blend(V(1.), (V(v[56]) > V(0.)));
+   v[56] = V(v[54]).blend(V(1.), (V(v[54]) == V(0.)));
+   v[56] = V(1. / v[56]).blend(V(1e+30), (V(v[54]) == V(0.)));
+   v[56] = -1.5707963267949 + v[53] + 1.5707963267949 * v[56];
+   v[56] = V(v[56]).blend(V(v[56] - 6.28318530717959), (V(v[56]) > V(3.14159265358979)));
+   q[11] = V(v[56]).blend(V(6.28318530717959 + v[56]), (V(v[56]) < V(-3.14159265358979)));
+   v[56] = 0.342021230003561 * v[18] + -0.93969222526679 * v[36];
+   v[53] = cos(q[11]);
+   v[54] = 0.342021230003561 * v[2];
+   v[50] = -0.93969222526679 * v[37] + v[41] * v[54];
+   v[8] = v[53] * v[50];
+   v[9] = sin(q[11]);
+   v[6] = 0.93969222526679 * v[2];
+   v[55] = 0.342021230003561 * v[37] + v[41] * v[6];
+   v[58] = v[8] + -1. * v[9] * v[55];
+   v[57] = v[29] * v[13];
+   v[52] = v[41] * v[57];
+   v[51] = v[48] * v[58] + v[52];
+   v[18] = 0.93969222526679 * v[18] + 0.342021230003561 * v[36];
+   v[50] = v[53] * v[55] + v[9] * v[50];
+   v[36] = v[48] * v[29];
+   v[49] = v[41] * v[36];
+   v[16] = -1. * v[13];
+   v[58] = v[49] + v[16] * v[58];
+   u_left[2] = v[56] * v[51] + v[18] * v[50] + v[40] * v[58];
+   v[10] = V(u_left[2]).blend(V(-1.), (V(u_left[2]) < V(-1.)));
+   v[10] = V(v[10]).blend(V(1.), (V(v[10]) > V(1.)));
+   v[10] = acos(v[10]);
+   v[43] = left_gcp[2] * sin(v[10]);
+   v[14] = v[25] * t_mid_left[5];
+   v[39] = 1. - (v[39] + v[14]);
+   v[27] = v[27] * t_mid_left[3];
+   v[25] = v[25] * t_mid_left[6];
+   v[15] = v[27] + v[25];
+   v[28] = v[26] - v[28];
+   v[26] = v[24] * v[39] + v[32] * v[15] + v[38] * v[28];
+   v[21] = v[31] * v[39] + v[23] * v[15] + v[47] * v[28];
+   v[28] = v[20] * v[39] + v[30] * v[15] + v[46] * v[28];
+   v[15] = v[17] * v[26] + v[44] * v[21] + v[12] * v[28];
+   v[36] = v[37] * v[36];
+   v[6] = v[37] * v[6] + -0.342021230003561 * v[41];
+   v[54] = v[37] * v[54] + 0.93969222526679 * v[41];
+   v[41] = -1. * v[9] * v[6] + v[53] * v[54];
+   v[39] = v[1] * v[26] + v[42] * v[21] + v[11] * v[28];
+   v[28] = v[19] * v[26] + v[45] * v[21] + v[4] * v[28];
+   v[21] = 0.342021230003561 * v[39] + -0.93969222526679 * v[28];
+   v[57] = v[48] * v[41] + v[37] * v[57];
+   v[28] = 0.93969222526679 * v[39] + 0.342021230003561 * v[28];
+   v[54] = v[53] * v[6] + v[9] * v[54];
+   v[6] = v[15] * (v[36] + -1. * v[13] * v[41]) + v[21] * v[57] + v[28] * v[54];
+   v[6] = V(-1. * v[6]).blend(V(v[6]), (V(u_left[2]) >= V(0.)));
+   v[25] = v[27] - v[25];
+   v[14] = 1. - (v[34] + v[14]);
+   v[35] = v[33] + v[35];
+   v[33] = v[24] * v[25] + v[32] * v[14] + v[38] * v[35];
+   v[34] = v[31] * v[25] + v[23] * v[14] + v[47] * v[35];
+   v[35] = v[20] * v[25] + v[30] * v[14] + v[46] * v[35];
+   v[14] = v[1] * v[33] + v[42] * v[34] + v[11] * v[35];
+   v[25] = v[19] * v[33] + v[45] * v[34] + v[4] * v[35];
+   v[27] = 0.93969222526679 * v[14] + 0.342021230003561 * v[25];
+   v[25] = 0.342021230003561 * v[14] + -0.93969222526679 * v[25];
+   v[35] = v[17] * v[33] + v[44] * v[34] + v[12] * v[35];
+   v[41] = v[36] + v[16] * v[41];
+   v[36] = -1. * (v[27] * v[54] + v[25] * v[57] + v[35] * v[41]);
+   v[34] = V(- v[6]).blend(V(v[6]), (V(v[6]) >= V(0.)));
+   v[33] = V(- v[36]).blend(V(v[36]), (V(v[36]) >= V(0.)));
+   v[33] = V(1.5707963267949 - atan(v[34] / v[33])).blend(V(atan(v[33] / v[34])), (V(v[34]) > V(v[33])));
+   v[34] = V(- v[33]).blend(V(v[33]), (V(v[36]) >= V(0.)));
+   v[33] = V(-3.14159265358979 + v[33]).blend(V(3.14159265358979 - v[33]), (V(v[36]) >= V(0.)));
+   v[33] = V(v[33]).blend(V(v[34]), (V(v[6]) >= V(0.)));
+   v[41] = v[56] * v[57] + v[40] * v[41] + v[18] * v[54];
+   v[53] = v[53] * v[29];
+   v[29] = v[29] * v[9];
+   v[54] = -0.93969222526679 * v[29] + 0.342021230003561 * v[53];
+   v[54] = v[18] * (0.93969222526679 * v[53] + 0.342021230003561 * v[29]) + v[56] * (v[48] * v[54] + v[2] * v[16]) + v[40] * (-1. * v[13] * v[54] + -1. * v[48] * v[2]);
+   v[29] = V(- v[41]).blend(V(v[41]), (V(v[41]) >= V(0.)));
+   v[53] = V(- v[54]).blend(V(v[54]), (V(v[54]) >= V(0.)));
+   v[53] = V(1.5707963267949 - atan(v[29] / v[53])).blend(V(atan(v[53] / v[29])), (V(v[29]) > V(v[53])));
+   v[29] = V(- v[53]).blend(V(v[53]), (V(v[54]) >= V(0.)));
+   v[53] = V(-3.14159265358979 + v[53]).blend(V(3.14159265358979 - v[53]), (V(v[54]) >= V(0.)));
+   v[53] = V(v[53]).blend(V(v[29]), (V(v[41]) >= V(0.)));
+   v[53] = V(-1.5707963267949 + 1.5707963267949 * left_gcp[2] + v[53]).blend(V(v[33]), (V(fabs(v[43])) < V(1e-06)));
+   v[53] = V(v[53]).blend(V(v[53] - 6.28318530717959), (V(v[53]) > V(3.14159265358979)));
+   q[14] = V(v[53]).blend(V(6.28318530717959 + v[53]), (V(v[53]) < V(-3.14159265358979)));
+   q[15] = left_gcp[2] * v[10];
+   v[55] = -1. * v[9] * v[55] + v[8];
+   v[55] = -1. * (v[21] * (v[48] * v[55] + v[52]) + v[15] * (v[49] + v[16] * v[55]) + v[28] * v[50]);
+   v[35] = v[27] * v[50] + v[35] * v[58] + v[25] * v[51];
+   v[25] = V(- v[55]).blend(V(v[55]), (V(v[55]) >= V(0.)));
+   v[27] = V(- v[35]).blend(V(v[35]), (V(v[35]) >= V(0.)));
+   v[27] = V(1.5707963267949 - atan(v[25] / v[27])).blend(V(atan(v[27] / v[25])), (V(v[25]) > V(v[27])));
+   v[25] = V(- v[27]).blend(V(v[27]), (V(v[35]) >= V(0.)));
+   v[27] = V(-3.14159265358979 + v[27]).blend(V(3.14159265358979 - v[27]), (V(v[35]) >= V(0.)));
+   v[27] = V(v[27]).blend(V(v[25]), (V(v[55]) >= V(0.)));
+   v[27] = V(-1.5707963267949 + v[27] + 1.5707963267949 * left_gcp[2]).blend(V(0.), (V(fabs(v[43])) < V(1e-06)));
+   v[27] = V(v[27]).blend(V(v[27] - 6.28318530717959), (V(v[27]) > V(3.14159265358979)));
+   q[16] = V(v[27]).blend(V(6.28318530717959 + v[27]), (V(v[27]) < V(-3.14159265358979)));
+   v[27] = t_mid_pose[0] + v[24] * t_mid_right[0] + v[32] * t_mid_right[1] + v[38] * t_mid_right[2];
+   v[43] = t_mid_pose[1] + v[31] * t_mid_right[0] + v[23] * t_mid_right[1] + v[47] * t_mid_right[2];
+   v[25] = t_mid_pose[2] + v[20] * t_mid_right[0] + v[30] * t_mid_right[1] + v[46] * t_mid_right[2];
+   v[55] = 2. * t_mid_right[5];
+   v[35] = v[55] * t_mid_right[3];
+   v[58] = 2. * t_mid_right[4];
+   v[50] = v[58] * t_mid_right[6];
+   v[51] = v[35] + v[50];
+   v[28] = v[55] * t_mid_right[4];
+   v[21] = 2. * t_mid_right[3];
+   v[15] = v[21] * t_mid_right[6];
+   v[16] = v[28] - v[15];
+   v[21] = v[21] * t_mid_right[3];
+   v[49] = v[58] * t_mid_right[4];
+   v[52] = 1. - (v[21] + v[49]);
+   v[48] = v[24] * v[51] + v[32] * v[16] + v[38] * v[52];
+   v[9] = v[31] * v[51] + v[23] * v[16] + v[47] * v[52];
+   v[52] = v[20] * v[51] + v[30] * v[16] + v[46] * v[52];
+   v[16] = v[17] * v[48] + v[44] * v[9] + v[12] * v[52];
+   v[51] = (- v[17]) * v[0] + (- v[44]) * v[7] + (- v[12]) * v[5] + v[17] * v[27] + v[44] * v[43] + v[12] * v[25] + 0.1548 * v[16];
+   v[8] = v[19] * v[48] + v[45] * v[9] + v[4] * v[52];
+   v[10] = (- v[19]) * v[0] + (- v[45]) * v[7] + (- v[4]) * v[5] + v[19] * v[27] + v[45] * v[43] + v[4] * v[25];
+   v[25] = (- v[1]) * v[0] + (- v[42]) * v[7] + (- v[11]) * v[5] + v[1] * v[27] + v[42] * v[43] + v[11] * v[25];
+   v[52] = v[1] * v[48] + v[42] * v[9] + v[11] * v[52];
+   v[9] = -2.72185494444282e-07 + -0.145464356471299 * v[8] + -0.93969222526679 * v[10] + -0.342021230003561 * v[25] + -0.0529448864045513 * v[52];
+   v[48] = v[51] * v[51] + v[9] * v[9];
+   v[48] = V(v[48]).blend(V(0.), (V(v[48]) <= V(0.)));
+   v[48] = sqrt(v[48]);
+   v[43] = V(v[48]).blend(V(1.), (V(v[48]) == V(0.)));
+   v[43] = V(1. / v[43]).blend(V(1e+30), (V(v[48]) == V(0.)));
+   v[48] = cos(psi_right);
+   v[25] = 0.234119109418322 + 0.145464356471299 * v[52] + 0.93969222526679 * v[25] + -0.342021230003561 * v[10] + -0.0529448864045513 * v[8];
+   u_right[0] = -1.00275505726673 + 6.98132097739206 * (v[51] * v[51] + v[9] * v[9] + v[25] * v[25]);
+   v[10] = V(u_right[0]).blend(V(-1.), (V(u_right[0]) < V(-1.)));
+   v[10] = V(v[10]).blend(V(1.), (V(v[10]) > V(1.)));
+   v[10] = asin(v[10]);
+   v[10] = V(1.33843925355319 - v[10]).blend(V(-1.80315340003661 + v[10]), (V(right_gcp[0]) == V(0.)));
+   v[10] = V(v[10]).blend(V(v[10] - 6.28318530717959), (V(v[10]) > V(3.14159265358979)));
+   q[20] = V(v[10]).blend(V(6.28318530717959 + v[10]), (V(v[10]) < V(-3.14159265358979)));
+   v[10] = sin(q[20]);
+   v[27] = 0.031 * v[48];
+   v[5] = cos(q[20]);
+   u_right[1] = v[43] * (-0.256 * v[48] * v[10] + v[27] + -1. * v[5] * v[27]);
+   v[27] = V(u_right[1]).blend(V(-1.), (V(u_right[1]) < V(-1.)));
+   v[27] = V(v[27]).blend(V(1.), (V(v[27]) > V(1.)));
+   v[27] = asin(v[27]);
+   v[43] = - v[9];
+   v[7] = - v[51];
+   v[0] = V(- v[43]).blend(V(v[43]), (V(v[43]) >= V(0.)));
+   v[53] = V(- v[7]).blend(V(v[7]), (V(v[7]) >= V(0.)));
+   v[53] = V(1.5707963267949 - atan(v[0] / v[53])).blend(V(atan(v[53] / v[0])), (V(v[0]) > V(v[53])));
+   v[0] = V(- v[53]).blend(V(v[53]), (V(v[7]) >= V(0.)));
+   v[53] = V(-3.14159265358979 + v[53]).blend(V(3.14159265358979 - v[53]), (V(v[7]) >= V(0.)));
+   v[53] = V(v[53]).blend(V(v[0]), (V(v[43]) >= V(0.)));
+   v[53] = V(3.14159265358979 + v[27] + -1. * v[53]).blend(V(-1. * v[27] + -1. * v[53]), (V(right_gcp[1]) == V(0.)));
+   v[53] = V(v[53]).blend(V(v[53] - 6.28318530717959), (V(v[53]) > V(3.14159265358979)));
+   q[17] = V(v[53]).blend(V(6.28318530717959 + v[53]), (V(v[53]) < V(-3.14159265358979)));
+   v[53] = cos(q[17]);
+   v[27] = v[53] * v[53];
+   v[0] = v[51] * v[51];
+   v[43] = v[53] * v[9];
+   v[7] = sin(q[17]);
+   v[33] = v[48] * v[51] * v[7];
+   v[29] = v[9] * v[9];
+   v[41] = v[48] * v[27] * v[0] + 2. * v[43] * v[33] + -1. * v[27] * v[29] * v[48] + -1. * v[48] * v[25] * v[25] + -1. * v[0] * v[48];
+   v[54] = V(0.).blend(V(-1.), (V(v[41]) < V(0.)));
+   v[54] = V(v[54]).blend(V(1.), (V(v[41]) > V(0.)));
+   v[41] = V(v[54]).blend(V(1.), (V(v[54]) == V(0.)));
+   v[41] = V(1. / v[41]).blend(V(1e+30), (V(v[54]) == V(0.)));
+   v[54] = v[51] * v[25];
+   v[18] = sin(psi_right);
+   v[56] = 0.93969222526679 * v[53] * v[18];
+   v[13] = 0.0106026581301104 * v[10];
+   v[2] = v[48] * v[25];
+   v[40] = 0.240561209668298 * v[5];
+   v[57] = 0.259355054173634 * v[48];
+   v[34] = v[51] * v[9] * v[18];
+   v[6] = 0.0943978594809829 * v[48];
+   v[36] = 0.342021230003561 * v[53] * v[18];
+   v[0] = v[7] * v[0];
+   v[29] = v[7] * v[29];
+   v[14] = v[25] * v[7];
+   v[39] = 0.93969222526679 * v[9] * v[18];
+   v[37] = 0.0875574348809117 * v[5];
+   v[26] = -1. * v[54] * v[56] + v[13] * v[2] + -1. * v[48] * v[43] * v[40] + -1. * v[43] * v[57] + 0.684042460007122 * v[27] * v[34] + -1. * v[25] * v[6] + v[40] * v[33] + -1. * v[36] * v[0] + v[36] * v[29] + -1. * v[14] * v[39] + -0.342021230003561 * v[34] + -0.0291304589832705 * v[10] * v[33] + v[51] * v[7] * v[57] + -1. * v[37] * v[2] + v[43] * 0.0291304589832705 * v[48] * v[10];
+   v[37] = -1. * v[51] * v[7] * v[6] + v[13] * v[33] + 0.342021230003561 * v[9] * v[18] * v[14] + -1. * v[25] * v[57] + -1. * v[0] * v[56] + -1. * v[51] * v[39] + -1. * v[48] * v[43] * v[13] + v[43] * v[6] + -1. * v[2] * v[40] + v[56] * v[29] + 1.87938445053358 * v[27] * v[34] + v[54] * v[36] + -1. * v[37] * v[33] + 0.0291304589832705 * v[10] * v[2] + v[48] * v[37] * v[43];
+   v[39] = V(- v[26]).blend(V(v[26]), (V(v[26]) >= V(0.)));
+   v[14] = V(- v[37]).blend(V(v[37]), (V(v[37]) >= V(0.)));
+   v[14] = V(1.5707963267949 - atan(v[39] / v[14])).blend(V(atan(v[14] / v[39])), (V(v[39]) > V(v[14])));
+   v[39] = V(- v[14]).blend(V(v[14]), (V(v[37]) >= V(0.)));
+   v[14] = V(-3.14159265358979 + v[14]).blend(V(3.14159265358979 - v[14]), (V(v[37]) >= V(0.)));
+   v[14] = V(v[14]).blend(V(v[39]), (V(v[26]) >= V(0.)));
+   v[14] = -1.5707963267949 + 1.5707963267949 * v[41] + v[14];
+   v[14] = V(v[14]).blend(V(v[14] - 6.28318530717959), (V(v[14]) > V(3.14159265358979)));
+   q[18] = V(v[14]).blend(V(6.28318530717959 + v[14]), (V(v[14]) < V(-3.14159265358979)));
+   v[14] = -0.342021230003561 * v[52] + -0.93969222526679 * v[8];
+   v[41] = v[48] * v[7];
+   v[39] = sin(q[18]);
+   v[26] = 0.93969222526679 * v[10];
+   v[37] = 0.342021230003561 * v[5];
+   v[29] = v[18] * v[26] + -1. * v[37];
+   v[0] = cos(q[18]);
+   v[36] = 0.93969222526679 * v[5];
+   v[6] = 0.342021230003561 * v[10];
+   v[34] = -1. * v[36] + -1. * v[18] * v[6];
+   v[57] = -1. * v[39] * v[29] + v[0] * v[34];
+   v[40] = v[10] * v[41] + v[53] * v[57];
+   v[52] = 0.93969222526679 * v[52] + -0.342021230003561 * v[8];
+   v[34] = v[0] * v[29] + v[39] * v[34];
+   v[29] = -1. * v[7];
+   v[8] = v[53] * v[48];
+   v[10] = v[10] * v[8];
+   u_right[2] = v[14] * v[40] + v[52] * v[34] + v[16] * (v[29] * v[57] + v[10]);
+   v[2] = V(u_right[2]).blend(V(-1.), (V(u_right[2]) < V(-1.)));
+   v[2] = V(v[2]).blend(V(1.), (V(v[2]) > V(1.)));
+   v[2] = acos(v[2]);
+   v[13] = right_gcp[2] * sin(v[2]);
+   v[56] = v[55] * t_mid_right[5];
+   v[49] = 1. - (v[49] + v[56]);
+   v[58] = v[58] * t_mid_right[3];
+   v[55] = v[55] * t_mid_right[6];
+   v[54] = v[58] + v[55];
+   v[50] = v[35] - v[50];
+   v[35] = v[24] * v[49] + v[32] * v[54] + v[38] * v[50];
+   v[33] = v[31] * v[49] + v[23] * v[54] + v[47] * v[50];
+   v[50] = v[20] * v[49] + v[30] * v[54] + v[46] * v[50];
+   v[54] = v[1] * v[35] + v[42] * v[33] + v[11] * v[50];
+   v[49] = v[19] * v[35] + v[45] * v[33] + v[4] * v[50];
+   v[43] = -0.342021230003561 * v[54] + -0.93969222526679 * v[49];
+   v[6] = v[18] * v[36] + v[6];
+   v[37] = v[26] + -1. * v[18] * v[37];
+   v[26] = v[0] * v[37];
+   v[36] = -1. * v[39] * v[6] + v[26];
+   v[41] = v[5] * v[41];
+   v[50] = v[17] * v[35] + v[44] * v[33] + v[12] * v[50];
+   v[8] = v[5] * v[8];
+   v[49] = 0.93969222526679 * v[54] + -0.342021230003561 * v[49];
+   v[37] = v[39] * v[37] + v[0] * v[6];
+   v[36] = v[43] * (v[53] * v[36] + v[41]) + v[50] * (v[29] * v[36] + v[8]) + v[49] * v[37];
+   v[36] = V(-1. * v[36]).blend(V(v[36]), (V(u_right[2]) >= V(0.)));
+   v[55] = v[58] - v[55];
+   v[56] = 1. - (v[21] + v[56]);
+   v[15] = v[28] + v[15];
+   v[38] = v[24] * v[55] + v[32] * v[56] + v[38] * v[15];
+   v[47] = v[31] * v[55] + v[23] * v[56] + v[47] * v[15];
+   v[15] = v[20] * v[55] + v[30] * v[56] + v[46] * v[15];
+   v[11] = v[1] * v[38] + v[42] * v[47] + v[11] * v[15];
+   v[4] = v[19] * v[38] + v[45] * v[47] + v[4] * v[15];
+   v[45] = 0.93969222526679 * v[11] + -0.342021230003561 * v[4];
+   v[15] = v[17] * v[38] + v[44] * v[47] + v[12] * v[15];
+   v[26] = -1. * v[39] * v[6] + v[26];
+   v[8] = v[29] * v[26] + v[8];
+   v[4] = -0.342021230003561 * v[11] + -0.93969222526679 * v[4];
+   v[26] = v[41] + v[53] * v[26];
+   v[41] = -1. * (v[45] * v[37] + v[15] * v[8] + v[4] * v[26]);
+   v[11] = V(- v[36]).blend(V(v[36]), (V(v[36]) >= V(0.)));
+   v[6] = V(- v[41]).blend(V(v[41]), (V(v[41]) >= V(0.)));
+   v[6] = V(1.5707963267949 - atan(v[11] / v[6])).blend(V(atan(v[6] / v[11])), (V(v[11]) > V(v[6])));
+   v[11] = V(- v[6]).blend(V(v[6]), (V(v[41]) >= V(0.)));
+   v[6] = V(-3.14159265358979 + v[6]).blend(V(3.14159265358979 - v[6]), (V(v[41]) >= V(0.)));
+   v[6] = V(v[6]).blend(V(v[11]), (V(v[36]) >= V(0.)));
+   v[26] = v[14] * v[26] + v[52] * v[37] + v[16] * v[8];
+   v[8] = 0.93969222526679 * v[48];
+   v[48] = 0.342021230003561 * v[48];
+   v[37] = -1. * v[39] * v[8] + -1. * v[0] * v[48];
+   v[37] = v[14] * (-1. * v[18] * v[7] + v[53] * v[37]) + v[52] * (v[0] * v[8] + -1. * v[39] * v[48]) + v[16] * (-1. * v[53] * v[18] + v[29] * v[37]);
+   v[48] = V(- v[26]).blend(V(v[26]), (V(v[26]) >= V(0.)));
+   v[8] = V(- v[37]).blend(V(v[37]), (V(v[37]) >= V(0.)));
+   v[8] = V(1.5707963267949 - atan(v[48] / v[8])).blend(V(atan(v[8] / v[48])), (V(v[48]) > V(v[8])));
+   v[48] = V(- v[8]).blend(V(v[8]), (V(v[37]) >= V(0.)));
+   v[8] = V(-3.14159265358979 + v[8]).blend(V(3.14159265358979 - v[8]), (V(v[37]) >= V(0.)));
+   v[8] = V(v[8]).blend(V(v[48]), (V(v[26]) >= V(0.)));
+   v[8] = V(-1.5707963267949 + v[8] + 1.5707963267949 * right_gcp[2]).blend(V(v[6]), (V(fabs(v[13])) < V(1e-06)));
+   v[8] = V(v[8]).blend(V(v[8] - 6.28318530717959), (V(v[8]) > V(3.14159265358979)));
+   q[21] = V(v[8]).blend(V(6.28318530717959 + v[8]), (V(v[8]) < V(-3.14159265358979)));
+   q[22] = right_gcp[2] * v[2];
+   v[10] = v[10] + -1. * v[7] * v[57];
+   v[49] = -1. * (v[50] * v[10] + v[43] * v[40] + v[49] * v[34]);
+   v[10] = v[45] * v[34] + v[15] * v[10] + v[4] * v[40];
+   v[4] = V(- v[49]).blend(V(v[49]), (V(v[49]) >= V(0.)));
+   v[15] = V(- v[10]).blend(V(v[10]), (V(v[10]) >= V(0.)));
+   v[15] = V(1.5707963267949 - atan(v[4] / v[15])).blend(V(atan(v[15] / v[4])), (V(v[4]) > V(v[15])));
+   v[4] = V(- v[15]).blend(V(v[15]), (V(v[10]) >= V(0.)));
+   v[15] = V(-3.14159265358979 + v[15]).blend(V(3.14159265358979 - v[15]), (V(v[10]) >= V(0.)));
+   v[15] = V(v[15]).blend(V(v[4]), (V(v[49]) >= V(0.)));
+   v[15] = V(-1.5707963267949 + v[15] + 1.5707963267949 * right_gcp[2]).blend(V(0.), (V(fabs(v[13])) < V(1e-06)));
+   v[15] = V(v[15]).blend(V(v[15] - 6.28318530717959), (V(v[15]) > V(3.14159265358979)));
+   q[23] = V(v[15]).blend(V(6.28318530717959 + v[15]), (V(v[15]) < V(-3.14159265358979)));
+   v[15] = u_left[0] - 1.;
+   v[15] = V(0.).blend(V(v[15]), (V(v[15]) > V(0.)));
+   v[13] = -1. - u_left[0];
+   v[13] = V(0.).blend(V(v[13]), (V(v[13]) > V(0.)));
+   v[4] = u_left[1] - 1.;
+   v[4] = V(0.).blend(V(v[4]), (V(v[4]) > V(0.)));
+   v[49] = -1. - u_left[1];
+   v[49] = V(0.).blend(V(v[49]), (V(v[49]) > V(0.)));
+   v[10] = u_left[2] - 1.;
+   v[10] = V(0.).blend(V(v[10]), (V(v[10]) > V(0.)));
+   v[45] = -1. - u_left[2];
+   v[45] = V(0.).blend(V(v[45]), (V(v[45]) > V(0.)));
+   reach_violation_left[0] = v[15] + v[13] + v[4] + v[49] + v[10] + v[45];
+   v[45] = u_left[0] - 0.9999;
+   v[45] = V(0.).blend(V(v[45]), (V(v[45]) > V(0.)));
+   v[10] = -0.9999 - u_left[0];
+   v[10] = V(0.).blend(V(v[10]), (V(v[10]) > V(0.)));
+   v[49] = u_left[1] - 0.9999;
+   v[49] = V(0.).blend(V(v[49]), (V(v[49]) > V(0.)));
+   v[4] = -0.9999 - u_left[1];
+   v[4] = V(0.).blend(V(v[4]), (V(v[4]) > V(0.)));
+   v[13] = u_left[2] - 0.9999;
+   v[13] = V(0.).blend(V(v[13]), (V(v[13]) > V(0.)));
+   v[15] = -0.9999 - u_left[2];
+   v[15] = V(0.).blend(V(v[15]), (V(v[15]) > V(0.)));
+   loss_left[0] = v[45] * v[45] + v[10] * v[10] + v[49] * v[49] + v[4] * v[4] + v[13] * v[13] + v[15] * v[15];
+   v[15] = u_right[0] - 1.;
+   v[15] = V(0.).blend(V(v[15]), (V(v[15]) > V(0.)));
+   v[13] = -1. - u_right[0];
+   v[13] = V(0.).blend(V(v[13]), (V(v[13]) > V(0.)));
+   v[4] = u_right[1] - 1.;
+   v[4] = V(0.).blend(V(v[4]), (V(v[4]) > V(0.)));
+   v[49] = -1. - u_right[1];
+   v[49] = V(0.).blend(V(v[49]), (V(v[49]) > V(0.)));
+   v[10] = u_right[2] - 1.;
+   v[10] = V(0.).blend(V(v[10]), (V(v[10]) > V(0.)));
+   v[45] = -1. - u_right[2];
+   v[45] = V(0.).blend(V(v[45]), (V(v[45]) > V(0.)));
+   reach_violation_right[0] = v[15] + v[13] + v[4] + v[49] + v[10] + v[45];
+   v[45] = u_right[0] - 0.9999;
+   v[45] = V(0.).blend(V(v[45]), (V(v[45]) > V(0.)));
+   v[10] = -0.9999 - u_right[0];
+   v[10] = V(0.).blend(V(v[10]), (V(v[10]) > V(0.)));
+   v[49] = u_right[1] - 0.9999;
+   v[49] = V(0.).blend(V(v[49]), (V(v[49]) > V(0.)));
+   v[4] = -0.9999 - u_right[1];
+   v[4] = V(0.).blend(V(v[4]), (V(v[4]) > V(0.)));
+   v[13] = u_right[2] - 0.9999;
+   v[13] = V(0.).blend(V(v[13]), (V(v[13]) > V(0.)));
+   v[15] = -0.9999 - u_right[2];
+   v[15] = V(0.).blend(V(v[15]), (V(v[15]) > V(0.)));
+   loss_right[0] = v[45] * v[45] + v[10] * v[10] + v[49] * v[49] + v[4] * v[4] + v[13] * v[13] + v[15] * v[15];
+   // dependent variables without operations
+   q[0] = base[0];
+   q[1] = base[1];
+   q[2] = base[2];
+   q[3] = base[3];
+   q[4] = torso[0];
+   q[5] = torso[1];
+   q[6] = torso[2];
+   q[7] = torso[3];
+   q[8] = torso[4];
+   q[9] = torso[5];
+   q[12] = psi_left;
+   q[19] = psi_right;
+
+
+            V valid = (reach_violation_left[0] <= V(0.0f)) & (reach_violation_right[0] <= V(0.0f));
+            
+            valid = valid & (q[0] >= V(Ambient::lower_bound[0])) & (q[0] <= V(Ambient::upper_bound[0]));
+            
+            valid = valid & (q[1] >= V(Ambient::lower_bound[1])) & (q[1] <= V(Ambient::upper_bound[1]));
+            
+            valid = valid & (q[2] >= V(Ambient::lower_bound[2])) & (q[2] <= V(Ambient::upper_bound[2]));
+            
+            valid = valid & (q[3] >= V(Ambient::lower_bound[3])) & (q[3] <= V(Ambient::upper_bound[3]));
+            
+            valid = valid & (q[4] >= V(Ambient::lower_bound[4])) & (q[4] <= V(Ambient::upper_bound[4]));
+            
+            valid = valid & (q[5] >= V(Ambient::lower_bound[5])) & (q[5] <= V(Ambient::upper_bound[5]));
+            
+            valid = valid & (q[6] >= V(Ambient::lower_bound[6])) & (q[6] <= V(Ambient::upper_bound[6]));
+            
+            valid = valid & (q[7] >= V(Ambient::lower_bound[7])) & (q[7] <= V(Ambient::upper_bound[7]));
+            
+            valid = valid & (q[8] >= V(Ambient::lower_bound[8])) & (q[8] <= V(Ambient::upper_bound[8]));
+            
+            valid = valid & (q[9] >= V(Ambient::lower_bound[9])) & (q[9] <= V(Ambient::upper_bound[9]));
+            
+            valid = valid & (q[10] >= V(Ambient::lower_bound[10])) & (q[10] <= V(Ambient::upper_bound[10]));
+            
+            valid = valid & (q[11] >= V(Ambient::lower_bound[11])) & (q[11] <= V(Ambient::upper_bound[11]));
+            
+            valid = valid & (q[12] >= V(Ambient::lower_bound[12])) & (q[12] <= V(Ambient::upper_bound[12]));
+            
+            valid = valid & (q[13] >= V(Ambient::lower_bound[13])) & (q[13] <= V(Ambient::upper_bound[13]));
+            
+            valid = valid & (q[14] >= V(Ambient::lower_bound[14])) & (q[14] <= V(Ambient::upper_bound[14]));
+            
+            valid = valid & (q[15] >= V(Ambient::lower_bound[15])) & (q[15] <= V(Ambient::upper_bound[15]));
+            
+            valid = valid & (q[16] >= V(Ambient::lower_bound[16])) & (q[16] <= V(Ambient::upper_bound[16]));
+            
+            valid = valid & (q[17] >= V(Ambient::lower_bound[17])) & (q[17] <= V(Ambient::upper_bound[17]));
+            
+            valid = valid & (q[18] >= V(Ambient::lower_bound[18])) & (q[18] <= V(Ambient::upper_bound[18]));
+            
+            valid = valid & (q[19] >= V(Ambient::lower_bound[19])) & (q[19] <= V(Ambient::upper_bound[19]));
+            
+            valid = valid & (q[20] >= V(Ambient::lower_bound[20])) & (q[20] <= V(Ambient::upper_bound[20]));
+            
+            valid = valid & (q[21] >= V(Ambient::lower_bound[21])) & (q[21] <= V(Ambient::upper_bound[21]));
+            
+            valid = valid & (q[22] >= V(Ambient::lower_bound[22])) & (q[22] <= V(Ambient::upper_bound[22]));
+            
+            valid = valid & (q[23] >= V(Ambient::lower_bound[23])) & (q[23] <= V(Ambient::upper_bound[23]));
+            
+
+            return {valid, q};
         }
     };
     

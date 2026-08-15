@@ -277,11 +277,11 @@ namespace vamp::planning::constraint
             const Environment &environment) const noexcept -> bool
         {
             // just reject if the sampled eefs are in collision
-            auto eef_coll_res = Space::template eefs_collision_free<rake>(environment, interp_block);
-            if (not eef_coll_res)
-            {
-                return false;
-            }
+            // auto eef_coll_res = Space::template eefs_collision_free<rake>(environment, interp_block);
+            // if (not eef_coll_res)
+            // {
+            //     return false;
+            // }
 
             auto [param_valid, ambient_block] = Space::template resolve_block<rake>(interp_block);
             if (not param_valid)

@@ -173,6 +173,21 @@ if(VAMP_BUILD_CPP_DEMO)
       target_compile_options(vamp_rby1_gcp_branch_selector PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
     endif()
   endif()
+
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/impl/vamp/robots/iiwa_marker.hh")
+    CPMAddPackage("gh:nlohmann/json@3.11.3")
+
+    add_executable(vamp_iiwa_maze_solver scripts/cpp/iiwa_maze_solver.cc)
+    target_link_libraries(vamp_iiwa_maze_solver PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
+
+    add_executable(vamp_iiwa_maze_solver_benchmark scripts/cpp/iiwa_maze_solver_benchmark.cc)
+    target_link_libraries(vamp_iiwa_maze_solver_benchmark PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      target_compile_options(vamp_iiwa_maze_solver PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+      target_compile_options(vamp_iiwa_maze_solver_benchmark PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+    endif()
+  endif()
 endif()
 
 # OMPL integration demo

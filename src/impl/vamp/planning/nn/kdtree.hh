@@ -8,6 +8,7 @@
 #include <limits>
 #include <numeric>
 #include <optional>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -20,6 +21,24 @@
 
 namespace vamp::planning
 {
+    namespace detail
+    {
+        // Detects an optional Robot::nn_ignored_dims (std::array<std::size_t, N>): indices the
+        // KD-tree should exclude from its distance metric entirely, e.g. a task-space
+        // redundancy parameter (psi) that doesn't affect end-effector proximity and would
+        // otherwise fragment the tree along a physically meaningless axis. Absent by default so
+        // robots/spaces that don't opt in are unaffected.
+        template <typename Robot, typename = void>
+        struct has_nn_ignored_dims : std::false_type
+        {
+        };
+
+        template <typename Robot>
+        struct has_nn_ignored_dims<Robot, std::void_t<decltype(Robot::nn_ignored_dims)>> : std::true_type
+        {
+        };
+    }  // namespace detail
+
     // Incremental batched kd-tree over robot configurations.
     //
     // Leaves hold up to leaf_capacity configurations in SoA blocks (dimension-major,
@@ -65,7 +84,35 @@ namespace vamp::planning
             return mask;
         }();
 
-        static constexpr std::size_t n_base = dim - 4 * Robot::so3_offsets.size();
+        // Dims excluded from the metric entirely (e.g. a task-space redundancy parameter) --
+        // see detail::has_nn_ignored_dims above. Still stored in the leaf's SoA blocks (needed
+        // to reconstruct the full configuration), just never contributes to a distance.
+        static constexpr std::array<bool, dim> is_ignored = []()
+        {
+            std::array<bool, dim> mask{};
+            if constexpr (detail::has_nn_ignored_dims<Robot>::value)
+            {
+                for (const auto j : Robot::nn_ignored_dims)
+                {
+                    mask[j] = true;
+                }
+            }
+
+            return mask;
+        }();
+
+        static constexpr std::size_t n_ignored = []()
+        {
+            std::size_t n = 0;
+            for (const auto b : is_ignored)
+            {
+                n += b ? 1 : 0;
+            }
+
+            return n;
+        }();
+
+        static constexpr std::size_t n_base = dim - 4 * Robot::so3_offsets.size() - n_ignored;
 
         static constexpr std::array<std::size_t, n_base == 0 ? 1 : n_base> base_dims = []()
         {
@@ -73,7 +120,23 @@ namespace vamp::planning
             std::size_t n = 0;
             for (std::size_t j = 0; j < dim; ++j)
             {
-                if (not is_quat[j])
+                if (not is_quat[j] and not is_ignored[j])
+                {
+                    idx[n++] = j;
+                }
+            }
+
+            return idx;
+        }();
+
+        // Concrete index list mirroring is_ignored, for bound2's flat-sum correction below.
+        static constexpr std::array<std::size_t, n_ignored == 0 ? 1 : n_ignored> ignored_dims = []()
+        {
+            std::array<std::size_t, n_ignored == 0 ? 1 : n_ignored> idx{};
+            std::size_t n = 0;
+            for (std::size_t j = 0; j < dim; ++j)
+            {
+                if (is_ignored[j])
                 {
                     idx[n++] = j;
                 }
@@ -386,6 +449,18 @@ namespace vamp::planning
                 }
 
                 b += std::min(bp, bm) - bp;
+            }
+
+            // Same idea for ignored dims: the flat passes above charged them too, so subtract
+            // their contribution back out. Bounded by n_ignored, not ignored_dims.size() --
+            // that array is dummy-sized (1) when n_ignored == 0, and iterating it directly
+            // would wrongly zero out dimension 0's contribution for every Robot that doesn't
+            // opt into nn_ignored_dims.
+            for (std::size_t t = 0; t < n_ignored; ++t)
+            {
+                const auto j = ignored_dims[t];
+                const auto d = std::max(std::max(n.lo[j] - q[j], q[j] - n.hi[j]), 0.F);
+                b -= d * d;
             }
 
             return b;

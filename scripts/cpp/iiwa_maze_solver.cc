@@ -106,7 +106,9 @@ static bool load_cuboids_from_json(EnvironmentInput &environment, const std::str
 static auto resolve_and_check(
     const ParameterizedSpace::State &state,
     const std::string &label,
-    const EnvironmentVector &environment_v) -> Robot::ConfigurationBlock<rake>
+    const EnvironmentVector &environment_v,
+    const bool debug_print = false
+) -> Robot::ConfigurationBlock<rake>
 {
     ParameterizedSpace::StateBlock<rake> block;
     for (std::size_t i = 0; i < ParameterizedSpace::dimension; ++i)
@@ -116,6 +118,15 @@ static auto resolve_and_check(
 
     auto [param_valid, ambient_block] = ParameterizedSpace::resolve_block<rake>(block);
     std::cout << label << " resolve_block valid: " << std::boolalpha << param_valid << std::endl;
+    if (debug_print)
+    {
+        std::cout << label << " ambient configuration: ";
+        for (std::size_t i = 0; i < Robot::dimension; ++i)
+        {
+            std::cout << ambient_block[{i, 0}] << (i < Robot::dimension - 1 ? ", " : "");
+        }
+        std::cout << std::endl;
+    }
 
     if (not param_valid)
     {
@@ -235,13 +246,66 @@ auto main(int, char **) -> int
         return {false, {}};
     };
 
+
+    std::cout << "\n--- TaskSpaceInformedSampler samples ---" << std::endl;
+    for (int i = 0; i < 5; ++i)
+    {
+        ParameterizedSpace::State sample_state = task_sampler->next();
+        const auto sample_array = sample_state.to_array();
+
+        std::cout << "Sample " << i << ": ";
+        for (std::size_t j = 0; j < ParameterizedSpace::dimension; ++j)
+        {
+            std::cout << sample_array[j] << (j < ParameterizedSpace::dimension - 1 ? ", " : "");
+        }
+        std::cout << std::endl;
+
+        ParameterizedSpace::StateBlock<rake> sample_block;
+        for (std::size_t j = 0; j < ParameterizedSpace::dimension; ++j)
+        {
+            sample_block[j] = sample_state.broadcast(j);
+        }
+
+        auto [sample_valid, sample_ambient_block] = ParameterizedSpace::resolve_block<rake>(sample_block);
+        std::cout << "  resolve_block valid: " << std::boolalpha << sample_valid << std::endl;
+        Robot::ConfigurationArray sample_ambient_array;
+        for (std::size_t j = 0; j < Robot::dimension; ++j)
+        {
+            sample_ambient_array[j] = sample_ambient_block[{j, 0}];
+            std::cout << sample_ambient_array[j] << (j < Robot::dimension - 1 ? ", " : "");
+        }
+        std::cout << std::endl;
+
+        if (sample_valid)
+        {
+            auto sample_eefk = Robot::eefk(sample_ambient_array);
+            const Eigen::Vector3f sample_translation = sample_eefk.translation();
+            const Eigen::Quaternionf sample_rotation(sample_eefk.rotation());
+            std::cout << "  recomputed eef pose: " << sample_translation.x() << ", " << sample_translation.y()
+                      << ", " << sample_translation.z() << ", " << sample_rotation.x() << ", "
+                      << sample_rotation.y() << ", " << sample_rotation.z() << ", " << sample_rotation.w()
+                      << std::endl;
+        }
+    }
+    std::cout << "--- end TaskSpaceInformedSampler samples ---\n" << std::endl;
+
+
+
     // Imaginary maze entry/exit poses: tool pointing straight down (qx=1,qy=0,qz=0,qw=0), on
     // the z=0 plane. psi is searched per-endpoint rather than hardcoded (see
     // find_valid_psi_pose above).
     auto [start_psi_found, start_state_array] =
-        find_valid_psi_pose({0.6155468821525574F + 0.05F - 0.15F, -0.62754705131053925F, 0.22607783F});
+        find_valid_psi_pose({ 
+            0.5383931994438171,
+            -0.2849438190460205,
+            0.2260778248310089
+        });
     auto [goal_psi_found, goal_state_array] =
-        find_valid_psi_pose({0.5836458206176758F + 0.05F - 0.2F, 0.4369207215309143F, 0.22607783F});
+        find_valid_psi_pose({
+            0.5523142218589783,
+            0.033929165452718735,
+            0.2260778248310089
+        });
     if (!start_psi_found || !goal_psi_found)
     {
         std::cerr << "Failed to find a valid psi for the start/goal poses." << std::endl;
@@ -251,13 +315,53 @@ auto main(int, char **) -> int
     ParameterizedSpace::State start_state(start_state_array.data());
     ParameterizedSpace::State goal_state(goal_state_array.data());
 
-    resolve_and_check(start_state, "Start", env_v);
-    resolve_and_check(goal_state, "Goal", env_v);
+    resolve_and_check(start_state, "Start", env_v, true);
+    resolve_and_check(goal_state, "Goal", env_v, true);
 
+    // --- DEBUG: eefs_collision_free sanity check ---
+    // start_state is already known-IK-valid and collision-free (per resolve_and_check above,
+    // which runs full fkcc on the resolved ambient config). Feed the same task-space state
+    // through the eef-only prefilter directly, with the RRT/shortcut path below disabled, so we
+    // can inspect exactly what world-space sphere locations eefs_collision_free is testing.
+    {
+        ParameterizedSpace::StateBlock<rake> debug_block;
+        for (std::size_t i = 0; i < ParameterizedSpace::dimension; ++i)
+        {
+            debug_block[i] = start_state.broadcast(i);
+        }
+
+        std::cout << "\n--- eefs_collision_free debug (start_state) ---" << std::endl;
+        const bool eef_free = ParameterizedSpace::eefs_collision_free<rake>(env_v, debug_block);
+        std::cout << "eefs_collision_free result: " << std::boolalpha << eef_free << std::endl;
+        std::cout << "--- end eefs_collision_free debug ---\n" << std::endl;
+    }
+
+    // call distance between start and goal
+    float start_goal_distance = ParameterizedSpace::distance(start_state, goal_state);
+    std::cout << "Start to goal distance: " << start_goal_distance << std::fixed << std::setprecision(6) << start_goal_distance << std::endl;
+
+    // ----- call steer function from start to goal and check if the path is valid -----
+    TaskLocalPlanner ik_local_planner;
+    const auto steer_extension = ik_local_planner.steer(
+        start_state, 
+        goal_state,
+        start_goal_distance,
+        0.75F,
+        true,
+        env_v);
+    const bool steer_valid = steer_extension.status == vamp::planning::SteerStatus::Reached;
+    std::cout << "Steer from start to goal valid: " << std::boolalpha << steer_valid
+               << ", path size: " << steer_extension.waypoints.size() << std::endl;
+
+
+    // /* RRT/shortcut path disabled while debugging eefs_collision_free above.
     auto rng = std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>();
+    // Restart the Halton sequence for each problem so results are reproducible per-problem
+    // and independent of how many samples earlier problems in this run consumed.
+    task_sampler->reset();
 
     vamp::planning::RRTCSettings rrtc_settings;
-    rrtc_settings.range = 1.0F;
+    rrtc_settings.range = 0.75;
     rrtc_settings.max_iterations = 1000000;
     rrtc_settings.max_samples = 1000000;
     rrtc_settings.dynamic_domain = false;
@@ -300,6 +404,4 @@ auto main(int, char **) -> int
         }
         std::cout << std::endl;
     }
-
-    return 0;
 }

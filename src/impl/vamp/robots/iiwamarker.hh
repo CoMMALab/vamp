@@ -34,7 +34,7 @@ namespace vamp::robots
         // planning problem, so it lives here instead of being threaded through
         // parameterized_ik's input.
         static constexpr std::size_t num_smm_parameters = 3;
-        inline static thread_local std::array<float, num_smm_parameters> smm = {1.0, 1.0, -1.0};
+        inline static thread_local std::array<float, num_smm_parameters> smm = {1.0, 1.0, 1.0};
 
         // End-effector position bounds used by the SE3 sampler (`sample()`).
         static constexpr std::array<float, 3> sample_position_lower = {-2.0, -2.0, -2.0};
@@ -25957,6 +25957,11 @@ namespace vamp::robots
             }
 
             if ((y[5] < -2.094395160675049).any() || (y[5] > -2.094395160675049 + 4.188790321350098).any())
+            {
+                return {false, y};
+            }
+
+            if ((y[6] < -3.054326190990076).any() || (y[6] > -3.054326190990076 + 6.108652381980152).any())
             {
                 return {false, y};
             }

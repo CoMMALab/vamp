@@ -3,11 +3,13 @@
 #include <utility>
 #include <iostream>
 #include <iomanip>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <fstream>
 #include <limits>
+#include <tuple>
 #include <nlohmann/json.hpp>
 
 #include <vamp/collision/factory.hh>
@@ -36,6 +38,10 @@ struct Problem
     std::array<float, Robot::ambient_dimension> problem_end;
     std::array<float, 3> start_eef_pos;
     std::array<float, 3> goal_eef_pos;
+    // psi (redundancy parameter) that resolved to problem_start/problem_end -- see
+    // find_valid_psi_pose below for why this is chosen per-problem instead of a fixed constant.
+    float start_psi;
+    float goal_psi;
 };
 
 // This helper function allows nlohmann::json to "just work" with your struct
@@ -45,7 +51,9 @@ void to_json(json &j, const Problem &p)
         {"problem_start", p.problem_start},
         {"problem_end", p.problem_end},
         {"start_eef_pos", p.start_eef_pos},
-        {"goal_eef_pos", p.goal_eef_pos}};
+        {"goal_eef_pos", p.goal_eef_pos},
+        {"start_psi", p.start_psi},
+        {"goal_psi", p.goal_psi}};
 }
 
 static auto load_cuboids_from_json(EnvironmentInput &environment, const std::string &path)
@@ -153,12 +161,10 @@ int main(int argc, char **argv)
     auto env_v = EnvironmentVector(environment);
 
     // Fixed height / orientation for the end effector, matching iiwa_maze_solver.cc: tool
-    // pointing straight down (qx=1,qy=0,qz=0,qw=0 -- i.e. (0, -1, 0, 0) in this parameterization),
-    // redundancy parameter (psi) fixed at 1.45.
+    // pointing straight down (qx=1,qy=0,qz=0,qw=0 -- i.e. (0, -1, 0, 0) in this parameterization).
     constexpr float kEefZ = 0.22607783F;
-    constexpr float kPsi = 1.45F;
 
-    auto make_pose_array = [&](const std::array<float, 3> &eef_pos)
+    auto make_pose_array = [&](const std::array<float, 3> &eef_pos, float psi)
     {
         Robot::ConfigurationArray pose_array;
         pose_array[0] = eef_pos[0];
@@ -168,7 +174,7 @@ int main(int argc, char **argv)
         pose_array[4] = -1.0F;
         pose_array[5] = 0.0F;
         pose_array[6] = 0.0F;
-        pose_array[7] = kPsi;
+        pose_array[7] = psi;
         return pose_array;
     };
 
@@ -222,6 +228,31 @@ int main(int argc, char **argv)
     auto is_eef_pose_ik_valid = [&](const Robot::ConfigurationArray &pose_array)
     { return resolve_ambient_config(pose_array).first; };
 
+    // psi (index 7) doesn't change the eef pose -- only which arm configuration reaches it --
+    // so instead of hardcoding one value for every problem (which pushed the wrist bend, joint
+    // 6, near its singularity for some eef positions and not others, and thus made enforcing
+    // the joint-7 limit reject a large, position-dependent fraction of problems), sweep a
+    // handful of candidates per endpoint and keep the first that resolves within joint limits
+    // and collision-free.
+    constexpr int kNumPsiCandidates = 16;
+    auto find_valid_psi_pose = [&](const std::array<float, 3> &eef_pos)
+        -> std::tuple<bool, Robot::ConfigurationArray, Robot::AmbientConfigurationArray>
+    {
+        for (int k = 0; k < kNumPsiCandidates; ++k)
+        {
+            const float psi =
+                2.0F * static_cast<float>(M_PI) * static_cast<float>(k) / static_cast<float>(kNumPsiCandidates);
+            const auto pose_array = make_pose_array(eef_pos, psi);
+            auto [ik_valid, ambient_array] = resolve_ambient_config(pose_array);
+            if (ik_valid)
+            {
+                return {true, pose_array, ambient_array};
+            }
+        }
+
+        return {false, {}, {}};
+    };
+
     // Reject problems that a straight line in eef-space already solves: sample points along
     // the segment from start to goal and check each with whichever validity check the endpoints
     // were accepted with. If every sample is collision free, the problem is trivial.
@@ -267,33 +298,29 @@ int main(int argc, char **argv)
             0.1)
             continue;
 
-        const auto start_pose_array = make_pose_array(random_start_position);
-        const auto goal_pose_array = make_pose_array(random_goal_position);
-
-        if (!is_eef_pose_valid(start_pose_array) || !is_eef_pose_valid(goal_pose_array))
+        // Cheap eef-collision prefilter (psi-independent, so any psi value works here).
+        if (!is_eef_pose_valid(make_pose_array(random_start_position, 0.0F)) ||
+            !is_eef_pose_valid(make_pose_array(random_goal_position, 0.0F)))
         {
             continue;
         }
 
-        if (check_ik)
+        // Search for a psi that resolves each endpoint to a valid, in-limits, collision-free
+        // ambient configuration -- this also gives us problem_start/problem_end, so it happens
+        // regardless of --check_ik (unlike the plain is_eef_pose_valid check above).
+        auto [start_ik_valid, start_pose_array, start_ambient] = find_valid_psi_pose(random_start_position);
+        if (!start_ik_valid)
         {
-            if (!is_eef_pose_ik_valid(start_pose_array) || !is_eef_pose_ik_valid(goal_pose_array))
-            {
-                continue;
-            }
+            continue;
+        }
+
+        auto [goal_ik_valid, goal_pose_array, goal_ambient] = find_valid_psi_pose(random_goal_position);
+        if (!goal_ik_valid)
+        {
+            continue;
         }
 
         if (is_straight_line_trivial(start_pose_array, goal_pose_array))
-        {
-            continue;
-        }
-
-        // Resolve start/goal to the ambient (joint-space) configuration to actually store --
-        // required regardless of --check_ik, since that's what problem_start/problem_end hold.
-        auto [start_ik_valid, start_ambient] = resolve_ambient_config(start_pose_array);
-        auto [goal_ik_valid, goal_ambient] = resolve_ambient_config(goal_pose_array);
-
-        if (!start_ik_valid || !goal_ik_valid)
         {
             continue;
         }
@@ -303,6 +330,8 @@ int main(int argc, char **argv)
         p.problem_end = goal_ambient;
         p.start_eef_pos = random_start_position;
         p.goal_eef_pos = random_goal_position;
+        p.start_psi = start_pose_array[7];
+        p.goal_psi = goal_pose_array[7];
         std::cout << "Adding start/goal to problem set (" << problems.size() + 1 << " / 100)" << std::endl;
         problems.push_back(p);
 

@@ -1,6 +1,7 @@
 #include <vector>
 #include <array>
 #include <utility>
+#include <cmath>
 #include <iostream>
 #include <iomanip>
 #include <fstream>
@@ -141,8 +142,8 @@ auto main(int, char **) -> int
     // Bound order is (dx, dy, dz, rx, ry, rz): translation box + so(3) log-map rotation box.
     // z pinned to the xy plane, xy free within +-1m; rx/ry (tilt away from facing down) held
     // to a tight numerical tolerance, rz (yaw about the down axis) free over a full turn.
-    TaskSampler::Bound tsr_lower = {-0.85F, -0.7F, -0.0F, -0.000F, -0.000F, -0.000F};
-    TaskSampler::Bound tsr_upper = {0.0F, 0.7F, 0.0F, 0.00F, 0.000F, 0.000F};
+    TaskSampler::Bound tsr_lower = {-0.85F, -0.7F, -0.0F, -0.000F, -0.000F, -3.14159265358979F};
+    TaskSampler::Bound tsr_upper = {0.0F, 0.7F, 0.0F, 0.00F, 0.000F, 3.14159265358979F};
 
     auto task_sampler = vamp::planning::make_task_space_informed_sampler<Robot>(
         eef_to_offset,
@@ -223,6 +224,38 @@ auto main(int, char **) -> int
         return ambient_block;
     };
 
+    // psi (index 7) doesn't change the eef pose -- only which arm configuration reaches it --
+    // so instead of hardcoding one shared value (which pushes the wrist bend, joint 6, near its
+    // singularity for some eef positions and not others), sweep a handful of candidates and
+    // keep the first that resolves within joint limits and collision-free. See
+    // find_valid_psi_pose in iiwa_maze_problem_generator.cc for the full rationale.
+    constexpr int kNumPsiCandidates = 16;
+    auto find_valid_psi_pose = [&](const std::array<float, 3> &eef_pos) -> std::pair<bool, Robot::ConfigurationArray>
+    {
+        for (int k = 0; k < kNumPsiCandidates; ++k)
+        {
+            const float psi =
+                2.0F * static_cast<float>(M_PI) * static_cast<float>(k) / static_cast<float>(kNumPsiCandidates);
+            Robot::ConfigurationArray pose_array = {eef_pos[0], eef_pos[1], 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, psi};
+
+            Robot::Configuration pose(pose_array);
+            Robot::template ConfigurationBlock<rake> pose_block;
+            for (std::size_t i = 0; i < Robot::dimension; ++i)
+            {
+                pose_block[i] = pose.broadcast(i);
+            }
+
+            auto [param_valid, ambient_block] =
+                Robot::template parameterized_ik<Robot::template ConfigurationBlock<rake>, rake>(pose_block);
+            if (param_valid and Robot::template fkcc<rake>(env_v, ambient_block))
+            {
+                return {true, pose_array};
+            }
+        }
+
+        return {false, {}};
+    };
+
 
     std::cout << "\n--- TaskSpaceInformedSampler samples ---" << std::endl;
     for (int i = 0; i < 5; ++i)
@@ -269,10 +302,18 @@ auto main(int, char **) -> int
     std::cout << "--- end TaskSpaceInformedSampler samples ---\n" << std::endl;
 
 
-    // Imaginary maze entry/exit poses: tool pointing straight down (qx=1,qy=0,qz=0,qw=0),
-    // on the z=0 plane, redundancy parameter (psi) arbitrary at 0.0.
-    Robot::ConfigurationArray start_pose_array = {0.6155468821525574 + 0.05 - 0.15, -0.62754705131053925, 0.22607783F, 0.0, -1.0F, 0.0F, 0.0F, 1.45};
-    Robot::ConfigurationArray goal_pose_array = {0.5836458206176758 + 0.05 - 0.2, 0.4369207215309143, 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, 1.45};
+    // Imaginary maze entry/exit poses: tool pointing straight down (qx=1,qy=0,qz=0,qw=0), on
+    // the z=0 plane. psi is searched per-endpoint rather than hardcoded (see
+    // find_valid_psi_pose above).
+    auto [start_psi_found, start_pose_array] =
+        find_valid_psi_pose({0.6155468821525574F + 0.05F - 0.15F, -0.62754705131053925F, 0.22607783F});
+    auto [goal_psi_found, goal_pose_array] =
+        find_valid_psi_pose({0.5836458206176758F + 0.05F - 0.2F, 0.4369207215309143F, 0.22607783F});
+    if (!start_psi_found || !goal_psi_found)
+    {
+        std::cerr << "Failed to find a valid psi for the start/goal poses." << std::endl;
+        return 1;
+    }
 
     auto start_ambient_block = resolve_and_check(start_pose_array, "Start");
     auto goal_ambient_block = resolve_and_check(goal_pose_array, "Goal");

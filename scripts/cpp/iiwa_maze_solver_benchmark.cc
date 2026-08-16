@@ -33,6 +33,11 @@ struct Problem {
 	std::array<float, 7> problem_end;
     std::array<float, 3> start_eef_pos;
     std::array<float, 3> goal_eef_pos;
+    // psi the generator found valid for this problem's start/goal -- see
+    // iiwa_maze_problem_generator.cc's find_valid_psi_pose for why this can't just be a shared
+    // constant across problems.
+    float start_psi;
+    float goal_psi;
 };
 
 
@@ -133,6 +138,8 @@ void load_problems_from_json(std::vector<Problem> &problems, const std::string &
             p.problem_end = item.at("problem_end").get<std::array<float, 7>>();
             p.start_eef_pos = item.at("start_eef_pos").get<std::array<float, 3>>();
             p.goal_eef_pos = item.at("goal_eef_pos").get<std::array<float, 3>>();
+            p.start_psi = item.at("start_psi").get<float>();
+            p.goal_psi = item.at("goal_psi").get<float>();
             problems.push_back(p);
         } catch (const std::exception &e) {
             std::cerr << "Error reading problem fields: " << e.what() << " -- skipping problem" << std::endl;
@@ -277,6 +284,27 @@ auto main(int, char **) -> int
         return true;
     };
 
+    // psi (index 7) doesn't change the eef pose -- only which arm configuration reaches it --
+    // so instead of hardcoding one shared value, sweep a handful of candidates and keep the
+    // first that resolves within joint limits and collision-free. See find_valid_psi_pose in
+    // iiwa_maze_problem_generator.cc for the full rationale.
+    constexpr int kNumPsiCandidates = 16;
+    auto find_valid_psi_pose = [&](const std::array<float, 3> &eef_pos) -> std::pair<bool, Robot::ConfigurationArray>
+    {
+        for (int k = 0; k < kNumPsiCandidates; ++k)
+        {
+            const float psi =
+                2.0F * static_cast<float>(M_PI) * static_cast<float>(k) / static_cast<float>(kNumPsiCandidates);
+            Robot::ConfigurationArray pose_array = {eef_pos[0], eef_pos[1], 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, psi};
+            if (resolve_and_check(pose_array, "psi search"))
+            {
+                return {true, pose_array};
+            }
+        }
+
+        return {false, {}};
+    };
+
 
     std::cout << "\n--- TaskSpaceInformedSampler samples ---" << std::endl;
     for (int i = 0; i < 5; ++i)
@@ -332,8 +360,8 @@ auto main(int, char **) -> int
 
     vamp::planning::RRTCSettings rrtc_settings;
     rrtc_settings.range = 0.75;
-    rrtc_settings.max_iterations = 1000000;
-    rrtc_settings.max_samples = 1000000;
+    rrtc_settings.max_iterations = 500000;
+    rrtc_settings.max_samples = 500000;
     rrtc_settings.dynamic_domain = false;
 
     IKLocalPlanner ik_local_planner;
@@ -496,10 +524,10 @@ auto main(int, char **) -> int
 
         // Configuration start = Configuration(problem.problem_start);
         // Configuration goal = Configuration(problem.problem_end);
-        // convert problem start_eef_pos and goal_eef_pos to 8 elements, fill 3:7 with 0.0, -1.0F, 0.0F, 0.0F and 8 with 1.45
-
-        // write a lambda
-        auto make_pose_array = [](const std::array<float, 3> &eef_pos) {
+        // convert problem start_eef_pos and goal_eef_pos to 8 elements, fill 3:7 with
+        // 0.0, -1.0F, 0.0F, 0.0F and 8 with the problem's own psi (see find_valid_psi_pose in
+        // iiwa_maze_problem_generator.cc -- a single shared psi doesn't work across problems).
+        auto make_pose_array = [](const std::array<float, 3> &eef_pos, float psi) {
             Robot::ConfigurationArray pose_array;
             pose_array[0] = eef_pos[0];
             pose_array[1] = eef_pos[1];
@@ -508,11 +536,11 @@ auto main(int, char **) -> int
             pose_array[4] = -1.0F;
             pose_array[5] = 0.0F;
             pose_array[6] = 0.0F;
-            pose_array[7] = 1.45F;
+            pose_array[7] = psi;
             return pose_array;
         };
-        const Robot::ConfigurationArray start_pose_array = make_pose_array(problem.start_eef_pos);
-        const Robot::ConfigurationArray goal_pose_array = make_pose_array(problem.goal_eef_pos);
+        const Robot::ConfigurationArray start_pose_array = make_pose_array(problem.start_eef_pos, problem.start_psi);
+        const Robot::ConfigurationArray goal_pose_array = make_pose_array(problem.goal_eef_pos, problem.goal_psi);
 
         auto start_valid = resolve_and_check(start_pose_array, "Start");
         auto goal_valid = resolve_and_check(goal_pose_array, "Goal");

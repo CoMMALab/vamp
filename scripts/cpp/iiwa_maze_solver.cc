@@ -1,4 +1,5 @@
 #include <array>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -191,8 +192,8 @@ auto main(int, char **) -> int
     // z pinned to the xy plane, xy free within the maze footprint; rx/ry (tilt away from facing
     // down) held to a tight numerical tolerance, rz (yaw about the down axis) free over a full
     // turn.
-    TaskSampler::Bound tsr_lower = {-0.85F, -0.7F, -0.0F, -0.000F, -0.000F, -0.000F};
-    TaskSampler::Bound tsr_upper = {0.0F, 0.7F, 0.0F, 0.00F, 0.000F, 0.000F};
+    TaskSampler::Bound tsr_lower = {-0.85F, -0.7F, -0.0F, -0.000F, -0.000F, -3.14159265358979F};
+    TaskSampler::Bound tsr_upper = {0.0F, 0.7F, 0.0F, 0.00F, 0.000F, 3.14159265358979F};
 
     auto task_sampler = vamp::planning::make_task_space_informed_sampler<Robot, ParameterizedSpace>(
         eef_to_offset,
@@ -202,51 +203,56 @@ auto main(int, char **) -> int
         environment,
         std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>());
 
+    // psi (index 7) doesn't change the eef pose -- only which arm configuration reaches it --
+    // so instead of hardcoding one shared value (which pushes the wrist bend, joint 6, near its
+    // singularity for some eef positions and not others), sweep a handful of candidates and
+    // keep the first that resolves within joint limits and collision-free.
+    constexpr int kNumPsiCandidates = 16;
+    auto find_valid_psi_pose =
+        [&](const std::array<float, 3> &eef_pos) -> std::pair<bool, ParameterizedSpace::StateArray>
+    {
+        for (int k = 0; k < kNumPsiCandidates; ++k)
+        {
+            const float psi =
+                2.0F * static_cast<float>(M_PI) * static_cast<float>(k) / static_cast<float>(kNumPsiCandidates);
+            ParameterizedSpace::StateArray pose_array = {
+                {eef_pos[0], eef_pos[1], 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, psi}};
+
+            ParameterizedSpace::State pose(pose_array.data());
+            ParameterizedSpace::StateBlock<rake> pose_block;
+            for (std::size_t i = 0; i < ParameterizedSpace::dimension; ++i)
+            {
+                pose_block[i] = pose.broadcast(i);
+            }
+
+            auto [param_valid, ambient_block] = ParameterizedSpace::resolve_block<rake>(pose_block);
+            if (param_valid and Robot::fkcc<rake>(env_v, ambient_block))
+            {
+                return {true, pose_array};
+            }
+        }
+
+        return {false, {}};
+    };
+
     // Imaginary maze entry/exit poses: tool pointing straight down (qx=1,qy=0,qz=0,qw=0), on
-    // the z=0 plane, redundancy parameter (psi) arbitrary at 1.45.
-    ParameterizedSpace::StateArray start_state_array = {
-        {0.6155468821525574F + 0.05F - 0.15F, -0.62754705131053925F, 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, 1.45F}};
-    ParameterizedSpace::StateArray goal_state_array = {
-        {0.5836458206176758F + 0.05F - 0.2F, 0.4369207215309143F, 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, 1.45F}};
+    // the z=0 plane. psi is searched per-endpoint rather than hardcoded (see
+    // find_valid_psi_pose above).
+    auto [start_psi_found, start_state_array] =
+        find_valid_psi_pose({0.6155468821525574F + 0.05F - 0.15F, -0.62754705131053925F, 0.22607783F});
+    auto [goal_psi_found, goal_state_array] =
+        find_valid_psi_pose({0.5836458206176758F + 0.05F - 0.2F, 0.4369207215309143F, 0.22607783F});
+    if (!start_psi_found || !goal_psi_found)
+    {
+        std::cerr << "Failed to find a valid psi for the start/goal poses." << std::endl;
+        return 1;
+    }
 
     ParameterizedSpace::State start_state(start_state_array.data());
     ParameterizedSpace::State goal_state(goal_state_array.data());
 
     resolve_and_check(start_state, "Start", env_v);
     resolve_and_check(goal_state, "Goal", env_v);
-
-    // --- Diagnostic: draw raw samples from task_sampler (same source RRTC will use) and check
-    // each one individually (broadcast into all lanes, not packed via interpolate_block) to
-    // isolate whether resolve_block or fkcc is rejecting nearly everything.
-    {
-        constexpr int n_diag_samples = 50;
-        int resolve_valid_count = 0;
-        int collision_free_count = 0;
-        for (int i = 0; i < n_diag_samples; ++i)
-        {
-            ParameterizedSpace::State sample_state = task_sampler->next();
-            ParameterizedSpace::StateBlock<rake> block;
-            for (std::size_t j = 0; j < ParameterizedSpace::dimension; ++j)
-            {
-                block[j] = sample_state.broadcast(j);
-            }
-
-            auto [param_valid, ambient_block] = ParameterizedSpace::resolve_block<rake>(block);
-            if (!param_valid)
-            {
-                continue;
-            }
-            resolve_valid_count++;
-
-            const bool collision_free = Robot::fkcc<rake>(env_v, ambient_block);
-            if (collision_free)
-            {
-                collision_free_count++;
-            }
-        }
-        std::cout << "Diagnostic: " << n_diag_samples << " samples, " << resolve_valid_count
-                  << " resolve_block valid, " << collision_free_count << " collision-free" << std::endl;
-    }
 
     auto rng = std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>();
 

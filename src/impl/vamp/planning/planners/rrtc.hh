@@ -161,6 +161,7 @@ namespace vamp::planning
                 }
 
                 const auto nearest_configuration = Configuration(buffer_index(nearest_index));
+                const auto steer_distance = Space::distance(nearest_configuration, temp);
 
                 // Edges are executed from start to goal: goal-tree edges run child -> parent,
                 // so the local planner steers and validates along the local path in that
@@ -168,7 +169,7 @@ namespace vamp::planning
                 const auto extension = lp.steer(
                     nearest_configuration,
                     temp,
-                    nearest_distance,
+                    steer_distance,
                     settings.range,
                     tree_a_is_start,
                     environment);
@@ -196,10 +197,16 @@ namespace vamp::planning
                     }
 
                     const auto [other_nearest_index, other_nearest_distance] = *other_nearest;
+                    static_cast<void>(other_nearest_distance);
                     const auto other_nearest_configuration = Configuration(buffer_index(other_nearest_index));
+                    const auto new_configuration = Configuration(buffer_index(new_index));
 
-                    const std::size_t n_extensions =
-                        std::ceil(lp.connect_slack * other_nearest_distance / settings.range);
+                    // Same metric mismatch as steer_distance above: recompute under
+                    // Space::distance rather than the NN tree's own metric.
+                    const std::size_t n_extensions = std::ceil(
+                        lp.connect_slack * Space::distance(new_configuration, other_nearest_configuration) /
+                        settings.range);
+
 
                     std::size_t i_extension = 0;
                     bool connected = false;

@@ -214,13 +214,15 @@ auto main(int, char **) -> int
     auto env_v = EnvironmentVector(environment);
 
     // --- Task Space Region: tool facing down (with only slack for numerical tilt), free yaw
-    // about the down axis, and pinned to the z=0 plane, restricted to the maze's central
-    // corridor (matches iiwa_maze_solver_benchmark.cc on ik_parameterized_planner).
+    // about the down axis, and pinned to the z=0 plane (xy free within the maze footprint).
+    // Matches iiwa_maze_solver.cc's working bounds -- a narrower box here starves the RRT's
+    // informed sampler of the space it needs to route around obstacles, even when the
+    // individual start/goal poses are themselves IK-valid.
     TaskSampler::Transform world_to_reference = {0.0F, 0.0F, 0.22607783F, 0.0F, 1.0F, 0.0F, 0.0F};
     TaskSampler::Transform eef_to_offset = {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
 
-    TaskSampler::Bound tsr_lower = {-0.76F, -0.70F, -0.0F, -0.0F, -0.0F, -0.0F};
-    TaskSampler::Bound tsr_upper = {-0.19F, 0.70F, 0.0F, 0.0F, 0.0F, 0.0F};
+    TaskSampler::Bound tsr_lower = {-0.85F, -0.7F, -0.0F, -0.000F, -0.000F, -3.14159265358979F};
+    TaskSampler::Bound tsr_upper = {0.0F, 0.7F, 0.0F, 0.00F, 0.000F, 3.14159265358979F};
 
     auto task_sampler = vamp::planning::make_task_space_informed_sampler<Robot, ParameterizedSpace>(
         eef_to_offset,
@@ -454,6 +456,9 @@ auto main(int, char **) -> int
     {
         std::cout << "Planning problem " << total_num_problems + 1 << " / " << problems.size() << std::endl;
         total_num_problems++;
+        // Restart the Halton sequence for each problem so results are reproducible per-problem
+        // and independent of how many samples earlier problems in this run consumed.
+        task_sampler->reset();
 
         auto make_pose_array = [](const std::array<float, 3> &eef_pos, float psi)
         {
@@ -523,6 +528,7 @@ auto main(int, char **) -> int
             path_entry["shortcut_ambient_path"] = ambient_path_to_json(shortcut_ambient_path);
             path_entry["shortcut_path_ambient_distance"] = ambient_path_distance(shortcut_ambient_path);
             path_entry["shortcut_path_se3_distance"] = path_se3_distance(shortcut_result.path);
+            path_entry["iterations"] = result.iterations;
             all_paths.push_back(path_entry);
 
             std::ofstream paths_file(paths_output_path);

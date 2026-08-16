@@ -38,6 +38,11 @@ struct Problem
     std::array<float, 7> problem_end;
     std::array<float, 3> start_eef_pos;
     std::array<float, 3> goal_eef_pos;
+    // psi the generator found valid for this problem's start/goal -- see
+    // iiwa_maze_problem_generator.cc's find_valid_psi_pose for why this can't just be a shared
+    // constant across problems.
+    float start_psi;
+    float goal_psi;
 };
 
 static bool load_cuboids_from_json(EnvironmentInput &environment, const std::string &path)
@@ -145,6 +150,8 @@ static void load_problems_from_json(std::vector<Problem> &problems, const std::s
             p.problem_end = item.at("problem_end").get<std::array<float, 7>>();
             p.start_eef_pos = item.at("start_eef_pos").get<std::array<float, 3>>();
             p.goal_eef_pos = item.at("goal_eef_pos").get<std::array<float, 3>>();
+            p.start_psi = item.at("start_psi").get<float>();
+            p.goal_psi = item.at("goal_psi").get<float>();
             problems.push_back(p);
         }
         catch (const std::exception &e)
@@ -223,12 +230,71 @@ auto main(int, char **) -> int
         environment,
         std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>());
 
+    // psi (index 7) doesn't change the eef pose -- only which arm configuration reaches it --
+    // so instead of hardcoding one shared value, sweep a handful of candidates and keep the
+    // first that resolves within joint limits and collision-free. See find_valid_psi_pose in
+    // iiwa_maze_problem_generator.cc for the full rationale.
+    constexpr int kNumPsiCandidates = 16;
+    auto find_valid_psi_pose =
+        [&](const std::array<float, 3> &eef_pos) -> std::pair<bool, ParameterizedSpace::StateArray>
+    {
+        for (int k = 0; k < kNumPsiCandidates; ++k)
+        {
+            const float psi =
+                2.0F * static_cast<float>(M_PI) * static_cast<float>(k) / static_cast<float>(kNumPsiCandidates);
+            ParameterizedSpace::StateArray pose_array = {
+                {eef_pos[0], eef_pos[1], 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, psi}};
+            if (resolve_and_check(pose_array, env_v))
+            {
+                return {true, pose_array};
+            }
+        }
+
+        return {false, {}};
+    };
+
+    std::cout << "\n--- TaskSpaceInformedSampler samples ---" << std::endl;
+    for (int i = 0; i < 5; ++i)
+    {
+        ParameterizedSpace::State sample_state = task_sampler->next();
+        const auto sample_array = sample_state.to_array();
+
+        std::cout << "Sample " << i << ": ";
+        for (std::size_t j = 0; j < ParameterizedSpace::dimension; ++j)
+        {
+            std::cout << sample_array[j] << (j < ParameterizedSpace::dimension - 1 ? ", " : "");
+        }
+        std::cout << std::endl;
+
+        ParameterizedSpace::StateBlock<rake> sample_block;
+        for (std::size_t j = 0; j < ParameterizedSpace::dimension; ++j)
+        {
+            sample_block[j] = sample_state.broadcast(j);
+        }
+
+        auto [sample_valid, sample_ambient_block] = ParameterizedSpace::resolve_block<rake>(sample_block);
+        std::cout << "  resolve_block valid: " << std::boolalpha << sample_valid << std::endl;
+        for (std::size_t j = 0; j < Robot::dimension; ++j)
+        {
+            std::cout << sample_ambient_block[{j, 0}] << (j < Robot::dimension - 1 ? ", " : "");
+        }
+        std::cout << std::endl;
+    }
+    std::cout << "--- end TaskSpaceInformedSampler samples ---\n" << std::endl;
+
+    // Imaginary maze entry/exit poses: tool pointing straight down (qx=1,qy=0,qz=0,qw=0), on
+    // the z=0 plane, redundancy parameter (psi) arbitrary at 1.45.
+    ParameterizedSpace::StateArray start_pose_array = {
+        {0.6155468821525574F + 0.05F - 0.15F, -0.62754705131053925F, 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, 1.45F}};
+    ParameterizedSpace::StateArray goal_pose_array = {
+        {0.5836458206176758F + 0.05F - 0.2F, 0.4369207215309143F, 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, 1.45F}};
+
     auto rng = std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>();
 
     vamp::planning::RRTCSettings rrtc_settings;
     rrtc_settings.range = 0.75F;
-    rrtc_settings.max_iterations = 1000000;
-    rrtc_settings.max_samples = 1000000;
+    rrtc_settings.max_iterations = 500000;
+    rrtc_settings.max_samples = 500000;
     rrtc_settings.dynamic_domain = false;
 
     const TaskLocalPlanner task_local_planner;
@@ -354,6 +420,23 @@ auto main(int, char **) -> int
     nlohmann::json all_paths = nlohmann::json::array();
     const char *paths_output_path = "resources/iiwa_marker/maze_solver_benchmark_paths.json";
 
+    {
+        const ParameterizedSpace::State start_state(start_pose_array.data());
+        const ParameterizedSpace::State goal_state(goal_pose_array.data());
+
+        auto result = TaskRRTC::solve(
+            start_state,
+            goal_state,
+            env_v,
+            rrtc_settings,
+            task_sampler,
+            task_local_planner);
+
+        std::cout << "RRTC path size: " << result.path.size() << ", iterations: " << result.iterations
+                  << ", microseconds: " << result.nanoseconds / 1000.0F << ", with tree sizes: " << result.size[0]
+                  << ", " << result.size[1] << std::endl;
+    }
+
     std::vector<Problem> problems;
     const std::string problem_json_path = "resources/iiwa_marker/maze_problems_checked_ik.json";
     load_problems_from_json(problems, problem_json_path);
@@ -372,7 +455,7 @@ auto main(int, char **) -> int
         std::cout << "Planning problem " << total_num_problems + 1 << " / " << problems.size() << std::endl;
         total_num_problems++;
 
-        auto make_pose_array = [](const std::array<float, 3> &eef_pos)
+        auto make_pose_array = [](const std::array<float, 3> &eef_pos, float psi)
         {
             ParameterizedSpace::StateArray pose_array{};
             pose_array[0] = eef_pos[0];
@@ -382,11 +465,11 @@ auto main(int, char **) -> int
             pose_array[4] = -1.0F;
             pose_array[5] = 0.0F;
             pose_array[6] = 0.0F;
-            pose_array[7] = 1.45F;
+            pose_array[7] = psi;
             return pose_array;
         };
-        const ParameterizedSpace::StateArray start_pose_array = make_pose_array(problem.start_eef_pos);
-        const ParameterizedSpace::StateArray goal_pose_array = make_pose_array(problem.goal_eef_pos);
+        const ParameterizedSpace::StateArray start_pose_array = make_pose_array(problem.start_eef_pos, problem.start_psi);
+        const ParameterizedSpace::StateArray goal_pose_array = make_pose_array(problem.goal_eef_pos, problem.goal_psi);
 
         const bool start_valid = resolve_and_check(start_pose_array, env_v);
         const bool goal_valid = resolve_and_check(goal_pose_array, env_v);

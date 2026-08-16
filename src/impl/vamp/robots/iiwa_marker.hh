@@ -65542,7 +65542,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[296],
         inline static thread_local std::array<FloatVector<vamp::FloatVectorWidth, 1>, 3> smm = {
             FloatVector<vamp::FloatVectorWidth, 1>::fill(1.0f),
             FloatVector<vamp::FloatVectorWidth, 1>::fill(1.0f),
-            FloatVector<vamp::FloatVectorWidth, 1>::fill(-1.0f)};
+            FloatVector<vamp::FloatVectorWidth, 1>::fill(1.0f)};
 
         // Set the same GC branch for every lane -- the "many task-space states, one shared
         // branch" mode resolve_block/resolve_and_check use while extending the tree. `gc` is
@@ -66370,10 +66370,10 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[296],
                 return {false, y};
             }
             
-            // if ((y[6] < V(Ambient::lower_bound[6])).any() or (y[6] > V(Ambient::upper_bound[6])).any())
-            // {
-            //     return {false, y};
-            // }
+            if ((y[6] < V(Ambient::lower_bound[6])).any() or (y[6] > V(Ambient::upper_bound[6])).any())
+            {
+                return {false, y};
+            }
             
 
             return {true, y};
@@ -66592,7 +66592,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[296],
             
             valid = valid & (y[5] >= V(Ambient::lower_bound[5])) & (y[5] <= V(Ambient::upper_bound[5]));
             
-            // valid = valid & (y[6] >= V(Ambient::lower_bound[6])) & (y[6] <= V(Ambient::upper_bound[6]));
+            valid = valid & (y[6] >= V(Ambient::lower_bound[6])) & (y[6] <= V(Ambient::upper_bound[6]));
             
 
             return {valid, y};

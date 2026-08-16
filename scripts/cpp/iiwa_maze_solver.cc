@@ -306,9 +306,9 @@ auto main(int, char **) -> int
     // the z=0 plane. psi is searched per-endpoint rather than hardcoded (see
     // find_valid_psi_pose above).
     auto [start_psi_found, start_pose_array] =
-        find_valid_psi_pose({0.6155468821525574F + 0.05F - 0.15F, -0.62754705131053925F, 0.22607783F});
+        find_valid_psi_pose({ 0.5523142218589783F, 0.033929165452718735F, 0.22607783F});
     auto [goal_psi_found, goal_pose_array] =
-        find_valid_psi_pose({0.5836458206176758F + 0.05F - 0.2F, 0.4369207215309143F, 0.22607783F});
+        find_valid_psi_pose({0.5383931994438171F, -0.2849438190460205F, 0.22607783F});
     if (!start_psi_found || !goal_psi_found)
     {
         std::cerr << "Failed to find a valid psi for the start/goal poses." << std::endl;
@@ -321,7 +321,7 @@ auto main(int, char **) -> int
     auto rng = std::make_shared<vamp::rng::Halton<Robot>>();
 
     vamp::planning::RRTCSettings rrtc_settings;
-    rrtc_settings.range = 1.0;
+    rrtc_settings.range = 0.75;
     rrtc_settings.max_iterations = 1000000;
     rrtc_settings.max_samples = 1000000;
     rrtc_settings.dynamic_domain = false;

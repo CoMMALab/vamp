@@ -247,6 +247,26 @@ def plan_step(
                 goals.append(candidate)
 
     sampler = module.halton()
+    # --- per-query self-collision pair partition (m71), guarded by R2_PRUNE ---
+    import os as _os
+    _prune = {"active": None, "total": None, "ms": 0.0}
+    if _os.environ.get("R2_PRUNE"):
+        top_up_goals()
+        if goals:
+            import sys as _sys, time as _t
+            _pp = str(Path(__file__).parents[1] / "experiments" / "jit" / "partition")
+            if _pp not in _sys.path:
+                _sys.path.insert(0, _pp)
+            import selfpair_partition as _sp
+            if not hasattr(_sp, "_R2C6_CACHE"):
+                _sp._R2C6_CACHE = _sp.load_compact_self()
+            _ent, _pa, _pb = _sp._R2C6_CACHE
+            _cfgs = [np.array(start, dtype=np.float64)] + [np.array(g, dtype=np.float64) for g in goals]
+            _t0 = _t.perf_counter()
+            _active, _ = _sp.compute_active_self_pairs(module, _cfgs, _ent, _pa, _pb, len(start))
+            _prune["ms"] = (_t.perf_counter() - _t0) * 1e3
+            e.active_self_pairs = _active
+            _prune["active"], _prune["total"] = len(_active), len(_ent)
     result = None
     elapsed = time.perf_counter()
     for _ in range(plan_rounds):
@@ -276,6 +296,22 @@ def plan_step(
                for i in range(len(path))):
         raise RuntimeError("simplified path leaves the mode manifold")
 
+    # --- correctness verification (R2_VERIFY): re-validate the path under FULL self-collision ---
+    if _os.environ.get("R2_VERIFY") and _prune["active"] is not None:
+        _saved = list(e.active_self_pairs)
+        e.active_self_pairs = []  # all self-pairs active == baseline collision semantics
+        _fn = sum(0 if module.validate(np.array(path[i], dtype=np.float32), e) else 1
+                  for i in range(len(path)))
+        e.active_self_pairs = _saved
+        _pr = 100.0 * (_prune["total"] - _prune["active"]) / _prune["total"]
+        if _fn:
+            print(f"  !!! CORRECTNESS FAIL: {_fn}/{len(path)} path states collide under FULL check "
+                  f"(pruned {_pr:.0f}% pairs)")
+        else:
+            print(f"  CORRECTNESS OK: path valid under full self-collision; pruned "
+                  f"{_prune['total'] - _prune['active']}/{_prune['total']} pairs ({_pr:.0f}%), "
+                  f"partition {_prune['ms']:.1f}ms")
+
     drift = max(
         np.linalg.norm(fk.link_pose(np.array(path[i]), FOOT_TIP[pinned])[:3, 3]
                        - pinned_pose[:3, 3])
@@ -300,6 +336,7 @@ def main(
     seed_attempts: int = 30,
     plan_rounds: int = 5,
     visualize: bool = False,
+    coupled: bool = False,  # Coupled Gauss-Newton projection step.
     **kwargs,
 ):
     kwargs.setdefault("max_iterations", 10000)
@@ -315,8 +352,10 @@ def main(
 
     constraint_settings = vamp.ConstraintSettings()
     constraint_settings.max_iterations = 50
+    constraint_settings.coupled = coupled
     goal_settings = vamp.ConstraintSettings()
     goal_settings.max_iterations = 200
+    goal_settings.coupled = coupled
 
     fk = ForwardKinematics(module.joint_names())
     rng = np.random.default_rng(obstacle_seed)

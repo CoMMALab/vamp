@@ -55,7 +55,9 @@ LEFT_FOOT = [0.59, 0.38, 0.4, 0.59, -0.02070, 0.06015, -0.95335]
 RIGHT_FOOT = [0.61, -0.36, 0.35, -0.61, -0.02228, -0.11609, -0.94832]
 
 FREE = [10.0] * 6
-PINNED = [0.001, 0.001, 0.001, 0.1, 0.1, 0.1]
+import os as _os
+_PT = float(_os.environ.get("DIGIT_PIN_TOL", "0.001"))  # foot-pin position tolerance (default 1e-3)
+PINNED = [_PT, _PT, _PT, 0.1, 0.1, 0.1]
 
 # Pose (qw, qx, qy, qz, x, y, z) of the right hand in the left-hand frame while both
 # grasp the box: position and roll are held, the other rotations are left free.
@@ -119,10 +121,14 @@ def main(
     method: str = "InnerLM",  # Projection method: InnerLM, OuterLM, or GradDesc.
     descend_rate: float = 1.0,
     projection_iterations: int = 25,
+    coupled: bool = False,  # Coupled Gauss-Newton projection step (vs default block-Jacobi).
     emit_all_waypoints: bool = True,  # Keep whole projected chains: dense on-manifold paths.
     output: str = "",  # Write the simplified path to this file as CSV.
     interpolate: bool = False,  # Interpolate the saved path to the collision resolution.
     visualize: bool = False,
+    sampler_kind: str = "halton",
+    seed: int = 0,
+    reps: int = 1,
     **kwargs,
 ):
     kwargs.setdefault("max_iterations", 100000)
@@ -139,6 +145,7 @@ def main(
     constraint_settings.descend_rate = descend_rate
     constraint_settings.max_iterations = projection_iterations
     constraint_settings.emit_all_waypoints = emit_all_waypoints
+    constraint_settings.coupled = coupled
 
     constraints = make_constraints(module, transport)
     e = vamp.Environment()
@@ -152,6 +159,7 @@ def main(
     seed_settings.method = PROJ_METHODS[method]
     seed_settings.max_iterations = 100
     seed_settings.descend_rate = 0.75
+    seed_settings.coupled = coupled
     start_c = module.project(np.array(CONFIGS[start], dtype=np.float32), constraints, seed_settings)
     goal_c = module.project(np.array(CONFIGS[goal], dtype=np.float32), constraints, seed_settings)
 
@@ -159,11 +167,12 @@ def main(
         if not module.validate(q, e):
             raise RuntimeError(f"projected {name} configuration is in collision")
 
-    sampler = module.halton()
+    sampler = module.xorshift(seed) if sampler_kind == "xorshift" else module.halton()
     elapsed = time.perf_counter()
-    result = planner_func(
-        start_c, goal_c, e, plan_settings, sampler,
-        constraints=constraints, constraint_settings=constraint_settings)
+    for _rep in range(reps):
+        result = planner_func(
+            start_c, goal_c, e, plan_settings, sampler,
+            constraints=constraints, constraint_settings=constraint_settings)
     elapsed = time.perf_counter() - elapsed
 
     if not result.solved:

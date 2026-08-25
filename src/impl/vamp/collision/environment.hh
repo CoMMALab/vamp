@@ -25,6 +25,11 @@ namespace vamp::collision
         std::vector<MVT> pointclouds_mvt;
         std::vector<Attachment<DataT>> attachments;
 
+        // Per-query self-collision pair partition (m71): indices into the robot's static
+        // cc_self_pairs that survive query-scoped pruning. Empty => check all pairs (default,
+        // backward-compatible). Only the compact-collision kernels (digit, r2c6) consult this.
+        std::vector<unsigned int> active_self_pairs;
+
         Environment() = default;
 
         template <typename OtherDataT>
@@ -39,6 +44,7 @@ namespace vamp::collision
           , pointclouds(other.pointclouds.begin(), other.pointclouds.end())
           , pointclouds_mvt(other.pointclouds_mvt.begin(), other.pointclouds_mvt.end())
           , attachments(other.template clone_attachments<DataT>())
+          , active_self_pairs(other.active_self_pairs.begin(), other.active_self_pairs.end())
         {
         }
 

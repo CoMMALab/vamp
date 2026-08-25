@@ -155,22 +155,57 @@ namespace vamp::planning::constraint
             return resolve_and_check_impl(interp_block, environment);
         }
 
+        static inline void set_support_polygon(const std::vector<std::array<float, 2>> &polygon_xy) noexcept
+        {
+            support_polygon_xy = polygon_xy;
+        }
+
     private:
         mutable std::vector<Configuration> chain_;
 
+        static constexpr float max_joint_delta = 0.2F;
+
+        // True if any joint moves by >= max_joint_delta between lane `lane_a` of block `a` and
+        // lane `lane_b` of block `b`. Used only on pairs that are one fine-resolution t_step apart
+        // in path-parameter order (see validate_resolved).
+        static inline auto joint_delta_exceeds(
+            const typename Ambient::template ConfigurationBlock<rake> &a,
+            std::size_t lane_a,
+            const typename Ambient::template ConfigurationBlock<rake> &b,
+            std::size_t lane_b) noexcept -> bool
+        {
+            for (std::size_t dim = 0; dim < Ambient::dimension; ++dim)
+            {
+                if (std::abs(a[{dim, lane_a}] - b[{dim, lane_b}]) >= max_joint_delta)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         // Static-stability support polygon, in the mobile base's local xy frame (matches
         // Space::compute_com's output frame). Vertices trace the ground-contact points in
-        // order (right wheel -> left wheel -> left caster -> right caster).
-        static constexpr std::array<std::array<float, 2>, 4> support_polygon_xy = {{
+        // order; defaults to RBY1's four ground-contact points (right wheel -> left wheel ->
+        // left caster -> right caster). Overwrite with set_support_polygon() above.
+        inline static thread_local std::vector<std::array<float, 2>> support_polygon_xy = {
             {0.228000F, -0.265000F},   // right wheel
             {0.228000F, 0.265000F},    // left wheel
             {-0.248686F, 0.066310F},   // left caster
             {-0.248686F, -0.066310F},  // right caster
-        }};
+        };
 
         static inline auto point_in_support_polygon(FloatVector<rake> x, FloatVector<rake> y) noexcept -> bool
         {
             using V = FloatVector<rake>;
+
+            // An empty polygon (e.g. set_support_polygon({}) by mistake) has no interior;
+            // support_polygon_xy.size() - 1 would otherwise underflow below.
+            if (support_polygon_xy.empty())
+            {
+                return false;
+            }
 
             V inside = V::zero_vector();
             for (std::size_t i = 0, j = support_polygon_xy.size() - 1; i < support_polygon_xy.size(); j = i++)
@@ -245,25 +280,62 @@ namespace vamp::planning::constraint
             const auto t_step = FloatVector<rake>::fill(1.F / static_cast<float>(rake * n));
 
             typename Space::template StateBlock<rake> interp_block;
+            typename Ambient::template ConfigurationBlock<rake> ambient_block;
             auto t_block = percents;
             Space::template interpolate_block<rake>(start, goal, t_block, interp_block);
 
-            if (not resolve_and_check_impl(interp_block, environment))
+            if (not resolve_and_check_impl(interp_block, environment, distance, &ambient_block))
             {
                 return false;
             }
 
             if (n == 1)
             {
+                // Percents spaces lanes by exactly 1/rake == t_step here, so adjacent lanes are
+                // true path-adjacent samples -- check them directly.
+                for (std::size_t lane = 1; lane < rake; ++lane)
+                {
+                    if (joint_delta_exceeds(ambient_block, lane - 1, ambient_block, lane))
+                    {
+                        return false;
+                    }
+                }
+
                 return true;
             }
+
+            // For n > 1, lanes within one block are a full 1/rake apart in t, not t_step apart --
+            // the true t_step-adjacent pair is the same lane across successive iterations.
+            // first_block keeps lane l's t=(l+1)/rake sample so the one remaining t_step-wide gap
+            // per lane boundary (lane l-1's t=l/rake sample vs lane l's minimum-t sample) can be
+            // checked once the final block is known.
+            const auto first_block = ambient_block;
+            auto prev_block = ambient_block;
 
             for (auto i = 1U; i < n; ++i)
             {
                 t_block = t_block - t_step;
                 Space::template interpolate_block<rake>(start, goal, t_block, interp_block);
 
-                if (not resolve_and_check_impl(interp_block, environment))
+                if (not resolve_and_check_impl(interp_block, environment, distance, &ambient_block))
+                {
+                    return false;
+                }
+
+                for (std::size_t lane = 0; lane < rake; ++lane)
+                {
+                    if (joint_delta_exceeds(prev_block, lane, ambient_block, lane))
+                    {
+                        return false;
+                    }
+                }
+
+                prev_block = ambient_block;
+            }
+
+            for (std::size_t lane = 1; lane < rake; ++lane)
+            {
+                if (joint_delta_exceeds(first_block, lane - 1, prev_block, lane))
                 {
                     return false;
                 }
@@ -274,7 +346,10 @@ namespace vamp::planning::constraint
 
         inline auto resolve_and_check_impl(
             const typename Space::template StateBlock<rake> &interp_block,
-            const Environment &environment) const noexcept -> bool
+            const Environment &environment,
+            const float distance = 100.F,
+            typename Ambient::template ConfigurationBlock<rake> *ambient_out = nullptr
+        ) const noexcept -> bool
         {
             // just reject if the sampled eefs are in collision
             // auto eef_coll_res = Space::template eefs_collision_free<rake>(environment, interp_block);
@@ -287,6 +362,11 @@ namespace vamp::planning::constraint
             if (not param_valid)
             {
                 return false;
+            }
+
+            if (ambient_out != nullptr)
+            {
+                *ambient_out = ambient_block;
             }
 
             if (not com_within_support_polygon(ambient_block))

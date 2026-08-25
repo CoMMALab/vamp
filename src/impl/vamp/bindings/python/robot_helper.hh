@@ -123,7 +123,9 @@ namespace vamp::binding
     namespace nb = nanobind;
     using namespace nb::literals;
 
-    static constexpr const std::size_t rake = vamp::FloatVectorWidth;
+    // `rake` is already defined in this namespace by parameterized_space_helper.hh
+    // (included transitively via parameterized_space_binder.hh above); redefining it
+    // here would be an ODR violation in any TU that includes both.
 
     // Conversions shared by the two Python input adapters, written against the derived
     // adapter's array().
@@ -1377,6 +1379,7 @@ namespace vamp::binding
                 submodule.def_submodule("parameterized_space", "Task-space planning submodule");
 
             bind_sampler<PTraits>(param_submodule, "RNG");
+            bind_task_space_informed_sampler<PTraits>(param_submodule);
 
             auto param_path_k = bind_path_class<PTraits>(param_submodule, "Path");
             bind_path_io<PTraits>(param_path_k);

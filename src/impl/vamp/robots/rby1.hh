@@ -21,7 +21,7 @@ struct RBY1
     static constexpr std::size_t n_spheres = 87;
     static constexpr float min_radius = 0.03427768871188164;
     static constexpr float max_radius = 0.2039647400379181;
-    static constexpr std::size_t resolution = 32;
+    static constexpr std::size_t resolution = 128;
     static constexpr bool euclidean = false;
     static constexpr std::array<std::size_t, 0> so3_offsets = {  };
 
@@ -59,15 +59,15 @@ struct RBY1
     };
 
     alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> s_m{
-        2000.0, 2000.0, 2.0199999809265137, 2.0199999809265137, 0.6981316804885864, 2.5689280033111572, 4.049162864685059, 2.356194496154785, 1.0471975803375244, 3.1415927410125732, 4.71238899230957, 3.1915926933288574, 4.188790321350098, 2.6279938220977783, 6.0, 3.752457857131958, 5.5, 4.71238899230957, 3.1915926933288574, 4.188790321350098, 2.6279938220977783, 6.0, 3.752457857131958, 5.5
+        2000.0, 2000.0, 2.0199999809265137, 2.0199999809265137, 0.5235987901687622, 2.0453293323516846, 4.049162864685059, 2.356194496154785, 1.0471975803375244, 3.1415927410125732, 4.71238899230957, 3.159045934677124, 4.188790321350098, 2.6279938220977783, 6.0, 3.4906585216522217, 5.410520553588867, 4.71238899230957, 3.159045934677124, 4.188790321350098, 2.6279938220977783, 6.0, 3.4906585216522217, 5.410520553588867
     };
 
     alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> s_a{
-        -1000.0, -1000.0, -1.0099999904632568, -1.0099999904632568, -0.3490658402442932, -1.0471975803375244, -2.4783670902252197, -0.7853981852531433, -0.5235987901687622, -1.5707963705062866, -2.356194496154785, -0.05000000074505806, -2.094395160675049, -2.6179938316345215, -3.0, -1.7453292608261108, -2.75, -2.356194496154785, -3.1415927410125732, -2.094395160675049, -2.6179938316345215, -3.0, -1.7453292608261108, -2.75
+        -1000.0, -1000.0, -1.0099999904632568, -1.0099999904632568, -0.2617993950843811, -0.5235987901687622, -2.4783670902252197, -0.7853981852531433, -0.5235987901687622, -1.5707963705062866, -2.356194496154785, -0.01745329238474369, -2.094395160675049, -2.6179938316345215, -3.0, -1.5707963705062866, -2.7052602767944336, -2.356194496154785, -3.1415927410125732, -2.094395160675049, -2.6179938316345215, -3.0, -1.5707963705062866, -2.7052602767944336
     };
 
     alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> d_m{
-        0.0005000000237487257, 0.0005000000237487257, 0.49504950642585754, 0.49504950642585754, 1.4323945045471191, 0.3892674148082733, 0.24696461856365204, 0.42441317439079285, 0.9549296498298645, 0.31830987334251404, 0.21220658719539642, 0.3133231997489929, 0.23873241245746613, 0.38051837682724, 0.1666666716337204, 0.26649200916290283, 0.1818181872367859, 0.21220658719539642, 0.3133231997489929, 0.23873241245746613, 0.38051837682724, 0.1666666716337204, 0.26649200916290283, 0.1818181872367859
+        0.0005000000237487257, 0.0005000000237487257, 0.49504950642585754, 0.49504950642585754, 1.909859299659729, 0.48891884088516235, 0.24696461856365204, 0.42441317439079285, 0.9549296498298645, 0.31830987334251404, 0.21220658719539642, 0.3165512681007385, 0.23873241245746613, 0.38051837682724, 0.1666666716337204, 0.2864789068698883, 0.1848250925540924, 0.21220658719539642, 0.3165512681007385, 0.23873241245746613, 0.38051837682724, 0.1666666716337204, 0.2864789068698883, 0.1848250925540924
     };
 
     static inline void scale_configuration(Configuration& q) noexcept
@@ -87,26 +87,26 @@ struct RBY1
 q[1] = -1000.0 + (q[1] * 2000.0);
 q[2] = -1.0099999904632568 + (q[2] * 2.0199999809265137);
 q[3] = -1.0099999904632568 + (q[3] * 2.0199999809265137);
-q[4] = -0.3490658402442932 + (q[4] * 0.6981316804885864);
-q[5] = -1.0471975803375244 + (q[5] * 2.5689280033111572);
+q[4] = -0.2617993950843811 + (q[4] * 0.5235987901687622);
+q[5] = -0.5235987901687622 + (q[5] * 2.0453293323516846);
 q[6] = -2.4783670902252197 + (q[6] * 4.049162864685059);
 q[7] = -0.7853981852531433 + (q[7] * 2.356194496154785);
 q[8] = -0.5235987901687622 + (q[8] * 1.0471975803375244);
 q[9] = -1.5707963705062866 + (q[9] * 3.1415927410125732);
 q[10] = -2.356194496154785 + (q[10] * 4.71238899230957);
-q[11] = -0.05000000074505806 + (q[11] * 3.1915926933288574);
+q[11] = -0.01745329238474369 + (q[11] * 3.159045934677124);
 q[12] = -2.094395160675049 + (q[12] * 4.188790321350098);
 q[13] = -2.6179938316345215 + (q[13] * 2.6279938220977783);
 q[14] = -3.0 + (q[14] * 6.0);
-q[15] = -1.7453292608261108 + (q[15] * 3.752457857131958);
-q[16] = -2.75 + (q[16] * 5.5);
+q[15] = -1.5707963705062866 + (q[15] * 3.4906585216522217);
+q[16] = -2.7052602767944336 + (q[16] * 5.410520553588867);
 q[17] = -2.356194496154785 + (q[17] * 4.71238899230957);
-q[18] = -3.1415927410125732 + (q[18] * 3.1915926933288574);
+q[18] = -3.1415927410125732 + (q[18] * 3.159045934677124);
 q[19] = -2.094395160675049 + (q[19] * 4.188790321350098);
 q[20] = -2.6179938316345215 + (q[20] * 2.6279938220977783);
 q[21] = -3.0 + (q[21] * 6.0);
-q[22] = -1.7453292608261108 + (q[22] * 3.752457857131958);
-q[23] = -2.75 + (q[23] * 5.5);
+q[22] = -1.5707963705062866 + (q[22] * 3.4906585216522217);
+q[23] = -2.7052602767944336 + (q[23] * 5.410520553588867);
 
     }
 
@@ -117,40 +117,40 @@ q[23] = -2.75 + (q[23] * 5.5);
 q[1] = 0.0005000000237487257 * (q[1] - -1000.0);
 q[2] = 0.49504950642585754 * (q[2] - -1.0099999904632568);
 q[3] = 0.49504950642585754 * (q[3] - -1.0099999904632568);
-q[4] = 1.4323945045471191 * (q[4] - -0.3490658402442932);
-q[5] = 0.3892674148082733 * (q[5] - -1.0471975803375244);
+q[4] = 1.909859299659729 * (q[4] - -0.2617993950843811);
+q[5] = 0.48891884088516235 * (q[5] - -0.5235987901687622);
 q[6] = 0.24696461856365204 * (q[6] - -2.4783670902252197);
 q[7] = 0.42441317439079285 * (q[7] - -0.7853981852531433);
 q[8] = 0.9549296498298645 * (q[8] - -0.5235987901687622);
 q[9] = 0.31830987334251404 * (q[9] - -1.5707963705062866);
 q[10] = 0.21220658719539642 * (q[10] - -2.356194496154785);
-q[11] = 0.3133231997489929 * (q[11] - -0.05000000074505806);
+q[11] = 0.3165512681007385 * (q[11] - -0.01745329238474369);
 q[12] = 0.23873241245746613 * (q[12] - -2.094395160675049);
 q[13] = 0.38051837682724 * (q[13] - -2.6179938316345215);
 q[14] = 0.1666666716337204 * (q[14] - -3.0);
-q[15] = 0.26649200916290283 * (q[15] - -1.7453292608261108);
-q[16] = 0.1818181872367859 * (q[16] - -2.75);
+q[15] = 0.2864789068698883 * (q[15] - -1.5707963705062866);
+q[16] = 0.1848250925540924 * (q[16] - -2.7052602767944336);
 q[17] = 0.21220658719539642 * (q[17] - -2.356194496154785);
-q[18] = 0.3133231997489929 * (q[18] - -3.1415927410125732);
+q[18] = 0.3165512681007385 * (q[18] - -3.1415927410125732);
 q[19] = 0.23873241245746613 * (q[19] - -2.094395160675049);
 q[20] = 0.38051837682724 * (q[20] - -2.6179938316345215);
 q[21] = 0.1666666716337204 * (q[21] - -3.0);
-q[22] = 0.26649200916290283 * (q[22] - -1.7453292608261108);
-q[23] = 0.1818181872367859 * (q[23] - -2.75);
+q[22] = 0.2864789068698883 * (q[22] - -1.5707963705062866);
+q[23] = 0.1848250925540924 * (q[23] - -2.7052602767944336);
 
     }
 
     inline static auto space_measure() noexcept -> float
     {
-        return 3.861797917457158e+17;
+        return 1.8918856731924358e+17;
     }
 
     alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> lower_bound{
-        -1000.0, -1000.0, -1.0099999904632568, -1.0099999904632568, -0.3490658402442932, -1.0471975803375244, -2.4783670902252197, -0.7853981852531433, -0.5235987901687622, -1.5707963705062866, -2.356194496154785, -0.05000000074505806, -2.094395160675049, -2.6179938316345215, -3.0, -1.7453292608261108, -2.75, -2.356194496154785, -3.1415927410125732, -2.094395160675049, -2.6179938316345215, -3.0, -1.7453292608261108, -2.75
+        -1000.0, -1000.0, -1.0099999904632568, -1.0099999904632568, -0.2617993950843811, -0.5235987901687622, -2.4783670902252197, -0.7853981852531433, -0.5235987901687622, -1.5707963705062866, -2.356194496154785, -0.01745329238474369, -2.094395160675049, -2.6179938316345215, -3.0, -1.5707963705062866, -2.7052602767944336, -2.356194496154785, -3.1415927410125732, -2.094395160675049, -2.6179938316345215, -3.0, -1.5707963705062866, -2.7052602767944336
     };
 
     alignas(Configuration::S::Alignment) static constexpr std::array<float, dimension> upper_bound{
-        1000.0, 1000.0, 1.0099999904632568, 1.0099999904632568, 0.3490658402442932, 1.5217304229736328, 1.570796012878418, 1.5707963705062866, 0.5235987901687622, 1.5707963705062866, 2.356194496154785, 3.1415927410125732, 2.094395160675049, 0.009999999776482582, 3.0, 2.0071287155151367, 2.75, 2.356194496154785, 0.05000000074505806, 2.094395160675049, 0.009999999776482582, 3.0, 2.0071287155151367, 2.75
+        1000.0, 1000.0, 1.0099999904632568, 1.0099999904632568, 0.2617993950843811, 1.5217304229736328, 1.570796012878418, 1.5707963705062866, 0.5235987901687622, 1.5707963705062866, 2.356194496154785, 3.1415927410125732, 2.094395160675049, 0.009999999776482582, 3.0, 1.919862151145935, 2.7052602767944336, 2.356194496154785, 0.01745329238474369, 2.094395160675049, 0.009999999776482582, 3.0, 1.919862151145935, 2.7052602767944336
     };
 
     static inline auto in_bounds(const Configuration &x) -> bool
@@ -172,26 +172,26 @@ q[23] = 0.1818181872367859 * (q[23] - -2.75);
    v[0] = 6.28318530717959 * x[2];
    y[2] = cos(v[0]);
    y[3] = sin(v[0]);
-   y[4] = -0.34906585 + 0.6981317 * x[3];
-   y[5] = -1.04719755 + 2.56892803 * x[4];
+   y[4] = -0.261799388 + 0.523598776 * x[3];
+   y[5] = -0.523598776 + 2.045329256 * x[4];
    y[6] = -2.478367 + 4.049163 * x[5];
    y[7] = -0.78539816 + 2.35619449 * x[6];
    y[8] = -0.52359878 + 1.04719756 * x[7];
    y[9] = -1.57079633 + 3.14159266 * x[8];
    y[10] = -2.35619449 + 4.71238898 * x[9];
-   y[11] = -0.05 + 3.19159265 * x[10];
+   y[11] = -0.017453293 + 3.159045943 * x[10];
    y[12] = -2.0943951 + 4.1887902 * x[11];
    y[13] = -2.61799388 + 2.62799388 * x[12];
    y[14] = -3. + 6. * x[13];
-   y[15] = -1.74532925 + 3.75245789 * x[14];
-   y[16] = -2.75 + 5.5 * x[15];
+   y[15] = -1.570796327 + 3.490658504 * x[14];
+   y[16] = -2.70526034 + 5.41052068 * x[15];
    y[17] = -2.35619449 + 4.71238898 * x[16];
-   y[18] = -3.14159265 + 3.19159265 * x[17];
+   y[18] = -3.14159265 + 3.159045943 * x[17];
    y[19] = -2.0943951 + 4.1887902 * x[18];
    y[20] = -2.61799388 + 2.62799388 * x[19];
    y[21] = -3. + 6. * x[20];
-   y[22] = -1.74532925 + 3.75245789 * x[21];
-   y[23] = -2.75 + 5.5 * x[22];
+   y[22] = -1.570796327 + 3.490658504 * x[21];
+   y[23] = -2.70526034 + 5.41052068 * x[22];
 
         return Configuration(y.data());
         
@@ -167175,10 +167175,12 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
         static constexpr std::size_t sample_dimension = 17;
         static constexpr bool euclidean = false;
         static constexpr std::array<std::size_t, 1> so3_offsets = { 15 };
+        static constexpr float joint_limit_margin = 0.015f;
 
         // Ambient configuration-space robot that resolve_block() maps into.
         using Ambient = RBY1;
 
+        
         // GCP (branch) selectors for each rainbow arm's redundant self-motion manifold:
         // (elbow_sel, shoulder_sel, wrist_sel) -- see RainbowLeftArmParameterization /
         // RainbowRightArmParameterization in rainbow_arm_parameterization.hh. Not part of
@@ -167248,6 +167250,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
         // overwrite directly or via compute_mid_pose() below.
         inline static thread_local std::array<float, 7> t_mid_left = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
         inline static thread_local std::array<float, 7> t_mid_right = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+        
 
         using State = FloatVector<dimension>;
         struct alignas(FloatVectorAlignment) StateArray
@@ -167276,8 +167279,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
    v[0] = 6.28318530717959 * x[2];
    y[2] = cos(v[0]);
    y[3] = sin(v[0]);
-   y[4] = -0.34906585 + 0.6981317 * x[3];
-   y[5] = -1.04719755 + 2.56892803 * x[4];
+   y[4] = -0.261799388 + 0.523598776 * x[3];
+   y[5] = -0.523598776 + 2.045329256 * x[4];
    y[6] = -2.478367 + 4.049163 * x[5];
    y[7] = -0.78539816 + 2.35619449 * x[6];
    y[8] = -0.52359878 + 1.04719756 * x[7];
@@ -167562,6 +167565,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
 
         }
 
+        
         // Derives t_mid_left/t_mid_right from a reference whole-body configuration `q`: FK to
         // both hands (ee_left, ee_right), take T_w_mid as the midpoint of their translations
         // with identity rotation, then t_mid_left/t_mid_right are each hand's pose relative to
@@ -167807,12 +167811,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
                 ql.x(), ql.y(), ql.z(), ql.w()};
         }
 
-        // World-frame center-of-mass position for a configuration block. Templated on rake,
-        // like eef_world_poses below, rather than taking a scalar ConfigurationArray: the
-        // underlying FK/CoM tape (see trace_com_jacobian, traced with compute_jac=false) is
-        // branch-free, so -- same reasoning as RainbowEefWorldPosesFromMidCG's header comment
-        // in rainbow_ik_cg.hh -- the "c++"-generated arithmetic is valid unchanged whether V is
-        // `float` (rake == 1) or a batched FloatVector<rake, 1>; no "c++_block" variant needed.
         template <std::size_t rake>
         static inline auto compute_com(const Ambient::ConfigurationBlock<rake> &q) noexcept
             -> std::array<FloatVector<rake, 1>, 3>
@@ -167911,16 +167909,9 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
 
             return y;
         }
+        
 
-        // Left/right end-effector WORLD poses (translation + rotation matrix, 24 floats total
-        // -- vamp::to_isometry's 12-float layout, twice) derived from a StateBlock's T_mid
-        // slice plus the fixed t_mid_left/t_mid_right offsets above: T_l = T_mid * t_mid_left,
-        // T_r = T_mid * t_mid_right. Pure SE3 composition -- no FK, no arm IK, same algebra as
-        // param_ik_code's mid-pose handling (see RainbowConstrainedBimanualIkCG in
-        // rainbow_ik_cg.hh) but broken out standalone for callers that only need the hands'
-        // world poses, e.g. eefs_in_collision below. Generated (RainbowEefWorldPosesFromMidCG),
-        // branch-free, so this same code is valid for any `rake`: the generated arithmetic
-        // only uses operators FloatVector<rake, 1> overloads, scalar (rake == 1) included.
+        
         template <std::size_t rake>
         static inline auto eef_world_poses(const StateBlock<rake> &x_in) noexcept -> std::array<FloatVector<rake, 1>, 24>
         {
@@ -168033,7 +168024,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
         // states: computes the left/right hands' world poses via eef_world_poses<rake>()
         // above (no arm IK) and checks:
         //   1. each hand's OWN rigidly-attached spheres (gripper/finger geometry baked into
-        //      the URDF, see RainbowEefLocalSpheresFkCG in rainbow_ik_cg.hh) against the
+        //      the URDF, see trace_eef_local_spheres in codegen.cc) against the
         //      environment -- this runs unconditionally, so a hand still gets checked even
         //      when the caller hasn't attached anything to it;
         //   2. IF the environment has attachments (e.g. a held object) registered for these
@@ -168249,7 +168240,9 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
             return true;
         }
         
+        
 
+        
         // Batched task-space -> ambient-configuration resolve, for the FK/collision-checking
         // boundary; the counterpart of a future ParameterizedLocalPlanner's per-lane IK solve.
         // `x` decomposes exactly as trace_rby1_constrained_sample's State layout: base(4) +
@@ -168742,18 +168735,12 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
    v[45] = -1. - u_left[2];
    v[45] = V(0.).blend(V(v[45]), (V(v[45]) > V(0.)));
    reach_violation_left[0] = v[15] + v[13] + v[4] + v[49] + v[10] + v[45];
-   v[45] = u_left[0] - 0.9999;
-   v[45] = V(0.).blend(V(v[45]), (V(v[45]) > V(0.)));
-   v[10] = -0.9999 - u_left[0];
-   v[10] = V(0.).blend(V(v[10]), (V(v[10]) > V(0.)));
-   v[49] = u_left[1] - 0.9999;
-   v[49] = V(0.).blend(V(v[49]), (V(v[49]) > V(0.)));
-   v[4] = -0.9999 - u_left[1];
-   v[4] = V(0.).blend(V(v[4]), (V(v[4]) > V(0.)));
-   v[13] = u_left[2] - 0.9999;
-   v[13] = V(0.).blend(V(v[13]), (V(v[13]) > V(0.)));
-   v[15] = -0.9999 - u_left[2];
-   v[15] = V(0.).blend(V(v[15]), (V(v[15]) > V(0.)));
+   v[45] = V(0.).blend(V(u_left[0] - 0.9999), (V(u_left[0] - 0.9999) >= V(0.)));
+   v[10] = V(0.).blend(V(- u_left[0] - 0.9999), (V(- u_left[0] - 0.9999) >= V(0.)));
+   v[49] = V(0.).blend(V(u_left[1] - 0.9999), (V(u_left[1] - 0.9999) >= V(0.)));
+   v[4] = V(0.).blend(V(- u_left[1] - 0.9999), (V(- u_left[1] - 0.9999) >= V(0.)));
+   v[13] = V(0.).blend(V(u_left[2] - 0.9999), (V(u_left[2] - 0.9999) >= V(0.)));
+   v[15] = V(0.).blend(V(- u_left[2] - 0.9999), (V(- u_left[2] - 0.9999) >= V(0.)));
    loss_left[0] = v[45] * v[45] + v[10] * v[10] + v[49] * v[49] + v[4] * v[4] + v[13] * v[13] + v[15] * v[15];
    v[15] = u_right[0] - 1.;
    v[15] = V(0.).blend(V(v[15]), (V(v[15]) > V(0.)));
@@ -168768,18 +168755,12 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
    v[45] = -1. - u_right[2];
    v[45] = V(0.).blend(V(v[45]), (V(v[45]) > V(0.)));
    reach_violation_right[0] = v[15] + v[13] + v[4] + v[49] + v[10] + v[45];
-   v[45] = u_right[0] - 0.9999;
-   v[45] = V(0.).blend(V(v[45]), (V(v[45]) > V(0.)));
-   v[10] = -0.9999 - u_right[0];
-   v[10] = V(0.).blend(V(v[10]), (V(v[10]) > V(0.)));
-   v[49] = u_right[1] - 0.9999;
-   v[49] = V(0.).blend(V(v[49]), (V(v[49]) > V(0.)));
-   v[4] = -0.9999 - u_right[1];
-   v[4] = V(0.).blend(V(v[4]), (V(v[4]) > V(0.)));
-   v[13] = u_right[2] - 0.9999;
-   v[13] = V(0.).blend(V(v[13]), (V(v[13]) > V(0.)));
-   v[15] = -0.9999 - u_right[2];
-   v[15] = V(0.).blend(V(v[15]), (V(v[15]) > V(0.)));
+   v[45] = V(0.).blend(V(u_right[0] - 0.9999), (V(u_right[0] - 0.9999) >= V(0.)));
+   v[10] = V(0.).blend(V(- u_right[0] - 0.9999), (V(- u_right[0] - 0.9999) >= V(0.)));
+   v[49] = V(0.).blend(V(u_right[1] - 0.9999), (V(u_right[1] - 0.9999) >= V(0.)));
+   v[4] = V(0.).blend(V(- u_right[1] - 0.9999), (V(- u_right[1] - 0.9999) >= V(0.)));
+   v[13] = V(0.).blend(V(u_right[2] - 0.9999), (V(u_right[2] - 0.9999) >= V(0.)));
+   v[15] = V(0.).blend(V(- u_right[2] - 0.9999), (V(- u_right[2] - 0.9999) >= V(0.)));
    loss_right[0] = v[45] * v[45] + v[10] * v[10] + v[49] * v[49] + v[4] * v[4] + v[13] * v[13] + v[15] * v[15];
    // dependent variables without operations
    q[0] = base[0];
@@ -168802,122 +168783,122 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
             }
 
             
-            if ((q[0] < V(Ambient::lower_bound[0])).any() or (q[0] > V(Ambient::upper_bound[0])).any())
+            if ((q[0] < V(-999.985)).any() or (q[0] > V(999.985)).any())
             {
                 return {false, q};
             }
             
-            if ((q[1] < V(Ambient::lower_bound[1])).any() or (q[1] > V(Ambient::upper_bound[1])).any())
+            if ((q[1] < V(-999.985)).any() or (q[1] > V(999.985)).any())
             {
                 return {false, q};
             }
             
-            if ((q[2] < V(Ambient::lower_bound[2])).any() or (q[2] > V(Ambient::upper_bound[2])).any())
+            if ((q[2] < V(-1.0)).any() or (q[2] > V(1.0)).any())
             {
                 return {false, q};
             }
             
-            if ((q[3] < V(Ambient::lower_bound[3])).any() or (q[3] > V(Ambient::upper_bound[3])).any())
+            if ((q[3] < V(-1.0)).any() or (q[3] > V(1.0)).any())
             {
                 return {false, q};
             }
             
-            if ((q[4] < V(Ambient::lower_bound[4])).any() or (q[4] > V(Ambient::upper_bound[4])).any())
+            if ((q[4] < V(-0.2467993950843811)).any() or (q[4] > V(0.2467993950843811)).any())
             {
                 return {false, q};
             }
             
-            if ((q[5] < V(Ambient::lower_bound[5])).any() or (q[5] > V(Ambient::upper_bound[5])).any())
+            if ((q[5] < V(-0.5085987901687622)).any() or (q[5] > V(1.506730422973633)).any())
             {
                 return {false, q};
             }
             
-            if ((q[6] < V(Ambient::lower_bound[6])).any() or (q[6] > V(Ambient::upper_bound[6])).any())
+            if ((q[6] < V(-2.4633670902252196)).any() or (q[6] > V(1.555796012878418)).any())
             {
                 return {false, q};
             }
             
-            if ((q[7] < V(Ambient::lower_bound[7])).any() or (q[7] > V(Ambient::upper_bound[7])).any())
+            if ((q[7] < V(-0.7703981852531433)).any() or (q[7] > V(1.5557963705062867)).any())
             {
                 return {false, q};
             }
             
-            if ((q[8] < V(Ambient::lower_bound[8])).any() or (q[8] > V(Ambient::upper_bound[8])).any())
+            if ((q[8] < V(-0.5085987901687622)).any() or (q[8] > V(0.5085987901687622)).any())
             {
                 return {false, q};
             }
             
-            if ((q[9] < V(Ambient::lower_bound[9])).any() or (q[9] > V(Ambient::upper_bound[9])).any())
+            if ((q[9] < V(-1.5557963705062867)).any() or (q[9] > V(1.5557963705062867)).any())
             {
                 return {false, q};
             }
             
-            if ((q[10] < V(Ambient::lower_bound[10])).any() or (q[10] > V(Ambient::upper_bound[10])).any())
+            if ((q[10] < V(-2.341194496154785)).any() or (q[10] > V(2.341194496154785)).any())
             {
                 return {false, q};
             }
             
-            if ((q[11] < V(Ambient::lower_bound[11])).any() or (q[11] > V(Ambient::upper_bound[11])).any())
+            if ((q[11] < V(-0.002453292384743691)).any() or (q[11] > V(3.126592741012573)).any())
             {
                 return {false, q};
             }
             
-            if ((q[12] < V(Ambient::lower_bound[12])).any() or (q[12] > V(Ambient::upper_bound[12])).any())
+            if ((q[12] < V(-2.0793951606750487)).any() or (q[12] > V(2.0793951606750487)).any())
             {
                 return {false, q};
             }
             
-            if ((q[13] < V(Ambient::lower_bound[13])).any() or (q[13] > V(Ambient::upper_bound[13])).any())
+            if ((q[13] < V(-2.6029938316345214)).any() or (q[13] > V(-0.005000000223517417)).any())
             {
                 return {false, q};
             }
             
-            if ((q[14] < V(Ambient::lower_bound[14])).any() or (q[14] > V(Ambient::upper_bound[14])).any())
+            if ((q[14] < V(-2.985)).any() or (q[14] > V(2.985)).any())
             {
                 return {false, q};
             }
             
-            if ((q[15] < V(Ambient::lower_bound[15])).any() or (q[15] > V(Ambient::upper_bound[15])).any())
+            if ((q[15] < V(-1.5557963705062867)).any() or (q[15] > V(1.9048621511459352)).any())
             {
                 return {false, q};
             }
             
-            if ((q[16] < V(Ambient::lower_bound[16])).any() or (q[16] > V(Ambient::upper_bound[16])).any())
+            if ((q[16] < V(-2.6902602767944335)).any() or (q[16] > V(2.6902602767944335)).any())
             {
                 return {false, q};
             }
             
-            if ((q[17] < V(Ambient::lower_bound[17])).any() or (q[17] > V(Ambient::upper_bound[17])).any())
+            if ((q[17] < V(-2.341194496154785)).any() or (q[17] > V(2.341194496154785)).any())
             {
                 return {false, q};
             }
             
-            if ((q[18] < V(Ambient::lower_bound[18])).any() or (q[18] > V(Ambient::upper_bound[18])).any())
+            if ((q[18] < V(-3.126592741012573)).any() or (q[18] > V(0.002453292384743691)).any())
             {
                 return {false, q};
             }
             
-            if ((q[19] < V(Ambient::lower_bound[19])).any() or (q[19] > V(Ambient::upper_bound[19])).any())
+            if ((q[19] < V(-2.0793951606750487)).any() or (q[19] > V(2.0793951606750487)).any())
             {
                 return {false, q};
             }
             
-            if ((q[20] < V(Ambient::lower_bound[20])).any() or (q[20] > V(Ambient::upper_bound[20])).any())
+            if ((q[20] < V(-2.6029938316345214)).any() or (q[20] > V(-0.005000000223517417)).any())
             {
                 return {false, q};
             }
             
-            if ((q[21] < V(Ambient::lower_bound[21])).any() or (q[21] > V(Ambient::upper_bound[21])).any())
+            if ((q[21] < V(-2.985)).any() or (q[21] > V(2.985)).any())
             {
                 return {false, q};
             }
             
-            if ((q[22] < V(Ambient::lower_bound[22])).any() or (q[22] > V(Ambient::upper_bound[22])).any())
+            if ((q[22] < V(-1.5557963705062867)).any() or (q[22] > V(1.9048621511459352)).any())
             {
                 return {false, q};
             }
             
-            if ((q[23] < V(Ambient::lower_bound[23])).any() or (q[23] > V(Ambient::upper_bound[23])).any())
+            if ((q[23] < V(-2.6902602767944335)).any() or (q[23] > V(2.6902602767944335)).any())
             {
                 return {false, q};
             }
@@ -169418,18 +169399,12 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
    v[45] = -1. - u_left[2];
    v[45] = V(0.).blend(V(v[45]), (V(v[45]) > V(0.)));
    reach_violation_left[0] = v[15] + v[13] + v[4] + v[49] + v[10] + v[45];
-   v[45] = u_left[0] - 0.9999;
-   v[45] = V(0.).blend(V(v[45]), (V(v[45]) > V(0.)));
-   v[10] = -0.9999 - u_left[0];
-   v[10] = V(0.).blend(V(v[10]), (V(v[10]) > V(0.)));
-   v[49] = u_left[1] - 0.9999;
-   v[49] = V(0.).blend(V(v[49]), (V(v[49]) > V(0.)));
-   v[4] = -0.9999 - u_left[1];
-   v[4] = V(0.).blend(V(v[4]), (V(v[4]) > V(0.)));
-   v[13] = u_left[2] - 0.9999;
-   v[13] = V(0.).blend(V(v[13]), (V(v[13]) > V(0.)));
-   v[15] = -0.9999 - u_left[2];
-   v[15] = V(0.).blend(V(v[15]), (V(v[15]) > V(0.)));
+   v[45] = V(0.).blend(V(u_left[0] - 0.9999), (V(u_left[0] - 0.9999) >= V(0.)));
+   v[10] = V(0.).blend(V(- u_left[0] - 0.9999), (V(- u_left[0] - 0.9999) >= V(0.)));
+   v[49] = V(0.).blend(V(u_left[1] - 0.9999), (V(u_left[1] - 0.9999) >= V(0.)));
+   v[4] = V(0.).blend(V(- u_left[1] - 0.9999), (V(- u_left[1] - 0.9999) >= V(0.)));
+   v[13] = V(0.).blend(V(u_left[2] - 0.9999), (V(u_left[2] - 0.9999) >= V(0.)));
+   v[15] = V(0.).blend(V(- u_left[2] - 0.9999), (V(- u_left[2] - 0.9999) >= V(0.)));
    loss_left[0] = v[45] * v[45] + v[10] * v[10] + v[49] * v[49] + v[4] * v[4] + v[13] * v[13] + v[15] * v[15];
    v[15] = u_right[0] - 1.;
    v[15] = V(0.).blend(V(v[15]), (V(v[15]) > V(0.)));
@@ -169444,18 +169419,12 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
    v[45] = -1. - u_right[2];
    v[45] = V(0.).blend(V(v[45]), (V(v[45]) > V(0.)));
    reach_violation_right[0] = v[15] + v[13] + v[4] + v[49] + v[10] + v[45];
-   v[45] = u_right[0] - 0.9999;
-   v[45] = V(0.).blend(V(v[45]), (V(v[45]) > V(0.)));
-   v[10] = -0.9999 - u_right[0];
-   v[10] = V(0.).blend(V(v[10]), (V(v[10]) > V(0.)));
-   v[49] = u_right[1] - 0.9999;
-   v[49] = V(0.).blend(V(v[49]), (V(v[49]) > V(0.)));
-   v[4] = -0.9999 - u_right[1];
-   v[4] = V(0.).blend(V(v[4]), (V(v[4]) > V(0.)));
-   v[13] = u_right[2] - 0.9999;
-   v[13] = V(0.).blend(V(v[13]), (V(v[13]) > V(0.)));
-   v[15] = -0.9999 - u_right[2];
-   v[15] = V(0.).blend(V(v[15]), (V(v[15]) > V(0.)));
+   v[45] = V(0.).blend(V(u_right[0] - 0.9999), (V(u_right[0] - 0.9999) >= V(0.)));
+   v[10] = V(0.).blend(V(- u_right[0] - 0.9999), (V(- u_right[0] - 0.9999) >= V(0.)));
+   v[49] = V(0.).blend(V(u_right[1] - 0.9999), (V(u_right[1] - 0.9999) >= V(0.)));
+   v[4] = V(0.).blend(V(- u_right[1] - 0.9999), (V(- u_right[1] - 0.9999) >= V(0.)));
+   v[13] = V(0.).blend(V(u_right[2] - 0.9999), (V(u_right[2] - 0.9999) >= V(0.)));
+   v[15] = V(0.).blend(V(- u_right[2] - 0.9999), (V(- u_right[2] - 0.9999) >= V(0.)));
    loss_right[0] = v[45] * v[45] + v[10] * v[10] + v[49] * v[49] + v[4] * v[4] + v[13] * v[13] + v[15] * v[15];
    // dependent variables without operations
    q[0] = base[0];
@@ -169474,58 +169443,61 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[456],
 
             V valid = (reach_violation_left[0] <= V(0.0f)) & (reach_violation_right[0] <= V(0.0f));
             
-            valid = valid & (q[0] >= V(Ambient::lower_bound[0])) & (q[0] <= V(Ambient::upper_bound[0]));
+            valid = valid & (q[0] >= V(-999.985)) & (q[0] <= V(999.985));
             
-            valid = valid & (q[1] >= V(Ambient::lower_bound[1])) & (q[1] <= V(Ambient::upper_bound[1]));
+            valid = valid & (q[1] >= V(-999.985)) & (q[1] <= V(999.985));
             
-            valid = valid & (q[2] >= V(Ambient::lower_bound[2])) & (q[2] <= V(Ambient::upper_bound[2]));
+            valid = valid & (q[2] >= V(-1.0)) & (q[2] <= V(1.0));
             
-            valid = valid & (q[3] >= V(Ambient::lower_bound[3])) & (q[3] <= V(Ambient::upper_bound[3]));
+            valid = valid & (q[3] >= V(-1.0)) & (q[3] <= V(1.0));
             
-            valid = valid & (q[4] >= V(Ambient::lower_bound[4])) & (q[4] <= V(Ambient::upper_bound[4]));
+            valid = valid & (q[4] >= V(-0.2467993950843811)) & (q[4] <= V(0.2467993950843811));
             
-            valid = valid & (q[5] >= V(Ambient::lower_bound[5])) & (q[5] <= V(Ambient::upper_bound[5]));
+            valid = valid & (q[5] >= V(-0.5085987901687622)) & (q[5] <= V(1.506730422973633));
             
-            valid = valid & (q[6] >= V(Ambient::lower_bound[6])) & (q[6] <= V(Ambient::upper_bound[6]));
+            valid = valid & (q[6] >= V(-2.4633670902252196)) & (q[6] <= V(1.555796012878418));
             
-            valid = valid & (q[7] >= V(Ambient::lower_bound[7])) & (q[7] <= V(Ambient::upper_bound[7]));
+            valid = valid & (q[7] >= V(-0.7703981852531433)) & (q[7] <= V(1.5557963705062867));
             
-            valid = valid & (q[8] >= V(Ambient::lower_bound[8])) & (q[8] <= V(Ambient::upper_bound[8]));
+            valid = valid & (q[8] >= V(-0.5085987901687622)) & (q[8] <= V(0.5085987901687622));
             
-            valid = valid & (q[9] >= V(Ambient::lower_bound[9])) & (q[9] <= V(Ambient::upper_bound[9]));
+            valid = valid & (q[9] >= V(-1.5557963705062867)) & (q[9] <= V(1.5557963705062867));
             
-            valid = valid & (q[10] >= V(Ambient::lower_bound[10])) & (q[10] <= V(Ambient::upper_bound[10]));
+            valid = valid & (q[10] >= V(-2.341194496154785)) & (q[10] <= V(2.341194496154785));
             
-            valid = valid & (q[11] >= V(Ambient::lower_bound[11])) & (q[11] <= V(Ambient::upper_bound[11]));
+            valid = valid & (q[11] >= V(-0.002453292384743691)) & (q[11] <= V(3.126592741012573));
             
-            valid = valid & (q[12] >= V(Ambient::lower_bound[12])) & (q[12] <= V(Ambient::upper_bound[12]));
+            valid = valid & (q[12] >= V(-2.0793951606750487)) & (q[12] <= V(2.0793951606750487));
             
-            valid = valid & (q[13] >= V(Ambient::lower_bound[13])) & (q[13] <= V(Ambient::upper_bound[13]));
+            valid = valid & (q[13] >= V(-2.6029938316345214)) & (q[13] <= V(-0.005000000223517417));
             
-            valid = valid & (q[14] >= V(Ambient::lower_bound[14])) & (q[14] <= V(Ambient::upper_bound[14]));
+            valid = valid & (q[14] >= V(-2.985)) & (q[14] <= V(2.985));
             
-            valid = valid & (q[15] >= V(Ambient::lower_bound[15])) & (q[15] <= V(Ambient::upper_bound[15]));
+            valid = valid & (q[15] >= V(-1.5557963705062867)) & (q[15] <= V(1.9048621511459352));
             
-            valid = valid & (q[16] >= V(Ambient::lower_bound[16])) & (q[16] <= V(Ambient::upper_bound[16]));
+            valid = valid & (q[16] >= V(-2.6902602767944335)) & (q[16] <= V(2.6902602767944335));
             
-            valid = valid & (q[17] >= V(Ambient::lower_bound[17])) & (q[17] <= V(Ambient::upper_bound[17]));
+            valid = valid & (q[17] >= V(-2.341194496154785)) & (q[17] <= V(2.341194496154785));
             
-            valid = valid & (q[18] >= V(Ambient::lower_bound[18])) & (q[18] <= V(Ambient::upper_bound[18]));
+            valid = valid & (q[18] >= V(-3.126592741012573)) & (q[18] <= V(0.002453292384743691));
             
-            valid = valid & (q[19] >= V(Ambient::lower_bound[19])) & (q[19] <= V(Ambient::upper_bound[19]));
+            valid = valid & (q[19] >= V(-2.0793951606750487)) & (q[19] <= V(2.0793951606750487));
             
-            valid = valid & (q[20] >= V(Ambient::lower_bound[20])) & (q[20] <= V(Ambient::upper_bound[20]));
+            valid = valid & (q[20] >= V(-2.6029938316345214)) & (q[20] <= V(-0.005000000223517417));
             
-            valid = valid & (q[21] >= V(Ambient::lower_bound[21])) & (q[21] <= V(Ambient::upper_bound[21]));
+            valid = valid & (q[21] >= V(-2.985)) & (q[21] <= V(2.985));
             
-            valid = valid & (q[22] >= V(Ambient::lower_bound[22])) & (q[22] <= V(Ambient::upper_bound[22]));
+            valid = valid & (q[22] >= V(-1.5557963705062867)) & (q[22] <= V(1.9048621511459352));
             
-            valid = valid & (q[23] >= V(Ambient::lower_bound[23])) & (q[23] <= V(Ambient::upper_bound[23]));
+            valid = valid & (q[23] >= V(-2.6902602767944335)) & (q[23] <= V(2.6902602767944335));
             
 
             return {valid, q};
         }
+        
     };
+    
+
     
 };
 }

@@ -1963,3 +1963,1109 @@ constrained problems (plane's sphere cage, the bimanual grasp, the digit whole-b
 multi-seed averaged. The win scales with projection-heaviness. Payoff of the full constrained-
 planning codegen line: analytic frame/CoM/relative-pose Jacobians (producers 2.07x on Digit) +
 Jacobian-sparsity-aware solve (2.24x on the dominant solver), all exact/on-manifold.
+
+---
+
+## Profile: where the digit constrained solve spends its time (m55)
+
+`perf record -F999 --call-graph dwarf` on `digit_example.py` (box_top_shelf_pickup, xorshift
+seed 0, 40 reps of the RRTC constrained solve), updated analytic+sparse build compiled `-g`.
+1241 samples. Flat self-time, grouped:
+
+| category | self% | what |
+|---|---|---|
+| **constraint SOLVERS** | **26%** | solve_tsr_error_lm_inner 23.8, solve_tsr_relative_lm_inner 2.3 (sparse LM projection step) |
+| **constraint PRODUCERS** | **30%** | tsr_error 13.8, com_jacobian 8.9, tsr_bimanual_error 4.7, closed_loop_error 3.1 (analytic error+Jacobian) |
+| constraint machinery | ~10% | HingedTSR/ClosedLoop/CoM wrappers, integrate_step, ConstrainedLocalPlanner |
+| generic SIMD Vector math | ~9% | inlined into the producers/solvers above |
+| **collision (fkcc + sphere_env)** | **~4%** | the fused FK+collision kernel |
+| NN (KDTree scan/nearest) | **<2%** | |
+| Extension bookkeeping | ~1% | |
+
+Inclusive (children) view confirms the shape: `project_any` **51.6%** + `project_all` 9.6% ≈
+**~60% of total is constraint-manifold projection**; simplify ~1.8%, NN <2%, collision <1% (incl).
+
+**Takeaway.** The digit example is *projection-bound*, not collision- or NN-bound — the opposite of
+the unconstrained MBM robots (there fkcc dominates; here it's ~4%). Every remaining win is in the
+project loop: producing the stacked Jacobian (30%) and the LM linear solve (26%). Both are the
+kernels we already JIT'd; the analytic+sparse work is aimed squarely at the hot 56%. Further wins
+would have to come from *fusing* producer→solver (avoid materializing J then re-reading it — form
+J·Jᵀ directly), or cutting projection *iterations* (better step/line-search), not from collision/NN.
+
+---
+
+## Fusing producer -> solver (emit J.Jt): investigated, mostly a dead end (m56)
+
+**Q: could the fusion be done generically through the Python interface, or is it a JIT win?**
+It is fundamentally a JIT capability -- but the profiling shows the JIT *already captured* most
+of it, which is why little is left on the table.
+
+### JJt producer->solver fusion is BLOCKED by the hinge
+The projection loop (constraint_set.hh `descend`) is, per iteration:
+`squared_error(q)` -> run_kernel (producer: J, e_raw) -> **vamp applies the hinge** -> `step_in_place`
+-> solve_step (solver: J.Jt, Cholesky, J^T y). The hinge (`err = (e-lb).min0 + (e-ub).max0`; then
+zero every J row whose hinged err == 0) sits *between* producer and solver and is **data-dependent**.
+To fuse producer+solver into one tape you must bake that row-gate into the trace -> a CondExp ->
+scalar `if(vector)` that won't vectorize on FloatVector (the same wall hit by fkcc_sincos). The only
+escapes (pass the gate as an input, or recompute) are circular (the gate needs the error the kernel
+produces) or double the FK. So no clean single-kernel fusion.
+Separately, the win JJt fusion would supposedly add -- folding J's structural zeros when forming
+J.Jt -- is **already done**: `trace_solve_jacobian` sets structurally-zero J entries to `ADCG(0)`
+via `row_nonzero`, so CppADCodeGen already folds `0*x` out of J.Jt and the Cholesky (the m54 sparse
+solve, 2.24x). Fusion would only remove the L1-resident J round-trip. Marginal.
+
+### Shared-FK producer fusion: real but small, because the JIT already prunes
+Every producer independently runs `computeJointJacobians` (tsr/bim/com/cl). Hypothesis: 4x redundant
+full-body Jacobian. Measured (fuse_bench.cc, CppADCodeGen temp count = op proxy, digit nq=31 nv=30):
+
+| | temps |
+|---|---|
+| full dense joint-Jacobian (what a generic pinocchio call materializes every time) | **152** |
+| separate producers (JIT, Jacobian-only): tsr 50, bim 61, com 346, cl 42 | **SUM 499** |
+| fused (one shared computeJointJacobians) | **389** |
+| **fusion ratio** | **1.28x (22% fewer temps)** |
+
+Two findings: (1) each JIT producer is *cheaper than one full dense J* (tsr=50 << 152) because
+CppAD's dead-code elimination prunes `data.J` to just the columns the frame uses -- the feared "4x
+redundant FK" is already gone. (2) Fusion still saves 22% by sharing the base/torso chain across
+frames -- but that's Jacobian-only (an **upper bound**); the per-constraint error composition (log
+maps, apply-M) doesn't share and dilutes it toward ~1.1-1.15x on the 30% producer slice => ~3-4%
+end-to-end, for a real vamp refactor (ConstraintSet owning one fused kernel, distributing blocks).
+
+### Why this answers the Python-vs-JIT question
+The whole fusion story is *symbolic* -- DCE of unused Jacobian columns, CSE across FK -> J entries,
+sparsity-folding of J.Jt, one shared FK pass. A generic Python interface can only chain
+already-materialized dense arrays: it would call pinocchio 4x (>=4x152 dense-FK temps-equivalent,
+no column pruning, no cross-call CSE) plus per-call dispatch on tiny matrices. So the JIT's win over
+generic Python is large and **already banked** in the current kernels. The *incremental* win of
+fusing them further is small precisely because the JIT is already good at the thing fusion exploits.
+
+**Verdict:** don't build either fusion. The analytic+sparse line already sits on the optimized
+frontier of the constraint path; residual producer/solver time is largely irreducible arithmetic.
+
+---
+
+## Projection descent loop: already tuned, no cheap iteration win (m57)
+
+The profile's 60% is *inside* the LM projection loop (constraint_set.hh `descend`), so the lever
+would be fewer iterations. Instrumented the loop (VAMP_PROJ_STATS, guarded) on digit transport
+(box_top_shelf_pickup, xorshift): **17634 projections, avg 3.16 iters, 99.3% converge, 0.7% hit the
+25-cap, 0 stalled/drifted.** Histogram is a sharp peak at 1-3 iters with a thin tail to 25.
+
+Swept the knobs across 3 seeds:
+
+| config | time | rrtc iters | avg proj iters | capped |
+|---|---|---|---|---|
+| **InnerLM descend_rate=1.0 (current)** | 20-33 ms | 209-246 | **3.16** | 116 |
+| InnerLM rate=0.75 | 28-36 ms | 253-312 | 4.56 | 248 |
+| InnerLM rate=0.5 | ~267 ms | 2444 | 11.7 | 2351 |
+| OuterLM rate=1.0 | 31-52 ms | 155-269 | 3.86 | 44 |
+
+**Conclusions.** `descend_rate=1` (full Gauss-Newton step) is optimal -- lowering it *strictly*
+worsens everything (0.5 is catastrophic: 12 iters, 2351 caps). That the step never wants damping
+means the additive per-constraint steps (Jacobi sum of 4 independent LM solves: TSR feet err=24,
+CoM=2, closed-loop=2, bimanual=6) are **not fighting each other** -- so a joint 34-row stacked solve
+would not cut iterations (and its 34^3 Cholesky costs ~2.7x the sum of the separate 24^3+... ones,
+so it would be net slower). InnerLM beats OuterLM end-to-end (26 vs 38 ms avg). The loop is on its
+frontier; the 60% is inherent -- ~72 well-converged projections per RRTC iteration, each doing
+minimal work, is just the cost of keeping every steered waypoint on a 34-row manifold.
+
+**The one structural inefficiency left is codegen, not loop-level.** ~24% of all producer runs
+compute a Jacobian used only for the convergence check, never for a step (the final producer of each
+converging projection + the 7.6% of projections already on-manifold on entry). Skipping it needs a
+cheap error-only kernel for the check -- but a *separate* error-only kernel re-does forwardKinematics,
+and the double-FK on the non-converged iters (3.16x) outweighs the one saved Jacobian, so it only
+pays if the error path shares FK state with the Jacobian path == a fused dual-output kernel. That,
+and the m56 shared-FK producer fusion (~1.28x producer arithmetic upper bound), are the only
+remaining levers, each ~5% end-to-end and both codegen. No loop-level or parameter win exists that
+maintains success rate.
+
+---
+
+## Fused dual-output (error-only check) kernel: sized (m58)
+
+Follow-up to m57's finding that ~24% of producer runs compute a Jacobian used only for the
+convergence check. Measured the key ratio (fuse_bench.cc, digit): **error-only path (forwardKinematics
++ updateFramePlacements + com position + placements, NO computeJointJacobians) = 61 temps vs full
+producer 389 => 15.7%.** The Jacobian (computeJointJacobians + composition) is the other 84%.
+
+Two implementable shapes, both restructure `descend` to check convergence with the cheap error path
+and compute the Jacobian only when actually stepping:
+
+| version | mechanism | saved/proj | producer time | end-to-end |
+|---|---|---|---|---|
+| pragmatic | error-only kernel + loop restructure; Jacobian call re-does FK (double-FK) | 135 temps | 8.4% | **~2.5%** |
+| max | 2-stage: stage1 emits error + FK-state, stage2 builds Jacobian from that state (no double-FK) | 328 temps | 20.3% | **~6.1%** |
+
+The pragmatic version pays error-only (61) extra on each of the ~3.16 stepping iters (double FK),
+which eats most of the (P-E)=328 saved on the one convergence-only iter -> only ~2.5%. The max
+version avoids the double FK but needs the generated stage1 to serialize ~30 SE3 joint placements
+(~11 KB per rake-8 block) into a state buffer that stage2 reads -- a non-standard tape (pinocchio's
+computeJointJacobians re-fed from external oMi state), plus the memory round-trip erodes some of it.
+
+**What it would take.** Easy: the error-only kernel already exists inside `emit_error_and_jacobian`
+(it is `error_func.Forward` before the `.Jacobian()` call) -- trace and emit just that. Moderate:
+restructure `ConstraintSet::descend` + `HingedTSRConstraint` so the hinge/convergence check runs on
+the error-only output and the full producer/solve fire only on stepping iters. Hard (max only):
+FK-state I/O across the two kernels.
+
+**Verdict.** ~2.5% for the buildable version, ~6% ceiling for the hard one -- and the restructure
+touches exactly the hinge/convergence path m57 showed is delicately tuned (α=1 optimal, lowering it
+catastrophic), so it carries real risk to the end-to-end success rate the change is supposed to
+preserve. Reward-to-risk does not clear the bar. Constraint path is done; the analytic + sparse line
+(m54, 1.2-1.5x end-to-end) already banked the accessible wins.
+
+---
+
+## Robonaut (r2c6) evaluation: baseline vs updated constraint+fkcc line (m59)
+
+R2c6 = NASA Robonaut 2, free-flyer humanoid (nq=36, nv=35, 211 collision spheres), handrail-
+climbing in microgravity (r2_handrail_example.py). Constraint stack is a single 3-EEF TSR
+(left+right foot grippers pinned to the rail grasp, waist orientation held) -- pure TSR projection,
+no com/closed-loop/bimanual to dilute. Not previously compiled into vamp; added to VAMP_ROBOT_MODULES.
+
+### Kernel op-counts (faithful operator count -- NOT temp_variables, which undercounts)
+IMPORTANT lesson: `*_code_vars` (CppADCodeGen temp count) is misleading -- it misses the huge inline
+expressions in the autodiff Jacobian outputs. Counting arithmetic operators in the generated code is
+the runtime-faithful metric and it reproduces the digit summary (tsr 2.56x, solve 2.23x).
+
+| kernel | baseline (autodiff/dense) | updated | speedup |
+|---|---|---|---|
+| tsr_error (3-EEF producer) | 18378 | 5700 | **3.22x** |
+| solve_tsr_error_lm_inner (sparse) | 16176 | 6040 | **2.68x** |
+| solve_tsr_error_lm_outer (sparse) | 43404 | 7959 | 5.45x |
+| ccfk (collision) | 9017 (nosnap) | 8878 (snap) | 1.016x |
+
+Snap gives r2c6 only ~1.6% (clean URDF, no foldable placement noise) -- robot-specific, as on MBM.
+Both producer (3.22x) and sparse InnerLM solve (2.68x) beat digit (2.56x / 2.23x): handrail is pure
+3-EEF TSR on separate leg chains, exactly the structure the analytic+sparse work targets.
+
+### End-to-end (r2_handrail, 10 seeds each, matched success)
+Full baseline (autodiff + dense solve + no snap) vs updated (analytic + sparse + snap), same header
+regenerated both ways, rebuilt + measured:
+
+| | sum solve (40 steps) | sum states | avg proj iters |
+|---|---|---|---|
+| baseline | **768.5 ms** | 539 | 6-22 (many capped at 50) |
+| updated | **81.8 ms** | 526 | 3-4 (0 capped) |
+| ratio | **9.4x** | ~equal | ~2-5x fewer iters |
+
+**The 9.4x is real and dominated by CONVERGENCE, not raw op-count.** Final tree sizes are equal
+(539 vs 526 states) -- so it is not a search-luck artifact. Instrumented (VAMP_PROJ_STATS): the
+baseline autodiff free-flyer Jacobian carries the unit-quaternion *radial* column, a renormalized
+no-op that stalls each Gauss-Newton step, so projection takes 2-5x more iterations (avg 6-22 vs 3-4,
+with 30-70 caps/seed vs 0). Compounded with ~3x more ops per iteration (analytic producer + sparse
+solve) => ~9x. The analytic Jacobian's biggest payoff on a free-flyer is thus better *conditioning*
+(drop the radial no-op), not just fewer flops.
+
+**Flag for follow-up:** digit's earlier end-to-end (1.37-1.49x, m54) is also a free-flyer and should
+show the same convergence mechanism; the modest number suggests that comparison may not have used the
+full autodiff baseline. Worth re-measuring digit under this identical baseline-vs-updated methodology.
+
+---
+
+## Is preconditioning the solve a further lead? Mostly no -- the analytic Jacobian already was it (m60)
+
+The r2c6 finding (autodiff free-flyer projection stalls, 6-22 iters, from the quaternion radial
+no-op) raised: does explicit preconditioning of the InnerLM solve help further? Measured condition
+numbers of the stacked LWA task Jacobian at 40 random configs (precond.cc, plain pinocchio):
+
+| | kappa(J) | kappa(JJ^T+1e-6 I) [current] | row-scale(1/tol) | col-scale(Jacobi) | Marquardt lam*diag |
+|---|---|---|---|---|---|
+| r2c6 (18 rows) | 199 | 6.3e4 | 1.2x | 2.0x | 1.0x |
+| digit (24 rows) | 165 | 5.6e4 | 1.0x | 1.2x | 1.0x |
+
+**Interpretation.** The autodiff radial column is a near-NULL direction (effective kappa -> inf);
+dropping it (the analytic Jacobian) is what took kappa down to ~200 -- i.e. the analytic fix already
+*was* the preconditioner, which is why r2c6 saw 9.4x. Residual kappa(J)~200 is moderate; the classic
+preconditioners buy little (row 1.2x, Marquardt 1.0x, best = Jacobi col-scale 2.0x on the Gram ==
+~1.4x on J). At kappa~200 the residual 3-4 iters is closer to nonlinearity-limited than
+conditioning-limited. One real structural point: InnerLM forms the Gram and SQUARES kappa (200 ->
+6e4); with float kernels that is ~5 lost digits. A thin-QR solve on J (kappa~200, no squaring) would
+avoid it -- the only place a further gain hides -- but QR codegen is materially harder than the
+current Cholesky and OuterLM (also squares kappa) already loses to InnerLM end-to-end.
+
+**Verdict.** Weak lead. Estimated ceiling ~5-10% from Jacobi column-scaling (one diagonal scaling,
+same Cholesky), which is cheap to test empirically (scale + re-measure instrumented iters) if pursued.
+The dominant conditioning win is already banked in the analytic Jacobian.
+
+---
+
+## Digit re-measured under the full autodiff baseline: 1.45x confirmed (m61)
+
+Resolves the m59 flag. Same methodology as r2c6 (regenerate digit.hh as full autodiff+dense+nosnap
+baseline vs analytic+sparse+snap updated; build+measure), digit_example box_top_shelf_pickup, xorshift
+seeds 0-11, VAMP_PROJ_STATS instrumented:
+
+| | solved | sum_solve (12 seeds) | avg proj iters (base->upd) | caps (base / upd) |
+|---|---|---|---|---|
+| digit | 12/12 both | baseline 510.1 -> updated 352.8 ms | **3.65 -> 3.25 (~unchanged)** | 1669 / 1849 |
+| r2c6 (m59) | 10/10 | 768 -> 82 ms | **6-22 -> 3-4 (2-5x fewer)** | many / ~0 |
+
+**Digit is genuinely 1.45x -- the earlier m54 number was correct, NOT understated.** The difference
+from r2c6's 9.4x is now fully explained: digit's projection convergence is *insensitive* to the
+autodiff radial pollution (3.65 vs 3.25 iters; baseline and updated cap almost equally), so its win
+is nearly pure per-op kernel cost. r2c6's convergence is *highly* sensitive (baseline caps hard).
+
+**Why the sensitivity differs = constraint TIGHTNESS x quaternion-coupling:**
+- digit feet PINNED = [1e-3,1e-3,1e-3, 0.1,0.1,0.1]; arms FREE; plus com (position) + closed-loop
+  (base-invariant) rows that carry no radial sensitivity and anchor the base.
+- r2c6 PIN = [1e-4,1e-4,5e-3, 1e-2,1e-2,1e-2] -- ~10x tighter -- and *all* rows are free-flyer TSR.
+
+Connects to m60: the Gram squares kappa to ~6e4 and the kernels are float (~5 lost digits). Near a
+LOOSE tolerance (digit 1e-3) the radial-polluted step still reaches tolerance -> baseline ~= updated
+iters. Near a TIGHT tolerance (r2c6 1e-4) the polluted step cannot resolve the last digits ->
+baseline caps/iterates many times; the clean analytic step converges in 3-4. So the analytic
+free-flyer Jacobian's *convergence* payoff scales with constraint tightness: ~1.5x (per-op only) for
+loose/mixed problems, up to ~9x for tight pure-free-flyer-TSR problems.
+
+**Implication for the m60 preconditioning lead:** it is a weak lead for digit-like loose problems but
+could matter for r2c6-like TIGHT ones -- though there the analytic Jacobian already captures it. A
+thin-QR solve (kappa not kappa^2) would specifically help tight-tolerance free-flyer TSR convergence
+in float; still a real codegen lift, now with a clearer target profile if ever pursued.
+
+---
+
+## Thin-QR solve for r2c6: derisked by simulation, gives nothing -- do not build (m62)
+
+Before building a traced QR kernel, simulated the exact Gauss-Newton projection loop offline
+(qr_sim.cc: analytic LOCAL frame Jacobian, pinocchio integrate on the free-flyer, tol 1e-4) varying
+only the solve method x precision, over 200 random perturb-and-project trials at several off-manifold
+scales. In the realistic regime (perturb scale 0.04 -> 3.38 iters, matching real r2c6's 3-4, 200/200
+converge):
+
+| method | avg iters |
+|---|---|
+| Gram double (JJ^T Cholesky) | 3.38 |
+| Gram float (current kernel)  | 3.38 |
+| QR float (kappa, no squaring) | 3.38 |
+| QR double | 3.38 |
+
+All identical; at larger scales QR is if anything slightly worse (0.15: Gram-float 5.64 vs QR-float
+6.04). **The thin-QR solve gives zero iteration reduction.**
+
+**Corrects the m60/m61 float-precision speculation.** Gram-float == Gram-double at *every* scale, so
+float precision is NOT limiting convergence -- the kappa^2-in-float concern never manifests. Reason:
+the solve's relative step error (~kappa^2 * eps ~ 3.6e-3) is relative to the step magnitude, which
+-> 0 near convergence, so absolute step error -> 0 and a tight 1e-4 tolerance is reached in the same
+iters as an exact solve. So r2c6's baseline convergence blowup (6-22 iters) was NOT Gram-squaring; it
+was purely the autodiff radial column (a rank deficiency), which the analytic Jacobian already
+removed. With the analytic Jacobian, the Gram-float solve is already iteration-optimal.
+
+**Verdict:** thin-QR (and preconditioning generally) is a dead end on top of the analytic Jacobian.
+The residual 3-4 iters is nonlinearity-limited. The conditioning win was entirely the radial-column
+removal, fully banked in m59's analytic free-flyer Jacobian. Constraint solve path is closed.
+
+---
+
+## r2c6 handrail: performance vs obstacle count (m63)
+
+Profiled r2_handrail_example (perf -F999 dwarf, driver looping 40 obstacle_seeds/level, symbolized
+r2c6 build) at increasing obstacle counts. Feasible range is narrow -- obstacles fill the leg-swing
+space and block the rails, so gaits stop completing beyond ~32:
+
+| n_spheres | gaits (of 8) | ms/step | states/step |
+|---|---|---|---|
+| 8  | 6 | 2.1  | ~13 |
+| 16 | 6 | 8.8  | ~16 |
+| 32 | 1 | 13.6 | ~22 |
+| >=64 | 0 (infeasible) | - | - |
+
+ms/step grows ~4x (8->16) while states/step barely moves -> the growth is per-state cost (more/harder
+projections + more collision checks as the search routes around obstacles), not tree size.
+
+**Self-time breakdown (normalized among native planning):**
+
+| category | n=8 | n=16 |
+|---|---|---|
+| **PROJECTION** (tsr_error + solve_tsr_lm_inner + hinge + integrate + Vector) | **60.9%** | **58.9%** |
+| COLLISION (fkcc + sphere_environment) | 21.0% | 23.9% |
+| NN (KDTree) | 18.2% | 15.8% |
+
+**r2c6 handrail is PROJECTION-BOUND (~60%) across the entire feasible obstacle range.** The two
+collision terms scale differently:
+- `sphere_environment_in_collision` (obstacle checks): 2.94 -> 5.84 = **2.0x for 2x obstacles == LINEAR
+  in n_spheres**, but stays small (3-6%).
+- `fkcc` (robot FK + self-collision, obstacle-independent): 6.27 -> 9.06 = 1.4x (search-driven only).
+
+So the obstacle-dependent cost scales linearly but never dominates -- the problem goes infeasible
+before obstacle count gets high enough. Projection stays the bottleneck at every feasible level, so
+the analytic constraint kernels (m59) target exactly the dominant cost here.
+
+**Surprise:** NN (KDTree) is ~16-18% -- far above digit's <2% (m55). r2c6's 36-dim free-flyer configs
++ many short gait-step trees make NN a real secondary cost, and a candidate future target for r2c6.
+
+---
+
+## CC tricks on r2c6 (mobile base): cost structure flips, but no new win (m64)
+
+Retried the prior collision-checking tricks against r2c6 (Robonaut 2, free-flyer, 211 spheres), on
+the hypothesis that a mobile base behaves differently than a fixed/mixed-base manipulator. Decomposed
+the collision kernel (operator counts) and compared the floating base to the SAME robot fixed-base
+(r2c6_minimal.json, identical 211 spheres):
+
+| kernel | mobile (floating) | fixed base | base-transform overhead |
+|---|---|---|---|
+| eefk (FK to EEs)          | 1641 | 101  | +1540 (small kernel; base dominates it) |
+| spherefk (FK + 211 spheres) | 7399 | 7069 | **+330 = 4%** |
+| ccfk (+ bounding + self)    | 8878 | 8500 | +378 = 4% |
+
+**Two findings:**
+1. **The mobile base adds only ~4% to the collision kernel.** CppADCodeGen folds the base transform
+   into the FK-chain root, so the quaternion base is applied once at the root, NOT 211 times per
+   sphere. => the "transform N obstacles into the base frame instead of 211 robot spheres into world"
+   trick has a ~4% ceiling. Dead.
+2. **r2c6 collision is FK-PLACEMENT-dominated: spherefk = 7399 = 83% of ccfk.** This *flips* the MBM
+   sparse-scene picture (m10: self-collision ~40% for the arm). r2c6 has 211 spheres over 68 links
+   (mean 3.1/link) -> placing them is the cost, not self-collision.
+
+The trick that fits an FK-placement-bound robot is the **bounding-sphere-gated FK** (skip a link's
+fine spheres if its bounding sphere clears). But: (a) ceiling is modest -- ~3.1 fine spheres/link, so
+a cleared link saves ~2.1 placements; (b) it was refuted on MBM (PHASE2 2B, <=1.00x) on a structural
+codegen blocker -- the generated FK is flat SSA and a gate can't be inserted to skip a subset without
+reordering; (c) the mobile base's one genuine advantage -- rake coherence (a whole limb clears across
+all 8 SIMD lanes on a smooth edge) -- would raise the fire rate but does not fix the SSA blocker.
+
+The only trick the mobile base genuinely favors is **per-edge broadphase** of the environment (a
+compact robot translating through a sparse field prunes most obstacles per edge, vs a fixed
+manipulator whose edge-AABB covers its whole workspace shell). But env-collision is only 3-6% of
+native (m63), capped ~10% at the feasibility limit, and VAMP already does per-config radial
+early-exit -- so the headroom is a few percent.
+
+**Verdict.** The mobile base changes the collision *cost structure* (FK-placement-bound, not
+self-collision-bound) -- the user's intuition is right there -- but it does not unlock a meaningful
+CC win: the base transform is ~4%, the fitting trick (bounding gate) is codegen-blocked and low
+ceiling, and collision is a planning-minority (21-24%) anyway. r2c6's cost is projection (m59-63),
+not CC.
+
+---
+
+## Compiling/patching the environment for TAMP: synthesis + mobile-base reachability (m65)
+
+Revisits the "compile the environment for replanning" question in the TAMP (many-queries-per-scene)
+regime, informed by the prior overnight run (OVERNIGHT_FINDINGS.md) + this session's constraint
+(m59-63) and mobile-base (m64) findings.
+
+**Prior overnight verdict (still holds):**
+1. Const-folding the scene into the kernel = ~1x (dead). VAMP's SIMD collision loop is already
+   near-optimal; a full recompile is 0.6-8.8 s -- prohibitive to "patch" per TAMP mode switch.
+2. The real lever is broadphase PRUNING via a cheap per-query obstacle PARTITION (42-1588 us, NO
+   compiler). TAMP is exactly the amortization regime it needs (single queries don't pay; many
+   queries per scene do). "Patching" on a pick/place = re-partition (us-ms), never recompile -- so
+   the compile approach is doubly wrong for TAMP and the partition approach is naturally cheap to patch.
+3. Robot-dependent: pruning wins for collision-bound LOW-sphere FIXED arms (UR5 2.4-4.3x); masked for
+   FK-dominated HIGH-sphere robots (Fetch 111, Baxter 75). The only lever for those is scene-pruned FK,
+   which needs BOUNDED per-link reachability.
+
+**Two new reasons it does NOT help the robots we've been studying:**
+- **Constraint dominance (m59-63):** r2c6/digit constrained planning is ~60% projection, ~20%
+  collision (only 3-6% scene-dependent obstacle checks). Even perfect env-compilation touches <10% of
+  the cost. The analytic Jacobian already owns the dominant term.
+- **Mobile base kills reachability (m64 + reach.cc).** Scene-pruned FK needs each link's reachable
+  AABB small. Measured per-link reachable AABB volume for r2c6:
+
+| base freedom | mean AABB vol | vs fixed |
+|---|---|---|
+| fully fixed (identity) | 2.52 m^3 | 1.0x |
+| + base rotation | 13.17 m^3 | 5.2x |
+| + rotation + translation (mobile) | 25.36 m^3 | **10.1x** |
+
+  A localized obstacle (0.6 m off-centroid) leaves **97-99% of links non-prunable for the mobile base
+  vs ~45-58% for a fixed base** -- reachability pruning collapses, dominated by the base *rotation*
+  (5.2x: a free-flyer can orient the whole robot any way, so every link can reach almost anywhere).
+
+**Verdict by TAMP class:**
+- Constrained mobile-base humanoid (r2c6/digit): env compilation is NOT the lever -- projection-bound,
+  collision-minority, pruning masked by FK-dominance AND killed by mobile-base reachability.
+- Unconstrained fixed-base arm in a workcell (UR5-class): partition-pruning IS the lever, amortizes
+  over TAMP queries, 2-4x, no compiler, cheap to patch. The classic TAMP-manipulation win.
+- Fixed-base high-sphere (Fetch/Baxter-class): scene-pruned FK is the high-ceiling UNBUILT lever
+  (overnight step #1/#3) -- bounded reach makes localized scenes prune whole limbs; worth building
+  for a fixed-base manipulation workcell, not for a free-flyer.
+
+---
+
+## Recovering pruning for mobile bases: base-scoped (per-edge) partition (m66)
+
+m65 found reachability pruning collapses for a free-flyer (1-3% prunable) -- but that was a GLOBAL /
+world-frame partition. The base rotation smears every link over the whole workspace only if you let
+the base range freely. In the base frame the kinematics are base-INVARIANT, so per-link reach is
+compact (fixed-base-tight); over one RRTC edge the base barely moves, so a base-scoped partition sees
+compact-reach + small-edge-motion. Measured (reach.cc, r2c6, world-frame reach with base motion
+bounded to the scope; prune = links whose swept AABB misses a peripheral obstacle):
+
+| partition scope (base motion) | mean reach AABB | pruned |
+|---|---|---|
+| fixed base (reference) | 2.33 m^3 | 49% |
+| **per-EDGE (+-0.15 rad / 0.15 m)** | 3.08 m^3 | **43%** |
+| per-QUERY (+-0.5) | 10.2 m^3 | 8% |
+| GLOBAL / world-frame (m65) | 28.7 m^3 | 1% |
+
+**Answer to "can we prune mobile bases / check w.r.t. the base": yes.** A per-EDGE base-scoped
+partition recovers 43% pruned vs 1% global -- ~40x, essentially the fixed-base rate. Mechanism: each
+link's world-swept AABB over an edge = (precomputed base-frame reach, offline, base-invariant) (+)
+(the edge's base-pose AABB, cheap per edge). Partition obstacles against those. No compiler; a cheap
+per-edge partition, same shape as the overnight broadphase lever but scoped to the base.
+
+**Granularity is the crux and it's mobile-base-specific:** per-edge works (base barely moves),
+per-query already fails (8%), global fails (1%). For fixed manipulators any scope prunes; for a
+mobile base the partition MUST be per-edge. This upgrades EDGE_BROADPHASE from "nice granularity" to
+"the only granularity that works for a free-flyer."
+
+Secondary ("sort w.r.t. base"): ordering each link's obstacle checks by base-relative distance gives
+a faster early-out, but VAMP already sorts radially -- minor next to the per-edge scoping.
+
+**Worth-it check:** for the constrained humanoids (r2c6/digit) collision is only ~20% (env-checks
+3-6%), so recovered pruning buys a few percent. The real payoff is a COLLISION-BOUND mobile base
+(mobile manipulator / AMR navigating clutter) -- there per-edge base-scoped pruning could deliver the
+UR5-class 2-4x that world-frame pruning completely fails to get. That is the case to build it for.
+
+---
+
+## Prototype: per-edge base-scoped partition on real r2c6 (m67)
+
+Built edge_partition.py: precompute each collision sphere's reach in the BASE frame (base-invariant,
+offline); per edge read the base pose from q[0:7] (NO FK) and sweep the base-frame reach over the
+edge's base poses -> per-sphere world swept-AABB. An obstacle outside it can't hit that sphere over
+the edge; a sphere with no obstacle in reach has its FK skippable for the edge (r2c6 is FK-dominated).
+Tested on a real dumped handrail scene (seed 0, 16 obstacles, 71 configs, 70 edges):
+
+| approach | obstacles pruned | FK spheres skipped/edge | check-pairs kept |
+|---|---|---|---|
+| GLOBAL / world-frame (m65 baseline) | 0% | 7-21% | -- |
+| per-edge, global joint limits | 14% | 17% | 37% |
+| **per-edge + query-scoped reach** | **33%** | **79%** | **4.8%** |
+
+**The two levers compound.** Per-edge base-scoping (base barely moves over an edge) and query-scoped
+reach (precompute reach over the query's joint envelope, not global limits -- once per query/TAMP mode)
+each help; together they skip **79% of FK per edge** and keep <5% of the sphere x obstacle matrix. The
+global world-frame partition prunes 0% of obstacles -- exactly the m65 collapse. Base-scoping fixes it.
+
+**Honest caveats:**
+- Query-scoped reach used the solution trajectory's joint envelope (+10% margin) -- optimistic; a real
+  planner would derive it from start/goal + explored set (looser). Even global-joints per-edge (no
+  query knowledge) beats global 14%/17% vs 0%/7%.
+- FK-skip is an UPPER bound: skipping a sphere's FK requires its kinematic ANCESTORS not be needed by
+  surviving spheres (the FK-DAG survival factor, overnight #1, unmeasured here) and no self-collision
+  partner needs it. Real FK saving < 79%.
+- Conservative sampled AABBs (+margin); 0-false-negative not verified (needs interval-FK).
+
+**Impact:** for r2c6 (projection-bound, collision ~20%) this is a modest end-to-end few-percent even at
+79% FK-skip. The prototype's real value is the PROOF that base-scoped per-edge pruning works for a
+free-flyer where world-frame pruning gets 0% -- so a COLLISION-BOUND mobile base (mobile manipulator /
+AMR in clutter) is the target: there 79% FK-skip + 95% check-pair prune is the UR5-class win that the
+world-frame approach cannot deliver. Next: measure the FK-DAG survival factor to bound the real FK cut,
+then wire a per-edge Environment partition into the rrtc collision path for end-to-end numbers.
+
+---
+
+## FK-DAG survival factor for r2c6 per-edge pruning (m68)
+
+m67's "79% FK-skip" was a per-SPHERE-PLACEMENT number; the real FK cut is bounded by the FK-DAG --
+a joint's chain transform must run if ANY surviving sphere descends from it. Walked the kinematic
+tree (30 joints feed the 211 spheres) and measured the surviving fraction per edge on the real scene:
+
+| reach | sphere-placements skipped | FK-DAG survival | chain-FK saved |
+|---|---|---|---|
+| global-joints  | 17% | **100%** | **0%** |
+| query-scoped   | 79% | **59%**  | **41%** |
+
+**The DAG is the binding constraint, and it flips the verdict on reach quality:**
+- GLOBAL reach: surviving spheres spread across all 30 joints -> 100% chain survival -> the trig-heavy
+  chain FK (the dominant FK cost, per PHASE2) saves NOTHING, even though 17% of placements skip.
+- QUERY-SCOPED reach: surviving spheres concentrate (legs, near the swing-space obstacles) so the arm
+  chains (14 of 30 joints, tucked away from obstacles) prune -> 41% chain-FK saved.
+
+Structural reason: r2c6 handrail obstacles sit in the leg-swing space, so LEG chains survive (distal
+foot spheres reach obstacles -> whole leg chain runs) and ARM chains prune. The 41% ~ the two arms.
+
+**So the real FK cut is ~41% (chain) not 79% (placements)** -- placements are cheap-and-many, the chain
+is the trig cost, so the combined FK saving is chain-weighted, ~40-50% query-scoped, ~0% global.
+
+**Two hard caveats:**
+1. **Query-scoped reach is essential** -- global reach gives 0% chain saving. And query-scoped here
+   used the solution envelope (optimistic); a real start/goal-derived envelope is looser -> less
+   concentration -> lower saving. This is now the #1 sensitivity.
+2. **Self-collision keeps the DAG at 100%.** This measured ENV-driven pruning only. Full self-collision
+   needs every sphere's position, so it would force 100% FK-DAG survival unless self-collision is ALSO
+   scene-pruned per edge. FK-pruning only pays if self-collision is pruned alongside (or is cheap
+   enough to compute on a reduced set). For r2c6 self-collision is a kernel minority, but this must be
+   handled for the 41% to be real.
+
+**Bottom line:** the per-edge base-scoped partition + query-scoped reach can cut ~40% of r2c6's chain
+FK -- real but bounded by the DAG, gated on query-scoped reach quality, and requiring self-collision
+to be pruned too. For projection-bound r2c6 that is a few percent end-to-end; the case remains a
+COLLISION-BOUND mobile base, where a ~40% FK cut on a FK-dominated collision check is the real prize.
+
+---
+
+## Conditional materialization via per-link bounding-sphere gate (m69)
+
+Answers: can a link's fine spheres be materialized only if its bounding sphere intersects an obstacle
+OR another link's bounding sphere (self-collision)? This is a BVH broadphase along the kinematic tree,
+and the bounding-vs-bounding self condition directly targets m68's open self-collision caveat.
+Measured (bounding_gate.py, real scene, 211 spheres -> 28 per-link bounding spheres, SRDF-filtered
+9648 geometry pairs -> 239 self-candidate link-pairs), mean over 71 real configs:
+
+| gate | links materialized | fine spheres kept |
+|---|---|---|
+| env only (bounding vs obstacle) | 4% | **2%** |
+| env + self (vs obstacle OR self-partner bounding) | 63% | **84%** |
+
+- **Env gate alone is huge**: only 2% of fine spheres near an obstacle -> 98% skippable. Obstacles are
+  sparse relative to the robot; VAMP already gates fine env-CHECKS this way (PHASE0).
+- **The self-bounding gate works**: it prunes **93% of self-collision link-pairs** per config.
+- **But self-collision is the binding WALL**: the surviving 7% of pairs still touch 63% of links, so
+  **84% of fine spheres must materialize -- only 16% skippable.** A humanoid is self-close-packed
+  (arms near torso, legs near each other), so many link bounding spheres overlap even when not
+  colliding, and the coarse per-link bound cannot separate them. This is m68's self caveat, quantified:
+  self-collision, not obstacles, is what forces materialization.
+
+**What it saves and doesn't:**
+- Fine-sphere PLACEMENTS: ~16% skippable (env+self). Small (placements are ~1/3 of spherefk -> ~5% of FK).
+- Fine CHECKS: env-checks 98% pruned, self-pairs 93% pruned -- large; the self-check bounding gate is
+  the part VAMP may not already do, a real potential cut on the self-collision term.
+- CHAIN FK (the trig cost): NOT saved -- the bounding spheres need the link transforms, so the whole
+  chain runs. This gate is orthogonal to m68's reachability/subtree gating (which prunes the chain
+  BEFORE FK). The two compose: reachability/subtree prunes chain; bounding gate prunes fine placements
+  + checks.
+
+**Verdict:** yes, conditional materialization works, and the self-bounding condition is exactly what's
+needed to handle self-collision -- but on a self-close-packed humanoid it only frees ~16% of fine
+placements (self-collision wall), while delivering large CHECK pruning. To materialize far fewer
+spheres you need a FINER hierarchy (2-level bounds / per-sub-link) to separate the self-close-packed
+links, or to accept that self-collision materialization is inherent to a compact humanoid.
+
+---
+
+## Which self-pairs force materialization on r2c6 (m70)
+
+m69's 84% materialization wall is caused by a TINY structural set, confirming the intuition that most
+pairs are avoidable. Per-pair bounding intersection over the trajectory (239 SRDF self-candidate
+link-pairs, 71 configs):
+
+| category | pairs | % |
+|---|---|---|
+| NEVER close (prunable for the whole motion) | 217 | **91%** |
+| rare (<20% of configs) | 6 | 3% |
+| ALWAYS close (>=80%, the forcing set) | 16 | **7%** |
+
+**The 16 forcing pairs are geometrically inevitable, not behavioural:**
+- within-limb folding: left_leg j1<->j3, j3<->j5, right_leg j1<->j3 (non-adjacent links in the SAME leg)
+- torso hub: waist <-> {left/right arm proximal links, leg roots} (the waist is surrounded)
+- NONE are arm-vs-arm, leg-vs-leg, or arm-vs-leg -- every cross-limb pair is in the 91% NEVER set.
+
+**Two distinct wins this separates:**
+1. **Self-collision CHECK pruning (per-query), the clean win.** 91% of candidate pairs never come close
+   over a motion, so a per-query self-pair partition (analogous to the env broadphase: precompute
+   per-pair min bounding distance over the query envelope, drop pairs that stay separated) cuts the
+   self-check traversal ~10x (239 -> ~22 link-pairs; ~9648 -> ~900 geometry pairs). VAMP currently
+   bound-gates each self-pair per config (m10: ~28-48 checks/config) but does NOT prune the
+   never-close pairs for the query -- so this is new and it directly attacks the self-collision term.
+2. **FK-placement materialization stays ~84%.** The 16 forcing pairs touch 17/28 links, so those links'
+   fine spheres must materialize regardless (matches m69's 63% links / 84% spheres). This wall is
+   inherent to the coarse per-link bound: the folding/hub links overlap and can't be separated. Only a
+   FINER hierarchy (per-sub-link bounds splitting a leg's j1 from j3) could shrink it.
+
+**So the answer: the forcing pairs are ~16 structural (limb-folding + torso-hub) pairs, and 91% of
+self-pairs are per-motion prunable.** The materialization wall is not broad interaction -- it is those
+16 inevitable pairs. Per-query self-pair pruning is the real, clean self-collision win the question
+surfaces (decoupled from the FK-materialization wall, which needs a finer hierarchy).
+
+---
+
+## Prototype: per-query self-pair partition for r2c6 (m71)
+
+Built per_query_partition.py. Self-collision distance is BASE-INVARIANT, so partition in the base
+frame over the query's JOINT envelope: sample the envelope (base identity), build each link's
+base-frame reach AABB, and prune any SRDF self-candidate pair whose two AABBs (grown by bounding
+radii) stay separated -> can't collide over the query. Survivors checked per-config as today.
+Verified against the real trajectory:
+
+| envelope | pruned link-pairs | self-checks/config | false-negatives |
+|---|---|---|---|
+| whole 4-step gait | 50-56% | 1.5-2.1x fewer | 0 |
+| **per single step (real query)** | **75-76%** | **~4.0x fewer** | **0** |
+
+- **~75% of self-pairs prunable per query, ~4x fewer self-collision checks, 0 false negatives.** Robust
+  to margin (75% at +10% and +25% envelope inflation; worst pruned-pair clearance 27 mm at +25%).
+- Whole-gait is lower (50%) because it unions all 4 steps' envelopes; a real planner query is ONE step
+  -> 75%. Per-step is the right granularity.
+- The ~25% survivors = m70's 16 structural forcing pairs (limb-folding + torso-hub) + pairs that
+  genuinely approach during that step.
+- **Compiler-free**: cost is K joint-only FK samples once per query (amortized over the query's
+  thousands of collision checks). VAMP currently has no per-query self-pair pruning (it bound-gates
+  every SRDF pair every config, m10), so this is new and composes with the m66/m67 env partition.
+
+**Caveats (same shape as the env partition):** envelope taken from the solution trajectory
+(optimistic; a start/goal-derived envelope is looser but the +margin absorbs it); 0 FN verified for
+the solution path only -- a provable bound needs interval-FK, the margin is the empirical stand-in.
+
+**Impact:** for projection-bound r2c6 the self-collision term is a small slice, so ~1-2% end-to-end.
+The value is (a) it PROVES per-query self-pair pruning is safe and effective (4x, 0 FN), and (b) it is
+the collision-side win for a self-collision-bound robot (m10: self-collision ~40% of a check in sparse
+scenes) -- there 4x fewer self-checks is material, and it stacks with the env-side per-edge partition.
+
+---
+
+## Overnight: 3 collision partitions wired into VAMP RRTC, correctness-verified, evaluated (m72)
+
+Task: build each of the 3 partitions in VAMP proper, evaluate inside RRTC end-to-end, verify
+correctness. Honest result: **all three integrated/tested and correctness-characterized; none delivers
+a meaningful end-to-end speedup on the available robots, for three well-understood structural reasons.**
+Work log: experiments/jit/partition/WORKLOG.md. Correctness bar: 0 false negatives (never miss a real
+collision).
+
+### Partition 1 — per-query self-pair (m71): INTEGRATED IN VAMP CORE
+Changes: environment.hh (+active_self_pairs field, +copy-ctor, +binding def_rw); ccfk_template.hh
+(compact self-loop iterates the pruned subset; empty => all pairs == unchanged). Regenerated digit +
+r2c6, rebuilt. Partition computed in Python from VAMP's OWN spheres (module.fk) over the query joint
+envelope. Wired into r2_handrail plan_step (R2_PRUNE), verified via R2_VERIFY.
+- **Correctness:** sampled min-distance is NOT provably conservative. margin 3cm -> 2 FN / 8000
+  configs; **margin 15-20cm + 1500 samples -> 0 FN, still ~91-93% pruned.** So correct-ABLE with a
+  generous margin (a provable guarantee needs interval-FK, per the overnight caveat). Identity
+  (empty active_self_pairs) reproduces baseline exactly (digit 246 iters, r2c6 same).
+- **Perf:** with the correct margin (0 FN, no search divergence): baseline 2.01 vs pruned 2.12 ms/step
+  -> **~5% SLOWER, no win.** r2c6's check is FK-DOMINATED (1116-value FK >> self-collision minority),
+  so pruning 91% of self-pairs saves negligible time and the runtime index-loop costs slightly.
+- **Root cause = architectural mismatch:** runtime self-pair pruning only exists on the COMPACT
+  kernels (digit, r2c6) -- which are FK-dominated, so it can't help. The robots where self-collision
+  is a large fraction (sparse-scene arms, m10 ~40%) use UNROLLED kernels (compile-time pairs) -> no
+  runtime pruning. The partition helps exactly where it cannot be applied.
+
+### Partition 2 — per-edge/query env (m67): TESTED END-TO-END (ur5 MBM, 7 scene sets)
+Mechanism: reachability-pruned Environment (rebuild with obstacles outside the robot's query
+swept-AABB removed). No kernel change.
+- **Correctness:** 0 false negatives across all scenes (pruned path re-validated under FULL env);
+  solved counts identical baseline vs pruned.
+- **Perf:** only 0-18% obstacles pruned (MBM obstacles sit inside the workspace); ~1.0x on the one
+  realistic solve (cage 23ms -> 1.03x). Confirms overnight: a global/per-query env prune is ~null --
+  VAMP's sorted radial early-exit already skips far obstacles. The 2-4x overnight win was PER-SPHERE
+  reachable-AABB pruning on a SYNTHETIC dense-obstacle THROUGHPUT bench, which needs per-link obstacle
+  lists in the kernel (a real codegen change) AND a collision-saturated regime MBM planning never hits.
+
+### Partition 3 — FK-DAG materialization gate (m68/m69): 2B-BLOCKED, not integrable
+fkcc computes ALL sphere positions up front as flat SSA, then checks. Gating the FK placement needs
+SSA reordering (refuted in PHASE2 2B). VAMP ALREADY gates the CHECKS behind per-link/per-pair bounding
+spheres (the m69 gate is already shipped). Not attempted -- would require a codegen rewrite.
+
+### Bottom line (honest)
+The partitions are correct-verifiable but do not pay end-to-end here, because: (1) the robots that
+support runtime pruning (compact humanoids) are FK/projection-bound, so pruning collision *checks*
+saves little; (2) the env win needs per-sphere kernel pruning + a dense regime, not global env prune;
+(3) materialization is codegen-blocked and VAMP already gates checks. A genuine win would need a
+collision-bound mobile manipulator (slim arm, dense clutter) with a COMPACT kernel + per-link obstacle
+partition + interval-FK envelopes for provable correctness -- none of which is the current robot set.
+The self-pair integration is left in place (backward-compatible, empty=baseline); the env prune is a
+harness-level rebuild (no core change). Correctness verified for both (0 FN with proper margins).
+
+---
+
+## Unrolled vs compact vs pruned kernels for large robots (m73) -- corrects m72
+
+User: "try the unrolled kernels for the large robots." Generated r2c6 + digit with
+compact_collisions=false: **unrolled r2c6.hh = 604k lines (25x the 24k compact); digit = 303k (16x).**
+The unrolled r2c6 single fkcc function took ~5-6 min CPU to compile (gcc register allocator is
+superlinear on huge functions). Built it and measured raw collision throughput (validate = FK +
+self-collision, no obstacles):
+
+| kernel | ns/call | vs compact |
+|---|---|---|
+| compact baseline (loops over 1208 cc_self_pairs) | 3131 | 1.00x |
+| unrolled (straight-line, 604k lines) | 2612 | **1.20x** |
+| **compact + per-query self-pair pruning (87% pruned, 0 FN)** | **1995** | **1.57x** |
+
+**Corrects m72's "the partition doesn't help":** at the KERNEL level it clearly does -- 1.57x, and it
+BEATS the unrolled kernel (1.31x faster than unrolled). Self-collision is ~36% of r2c6's FK+self check
+(3131-1995 ~= 1136 ns), so pruning 87% of pairs cuts ~1000 ns. Unrolling helps too (1.2x, no loop
+overhead) but loses to pruning AND costs 25x code + a ~6 min compile of one giant function -- not
+viable for a large robot.
+
+**Why it was masked end-to-end (m72):** r2c6/digit are PROJECTION-bound (~60% projection, collision
+~22%, self a fraction of that), so a 1.57x collision-check speedup is ~a few % end-to-end, lost in the
+1-2 ms/step noise. End-to-end handrail: unrolled 1.96 vs compact 2.01 ms/step == identical (FK/
+projection dominate). So the partition's real value needs a COLLISION-BOUND robot with a compact
+kernel -- but it is a genuine 1.57x collision-check win, not a null, and it is the fastest of the
+three kernel variants.
+
+**Net:** compact+pruned > unrolled > compact-baseline at the kernel level. The compact representation
++ per-query self-pair pruning is the right design for large robots (smallest code, fastest check,
+0 FN); unrolling is a dead end (infeasible size/compile, and still slower than pruned).
+
+---
+
+## Full-suite kernel evaluation: compact / unrolled / compact+pruned (m74)
+
+Built all 6 robots (added fetch+baxter to the module) in all-compact (Build A) and all-unrolled
+(Build B). Collision-kernel throughput = validate (FK + self-collision, empty env), ns/call:
+
+| robot | spheres | self-pairs | compact | unrolled | compact+pruned | prune% | fastest |
+|---|---|---|---|---|---|---|---|
+| ur5    | 40  | 55   | 498  | **439** | 447  | 75% | unrolled |
+| panda  | 59  | 21   | 615  | **566** | 625  | 62% | unrolled |
+| fetch  | 111 | 48   | 480  | **403** | 431  | 75% | unrolled |
+| baxter | 75  | 349  | 932  | 905     | **552** | 92% | **pruned** |
+| digit  | 124 | 170  | 1992 | **1688**| 1990 | 8%  | unrolled |
+| r2c6   | 211 | 1208 | 3133 | 2597    | **1926**| 92% | **pruned** |
+
+**Three clean facts:**
+1. **Unrolled > compact-baseline for ALL 6** (10-20% faster): the compact runtime loops over
+   cc_env_links/cc_self_pairs cost vs straight-line code. So the arms shipping unrolled is correct.
+2. **compact+pruned beats unrolled only for the many-separable-pair robots**: baxter (552 vs 905 =
+   1.64x) and r2c6 (1926 vs 2597 = 1.35x). For few-pair (panda 21, digit 8%-prunable) or small arms,
+   pruning removes too little and unrolled's straight-line code wins.
+3. **Unrolled is INFEASIBLE for the large robots**: r2c6 unrolled = 604k lines / ~6 min single-function
+   compile; digit = 303k / ~3 min. So for large robots the real choice is compact vs compact+pruned,
+   and pruned wins (r2c6 1.63x over compact).
+
+**End-to-end (RRTC/handrail):**
+- ur5/panda MBM (collision-bound arms): **unrolled fastest** end-to-end -- ur5 20 vs compact 23 ms,
+  panda 12 vs 15 ms (~1.15-1.25x). compact+pruned ~neutral (0.94-0.98x).
+- r2c6/digit: projection-bound (~60% projection, collision ~22%) -> ALL variants ~identical end-to-end;
+  the kernel-level 1.35-1.63x pruned win is fully masked.
+
+**CORRECTNESS (critical):** compact+pruned is **UNSAFE for unconstrained RRTC** -- ur5 MBM produced
+**5 false negatives / 104 problems** because the global sampler checks configs far outside the
+start-goal envelope, where pruned pairs collide. It is safe only for CONSTRAINED planners that stay
+near the manifold (r2c6/digit handrail: 0 FN on paths) -- and even there not provable without
+interval-FK. The throughput test's 0 FN was an artifact of testing over the same envelope.
+
+**Verdict:** no partition variant delivers an end-to-end win anywhere in the suite. The robots where
+pruning helps the kernel (large many-pair humanoids) are projection-bound (masked); the robots where
+collision dominates (small arms) are better served by the unrolled kernel and are unsafe to prune.
+The shipped design (small robots unrolled, large robots compact) is already near-optimal; the only
+gap is large-robot compact could gain 1.35-1.63x from pruning IF a provably-safe (interval-FK) envelope
+existed AND the robot were collision-bound -- neither holds for digit/r2c6.
+
+---
+
+## End-to-end ablation of the 4 kernel optimizations, digit + r2c6 (m75)
+
+Cumulative ablation (each opt added on), end-to-end. Toggles: sincos = VAMP_ABLATE_SINCOS compile
+flag (added fkcc_sincos generation to fkcc_gen -- it was JIT-path-only before, missing from offline
+headers); snap = CRICKET_NO_SNAP; analytic = CRICKET_AUTODIFF_JAC; sparsity = CRICKET_NO_SPARSE.
+Built + measured 5 levels (digit/r2c6-only module for fast builds).
+
+**DIGIT (12 xorshift seeds, box_top_shelf_pickup; total solve ms):**
+| level | ms | cumulative | this step |
+|---|---|---|---|
+| baseline (autodiff, no-snap, dense, no-sincos) | 528.2 | 1.00x | - |
+| + sincos | 499.2 | 1.06x | **1.06x** |
+| + snap | 506.0 | 1.04x | 0.99x (null) |
+| + analytic Jac | 422.9 | 1.25x | **1.20x** |
+| + sparsity (full) | 351.3 | **1.50x** | **1.20x** |
+
+**R2C6 (10 handrail seeds; ms/step, normalizes gait-completion variance):**
+| level | ms/step | cumulative | this step |
+|---|---|---|---|
+| baseline | 19.44 | 1.00x | - |
+| + sincos | 19.53 | 1.00x | null |
+| + snap | 19.30 | 1.01x | null |
+| + analytic Jac | 2.28 | 8.52x | **8.46x** |
+| + sparsity (full) | 2.16 | **9.01x** | 1.06x |
+
+**Reading:**
+- **Analytic Jacobian is THE win** -- r2c6 8.5x (the free-flyer convergence effect, m59/m61: tight
+  pure-TSR drops the quaternion radial no-op that stalls Gauss-Newton), digit 1.20x.
+- **Sparsity** adds a consistent 1.20x for digit; only ~1.06x end-to-end for r2c6 (the 2.2x sparse-solve
+  kernel win is a smaller slice of r2c6's projection).
+- **Sincos** helps digit +6% (more collision in the box scene) but is null for r2c6 (few obstacles).
+- **Snap** is null end-to-end for both -- it helps collision-bound MBM (4-9%) but the humanoids are
+  projection-bound so FK-sparsity gains are masked.
+- **Cumulative: digit 1.50x, r2c6 9.0x** -- matching m59/m61. The split is exactly the m61 story: r2c6
+  (tight pure-free-flyer TSR) is dominated by the analytic *convergence* win; digit (loose/mixed
+  constraints) is a stack of modest per-op wins (sincos + analytic + sparsity, snap null).
+
+fkcc_gen now emits fkcc_sincos for offline headers (was JIT-only). sincos left OFF in production by
+default (compile flag); enabling it needs all robots regenerated + VAMP_ABLATE_SINCOS.
+
+---
+
+## Digit at 1e-4 tolerance: the analytic win grows with tightness (m76)
+
+Direct test of m61's claim (analytic Jacobian's convergence payoff scales with constraint tightness):
+tightened digit's foot-pin position bound from 1e-3 to 1e-4 (matching r2c6's grasps) via a runtime
+env knob; measured analytic vs autodiff producer (snap+sparse held on), 12 seeds:
+
+| digit foot-pin tol | analytic ms (iters) | autodiff ms (iters) | analytic win |
+|---|---|---|---|
+| 1e-3 (default) | 355 (3549) | 459 (3231) | 1.29x |
+| 1e-4 (r2c6-tight) | 303 (2967) | 490 (3306) | **1.62x** |
+
+**Confirmed.** Tightening 10x widens the analytic advantage 1.29x -> 1.62x. Mechanism is exactly m61:
+at 1e-4 the analytic step gets FASTER (2967 vs 3549 iters -- a tighter pin gives a cleaner, more
+decisive manifold) while the autodiff step gets SLOWER (3306 vs 3231 iters -- the quaternion radial
+no-op can't resolve the tighter tolerance, so projections cap/fail and the tree grows). The gap widens
+as predicted. Digit at 1e-4 moves toward r2c6's 8.5x but stays partway (1.62x) because digit still
+mixes non-radial constraints (CoM position, closed-loop distance) that dilute the free-flyer TSR
+effect, whereas r2c6 is PURE free-flyer TSR. So tightness AND constraint-purity together set how big
+the analytic convergence win is -- the two knobs m61 identified, now both confirmed by moving one.
+
+================================================================================
+m77: CROSS-CONSTRAINT FK FUSION -- built cricket side, measured, verdict = marginal
+================================================================================
+
+REQUEST: "Let's do cross constraint fk fusion. Make the API for constraints always
+take in the output of FK and joint Jacobians." Idea: every constraint producer
+(tsr_error, com_jacobian, closed_loop_error, bimanual) currently recomputes FK
+(computeJointJacobians + updateFramePlacements) independently. Compute it ONCE per
+config, feed the shared FK state to each producer.
+
+BUILT (cricket/src/tracing/constraints.cc, jit_patch):
+ - fk_state_size(model) = 12*(njoints-1) + 6*nv  (oMi[1..] as R(9)+t(3) each, then J 6xnv)
+ - setup_fk(): fk_input=false -> computeJointJacobians+updateFramePlacements (original path);
+   fk_input=true -> unpack oMi/J from the tape, derive oMf = oMi[parent]*frame.placement.
+ - trace_fk_jacobians(): shared kernel  q -> [oMi (12 each); J (6xnv)]
+ - trace_tsr_error_fk / trace_closed_loop_error_fk: fk_input variants (thin _impl wrappers;
+   PRODUCTION non-fk kernels are BYTE-IDENTICAL to before -- change is purely additive).
+ - fkcc_gen emits fk_jacobians_code / tsr_error_fk_code / closed_loop_error_fk_code into the
+   output JSON for measurement (template does not reference them -> generated headers unchanged).
+
+CORRECTNESS (de-risked, no runtime harness needed):
+ - feas_fk.cc already proved getFrameJacobian is BIT-IDENTICAL (0.00e+00, LWA & LOCAL, digit+r2c6)
+   when data.J/oMf/oMi are SET rather than freshly computed.
+ - Pack layout (trace_fk_jacobians lines 317-326) and unpack layout (setup_fk lines 278-289)
+   are the same ordering: per joint R row-major then t, then J row-major. => tsr_error_fk /
+   closed_loop_error_fk are correct BY CONSTRUCTION.
+
+OP-COUNTS (digit, arithmetic ops per generated kernel):
+ kernel                    current   fk-input
+ tsr_error                    6641       5188   (FK portion of tsr = only 1453 = 22%)
+ closed_loop_error            1773        507
+ com_jacobian                 4390      (n/a)   keeps its own centerOfMass/jacobianCenterOfMass
+ fk_jacobians (shared)           -       1484
+
+DIGIT DESCEND ACCOUNTING (per iteration, InnerLM; avg 3.16 iters/projection):
+ producers (current):  tsr 6641 + com 4390 + cl 1773               = 12804
+ active solver (Inner): tsr_inner 11577 + com_inner 291 + cl_inner 291 = 12159
+ total descend arith  ~= 24963 ops (+ integrate, small)
+
+ fused (shared FK + fk-input tsr & cl; com unchanged):
+   fk 1484 + tsr_fk 5188 + cl_fk 507 + com 4390 + solvers 12159 = 23728
+   saving = 1235 ops = 4.9% of descend.
+ fused + com also sharing FK (optimistic est com_fk ~ 4390-1484):
+   saving ~= 2719 ops = ~11% of descend.
+
+VERDICT: MARGINAL. Two reasons the win is small:
+ 1. FK is only ~22% of a producer's cost -- the analytic-Jacobian COMPOSITION (getFrameJacobian
+    + Jlog3 per eef) is 78% and is inherently per-constraint (not shareable).
+ 2. The LM SOLVERS dominate descend (tsr_lm_inner alone = 11577, a 24x24 J J^T factorization) and
+    are completely untouched by FK-fusion. Producers are only ~half of descend arithmetic.
+ Plus: only MULTI-producer robots benefit. r2c6 (single TSR) and the manipulators (single TSR)
+ get ZERO. Only digit gains, and only ~5-11% of its descend arithmetic => ~1-3% end-to-end
+ (producers are ~17-20% of digit runtime per the analytic-Jac 1.20x ablation; solvers untouched).
+
+DECISION: NOT wiring the vamp ConstraintSet API rework (every constraint class + all 6 robots
+regenerated/revalidated) for a ~1-3% digit-only gain. cricket side is built + proven; left as a
+capability. The real descend bottleneck is the LM solver factorization, not redundant FK.
+
+================================================================================
+m78: SOLVER EXPLORATION -- bordered/Woodbury InnerLM: 1.79x ops, 0% wall-clock
+================================================================================
+
+REQUEST: after m77 (FK fusion marginal, "LM solver is the real bottleneck"), try the SOLVER.
+
+STRUCTURE: descend is block-Jacobi (constraint_set.hh step_in_place -> each constraint c->step()
+independently). Digit's tsr solves its OWN InnerLM: J^T (J J^T + lambda I)^{-1} e with J 24x31
+(4 eefs x 6). solve_tsr_error_lm_inner = 11577 ops (5768 mul, dense 24x24 Cholesky w/ 24 sqrt) --
+the single largest descend kernel. Column sparsity (per-eef support) is already exploited but
+J J^T stays DENSE: all 4 limbs couple through the 6-DOF floating base.
+
+BORDERED/WOODBURY (prototype trace_solve_tsr_bordered): the base coupling is rank<=6. Digit's
+limbs are column-disjoint except the shared base, so J J^T + lambda I = A + G G^T with A block-
+diagonal (per-eef 6x6, limb columns only) and G = base columns (24x7). Woodbury replaces one dense
+24x24 Cholesky with four 6x6 + one 7x7 Schur solve.
+  op-count: 11577 -> 6476  (1.79x fewer ops).  sqrt 24 -> 31.
+  CORRECTNESS: emitted grad matches dense grad to rel ~1e-9 (Cholesky roundoff), seeds 7/11/29/101.
+  Drop-in: same tape layout (J row-major, then err); gated behind CRICKET_BORDERED_SOLVE.
+
+END-TO-END (deployed into digit.hh, rebuilt _core_ext, verified 31-sqrt kernel live):
+  RRTC digit box-transport: 32.0 ms/rep baseline -> 32.0 ms/rep bordered (identical, same 319 iters).
+  Isolated projection (20k project() calls): 56.41 us baseline vs 57.01 us bordered (bordered a hair
+  SLOWER, within noise).  => the 1.79x op reduction is 0% wall-clock.
+
+WHY 0% -- decomposition (project() max_iterations=1, InnerLM vs GradDesc isolates the solver):
+  InnerLM 1-iter = 8.61 us,  GradDesc 1-iter = 7.45 us  => full dense solver = 1.16 us = 13% of iter.
+  So the LM solver is only ~13% of a projection iteration; a 1.79x cut saves ~6% of the iter in
+  theory, and the bordered kernel's EXTRA statements (531 vs 381 lines: more temporaries / worse
+  pipelining despite fewer flops) eat that back to ~0.
+
+META (corrects m77): the LM solver is NOT the digit bottleneck. Neither FK (m77) nor solver
+arithmetic moves wall-clock. Static op-count is a poor predictor here -- the analytic-Jac win
+(1.20x) came from a kernel that also pipelined/vectorized better, not merely fewer ops. The ~57 us
+projection is dominated by the PRODUCERS (FK + analytic Jacobian composition) + framework/pybind
+overhead, and those are already optimized (analytic Jac). CAUTION: the python planning benchmark is
+heavily python-bound (perf: ~90% interpreter over the whole process at 400 reps) -- measure kernel
+changes via isolated project() deltas (InnerLM-GradDesc), NOT the RRTC wall-clock.
+
+DECISION: bordered solver REVERTED (proven correct, real 1.79x op win, but 0% wall-clock). Not worth
+carrying. If projection wall-clock ever matters, the lever is the PRODUCERS or reducing projection
+CALL COUNT / iterations -- not solver arithmetic.
+
+================================================================================
+m79: ITERATION COUNT -- the real projection cost is iters, not per-iter arithmetic
+================================================================================
+
+REQUEST: after m78 (solver arithmetic = dead end), "look at iteration count then let's drop."
+
+MEASUREMENT (digit box-transport, InnerLM alpha=1, feet+com+loops+bimanual):
+ - RRTC projection-cap sweep (real planning):
+     cap<=4  -> planning FAILS (projections can't converge, every extension rejected)
+     cap=6   -> solves but THRASHES: 13281 RRTC iters, 380 ms
+     cap=10  -> 705 iters, 34.5 ms
+     cap=25  -> 348 iters, 34.2 ms (default)
+   => real projections routinely need >4 iters; the long tail needs 10-25.
+ - Per-projection iteration count (python bisection: minimal max_iter to converge, 1500 samples):
+     step sigma=0.005 -> mean 9.88, median 6, p90 24, max 30, 93% converge
+     step sigma=0.01  -> mean 9.68, median 6, p90 23, max 30, 81% converge
+     step sigma=0.02  -> mean 10.9, median 8, p90 24, max 30, 74% converge
+     step sigma=0.03  -> mean 13.0, median 9, p90 26, max 30, 61% converge
+   Heavy-tailed: median ~6 but p90 ~24. (NB: contradicts the "avg 3.16 iters" I had on file --
+   that was wrong / a different problem. Real digit box-transport is mean ~10.)
+ - CDF is roughly linear (constant per-iter convergence increment) = LINEAR convergence, the
+   signature of block-Jacobi simultaneous full-step, NOT the quadratic convergence a coupled
+   Gauss-Newton step gives.
+
+STRUCTURE: descend is block-Jacobi (constraint_set.hh step_in_place -> each constraint c->step()
+independently, then sum). The 4 constraints couple heavily through the shared floating base + legs;
+applying all full steps simultaneously (each assuming the others don't move) overshoots -> slow
+linear convergence -> ~10 iters.
+
+WHY THIS MATTERS (unlike FK/solver arithmetic): iteration count MULTIPLIES the whole per-iter
+producer+solver cost, and projection is producer-bound. Cutting iters ~10 -> ~3-4 (quadratic
+convergence) would be a real ~2.5x on projection wall-clock -- the first lever found that would
+actually move the needle, because it removes WHOLE producer passes, not just flops within one.
+
+LEVER (identified, NOT implemented): replace block-Jacobi with a COUPLED (stacked) Gauss-Newton
+step -- build the stacked Jacobian [tsr; com; loops; bimanual] (~29-35 rows x 31) once per iter
+(error_jacobian() already assembles it) and take ONE InnerLM step on the whole stack. Quadratic
+convergence near the manifold -> far fewer iters. Cost: a bigger solve per iter (35x35 vs the
+block solves) + a stacked-descend path (step_in_place is hardcoded Jacobi). Gauss-Seidel
+(sequential, each constraint sees prior updates) is a cheaper middle ground (same per-iter cost,
+better-than-Jacobi convergence).
+
+DECISION: per user, DROP the projection-perf line here. Instrumentation reverted, module rebuilt
+clean. Recorded because iteration-count / coupled-solve is the ONE lever with real wall-clock
+upside if projection perf is ever revisited -- the arithmetic levers (FK m77, solver m78) are not.
+
+================================================================================
+m80: COUPLED GAUSS-NEWTON PROJECTION -- the iteration lever works: 1.31x end-to-end
+================================================================================
+
+REQUEST: "try the gauss newton" (reversing the m79 drop). Replace block-Jacobi descend
+(constraint_set.hh step_in_place: each constraint steps independently, linear convergence) with a
+COUPLED Gauss-Newton step: assemble the stacked hinged+active-masked error e and Jacobian J of ALL
+constraints, take ONE normal-equations step g = (J^T J + lambda I)^{-1} J^T e. Quadratic vs linear.
+
+IMPLEMENTATION (vamp, opt-in `ConstraintSettings.coupled`, default false):
+ - settings.hh: `bool coupled`. constraint_set.hh: step_coupled_in_place(). Scalar-extract all rake
+   lanes via the existing extract_error_jacobian() virtual (+ replicate squared_error's active-row
+   mask), then ONE SIMD Cholesky over FloatVector rows (all lanes at once), n=dim=31 fixed.
+ - OuterLM form (J^T J, n x n) chosen: robust when active-row count != n (InnerLM J J^T is rank-
+   deficient once masking drops the free rows -> gave ZERO convergence; OuterLM fixed it).
+
+ITERATION COUNT (project() bisection, block-Jacobi vs coupled):
+   sigma=0.005: block mean 11.5 (94% conv) -> coupled 2.33 (100%)
+   sigma=0.01 : block 12.6 (92%)  -> coupled 2.78 (100%)
+   sigma=0.02 : block 13.4 (83%)  -> coupled 3.36 (100%)
+   sigma=0.03 : block 16.2 (73%)  -> coupled 3.64 (100%)
+   => ~4-5x fewer iterations AND 100% convergence (quadratic, as hypothesized in m79).
+
+WALL-CLOCK:
+ - scalar per-lane Eigen prototype: 2.6x SLOWER e2e (8 scalar solves/iter + redundant eval swamp it).
+ - SIMD Cholesky (one factorization for all 8 lanes): projection throughput 55.5 -> 48.8 us
+   (1.14x + 100% vs 92% conv); END-TO-END RRTC digit box-transport (pick->rack):
+       block-Jacobi: 348 iters, 32.7 ms   coupled: 228 iters, 24.9 ms  => 1.31x, path on-manifold.
+   Coupled needs FEWER RRTC iters (228 vs 348) because reliable projection -> fewer failed extensions.
+ - STILL has a redundant kernel eval (step_coupled calls evaluate_error_jacobian while the descend
+   loop's squared_error also runs the kernels -> ~2x producer/iter). Removing it (read the hinged+
+   masked cache instead of re-evaluating; needs a per-type SIMD-cache reader) should push toward ~1.6x.
+
+This is the FIRST real wall-clock win in the projection-perf line: op-count arithmetic (FK m77,
+solver m78) was a dead end, but the ITERATION lever (m79) pays off -- coupling removes whole
+producer passes, which is what actually moves wall-clock.
+
+LIMITATIONS (opt-in experimental): ignores ProjMethod (always OuterLM), does not mask pinned-sampler
+columns (fine for halton/no-pins; would be wrong under PinnedRNG), and carries the redundant eval.
+
+--- CORRECTION to m78 ---
+Python loads a COPY of _core_ext.abi3.so in site-packages, NOT the ninja build-dir output; `ninja`
+does not reinstall. So today's earlier python measurements ran a STALE module. The m78 bordered
+"0% end-to-end" was never actually loaded (VAMP_PROJ_STATS also never fired for this reason) -> that
+specific end-to-end claim is UNSUPPORTED. Bordered's op-count (1.79x) + correctness still stand, and
+it's dropped anyway. m79's baseline iteration numbers used the stale module = valid baseline behavior.
+WORKFLOW FIX: after every `ninja _core_ext`, cp the .so to site-packages before measuring.
+
+================================================================================
+m81: COUPLED GAUSS-NEWTON productionized -- full suite: digit 2.06x, r2c6 neutral
+================================================================================
+
+Removed the redundant kernel eval + productionized the m80 coupled Gauss-Newton projection.
+
+CHANGES (vamp, opt-in ConstraintSettings.coupled):
+ - No re-eval: step_coupled reads the hinged+active-masked cache that the descend loop's
+   squared_error(q) already populated (new virtual Constraint::stacked_cache(), overridden in
+   HingedTSRConstraint [TSR+bimanual], CoMConstraint, ClosedLoopConstraint -- each reads its own
+   post-squared_error solve buffer directly; no re-hinge/re-mask, since every type's squared_error
+   already applied the correct masking). Assembled + solved in SIMD (FloatVector Cholesky, all lanes).
+ - Excludes velocity-only Pfaffian constraints (new Constraint::projects(), false for Pfaffian).
+ - Pinned-sampler columns zeroed in the assembled Jacobian (handles PinnedRNG).
+ - Single-constraint fallback: if <=1 projecting constraint, step_in_place reverts to block-Jacobi
+   (nothing to couple; the n x n coupled solve is strictly costlier than the constraint's own
+   generated solver). Makes coupled=true safe to leave on for any problem.
+ - `coupled` overrides `method` (always Gauss-Newton / OuterLM). Default path (coupled=false) is
+   byte-identical to before (digit still 319/348 iters).
+
+FULL-SUITE EVALUATION (the constrained problems previously evaluated):
+ - DIGIT (box-transport, canonical digit_example.py, 10 reps, halton, feet TSR + CoM + closed-loops
+   + bimanual = 4 coupled constraints):
+       block-Jacobi: 30.9 ms/rep, 319 iters      coupled: 15.0 ms/rep, 261 iters   => 2.06x
+   All waypoints on manifold (both). (Double-eval removal took it from 1.31x -> ~2x.)
+ - R2C6 (handrail gait, SINGLE TaskSpace constraint): coupled auto-falls-back to block-Jacobi
+   (1 projecting constraint) -> identical to baseline (seed 3: 11.5 ms both, gait completes).
+   Confirmed the fallback is right: before adding it, coupled-on-single-constraint used OuterLM
+   (n x n) vs block's 6x6 InnerLM and ran ~5.8x SLOWER with no robustness gain.
+
+TAKEAWAY: coupling pays off exactly when constraints couple (multi-constraint humanoid stacks:
+2.06x on digit), and is a no-op elsewhere. This is the real projection-perf win the whole line was
+looking for -- from the ITERATION lever (m79), not per-iteration arithmetic (FK m77 / solver m78,
+both dead ends). Convergence is also more robust (100% vs 73-99% on hard projections, m80).
+
+STATUS: opt-in (default false), correct, no-regression, exposed via `--coupled` in digit_example.py
+and r2_handrail_example.py. Candidate to enable by default given the single-constraint fallback.
+
+================================================================================
+m82: WHEN coupled GN helps -- heterogeneous multi-kernel stacks, not fused multi-eef
+================================================================================
+
+Q: does r2c6 benefit from coupled GN with the waist-upright constraint + the handrail?
+
+FINDING: the r2c6 handrail ALREADY includes waist-upright -- it is the 3rd eef of the single
+TaskSpaceConstraint (n_eef=3: left tip, right tip, waist_center; WAIST_BOUND = pos free, roll/pitch
+<= 0.05 rad, yaw <= 0.5, about WAIST_REFERENCE_RPY). So feet + waist are all TSR eefs sharing ONE
+tsr_error kernel, already coupled inside that constraint's InnerLM solve.
+
+r2c6 projection (right foot pinned + waist upright), min-iters + throughput, dim=36:
+  sigma=0.05:
+    combined (1 TSR, 3 eefs)  block-Jacobi : 4.19 iters, 10.3 us/proj   <- current, optimal
+    split (feet-TSR + waist-TSR) block-Jac  : 11.66 iters, 46.4 us/proj  <- splitting loses coupling
+    split (feet-TSR + waist-TSR) coupled GN : 4.38 iters, 74.6 us/proj   <- coupled RECOVERS iters...
+
+INTERPRETATION -- the rule for when coupled GN pays off:
+ - Coupled GN recovers the cross-constraint coupling that block-Jacobi's independent stepping LOSES.
+   Proof: splitting r2c6's feet+waist into two constraints makes block-Jacobi linear (4->12 iters);
+   coupled GN restores the 4-iter quadratic count.
+ - It only WINS in wall-clock when the constraints CANNOT be fused into one kernel -- i.e. they use
+   DIFFERENT generated kernels. DIGIT is exactly this: feet-TSR + CoM + closed-loop + bimanual are
+   four distinct kernels (tsr_error / com_jacobian / closed_loop_error / tsr_bimanual_error) that
+   must be separate constraint objects -> block-Jacobi steps them independently (linear) -> coupled
+   GN gives 2.06x (m81).
+ - When the constraints ARE the same kernel (r2c6: feet + waist are all TSR eefs), the right model is
+   ONE multi-eef TaskSpaceConstraint, which already couples them in a single solve and is ~7x faster
+   than splitting-then-coupling (splitting doubles kernel evals + inflates the coupled solve to
+   36x36). Coupled GN correctly FALLS BACK to block-Jacobi here (1 projecting constraint) -> neutral.
+
+BOTTOM LINE: coupled GN is the right tool for HETEROGENEOUS constraint stacks (humanoid whole-body:
+TSR + CoM + loops + bimanual = digit, 2.06x). It is neither needed nor beneficial for a manifold
+expressible as a single multi-eef TSR (r2c6 handrail) -- fuse those into one constraint instead.
+The single-constraint fallback (m81) makes coupled=true safe to leave on either way.

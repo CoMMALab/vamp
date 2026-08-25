@@ -1,0 +1,9 @@
+# Regenerable experiment artifacts (rebuilt by the phase3 gen_*.py / m*.cc drivers) --
+# ~25MB of generated headers; keep the generators, not their output.
+phase3/*_e.hh
+phase3/*.inc
+phase3/mbm_envs.hh
+phase3/mbm_problems.hh
+phase3/staged_place.hh
+phase3/swept_aux.hh
+__pycache__/

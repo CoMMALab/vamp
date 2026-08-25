@@ -1,5 +1,11 @@
 #pragma once
 
+// ABLATION TOGGLE (sincos): define VAMP_ABLATE_SINCOS to enable the fused-sincos collision path.
+#ifdef VAMP_ABLATE_SINCOS
+#  define VAMP_FKCC_SINCOS
+#  define VAMP_RECUR_SINCOS
+#endif
+
 #include <cstdint>
 
 #include <vamp/utils.hh>

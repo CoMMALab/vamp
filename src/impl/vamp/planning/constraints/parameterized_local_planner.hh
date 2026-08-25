@@ -163,7 +163,7 @@ namespace vamp::planning::constraint
     private:
         mutable std::vector<Configuration> chain_;
 
-        static constexpr float max_joint_delta = 0.2F;
+        static constexpr float max_joint_delta = 0.15F;
 
         // True if any joint moves by >= max_joint_delta between lane `lane_a` of block `a` and
         // lane `lane_b` of block `b`. Used only on pairs that are one fine-resolution t_step apart

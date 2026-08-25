@@ -21,7 +21,7 @@ struct RBY1
     static constexpr std::size_t n_spheres = 87;
     static constexpr float min_radius = 0.03427768871188164;
     static constexpr float max_radius = 0.2039647400379181;
-    static constexpr std::size_t resolution = 128;
+    static constexpr std::size_t resolution = 200;
     static constexpr bool euclidean = false;
     static constexpr std::array<std::size_t, 0> so3_offsets = {  };
 

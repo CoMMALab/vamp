@@ -80,7 +80,7 @@ namespace vamp::rng
             return true;
         }
 
-        typename RNG<Robot>::Ptr inner;
+        typename RNG<Robot, Space>::Ptr inner;
         const Configuration mask;
         const Configuration values;
         const Configuration unmask;

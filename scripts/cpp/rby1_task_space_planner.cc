@@ -449,7 +449,7 @@ auto main(int argc, char **argv) -> int
         std::cout << "solved: " << result.solved << std::endl;
         // std::cout << "cost: " << result.cost << std::endl;
         std::cout << "iterations: " << result.iterations << std::endl;
-        std::cout << "nanoseconds: " << result.nanoseconds << std::endl;
+        std::cout << "milliseconds: " << (result.nanoseconds / 1000000.0F) << std::endl;
         // std::cout << "tree sizes (start, goal): " << result.size[0] << ", " << result.size[1] << std::endl;
         // std::cout << "path size: " << result.path.size() << std::endl;
 

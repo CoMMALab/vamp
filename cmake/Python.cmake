@@ -1,6 +1,41 @@
 # Python bindings configuration for VAMP
 # This file contains all Python bindings related logic
 
+# The python name a robot registers itself under (Robot::name) normally matches its
+# module/file name, but not always -- IiwaMarker::name is "iiwamarker" (no underscore)
+# while its header/module is iiwa_marker. Every place that touches the *runtime* python
+# attribute (the robots() list, stub generation/install) needs this; the generated .cc
+# file, init_<x>() function, and #include keep using the raw module name instead.
+#
+# This and vamp_robot_extra_binder() below are looked up by name rather than kept as
+# lists parallel to VAMP_ROBOT_MODULES/STRUCTS on purpose: VAMP_ROBOT_MODULES can also be
+# set from outside this file (pyproject.toml's scikit-build cmake.define ships a curated
+# robot subset for the wheel), which knows nothing about such lists -- keeping several
+# lists in lockstep by construction is exactly the kind of thing that silently desyncs.
+function(vamp_robot_py_name robot_name out_var)
+  if(robot_name STREQUAL "iiwa_marker")
+    set(${out_var} "iiwamarker" PARENT_SCOPE)
+  else()
+    set(${out_var} "${robot_name}" PARENT_SCOPE)
+  endif()
+endfunction()
+
+# Robot-specific extra #include/call spliced into its generated robot.cc.in (see
+# VAMP_ROBOT_EXTRA_INCLUDE/VAMP_ROBOT_EXTRA_CALL_LINE below), for binders too
+# robot-specific to live in the generic robot_helper.hh (e.g. rby1_sampler_binder.hh's
+# FixedBaseSampler, which hardcodes RBY1::ParameterizedSpace's State layout). Empty
+# strings for every other robot.
+function(vamp_robot_extra_binder robot_name out_header out_call)
+  if(robot_name STREQUAL "rby1")
+    set(${out_header} "vamp/bindings/python/rby1_sampler_binder.hh" PARENT_SCOPE)
+    # No trailing ';': robot.cc.in supplies the terminating ';' itself.
+    set(${out_call} "vamp::binding::bind_rby1_task_sampler(submodule)" PARENT_SCOPE)
+  else()
+    set(${out_header} "" PARENT_SCOPE)
+    set(${out_call} "" PARENT_SCOPE)
+  endif()
+endfunction()
+
 if(VAMP_BUILD_PYTHON_BINDINGS)
   # Find Python and nanobind dependencies
   find_package(Python 3.8
@@ -43,12 +78,18 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
       list(APPEND VAMP_ROBOT_MODULES rby1)
       list(APPEND VAMP_ROBOT_STRUCTS RBY1)
     endif()
+
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/impl/vamp/robots/iiwa_marker.hh")
+      list(APPEND VAMP_ROBOT_MODULES iiwa_marker)
+      list(APPEND VAMP_ROBOT_STRUCTS IiwaMarker)
+    endif()
   endif()
 
-  foreach(robot ${VAMP_ROBOT_MODULES})
+  foreach(robot IN LISTS VAMP_ROBOT_MODULES)
+    vamp_robot_py_name(${robot} py_name)
     string(APPEND VAMP_ROBOT_INITS "    vb::init_${robot}(pymodule);\n")
     string(APPEND VAMP_ROBOT_DECLS "    void init_${robot}(nanobind::module_ &pymodule);\n")
-    string(APPEND VAMP_ROBOT_QUOTED "\"${robot}\",")
+    string(APPEND VAMP_ROBOT_QUOTED "\"${py_name}\",")
   endforeach()
 
   list(JOIN VAMP_ROBOT_QUOTED ", " VAMP_ROBOT_NAMES)
@@ -78,6 +119,13 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
   endif()
 
   foreach(robot_name robot_struct IN ZIP_LISTS VAMP_ROBOT_MODULES VAMP_ROBOT_STRUCTS)
+  vamp_robot_extra_binder(${robot_name} extra_header extra_call)
+  set(VAMP_ROBOT_EXTRA_INCLUDE "")
+  if(extra_header)
+    set(VAMP_ROBOT_EXTRA_INCLUDE "#include <${extra_header}>")
+  endif()
+  set(VAMP_ROBOT_EXTRA_CALL_LINE "${extra_call}")
+
   configure_file(
     src/impl/vamp/bindings/python/robot.cc.in
     ${CMAKE_CURRENT_BINARY_DIR}/${robot_name}.cc
@@ -151,10 +199,11 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
   )
 
   foreach(robot_name IN LISTS VAMP_ROBOT_MODULES)
+    vamp_robot_py_name(${robot_name} py_name)
     nanobind_add_stub(
       "vamp_${robot_name}_stub"
-      MODULE "_core_ext.${robot_name}"
-      OUTPUT "${STUB_PREFIX}${robot_name}.pyi"
+      MODULE "_core_ext.${py_name}"
+      OUTPUT "${STUB_PREFIX}${py_name}.pyi"
       PYTHON_PATH $<TARGET_FILE_DIR:_core_ext>
       DEPENDS _core_ext
       VERBOSE
@@ -173,9 +222,10 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
   )
 
   foreach(robot_name IN LISTS VAMP_ROBOT_MODULES)
+    vamp_robot_py_name(${robot_name} py_name)
     install(
-      FILES "${STUB_PREFIX}${robot_name}.pyi"
+      FILES "${STUB_PREFIX}${py_name}.pyi"
       DESTINATION "${CMAKE_SOURCE_DIR}/src/vamp/_core"
     )
   endforeach()
-endif() 
+endif()

@@ -24,6 +24,7 @@
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/random/halton.hh>
 #include <vamp/random/rng.hh>
+#include <vamp/utils.hh>
 #include <vamp/vector.hh>
 
 #if defined(__x86_64__)
@@ -31,6 +32,21 @@
 #endif
 
 #include <nanobind/nanobind.h>
+
+// Not every ParameterizedSpace needs a "mid pose" concept: it exists for bimanual/
+// mobile-base spaces (e.g. RBY1, whose t_mid_left/t_mid_right hand offsets are derived
+// from a reference whole-body configuration) but not single-arm ones (e.g. IiwaMarker,
+// whose eef pose IS the task-space pose already). Detected via SFINAE so
+// ParameterizedSpaceTraits::compute_mid_pose and its binding can each stay a no-op for
+// robots without it, rather than hard-erroring at compile time.
+VAMP_DEFINE_HAS_METHOD(compute_mid_pose)
+
+// GCP (self-motion-manifold branch selector) is RBY1-specific: each rainbow arm has its
+// own (elbow_sel, shoulder_sel, wrist_sel) triple, set independently per arm via
+// Space::set_gcp(left, right). IiwaMarker has an analogous but differently-shaped
+// concept (a single triple, set via set_smm) -- not the same signature, so not unified
+// with this one; add a separate has_set_smm_v/binding if that needs exposing too.
+VAMP_DEFINE_HAS_METHOD(set_gcp)
 
 namespace vamp::binding
 {
@@ -46,6 +62,7 @@ namespace vamp::binding
     template <typename Robot, typename Input = SpaceNDArrayInput<Robot, typename Robot::ParameterizedSpace>>
     struct ParameterizedSpaceTraits
     {
+        using RobotType = Robot;
         using Space = typename Robot::ParameterizedSpace;
         using Ambient = typename Space::Ambient;
 
@@ -120,7 +137,16 @@ namespace vamp::binding
         // IK-resolve a single task-space state into the ambient robot's Configuration.
         // Returns (valid, ambient_configuration); does not collision-check the result --
         // callers that need that should follow up with the ambient robot's validate().
-        static auto resolve(const Cfg &state) -> std::pair<bool, typename Ambient::ConfigurationArray>
+        //
+        // Returns a plain std::array<float, Ambient::dimension> rather than
+        // Ambient::ConfigurationArray: nanobind's std::array caster (nanobind/stl/array.h)
+        // is specialized on std::array<Type, Size> exactly, and ConfigurationArray -- a
+        // struct that derives from std::array<FloatT, dimension> to carry alignas -- is a
+        // distinct type nanobind has no caster for, so returning it directly makes this
+        // uncallable from python ("Unable to convert function return value to a Python
+        // type!") despite compiling and generating a signature. Both are the same bytes,
+        // so this is a lossless conversion.
+        static auto resolve(const Cfg &state) -> std::pair<bool, std::array<float, Ambient::dimension>>
         {
             const auto s = Input::to(state);
             typename Space::template StateBlock<rake> block;
@@ -131,7 +157,7 @@ namespace vamp::binding
 
             auto [valid, ambient_block] = Space::template resolve_block<rake>(block);
 
-            typename Ambient::ConfigurationArray ambient;
+            std::array<float, Ambient::dimension> ambient;
             for (std::size_t i = 0; i < Ambient::dimension; ++i)
             {
                 ambient[i] = ambient_block[{i, 0}];
@@ -155,10 +181,72 @@ namespace vamp::binding
         }
 
         // Derive t_mid_left/t_mid_right (thread-local to Space) from a reference whole-body
-        // ambient configuration; the normal way to set them before planning.
-        static void compute_mid_pose(const typename Ambient::ConfigurationArray &ambient)
+        // ambient configuration; the normal way to set them before planning. Only present
+        // on spaces with a mid-pose concept (e.g. RBY1); see has_compute_mid_pose_v above.
+        // The binder (parameterized_space_binder.hh) only exposes this to python when the
+        // if constexpr branch below is taken, so the else branch is unreachable in
+        // practice -- it exists only so this method stays well-formed to reference (e.g.
+        // take the address of) for spaces without compute_mid_pose.
+        //
+        // Takes a plain std::array<float, Ambient::dimension> rather than
+        // Ambient::ConfigurationArray for the same reason resolve() returns one instead
+        // of the latter -- see the comment there.
+        static void compute_mid_pose(const std::array<float, Ambient::dimension> &ambient)
         {
-            Space::compute_mid_pose(ambient);
+            if constexpr (has_compute_mid_pose_v<Space>)
+            {
+                typename Ambient::ConfigurationArray q;
+                for (std::size_t i = 0; i < Ambient::dimension; ++i)
+                {
+                    q[i] = ambient[i];
+                }
+                Space::compute_mid_pose(q);
+            }
+            else
+            {
+                (void) ambient;
+                throw std::runtime_error("this task space has no mid-pose concept");
+            }
+        }
+
+        // Overwrite the static-stability support polygon LocalPlanner checks the resolved
+        // ambient center of mass against (see ParameterizedLocalPlanner::set_support_polygon).
+        // Only meaningful on spaces with a compute_com utility (e.g. RBY1); on spaces without
+        // one, com_within_support_polygon is a no-op (always true) regardless of what the
+        // polygon is set to, so the binder (parameterized_space_binder.hh) doesn't expose this
+        // at all rather than expose a setter with no effect. Same has_compute_com<Space, rake>
+        // gate ParameterizedLocalPlanner::com_within_support_polygon itself uses.
+        static void set_support_polygon(const std::vector<std::array<float, 2>> &polygon_xy)
+        {
+            if constexpr (vamp::planning::constraint::detail::has_compute_com<Space, rake>::value)
+            {
+                LocalPlanner::set_support_polygon(polygon_xy);
+            }
+            else
+            {
+                (void) polygon_xy;
+                throw std::runtime_error("this task space has no center-of-mass/support-polygon concept");
+            }
+        }
+
+        // Set the GCP (elbow/shoulder/wrist self-motion-manifold branch) selector shared by
+        // every lane -- the "many task-space states, one shared branch" mode
+        // ParameterizedLocalPlanner/resolve_and_check use while extending the tree, where
+        // the whole planning problem is meant to stay on a single branch. `left`/`right`
+        // are each (elbow_sel, shoulder_sel, wrist_sel), matching Space::set_gcp. Only
+        // present on spaces with a GCP concept (currently RBY1); see has_set_gcp_v above.
+        static void set_gcp(const std::array<float, 3> &left, const std::array<float, 3> &right)
+        {
+            if constexpr (has_set_gcp_v<Space>)
+            {
+                Space::set_gcp(left, right);
+            }
+            else
+            {
+                (void) left;
+                (void) right;
+                throw std::runtime_error("this task space has no GCP (self-motion-manifold branch) concept");
+            }
         }
 
         static auto make_halton() -> std::shared_ptr<Sampler>

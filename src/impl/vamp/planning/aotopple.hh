@@ -8,7 +8,7 @@
 #include <vamp/planning/phs.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/simplify.hh>
-#include <vamp/planning/validate.hh>
+#include <vamp/planning/validate_bezier.hh>
 #include <vamp/planning/aotopple_settings.hh>
 #include <vamp/planning/topple.hh>
 #include <vamp/random/rng.hh>

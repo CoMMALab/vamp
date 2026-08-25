@@ -11,10 +11,9 @@ namespace vamp::planning
         SimplifySettings simplify;
 
         float bez_range = 0.5;
-        bool rand_connect = true;
-        float rand_ratio = 0.2;
         float alpha = 0.00001;
         bool dynamic_extension = true;
+        float sampling_bias = 0.5;
 
         std::size_t max_iterations = 100000;
         std::size_t max_samples = 100000;

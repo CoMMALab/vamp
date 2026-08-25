@@ -24,7 +24,7 @@ namespace vamp::robots
         static constexpr float min_radius = 0.012000000104308128;
         static constexpr float max_radius = 0.07999999821186066;
         static constexpr std::size_t resolution = 32;
-        static constexpr std::size_t topple_out_dim = 19; // degree - 1
+        static constexpr std::size_t topple_out_dim = 10;
 
         static constexpr std::array<std::string_view, dimension> joint_names = {
             "panda_joint1",
@@ -184,12 +184,12 @@ namespace vamp::robots
 
             for (auto i = 0U; i < files.size(); i++) {
                 auto d = npy::read_npy<float>(files[i]);
-                std::cout << files[i] << ": " << d.shape[0] << ", " << d.shape[1] << std::endl;
+                // std::cout << files[i] << ": " << d.shape[0] << ", " << d.shape[1] << std::endl;
                 std::vector<float> data = d.data;
                 int rows = d.shape[0];
                 int cols = d.shape[1];
-                std::cout << rows << std::endl;
-                std::cout << cols << std::endl;
+                // std::cout << rows << std::endl;
+                // std::cout << cols << std::endl;
                 if (cols == 0) {
                     cols++;
                 }
@@ -218,19 +218,18 @@ namespace vamp::robots
             }
 
             // std::cout << "Reached forward pass" << std::endl;
-            // forward pass
+            // Forward pass
             npy_matrix z = x_eigen;
             for (auto i = 0U; i < weights.size() - 1; i++) {
                 z = weights[i] * z + bias[i];
-                // activation
+                // Activation
                 z = z.cwiseMax(0);
             }
             z = weights[weights.size() - 1] * z + bias[weights.size() - 1];
-            // std::cout << z << std::endl;
 
             // convert to array
-            std::array<float, 134> y;
-            for (int i = 0U; i < 134; i++) {
+            std::array<float, 71> y;
+            for (int i = 0U; i < 71; i++) {
                 y[i] = z(i);
             }
             return y;

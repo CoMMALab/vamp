@@ -5,7 +5,7 @@
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/nn.hh>
 #include <vamp/planning/plan.hh>
-#include <vamp/planning/validate.hh>
+#include <vamp/planning/validate_bezier.hh>
 #include <vamp/planning/topple_settings.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
@@ -58,15 +58,13 @@ namespace vamp::planning
 
             std::vector<float> radii(settings.max_samples);
 
-            std::cout << "Reached" << std::endl;
             auto [weights, bias] = Robot::load_matrices();
-            fflush(stdout);
 
             auto start_time = std::chrono::steady_clock::now();
 
             for (const auto &goal : goals)
             {
-                auto [valid_extension, sub_bez] = validate_sub_bez_motion_eigen<Robot, rake, resolution>(
+                auto [valid_extension, sub_bez] = validate_bez_motion<Robot, rake, resolution>(
                     start,
                     goal,
                     environment,
@@ -129,6 +127,12 @@ namespace vamp::planning
                 typename Robot::ConfigurationBuffer temp_array;
                 temp.to_array(temp_array.data());
 
+                // Scale down the vels and accels
+                for (auto i = Robot::dimension / 3; i < Robot::dimension; i++)
+                {
+                    temp_array[i] *= settings.sampling_bias;
+                }
+
                 // std::cout << "Sampling random configuration: " << temp << std::endl;
 
                 const auto nearest = tree_a->nearest(NNFloatArray<dimension>{temp_array.data()});
@@ -140,11 +144,6 @@ namespace vamp::planning
                 const auto &[nearest_node, nearest_distance] = *nearest;
                 // std::cout << "Nearest node index is : " << nearest_node.index << " for tree " << (tree_a_is_start ? "goal" : "start") << " of size " << tree_a->size() << std::endl;
                 const auto nearest_radius = radii[nearest_node.index];
-
-                // if (settings.rrtc.dynamic_domain and nearest_radius < nearest_distance)
-                // {
-                //     continue;
-                // }
 
                 const auto nearest_configuration = nearest_node.as_vector();
 
@@ -197,7 +196,7 @@ namespace vamp::planning
                 auto to_extend = typename Robot::Configuration(to_extend_array.data());
                 // std::cout << " <-- " << to_extend << std::endl;
                 // std::cout << "Extending for " << extensions[nearest_node.index] << std::endl;
-                auto [valid_extension, sub_bez] = validate_sub_bez_motion_eigen<Robot, rake, resolution>(
+                auto [valid_extension, sub_bez] = validate_bez_motion<Robot, rake, resolution>(
                         nearest_configuration,
                         to_extend,
                         environment,
@@ -207,8 +206,6 @@ namespace vamp::planning
 
                 if (valid_extension)
                 {
-                    
-
                     // create new config ending at sub bez
                     Bezier dsub_bez = sub_bez.derivative();
                     Bezier ddsub_bez = dsub_bez.derivative();
@@ -236,19 +233,17 @@ namespace vamp::planning
                             new_configuration_array[i] = new_ddq(i - 2 * Robot::dimension / 3);
                         }
                     }
-                    // std::cout << std::endl;
                     Configuration new_configuration_bez(new_configuration_array);
 
                     float *new_configuration_index = buffer_index(free_index);
                     new_configuration_bez.to_array(new_configuration_index);
                     tree_a->insert(NNNode<dimension>{free_index, {new_configuration_index}});
-                    // std::cout << "Added new node index : " << free_index << " for tree " << (tree_a_is_start ? "goal" : "start") << " with configuration " << new_configuration_bez << std::endl;
-
+                    parents[free_index] = nearest_node.index;
+                    
                     if (not tree_a_is_start) {
                         sub_bez.reverse();
                     }
-
-                    parents[free_index] = nearest_node.index;
+                    
                     bezier_map[{nearest_node.index, free_index}] = sub_bez;
                     extensions[free_index] = settings.bez_range;
                     radii[free_index] = std::numeric_limits<float>::max();
@@ -273,23 +268,40 @@ namespace vamp::planning
                         continue;
                     }
 
-                    const std::size_t n_extensions = 1 / settings.bez_range + 0.5f;
                     const auto &[other_nearest_node, other_nearest_distance] = *other_nearest;
                     const auto other_nearest_configuration = other_nearest_node.as_vector();
 
-                    auto connection_bez = compute_bez_eigen<Robot, rake>(
+                    // flip v and a of other_nearest_configuration
+                    std::array<float, Robot::dimension> other_nearest_array;
+                    auto other_nearest_configuration_arr = other_nearest_configuration.to_array();
+                    for (auto i = 0; i < Robot::dimension; i++) {
+                        if (i < Robot::dimension / 3) {
+                            other_nearest_array[i] = other_nearest_configuration_arr[i];
+                        }
+                        else {
+                            other_nearest_array[i] = other_nearest_configuration_arr[i] * -1;
+                        }
+                    }
+
+                    Configuration other_nearest_corrected(other_nearest_array);
+
+                    const std::size_t n_extensions = rake;
+
+                    auto connection_bez = compute_bez<Robot, rake>(
                         new_configuration_bez,
-                        other_nearest_configuration,
+                        other_nearest_corrected,
                         weights,
                         bias);
-                    // std::cout << "Tried to validate connection between " << new_configuration_bez << " and " << other_nearest_configuration << " with bezier " << connection_bez.anchors << std::endl;
 
-                    std::cout << "Reached extend" << std::endl;
+                    auto temp_bez = connection_bez;
+
                     std::size_t i_extension = 0;
-                    // std::size_t new_index = free_index - 1;
-                    float alpha_i = settings.bez_range;
+                    float alpha_i = 1.0 / n_extensions;
+
+                    // std::cout << n_extensions << std::endl;
                     for (; i_extension < n_extensions and free_index < settings.max_samples; ++i_extension)
                     {
+                        // std::cout << "Reached" << std::endl;
                         std::pair<Bezier, Bezier> sub_bez_pair;
                         if (i_extension == n_extensions - 1) {
                             sub_bez_pair = {connection_bez, connection_bez};
@@ -309,8 +321,6 @@ namespace vamp::planning
                             auto dsub_end = dsub_bez_l.anchors.row(dsub_bez_l.anchors.rows() - 1);
                             auto ddsub_end = ddsub_bez_l.anchors.row(ddsub_bez_l.anchors.rows() - 1);
 
-                            // std::cout << sub_bez_l.anchors <<", " << dsub_bez_l.anchors << " " << ddsub_bez_l.anchors << std::endl;
-
                             std::array<float, Robot::dimension> sub_connection_end_array;
                             for (auto i = 0U; i < Robot::dimension; i++)
                             {
@@ -328,13 +338,16 @@ namespace vamp::planning
                                 }
                             }
                             Configuration sub_connection_end_config(sub_connection_end_array);
+
                             float *next_index = buffer_index(free_index);
                             sub_connection_end_config.to_array(next_index);
                             tree_a->insert(NNNode<dimension>{free_index, {next_index}});
                             parents[free_index] = free_index - 1;
+
                             if (not tree_a_is_start) {
                                 sub_bez_l.reverse();
                             }
+
                             bezier_map[{free_index - 1, free_index}] = sub_bez_l;
                             extensions[free_index] = settings.bez_range;
                             radii[free_index] = std::numeric_limits<float>::max();
@@ -347,7 +360,7 @@ namespace vamp::planning
                         }
                     }
 
-                    std::cout << "Reached connection" << std::endl;
+                    // std::cout << "Reached connection" << std::endl;
                     if (i_extension == n_extensions)  // connected
                     {
                         auto current = free_index - 1;
@@ -382,77 +395,6 @@ namespace vamp::planning
 
                         break;
                     }
-
-                    // KNN
-                    if (settings.rand_connect) {
-                        bool connected = false;
-                        int tree_size = static_cast<int>(tree_a->size());
-                        for (int i = 0; i < static_cast<int>(settings.rand_ratio * tree_size); i++) {
-                            int rand = rng->dist.uniform_integer(0, static_cast<int>(tree_a->size()) - 1);
-                            auto rand_node_a = tree_a->list()[rand];
-
-                            // std::cout << rand << std::endl;
-                            
-                            rand = rng->dist.uniform_integer(0, static_cast<int>(tree_b->size()) - 1);
-                            auto rand_node_b = tree_b->list()[rand];
-
-                            // std::cout << rand << std::endl;
-
-                            auto connection = validate_sub_bez_motion_eigen<Robot, rake, resolution>(
-                                rand_node_a.as_vector(),
-                                rand_node_b.as_vector(),
-                                environment,
-                                1,
-                                weights,
-                                bias);
-                            if (connection.first) {
-                                connected = true;
-                                if (not tree_a_is_start) {
-                                    connection.second.reverse();
-                                }
-                                bezier_map[{rand_node_a.index, rand_node_b.index}] = connection.second;
-
-                                auto current = rand_node_a.index;
-                                result.path.emplace_back(buffer_index(current));
-                                while (parents[current] != current)
-                                {
-                                    auto parent = parents[current];
-                                    result.path.emplace_back(buffer_index(parent));
-                                    result.beziers.push_back(bezier_map[{parent, current}]);
-                                    result.cost += result.path[result.path.size() - 1].distance(result.path[result.path.size() - 2]);
-                                    current = parent;
-                                }
-                                std::reverse(result.path.begin(), result.path.end());
-                                std::reverse(result.beziers.begin(), result.beziers.end());
-
-                                current = rand_node_b.index;
-                                result.path.emplace_back(buffer_index(current));
-                                result.beziers.push_back(bezier_map[{rand_node_a.index, rand_node_b.index}]);
-                                result.cost += result.path[result.path.size() - 1].distance(
-                                        result.path[result.path.size() - 2]);
-                                
-                                while (parents[current] != current)
-                                {
-                                    auto parent = parents[current];
-                                    result.path.emplace_back(buffer_index(parent));
-                                    result.beziers.push_back(bezier_map[{parent, current}]);
-                                    result.cost += result.path[result.path.size() - 1].distance(result.path[result.path.size() - 2]);
-                                    current = parent;
-                                }
-
-                                if (not tree_a_is_start)
-                                {
-                                    std::reverse(result.path.begin(), result.path.end());
-                                    std::reverse(result.beziers.begin(), result.beziers.end());
-                                }
-                                break;
-                            }
-                        }
-                        if (connected) {
-                            break;
-                        }
-                    }
-
                 }
                 else
                 {

@@ -58,9 +58,8 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_samples", &vp::TOPPLESettings::max_samples)
         .def_rw("alpha", &vp::TOPPLESettings::alpha)
         .def_rw("dynamic_extension", &vp::TOPPLESettings::dynamic_extension)
-        .def_rw("rand_connect", &vp::TOPPLESettings::rand_connect)
-        .def_rw("rand_ratio", &vp::TOPPLESettings::rand_ratio)
-        .def_rw("bez_range", &vp::TOPPLESettings::bez_range);
+        .def_rw("bez_range", &vp::TOPPLESettings::bez_range)
+        .def_rw("sampling_bias", &vp::TOPPLESettings::sampling_bias);
 
     nb::class_<vp::AOTOPPLESettings>(pymodule, "AOTOPPLESettings")
         .def(nb::init<>())

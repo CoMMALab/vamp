@@ -14,7 +14,7 @@ for i in range(14):
     planner_func,
     plan_settings,
     simp_settings,
-) = vamp.configure_robot_and_planner_with_kwargs("pandatopp", "topple")
+) = vamp.configure_robot_and_planner_with_kwargs("panda_topple", "topple")
 
 rng = vamp_module.halton()
 
@@ -79,14 +79,4 @@ sim.animate(traj.path.numpy()[np.arange(0, len(traj.path.numpy()), 10)])
 
 bez = result.beziers[1]
 sub_bez = bez.subdivide(0.1)
-
-traj1 = np.array(bez.generate_trajectory())
-traj2 = np.array(sub_bez.generate_trajectory())
-ax = plt.figure().add_subplot(projection='3d')
-ax.plot(traj1[:, 0], traj1[:, 1], traj1[:, 2], label="bez")
-ax.plot(traj2[:, 0], traj2[:, 1], traj2[:, 2], label="sub_bez")
-ax.scatter(bez.anchors[:, 0], bez.anchors[:, 1], bez.anchors[:, 2], label="bez anchors")
-ax.scatter(sub_bez.anchors[:, 0], sub_bez.anchors[:, 1], sub_bez.anchors[:, 2], label="sub_bez anchors")
-plt.legend()
-plt.show()
 # print(bez.combs)

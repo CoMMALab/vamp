@@ -13,10 +13,10 @@ import time
 
 def topple(
     robot: str = "panda_topple",                  # Robot to plan for
-    planner: str = "aotopple",                 # Planner name to use
+    planner: str = "topple",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "box",                     # Problem name
-    index: int = 2,                        # Problem index
+    problem: str = "bookshelf_small",                     # Problem name
+    index: int = 6,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -40,20 +40,12 @@ def topple(
         **kwargs,
         )
 
-    plan_settings.max_iterations = 1000000
-    plan_settings.max_internal_iterations = 100000
-    plan_settings.max_samples = 100000
-    plan_settings.bez_range = 0.2
-    plan_settings.dynamic_extension = False
-    plan_settings.alpha = 0.00001
-    plan_settings.rand_connect = False
-    plan_settings.rrtc.range = 2.5
-    plan_settings.rrtc.dynamic_domain = True
-    plan_settings.rrtc.alpha = 0.00001
-    plan_settings.optimize = False
-    plan_settings.cost_bound_resample = False
-    plan_settings.use_phs = False
-
+    plan_settings.max_iterations = 10000000
+    plan_settings.max_samples = 100000000
+    plan_settings.bez_range = 1.0
+    plan_settings.dynamic_extension = True
+    plan_settings.alpha = 0.000001
+    plan_settings.sampling_bias = 0.2
 
     if not problem:
         problem = list(data['problems'].keys())[0]
@@ -146,6 +138,7 @@ Simplified: {stats['simplified_path_cost']:5.3f}"""
         # plan = simplify.path
         # plan = result.path.numpy()
         plan = vamp_module.compute_bez_traj(result, env, simp_settings, sampler).path.numpy()
+        print(plan[0])
         print(plan.shape)
         
 
@@ -189,26 +182,27 @@ n Graph States: {result.size}
 
     # # sim.animate(simplify.path)
     # print(trajs.shape)
-    # sim.animate(trajs[np.arange(0, len(trajs), 8)])
+    sim.animate(plan[np.arange(0, len(plan), 15)])
 
-    traj = []
-    dtraj = []
-    ddtraj = []
-    for i in range(0, len(beziers)):
-        bezier = beziers[i]
-        temp_traj = bezier.generate_trajectory()
-        temp_dtraj = bezier.derivative().generate_trajectory()
-        temp_ddtraj = bezier.derivative().derivative().generate_trajectory()
-        traj.append(temp_traj)
-        dtraj.append(temp_dtraj)
-        ddtraj.append(temp_ddtraj)
-    traj = np.concatenate(traj)
-    dtraj = np.concatenate(dtraj)
-    ddtraj = np.concatenate(ddtraj)
-    np.save(f"topple_trials/traj.npy", traj)
-    np.save(f"topple_trials/dtraj.npy", dtraj)
-    np.save(f"topple_trials/ddtraj.npy", ddtraj)
-    sim.animate(plan[np.arange(0, len(plan), 10)])
+    # traj = []
+    # dtraj = []
+    # ddtraj = []
+    # for i in range(0, len(beziers)):
+        # print(beziers[i].derivative().anchors)
+        # print(beziers[i].derivative().derivative().anchors)
+        # bezier = beziers[i]
+        # temp_traj = bezier.generate_trajectory()
+        # temp_dtraj = bezier.derivative().generate_trajectory()
+        # temp_ddtraj = bezier.derivative().derivative().generate_trajectory()
+        # traj.append(temp_traj)
+        # dtraj.append(temp_dtraj)
+        # ddtraj.append(temp_ddtraj)
+    # traj = np.concatenate(traj)
+    # dtraj = np.concatenate(dtraj)
+    # ddtraj = np.concatenate(ddtraj)
+    # np.save(f"topple_trials/traj.npy", traj)
+    # np.save(f"topple_trials/dtraj.npy", dtraj)
+    # np.save(f"topple_trials/ddtraj.npy", ddtraj)
 
 
 def toppra(

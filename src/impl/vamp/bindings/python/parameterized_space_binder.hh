@@ -47,14 +47,20 @@ namespace vamp::binding
             "state"_a,
             "IK-resolve a task-space state into the ambient robot's configuration. Returns "
             "(valid, ambient_configuration).");
-        t.def(
-            "eefs_collision_free",
-            &Traits::eefs_collision_free,
-            "state"_a,
-            "environment"_a,
-            "IK-free prefilter: whether the end-effector geometry (and any attachments) at "
-            "this state is free of environment/self collision. Not a substitute for a full "
-            "check on the resolved ambient configuration.");
+        // Only present on task spaces with an eefs_collision_free concept (currently
+        // ParameterizedSpace/RBY1/IiwaMarker, but not BimanualIiwa::LeaderFollowerSpace);
+        // see the same gate on Traits::eefs_collision_free (parameterized_space_helper.hh).
+        if constexpr (detail::has_eefs_collision_free<typename Traits::Space, rake>::value)
+        {
+            t.def(
+                "eefs_collision_free",
+                &Traits::eefs_collision_free,
+                "state"_a,
+                "environment"_a,
+                "IK-free prefilter: whether the end-effector geometry (and any attachments) at "
+                "this state is free of environment/self collision. Not a substitute for a full "
+                "check on the resolved ambient configuration.");
+        }
         // Only present on task spaces with a mid-pose concept (e.g. RBY1's bimanual
         // t_mid_left/t_mid_right hand offsets); a single-arm space like IiwaMarker's eef
         // pose IS the task-space pose already, so it has nothing to derive here.
@@ -66,6 +72,31 @@ namespace vamp::binding
                 "ambient_configuration"_a,
                 "Derive the fixed hand offsets used by resolve() from a reference whole-body "
                 "ambient configuration. Call this once before planning.");
+        }
+        // LeaderFollowerSpace's counterpart of compute_mid_pose: a single fixed
+        // leader-to-follower hand offset instead of a shared mid-frame offset.
+        if constexpr (has_compute_rel_pose_v<typename Traits::Space>)
+        {
+            t.def(
+                "compute_rel_pose",
+                &Traits::compute_rel_pose,
+                "ambient_configuration"_a,
+                "Derive the fixed leader-to-follower hand offset used by resolve() from a "
+                "reference whole-body ambient configuration. Call this once before planning.");
+        }
+        // Directly set rel_pose from a literal (x, y, z, qx, qy, qz, qw) offset, bypassing
+        // compute_rel_pose's FK derivation -- for problems that specify the fixed
+        // leader-to-follower offset directly (e.g. a rigid dual-arm carry constraint).
+        if constexpr (has_rel_pose_v<typename Traits::Space>)
+        {
+            t.def(
+                "set_rel_pose",
+                &Traits::set_rel_pose,
+                "pose"_a,
+                "Directly set the fixed leader-to-follower hand offset (x, y, z, qx, qy, qz, "
+                "qw) used by resolve(), bypassing compute_rel_pose's FK derivation. Affects "
+                "every subsequent resolve()/planning call on this thread (thread-local) "
+                "until set again.");
         }
         // Only present on task spaces with a center-of-mass/support-polygon stability
         // concept (e.g. RBY1's mobile-base ground-contact polygon); see the same gate on
@@ -96,6 +127,31 @@ namespace vamp::binding
                 "each rainbow arm's IK resolves onto, one triple per arm. Affects every "
                 "subsequent resolve()/planning call on this thread (thread-local) until set "
                 "again.");
+        }
+        // Two-triple counterpart of set_gcp for spaces that name it set_gc instead (e.g.
+        // BimanualIiwa::ParameterizedSpace); see has_set_gc_v (parameterized_space_helper.hh).
+        if constexpr (has_set_gc_v<typename Traits::Space>)
+        {
+            t.def(
+                "set_gc",
+                &Traits::set_gc,
+                "left"_a,
+                "right"_a,
+                "Set the (elbow_sel, shoulder_sel, wrist_sel) self-motion-manifold branch "
+                "each arm's IK resolves onto, one triple per arm. Affects every subsequent "
+                "resolve()/planning call on this thread (thread-local) until set again.");
+        }
+        // Single-triple self-motion-manifold branch selector (e.g. IiwaMarker's and
+        // BimanualIiwa::LeaderFollowerSpace's smm); see has_set_smm_v (parameterized_space_helper.hh).
+        if constexpr (has_set_smm_v<typename Traits::Space>)
+        {
+            t.def(
+                "set_smm",
+                &Traits::set_smm,
+                "gc"_a,
+                "Set the (elbow_sel, shoulder_sel, wrist_sel) self-motion-manifold branch "
+                "this space's IK resolves onto. Affects every subsequent resolve()/planning "
+                "call on this thread (thread-local) until set again.");
         }
         t.def(
             "shortcut",

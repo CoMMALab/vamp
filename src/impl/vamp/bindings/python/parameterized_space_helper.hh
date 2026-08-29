@@ -41,16 +41,61 @@
 // robots without it, rather than hard-erroring at compile time.
 VAMP_DEFINE_HAS_METHOD(compute_mid_pose)
 
+// LeaderFollowerSpace's counterpart of compute_mid_pose: derives a single fixed
+// leader-to-follower hand offset (rel_pose) from a reference whole-body configuration,
+// instead of a shared mid-frame offset. See BimanualIiwa::LeaderFollowerSpace::rel_pose.
+VAMP_DEFINE_HAS_METHOD(compute_rel_pose)
+
 // GCP (self-motion-manifold branch selector) is RBY1-specific: each rainbow arm has its
 // own (elbow_sel, shoulder_sel, wrist_sel) triple, set independently per arm via
-// Space::set_gcp(left, right). IiwaMarker has an analogous but differently-shaped
-// concept (a single triple, set via set_smm) -- not the same signature, so not unified
-// with this one; add a separate has_set_smm_v/binding if that needs exposing too.
+// Space::set_gcp(left, right). BimanualIiwa::ParameterizedSpace has the same two-triple
+// shape under a different name (set_gc(left, right)) -- see has_set_gc_v below.
 VAMP_DEFINE_HAS_METHOD(set_gcp)
+
+// Single-triple self-motion-manifold branch selector, set via Space::set_smm(gc) --
+// IiwaMarker's and BimanualIiwa::LeaderFollowerSpace's shape (one arm's IK, one triple),
+// distinct from the two-triple set_gcp/set_gc bimanual shape above.
+VAMP_DEFINE_HAS_METHOD(set_smm)
+
+// BimanualIiwa::ParameterizedSpace's two-triple counterpart of set_gcp; see set_gcp's
+// comment above for why this isn't unified with it (different method name, same shape).
+VAMP_DEFINE_HAS_METHOD(set_gc)
+
+// Detects LeaderFollowerSpace's rel_pose data member directly (decltype(T::rel_pose) is
+// well-formed for a static data member exactly like it is for a static method), so a
+// literal offset can be assigned in place -- for problems (e.g. a rigid dual-arm carry)
+// that specify the fixed leader-to-follower offset directly instead of deriving it from
+// a reference whole-body pose via compute_rel_pose.
+VAMP_DEFINE_HAS_METHOD(rel_pose)
 
 namespace vamp::binding
 {
     static constexpr const std::size_t rake = vamp::FloatVectorWidth;
+
+    namespace detail
+    {
+        // Detects whether Space exposes a templated eefs_collision_free<rake>(environment,
+        // block) utility. Present on ParameterizedSpace/RBY1/IiwaMarker, but not required --
+        // it's an IK-free prefilter never called by ParameterizedLocalPlanner itself (see
+        // parameterized_local_planner.hh's resolve_and_check_impl, where the equivalent call
+        // is commented out), only by the eefs_collision_free() python binding below. Spaces
+        // without one (e.g. BimanualIiwa::LeaderFollowerSpace) simply don't expose that
+        // prefilter to python; planning is unaffected.
+        template <typename Space, std::size_t r, typename = void>
+        struct has_eefs_collision_free : std::false_type
+        {
+        };
+
+        template <typename Space, std::size_t r>
+        struct has_eefs_collision_free<
+            Space,
+            r,
+            std::void_t<decltype(Space::template eefs_collision_free<r>(
+                std::declval<const vamp::collision::Environment<vamp::FloatVector<r>> &>(),
+                std::declval<const typename Space::template StateBlock<r> &>()))>> : std::true_type
+        {
+        };
+    }  // namespace detail
 
     // Traits for planning over Robot::ParameterizedSpace: a task-space parameterization
     // that IK-resolves into Robot's own ambient Configuration space. Mirrors the shape of
@@ -59,11 +104,14 @@ namespace vamp::binding
     // but only supports the local-planner-aware planners (rrtc/aorrtc/grrtstar) -- PRM/FCIT
     // don't take a local planner and so can't resolve task-space states into the ambient
     // robot.
-    template <typename Robot, typename Input = SpaceNDArrayInput<Robot, typename Robot::ParameterizedSpace>>
+    template <
+        typename Robot,
+        typename SpaceT = typename Robot::ParameterizedSpace,
+        typename Input = SpaceNDArrayInput<Robot, SpaceT>>
     struct ParameterizedSpaceTraits
     {
         using RobotType = Robot;
-        using Space = typename Robot::ParameterizedSpace;
+        using Space = SpaceT;
         using Ambient = typename Space::Ambient;
 
         using Cfg = typename Input::Type;
@@ -168,16 +216,27 @@ namespace vamp::binding
 
         // IK-free prefilter: hand geometry (+ any attachments) vs. environment/each other.
         // Not a substitute for a full collision check on the resolved ambient configuration.
+        // Only present on spaces with an eefs_collision_free concept; see
+        // detail::has_eefs_collision_free above.
         static auto eefs_collision_free(const Cfg &state, const Env &env) -> bool
         {
-            const auto s = Input::to(state);
-            typename Space::template StateBlock<rake> block;
-            for (std::size_t i = 0; i < Space::dimension; ++i)
+            if constexpr (detail::has_eefs_collision_free<Space, rake>::value)
             {
-                block[i] = s.broadcast(i);
-            }
+                const auto s = Input::to(state);
+                typename Space::template StateBlock<rake> block;
+                for (std::size_t i = 0; i < Space::dimension; ++i)
+                {
+                    block[i] = s.broadcast(i);
+                }
 
-            return Space::template eefs_collision_free<rake>(EnvVec(env), block);
+                return Space::template eefs_collision_free<rake>(EnvVec(env), block);
+            }
+            else
+            {
+                (void) state;
+                (void) env;
+                throw std::runtime_error("this task space has no eefs_collision_free concept");
+            }
         }
 
         // Derive t_mid_left/t_mid_right (thread-local to Space) from a reference whole-body
@@ -206,6 +265,46 @@ namespace vamp::binding
             {
                 (void) ambient;
                 throw std::runtime_error("this task space has no mid-pose concept");
+            }
+        }
+
+        // Derive rel_pose (thread-local to Space) from a reference whole-body ambient
+        // configuration; LeaderFollowerSpace's counterpart of compute_mid_pose. Only
+        // present on spaces with a compute_rel_pose concept; see has_compute_rel_pose_v
+        // above. Same nanobind-caster rationale as compute_mid_pose for the plain
+        // std::array<float, Ambient::dimension> parameter.
+        static void compute_rel_pose(const std::array<float, Ambient::dimension> &ambient)
+        {
+            if constexpr (has_compute_rel_pose_v<Space>)
+            {
+                typename Ambient::ConfigurationArray q;
+                for (std::size_t i = 0; i < Ambient::dimension; ++i)
+                {
+                    q[i] = ambient[i];
+                }
+                Space::compute_rel_pose(q);
+            }
+            else
+            {
+                (void) ambient;
+                throw std::runtime_error("this task space has no rel-pose concept");
+            }
+        }
+
+        // Directly overwrite rel_pose (thread-local to Space) with a caller-supplied fixed
+        // (x, y, z, qx, qy, qz, qw) leader-to-follower offset, bypassing compute_rel_pose's
+        // FK derivation. Only present on spaces with a rel_pose member; see has_rel_pose_v
+        // above.
+        static void set_rel_pose(const std::array<float, 7> &pose)
+        {
+            if constexpr (has_rel_pose_v<Space>)
+            {
+                Space::rel_pose = pose;
+            }
+            else
+            {
+                (void) pose;
+                throw std::runtime_error("this task space has no rel_pose concept");
             }
         }
 
@@ -246,6 +345,39 @@ namespace vamp::binding
                 (void) left;
                 (void) right;
                 throw std::runtime_error("this task space has no GCP (self-motion-manifold branch) concept");
+            }
+        }
+
+        // Two-triple counterpart of set_gcp, for spaces that name it set_gc instead (e.g.
+        // BimanualIiwa::ParameterizedSpace). Only present on spaces with a set_gc concept;
+        // see has_set_gc_v above.
+        static void set_gc(const std::array<float, 3> &left, const std::array<float, 3> &right)
+        {
+            if constexpr (has_set_gc_v<Space>)
+            {
+                Space::set_gc(left, right);
+            }
+            else
+            {
+                (void) left;
+                (void) right;
+                throw std::runtime_error("this task space has no set_gc (self-motion-manifold branch) concept");
+            }
+        }
+
+        // Set the single-triple self-motion-manifold branch selector shared by every lane
+        // (e.g. IiwaMarker's and BimanualIiwa::LeaderFollowerSpace's smm). Only present on
+        // spaces with a set_smm concept; see has_set_smm_v above.
+        static void set_smm(const std::array<float, 3> &gc)
+        {
+            if constexpr (has_set_smm_v<Space>)
+            {
+                Space::set_smm(gc);
+            }
+            else
+            {
+                (void) gc;
+                throw std::runtime_error("this task space has no set_smm (self-motion-manifold branch) concept");
             }
         }
 

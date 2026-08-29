@@ -192,6 +192,17 @@ if(VAMP_BUILD_CPP_DEMO)
       target_compile_options(vamp_iiwa_branch_selector PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
     endif()
   endif()
+
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/impl/vamp/robots/bimanual_iiwa.hh")
+    add_executable(vamp_bimanual_iiwa_leader_follower_shelf
+      scripts/cpp/bimanual_iiwa_leader_follower_shelf.cc)
+    target_link_libraries(vamp_bimanual_iiwa_leader_follower_shelf PRIVATE vamp_cpp)
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      target_compile_options(vamp_bimanual_iiwa_leader_follower_shelf PRIVATE
+        -Wno-c++11-narrowing -Wno-sign-compare)
+    endif()
+  endif()
 endif()
 
 # OMPL integration demo

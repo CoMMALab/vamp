@@ -103,6 +103,13 @@ VAMP_DEFINE_HAS_TYPE(Ambient)
 VAMP_DEFINE_HAS_TYPE(Flask)
 VAMP_DEFINE_HAS_TYPE(ParameterizedSpace)
 
+// A robot can additionally carry a second task-space parameterization alongside its
+// (canonical) ParameterizedSpace -- e.g. BimanualIiwa::LeaderFollowerSpace, a
+// sample-one-arm/FK/IK-the-follower alternative to ParameterizedSpace's mid-pose
+// parameterization. Bound as its own nested submodule, same mechanism as
+// ParameterizedSpace below.
+VAMP_DEFINE_HAS_TYPE(LeaderFollowerSpace)
+
 // The is_same check rejects the injected-class-name: for the nested Flask struct itself,
 // T::Flask names T, which would otherwise recurse init_robot forever.
 template <typename T, bool = has_type_Flask_v<T>>
@@ -1387,6 +1394,29 @@ namespace vamp::binding
             bind_planning_result<PTraits>(param_submodule, "PlanningResult");
 
             bind_parameterized_space_methods<PTraits>(param_submodule);
+        }
+
+        // Robots with a second task-space parameterization (currently only
+        // BimanualIiwa::LeaderFollowerSpace) get it bound as its own nested submodule
+        // (e.g. vamp.bimanualiiwa.leader_follower_space), independent of and alongside
+        // ParameterizedSpace's own submodule above.
+        if constexpr (has_type_LeaderFollowerSpace_v<Robot>)
+        {
+            using LFTraits = ParameterizedSpaceTraits<Robot, typename Robot::LeaderFollowerSpace>;
+
+            auto lf_submodule = submodule.def_submodule(
+                "leader_follower_space",
+                "Leader-follower task-space planning submodule");
+
+            bind_sampler<LFTraits>(lf_submodule, "RNG");
+            bind_task_space_informed_sampler<LFTraits>(lf_submodule);
+
+            auto lf_path_k = bind_path_class<LFTraits>(lf_submodule, "Path");
+            bind_path_io<LFTraits>(lf_path_k);
+
+            bind_planning_result<LFTraits>(lf_submodule, "PlanningResult");
+
+            bind_parameterized_space_methods<LFTraits>(lf_submodule);
         }
 
         // FLASK z-space sibling generated as a nested struct: bind it as a nested

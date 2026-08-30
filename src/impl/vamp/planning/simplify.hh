@@ -6,6 +6,7 @@
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/validate.hh>
+#include <vamp/planning/validate_bezier.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/vector.hh>
 #include <vamp/planning/bezier.hh>
@@ -158,138 +159,22 @@ namespace vamp::planning
         }
     }
     // TODO: modify to handle the result.beziers to avoid recomputing beziers
-    // template <typename Robot, std::size_t rake, std::size_t resolution>
-    // inline static auto shortcut_bez_path(
-    //     Path<Robot> &path,
-    //     const collision::Environment<FloatVector<rake>> &environment,
-    //     const ShortcutSettings & /*settings*/) -> bool
-    // {
-    //     if (path.size() < 3)
-    //     {
-    //         return false;
-    //     }
+    template <typename Robot, std::size_t rake, std::size_t resolution>
+    inline static auto shortcut_bez(
+        const PlanningResult<Robot> &planning_result,
+        const collision::Environment<FloatVector<rake>> &environment) -> PlanningResult<Robot>
+    {
+        if (planning_result.path.size() < 3)
+        {
+            return planning_result;
+        }
         
-    //     const auto robot_dim_q = Robot::dimension / 3;
+        const auto robot_dim_q = Robot::dimension / 3;
 
-    //     bool result = false;
-    //     // REPLACE BELOW WITH A DP FORMULATION
-    //     // for (auto i = 0U; i < path.size() - 2; ++i)
-    //     // {
-    //     //     for (auto j = path.size() - 1; j > i + 1; --j)
-    //     //     {
-    //     //         // only shortcut if time improves
-    //     //         // get start and end as arrays
-    //     //         std::array<float, 2 * Robot::dimension> x;
-    //     //         std::array<float, 4 * Robot::dimension / 3 + 1> out;
-    //     //         for (auto k = 0U; k < Robot::dimension; k++) {
-    //     //             x[k] = static_cast<float>(path[i].to_array()[k]);
-    //     //         }
-    //     //         for (auto k = 0U; k < Robot::dimension; k++) {
-    //     //             x[k + Robot::dimension] = static_cast<float>(path[j].to_array()[k]);
-    //     //         }
-    //     //         Robot::template topple_nn_forward(x, out);
-    //     //         float cut_time = out[4 * Robot::dimension / 3];
-    //     //         float og_time = 0;
-    //     //         // get un shortcutted time
-    //     //         for (auto k = i; k < j; k++) {
-    //     //             for (auto l = 0U; l < Robot::dimension; l++) {
-    //     //                 x[l] = static_cast<float>(path[k].to_array()[l]);
-    //     //             }
-    //     //             for (auto l = 0U; l < Robot::dimension; l++) {
-    //     //                 x[l + Robot::dimension] = static_cast<float>(path[k + 1].to_array()[l]);
-    //     //             }
-    //     //             Robot::template topple_nn_forward(x, out);
-    //     //             og_time += out[4 * Robot::dimension / 3];
-    //     //         }
+        // i hate everything
 
-    //     //         if (cut_time <= og_time) {
-    //     //             if (validate_bez_motion<Robot, rake, resolution>(path[i], path[j], environment))
-    //     //             {
-    //     //                 path.erase(path.begin() + i + 1, path.begin() + j);
-    //     //                 result = true;
-    //     //                 break;
-    //     //             }
-    //     //         }
-    //     //     }
-    //     // }
-
-    //     // let T[i, j] = minimum time collision free path from waypt i to j
-    //     // T[i] = min over i <= k < j {T[i, k] + T[k, j]} vs direct path
-    //     float T[path.size()][path.size()];
-    //     // backtrack table
-    //     std::vector<std::vector<int>> BT(path.size(), std::vector<int>(path.size()));
-    //     std::array<float, 2 * Robot::dimension> x;
-    //     std::array<float, Robot::topple_out_dim * robot_dim_q + 1> out;
-    //     for (int i = 0; i < path.size(); i++) {
-    //         for (int j = i; j < path.size(); j++) {
-    //             if (i == j) {
-    //                 T[i][j] = 0;
-    //                 BT[i][j] = -1;
-    //             }
-    //             else if (j == i + 1) {
-    //                 for (int k = 0; k < Robot::dimension; k++) {
-    //                     x[k] = static_cast<float>(path[i].to_array()[k]);
-    //                 }
-    //                 for (int k = 0; k < Robot::dimension; k++) {
-    //                     x[k + Robot::dimension] = static_cast<float>(path[j].to_array()[k]);
-    //                 }
-    //                 out = Robot::template topple_nn_forward(x);
-    //                 T[i][j] = out[Robot::topple_out_dim * robot_dim_q];
-    //                 BT[i][j] = -1;
-    //             }
-    //         }
-    //     }
-    //     // fill by sliding window
-    //     for (int l = 2; l < path.size(); l++) {
-    //         for (int s = 0; s < path.size() - l; s++) {
-    //             int i = s;
-    //             int j = l + s;
-    //             int min_k = -1;
-    //             float min = 1000000;
-
-    //             for (int k = 0; k < Robot::dimension; k++) {
-    //                 x[k] = static_cast<float>(path[i].to_array()[k]);
-    //             }
-    //             for (int k = 0; k < Robot::dimension; k++) {
-    //                 x[k + Robot::dimension] = static_cast<float>(path[j].to_array()[k]);
-    //             }
-    //             out = Robot::template topple_nn_forward(x);
-    //             if (validate_bez_motion<Robot, rake, resolution>(path[i], path[j], environment)) {
-    //                 min_k = -1;
-    //                 min = out[Robot::topple_out_dim * robot_dim_q];
-    //                 BT[i][j] = -1;
-    //             }
-                
-    //             for (int k = i + 1; k < j; k++) {
-    //                 if (T[i][k] + T[k][j] < min) {
-    //                     BT[i][j] = k;
-    //                     min = T[i][k] + T[k][j];
-    //                 }
-    //             }
-    //             T[i][j] = min;
-    //         }
-    //     }
-    //     // reconstruct traj by getting waypoints
-    //     // for (int i = 0; i < path.size(); i++) {
-    //     //     for (int j = 0; j < path.size(); j++) {
-    //     //         std::cout << T[i][j] << " ";
-    //     //     }
-    //     //     std::cout << std::endl;
-    //     // } 
-    //     std::vector<int> waypts;
-    //     reconstruct(waypts, 0, path.size() - 1, BT);
-    //     if (waypts.size() == path.size()) {
-    //         return result;
-    //     }
-    //     // std::cout << "reached" << std::endl;
-    //     for (int i = 0; i < waypts.size(); i++) {
-    //         path[i] = path[waypts[i]];
-    //     }
-    //     path.erase(path.begin() + waypts.size(), path.begin() + path.size());
-    //     result = true;
-
-    //     return result;
-    // }
+        return result;
+    }
 
     template <typename Robot, std::size_t rake, std::size_t resolution>
     inline static auto perturb_path(
@@ -418,87 +303,6 @@ namespace vamp::planning
             }
         }
 
-        result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
-        return result;
-    }
-
-    // ADD BEZ INTERPLATION
-    template <typename Robot, std::size_t rake, std::size_t resolution>
-    inline auto compute_traj(
-        const Path<Robot> &path,
-        const collision::Environment<FloatVector<rake>> &environment,
-        const SimplifySettings &settings,
-        const typename vamp::rng::RNG<Robot>::Ptr rng) -> PlanningResult<Robot>
-    {
-        auto start_time = std::chrono::steady_clock::now();
-
-        const auto robot_dim_q = Robot::dimension / 3;
-        // object to store result
-        // path param
-        PlanningResult<Robot> result;
-
-        // for waypoint in path, call topple_nn_forward  
-        for (auto i = 0U; i < path.size() - 1; i++) {
-            std::array<float, Robot::dimension * 2> x;
-            auto path_arr = path[i].to_array();
-            auto path_arr1 = path[i + 1].to_array();   
-            // std::cout << path_arr.size() << std::endl;
-            for (auto j = 0U; j < Robot::dimension; j++) {
-                x[j] = static_cast<float>(path_arr[j]);
-            }
-            for (auto j = 0U; j < Robot::dimension; j++) {
-                x[j + Robot::dimension] = static_cast<float>(path_arr1[j]);
-            }
-
-            auto out = Robot::template topple_nn_forward(x);
-
-            // build the anchors
-            row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
-
-            // initial point
-            for (auto j = 0U; j < robot_dim_q; j++) {
-                anchors(0, j) = path_arr[j];
-            }
-
-            // intermediate points
-            for (auto j = 1U; j <= Robot::topple_out_dim; j++) {
-                for (auto k = 0U; k < robot_dim_q; k++) {
-                    anchors(j, k) = out[(j - 1) * robot_dim_q + k];
-                }
-            }
-
-            // final point
-            for (auto j = 0U; j < robot_dim_q; j++) {
-                anchors(Robot::topple_out_dim + 1, j) = path_arr1[j];
-            }
-
-
-            int T = out[Robot::topple_out_dim * robot_dim_q] * 1000;
-
-            Bezier bez(anchors);
-
-            std::vector<state> waypts = bez.generate_trajectory();
-            // convert waypoints to floatvector
-            for (auto j = 0U; j < waypts.size(); j++) {
-                alignas(vamp::FloatVectorAlignment)
-                std::array<float, vamp::FloatVector<Robot::dimension>::num_scalars_rounded> tmp = {};
-
-                // copy and cast the actual Dim scalars
-                for (auto k = 0U; k < Robot::dimension; k++) {
-                    if (k >= robot_dim_q) {
-                        tmp[k] = 0;
-                    }
-                    else {
-                        tmp[k] = static_cast<float>(waypts[j](0, static_cast<int>(k)));
-                    }
-                }
-
-                // construct the SIMD vector (constructor takes pointer to float data)
-                vamp::FloatVector<Robot::dimension> vv(tmp.data());
-                result.path.emplace_back(vv);
-            }
-        }
-       
         result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
         return result;
     }

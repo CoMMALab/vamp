@@ -20,12 +20,6 @@ namespace vamp::planning
         const auto percents_arr = percents.to_array();
         int robot_dim_q = Robot::dimension / 3;
 
-        // vamp::FloatVector<rake, 7 * (Robot::topple_out_dim + 2) * (size_t)(Robot::dimension / 3)> bez_anchors_vec;
-        // for(size_t i = 0; i < (Robot::topple_out_dim + 2) * robot_dim_q; ++i)
-        // {
-        //     bez_anchors_vec[i] = bez.anchors(i / robot_dim_q, i % robot_dim_q);
-        // }
-
         typename Robot::template ConfigurationBlock<rake> block;
         // Robot::bezier(bez_anchors_vec, percents, block);
         std::vector<std::vector<float>> states;
@@ -34,13 +28,14 @@ namespace vamp::planning
             states.push_back(dof_i);
         }
 
+        // std::cout << "Reahced" << std::endl;
         for (auto i = 0U; i < rake; i++) {
             state state_vec = bez.evaluate(percents_arr[i]);
-            for (auto j = 0U; j < Robot::dimension; j++) {
+            for (auto j = 0U; j < Robot::dimension / 3; j++) {
                 states[j].push_back(state_vec(j));
             }
         }
-
+        // std::cout << "Reahced" << std::endl;
         for (auto i = 0U; i < Robot::dimension / 3; i++) {
             std::array<float, rake> dim_rake;
             for (auto j = 0U; j < rake; j++) {
@@ -48,7 +43,7 @@ namespace vamp::planning
             }
             block[i] = FloatVector<rake>(dim_rake);
         }
-
+        // std::cout << "Reahced" << std::endl;
         float dist = 0;
         for (auto i = 0U; i < rake - 1; i++)
         {
@@ -80,7 +75,7 @@ namespace vamp::planning
             // Robot::bezier(bez_anchors_vec, percents - i * backstep, block);
             for (auto j = 0U; j < rake; j++) {
                 state state_vec = bez.evaluate(times[j]);
-                for (auto k = 0U; k < Robot::dimension; k++) {
+                for (auto k = 0U; k < Robot::dimension / 3; k++) {
                     states[k][j] = state_vec(k);
                 }
             }
@@ -132,7 +127,7 @@ namespace vamp::planning
             }
         }
 
-        const std::size_t n = resolution * T / rake;
+        const std::size_t n = rake;
         const auto backstep = percents.broadcast(0) / n;
         for (auto i = 1U; i < n; ++i)
         {
@@ -177,7 +172,7 @@ namespace vamp::planning
             }
         }
         
-        const std::size_t n = resolution * T / rake;
+        const std::size_t n = rake;
         const auto backstep = percents.broadcast(0) / n;
         for (auto i = 1U; i < n; ++i)
         {
@@ -220,48 +215,62 @@ namespace vamp::planning
 
         // array to store inference output
         auto ts = std::chrono::high_resolution_clock::now();
-        auto out = Robot::template topple_nn_forward(weights, bias, x);
+        auto out = Robot::topple_nn_forward(weights, bias, x);
         auto tf = std::chrono::high_resolution_clock::now();
         // std::cout << "NN inference time: " << std::chrono::duration_cast<std::chrono::milliseconds>(tf - ts).count() << " ms" << std::endl;
 
         // build the anchors
-        row_matrix anchors(Robot::topple_out_dim + 2, robot_dim_q);
+        row_matrix anchors(Robot::topple_out_dim + 6, robot_dim_q);
+        state x0(Robot::dimension / 3);
+        state v0(Robot::dimension / 3);
+        state a0(Robot::dimension / 3);
+        
+        state x1(Robot::dimension / 3);
+        state v1(Robot::dimension / 3);
+        state a1(Robot::dimension / 3);
+        for (auto i = 0U; i < Robot::dimension / 3; i++) {
+            x0(i) = start_arr[i];
+            v0(i) = start_arr[Robot::dimension / 3 + i];
+            a0(i) = start_arr[2 * Robot::dimension / 3 + i];
+
+            x1(i) = goal_arr[i];
+            v1(i) = goal_arr[Robot::dimension / 3 + i];
+            a1(i) = goal_arr[2 * Robot::dimension / 3 + i];
+        }
+
+        // time in seconds
+        float T = out[Robot::topple_out_dim * Robot::dimension / 3];
+
+        auto reconstructed_control_points = Robot::reconstruct_control_points(x0, x1, v0, v1, a0, a1, T);
 
         // initial point
         for (auto i = 0U; i < robot_dim_q; i++) {
             anchors(0, i) = static_cast<float>(start_arr[i]);
         }
 
-        // intermediate points
-        for (auto i = 1U; i <= Robot::topple_out_dim; i++) {
+        // first 2 reconstructed points
+        anchors.row(1) = reconstructed_control_points[0];
+        anchors.row(2) = reconstructed_control_points[1];
+
+        // predicted control points
+        for (auto i = 0U; i < Robot::topple_out_dim; i++) {
             for (auto j = 0U; j < robot_dim_q; j++) {
-                anchors(i, j) = out[(i - 1) * robot_dim_q + j];
+                anchors(i + 3, j) = out[i * robot_dim_q + j];
             }
         }
 
-        // time in seconds
-        float T = out[Robot::topple_out_dim * Robot::dimension / 3];
+        // last 2 reconstructed points
+        anchors.row(3 + Robot::topple_out_dim) = reconstructed_control_points[2];
+        anchors.row(4 + Robot::topple_out_dim) = reconstructed_control_points[3];
 
         // final point
         for (auto i = 0U; i < robot_dim_q; i++) {
-            anchors(Robot::topple_out_dim + 1, i) = static_cast<float>(goal_arr[i]);
+            anchors(5 + Robot::topple_out_dim, i) = static_cast<float>(goal_arr[i]);
         }
 
         Bezier bez(anchors);
         bez.time = T;
 
-        state v0_target(Robot::dimension / 3);
-        state a0_target(Robot::dimension / 3);
-        state v1_target(Robot::dimension / 3);
-        state a1_target(Robot::dimension / 3);
-        for (auto i = 0U; i < Robot::dimension / 3; i++) {
-            v0_target(i) = start_arr[Robot::dimension / 3 + i];
-            a0_target(i) = start_arr[2 * Robot::dimension / 3 + i];
-
-            v1_target(i) = goal_arr[Robot::dimension / 3 + i];
-            a1_target(i) = goal_arr[2 * Robot::dimension / 3 + i];
-        }
-        // bez.smoothen(v0_target, a0_target, v1_target, a1_target, true);
         return bez;
     }
 

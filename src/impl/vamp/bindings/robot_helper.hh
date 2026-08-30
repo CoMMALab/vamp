@@ -288,14 +288,12 @@ namespace vamp::binding
                 path, EnvironmentVector(environment), settings, rng);
         }
 
-        inline static auto compute_traj(
-            const Path &path,
-            const EnvironmentInput &environment,
-            const vamp::planning::SimplifySettings &settings,
-            typename RNG::Ptr rng) -> PlanningResult
+        inline static auto shortcut_bez(
+            const PlanningResult &planning_result,
+            const EnvironmentInput &environment) -> PlanningResult
         {
-            return vamp::planning::compute_traj<Robot, rake, Robot::resolution>(
-                path, EnvironmentVector(environment), settings, rng);
+            return vamp::planning::shortcut_bez<Robot, rake, Robot::resolution>(
+                planning_result, EnvironmentVector(environment));
         }
 
         inline static auto compute_bez_traj(
@@ -558,13 +556,11 @@ namespace vamp::binding
             "rng"_a,
             "Simplification heuristics to post-process a path.");
         submodule.def(
-            "compute_traj",
-            HPN::compute_traj,
-            "path"_a,
+            "shortcut_bez",
+            HPN::shortcut_bez,
+            "planning_result"_a,
             "environment"_a,
-            "settings"_a,
-            "rng"_a,
-            "Compute the topple traj.");
+            "Simplification bezier path.");
         submodule.def(
             "compute_bez_traj",
             HPN::compute_bez_traj,

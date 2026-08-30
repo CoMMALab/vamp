@@ -111,6 +111,7 @@ namespace vamp::planning
                 free_index++;
             }
 
+            float scale = settings.sampling_bias;
             while (iter++ < settings.max_iterations and free_index < settings.max_samples)
             {
                 float asize = tree_a->size();
@@ -130,7 +131,7 @@ namespace vamp::planning
                 // Scale down the vels and accels
                 for (auto i = Robot::dimension / 3; i < Robot::dimension; i++)
                 {
-                    temp_array[i] *= settings.sampling_bias;
+                    temp_array[i] *= scale;
                 }
 
                 // std::cout << "Sampling random configuration: " << temp << std::endl;
@@ -206,6 +207,7 @@ namespace vamp::planning
 
                 if (valid_extension)
                 {
+                    scale = std::min(1.0f, scale * (1.0f + settings.sampling_alpha));
                     // create new config ending at sub bez
                     Bezier dsub_bez = sub_bez.derivative();
                     Bezier ddsub_bez = dsub_bez.derivative();
@@ -285,7 +287,7 @@ namespace vamp::planning
 
                     Configuration other_nearest_corrected(other_nearest_array);
 
-                    const std::size_t n_extensions = rake;
+                    const std::size_t n_extensions = 1.0f / extensions[free_index - 1] + 0.5f;
 
                     auto connection_bez = compute_bez<Robot, rake>(
                         new_configuration_bez,
@@ -313,7 +315,9 @@ namespace vamp::planning
                         Bezier sub_bez_l = sub_bez_pair.first;
                         connection_bez = sub_bez_pair.second;
 
-                        if (validate_bez<Robot, rake, resolution>(sub_bez_l, environment))
+                        if (validate_bez<Robot, rake, resolution>(sub_bez_l, environment) && 
+                            validate_dbez<Robot, rake, resolution>(sub_bez_l, sub_bez_l.time) && 
+                            validate_ddbez<Robot, rake, resolution>(sub_bez_l, sub_bez_l.time))
                         {
                             Bezier dsub_bez_l = sub_bez_l.derivative();
                             Bezier ddsub_bez_l = dsub_bez_l.derivative();
@@ -419,6 +423,7 @@ namespace vamp::planning
                                 std::max(radii[nearest_node.index] * (1.F - settings.rrtc.alpha), settings.rrtc.min_radius);
                         }
                     }
+                    scale = std::max(0.0f, scale * (1.0f - settings.sampling_alpha));
                 }
             }
 

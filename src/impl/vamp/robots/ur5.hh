@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <utility>
+#include <cmath>
 #include <Eigen/Dense>
 #include <vamp/vector.hh>
 #include <vamp/vector/math.hh>
@@ -16,6 +17,7 @@ namespace vamp::robots
     struct UR5
     {
         using npy_matrix = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+        using state_vec = Eigen::Matrix<float, 1, Eigen::Dynamic, Eigen::RowMajor>;
         static constexpr char *name = "ur5";
         static constexpr std::size_t dimension = 6;
         static constexpr std::size_t n_spheres = 40;
@@ -146,14 +148,21 @@ namespace vamp::robots
             return y;
         }
 
-        template <typename InputVector>
-        static inline auto topple_nn_forward(const InputVector &x) noexcept {
-            return std::array<float, topple_out_dim * (dimension / 3) + 1>{};
-        }
+        static inline auto reconstruct_control_points(state_vec x0, state_vec x1, state_vec v0, state_vec v1, state_vec a0, state_vec a1, float t) {
+            int n = topple_out_dim + 1;
+            state_vec x_v_0 = x0 + v0 * t / n;
+            state_vec x_a_0 = x_v_0 + (a0 * std::pow(t, 2) / (n - 1) + v0) * t / n;
 
-        template <typename InputVector, typename OutputVector>
-        static inline auto get_nn_time(const InputVector &start, OutputVector &goal) noexcept -> float {
-            return 0.0f;
+            state_vec x_v_1 = x1 - v1 * t / n;
+            state_vec x_a_1 = x_v_1 + (a1 * std::pow(t, 2) / (n - 1) - v1) * t / n;
+
+            std::vector<state_vec> cp;
+            cp.push_back(x_v_0);
+            cp.push_back(x_a_0);
+            cp.push_back(x_v_1);
+            cp.push_back(x_a_1);
+
+            return cp;
         }
         
         template <std::size_t rake>

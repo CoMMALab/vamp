@@ -15,8 +15,8 @@ def topple(
     robot: str = "panda_topple",                  # Robot to plan for
     planner: str = "topple",                 # Planner name to use
     dataset: str = "problems.pkl",         # Pickled dataset to use
-    problem: str = "bookshelf_small",                     # Problem name
-    index: int = 6,                        # Problem index
+    problem: str = "table_under_pick",                     # Problem name
+    index: int = 5,                        # Problem index
     sampler_name: str = "xorshift",          # Sampler to use.
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     display_object_names: bool = False,    # Display object names over geometry
@@ -44,8 +44,9 @@ def topple(
     plan_settings.max_samples = 100000000
     plan_settings.bez_range = 1.0
     plan_settings.dynamic_extension = True
-    plan_settings.alpha = 0.000001
-    plan_settings.sampling_bias = 0.2
+    plan_settings.alpha = 0.00001
+    plan_settings.sampling_bias = 1
+    plan_settings.sampling_alpha = 0.01
 
     if not problem:
         problem = list(data['problems'].keys())[0]
@@ -116,8 +117,6 @@ CAPT Construction Time: {build_time * 1e-6:5.3f}ms
 
     if valid and solved:
         print("Solved problem!")
-        # exit()
-        # simplify = vamp_module.simplify(result.path, env, simp_settings, sampler)
         simplify = result
 
         stats = vamp.results_to_dict(result, simplify)
@@ -137,6 +136,7 @@ Simplified: {stats['simplified_path_cost']:5.3f}"""
 
         # plan = simplify.path
         # plan = result.path.numpy()
+        result = vamp_module.shortcut_bez(result, env)
         plan = vamp_module.compute_bez_traj(result, env, simp_settings, sampler).path.numpy()
         print(plan[0])
         print(plan.shape)

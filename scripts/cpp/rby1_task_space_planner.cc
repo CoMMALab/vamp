@@ -20,6 +20,7 @@
 #include <vamp/random/halton.hh>
 #include <vamp/random/rby1_fixed_base_sampler.hh>
 #include <vamp/robots/rby1.hh>
+#include <vamp/utils/profiling.hh>
 #include <vamp/vector.hh>
 
 using Robot = vamp::robots::RBY1;
@@ -527,6 +528,11 @@ auto main(int argc, char **argv) -> int
     output_file << output_json.dump(2) << std::endl;
 
     std::cout << "\nWrote " << output_json.size() << " planning result(s) to " << output_json_path << std::endl;
+
+#ifdef VAMP_PROFILING
+    std::cout << "\n--- Kernel profiling (aggregated over all problems) ---" << std::endl;
+    vamp::utils::profiling::report(std::cout);
+#endif
 
     return 0;
 }

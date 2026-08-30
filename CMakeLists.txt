@@ -13,6 +13,12 @@ option(VAMP_OMPL_PATH "Search Path for OMPL Installation - Only Needed for Demo 
 option(VAMP_BUILD_WASM "Build VAMP WebAssembly module" OFF)
 option(VAMP_BUILD_JIT "Build the vamp::jit runtime" OFF)
 
+# Opt-in kernel profiling (steer/validate/IK/collision/NN/sample timing + call counts) for
+# the C++ demo scripts. Off by default: no VAMP_PROFILING define means the
+# VAMP_PROFILE_SCOPE() instrumentation in src/impl/vamp/planning compiles to nothing, so this
+# flag does not affect normal builds at all. Only affects VAMP_BUILD_CPP_DEMO targets.
+option(VAMP_ENABLE_PROFILING "Build C++ demo scripts with kernel profiling instrumentation" OFF)
+
 if(VAMP_FORCE_CLANG)
   find_program(CLANG "clang")
   find_program(CLANGPP "clang++")
@@ -172,6 +178,10 @@ if(VAMP_BUILD_CPP_DEMO)
       target_compile_options(vamp_rby1_task_space_planner PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
       target_compile_options(vamp_rby1_gcp_branch_selector PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
     endif()
+
+    if(VAMP_ENABLE_PROFILING)
+      target_compile_definitions(vamp_rby1_task_space_planner PRIVATE VAMP_PROFILING)
+    endif()
   endif()
 
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/impl/vamp/robots/iiwa_marker.hh")
@@ -191,6 +201,11 @@ if(VAMP_BUILD_CPP_DEMO)
       target_compile_options(vamp_iiwa_maze_solver_benchmark PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
       target_compile_options(vamp_iiwa_branch_selector PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
     endif()
+
+    if(VAMP_ENABLE_PROFILING)
+      target_compile_definitions(vamp_iiwa_maze_solver_benchmark PRIVATE VAMP_PROFILING)
+      target_compile_definitions(vamp_iiwa_maze_solver PRIVATE VAMP_PROFILING)
+    endif()
   endif()
 
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/impl/vamp/robots/bimanual_iiwa.hh")
@@ -201,6 +216,10 @@ if(VAMP_BUILD_CPP_DEMO)
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
       target_compile_options(vamp_bimanual_iiwa_leader_follower_shelf PRIVATE
         -Wno-c++11-narrowing -Wno-sign-compare)
+    endif()
+
+    if(VAMP_ENABLE_PROFILING)
+      target_compile_definitions(vamp_bimanual_iiwa_leader_follower_shelf PRIVATE VAMP_PROFILING)
     endif()
   endif()
 endif()
@@ -230,5 +249,6 @@ message(STATUS "  - Install C++ library: ${VAMP_INSTALL_CPP_LIBRARY}")
 message(STATUS "  - Python bindings: ${VAMP_BUILD_PYTHON_BINDINGS}")
 message(STATUS "  - JIT: ${VAMP_BUILD_JIT}")
 message(STATUS "  - C++ demos: ${VAMP_BUILD_CPP_DEMO}")
+message(STATUS "  - C++ demo profiling: ${VAMP_ENABLE_PROFILING}")
 message(STATUS "  - OMPL demos: ${VAMP_BUILD_OMPL_DEMO}")
 message(STATUS "  - WASM module: ${VAMP_BUILD_WASM}")

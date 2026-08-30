@@ -9,6 +9,7 @@
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/random/rng.hh>
+#include <vamp/utils/profiling.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning
@@ -285,12 +286,16 @@ namespace vamp::planning
                 {
                     // The cost budget rejects projected chains that cost more than the
                     // segment despite having fewer states.
-                    const auto extension = lp.connect_within(
-                        path[i],
-                        path[j],
-                        environment,
-                        [&] { return segment_cost(path, i, j); },
-                        j - i - 1);
+                    const auto extension = [&]
+                    {
+                        VAMP_PROFILE_SCOPE(ShortcutAttempt);
+                        return lp.connect_within(
+                            path[i],
+                            path[j],
+                            environment,
+                            [&] { return segment_cost(path, i, j); },
+                            j - i - 1);
+                    }();
 
                     if (extension.status == SteerStatus::Reached)
                     {

@@ -11,6 +11,7 @@
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/local_planner.hh>
 #include <vamp/planning/validate.hh>
+#include <vamp/utils/profiling.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning::constraint
@@ -268,6 +269,7 @@ namespace vamp::planning::constraint
             const Configuration &goal,
             const Environment &environment) const noexcept -> bool
         {
+            VAMP_PROFILE_SCOPE(Validate);
             // std::cout << "Attempting to connect start ";
             // print_configuration(start, "start");
             // std::cout << " to goal ";
@@ -352,13 +354,20 @@ namespace vamp::planning::constraint
         ) const noexcept -> bool
         {
             // just reject if the sampled eefs are in collision
-            // auto eef_coll_res = Space::template eefs_collision_free<rake>(environment, interp_block);
-            // if (not eef_coll_res)
-            // {
-            //     return false;
-            // }
+            {
+                VAMP_PROFILE_SCOPE(EEFCollisionCheck);
+                auto eef_coll_res = Space::template eefs_collision_free<rake>(environment, interp_block);
+                if (not eef_coll_res)
+                {
+                    return false;
+                }
+            }
 
-            auto [param_valid, ambient_block] = Space::template resolve_block<rake>(interp_block);
+            auto [param_valid, ambient_block] = [&]
+            {
+                VAMP_PROFILE_SCOPE(ResolveIK);
+                return Space::template resolve_block<rake>(interp_block);
+            }();
             if (not param_valid)
             {
                 return false;
@@ -369,11 +378,15 @@ namespace vamp::planning::constraint
                 *ambient_out = ambient_block;
             }
 
-            if (not com_within_support_polygon(ambient_block))
             {
-                return false;
+                VAMP_PROFILE_SCOPE(SupportPolygon);
+                if (not com_within_support_polygon(ambient_block))
+                {
+                    return false;
+                }
             }
 
+            VAMP_PROFILE_SCOPE(CollisionCheck);
             return (environment.attachments.empty()) ?
                        Ambient::template fkcc<rake>(environment, ambient_block) :
                        Ambient::template fkcc_attach<rake>(environment, ambient_block);

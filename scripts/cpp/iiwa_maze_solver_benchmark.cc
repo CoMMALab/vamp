@@ -21,6 +21,7 @@
 #include <vamp/planning/simplify.hh>
 #include <vamp/random/halton.hh>
 #include <vamp/robots/iiwa_marker.hh>
+#include <vamp/utils/profiling.hh>
 
 using Robot = vamp::robots::IiwaMarker;
 using ParameterizedSpace = Robot::ParameterizedSpace;
@@ -611,6 +612,10 @@ auto main(int, char **) -> int
         std::cout << "Average path size after shortcutting: "
                   << static_cast<float>(total_size_after) / static_cast<float>(successful_problems) << std::endl;
     }
+#ifdef VAMP_PROFILING
+    std::cout << "\n--- Kernel profiling (aggregated over all problems) ---" << std::endl;
+    vamp::utils::profiling::report(std::cout);
+#endif
 
     return 0;
 }

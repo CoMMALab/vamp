@@ -51,6 +51,7 @@
 #include <vamp/planning/simplify.hh>
 #include <vamp/random/halton.hh>
 #include <vamp/robots/bimanual_iiwa.hh>
+#include <vamp/utils/profiling.hh>
 #include <vamp/vector.hh>
 
 using Robot = vamp::robots::BimanualIiwa;
@@ -453,6 +454,11 @@ auto main(int argc, char **argv) -> int
         std::cout << "  mean eef distance: " << mean(pair_stats.eef_distances) << std::endl;
         std::cout << "  median eef distance: " << median(pair_stats.eef_distances) << std::endl;
     }
+
+#ifdef VAMP_PROFILING
+    std::cout << "\n--- Kernel profiling (aggregated over all trials) ---" << std::endl;
+    vamp::utils::profiling::report(std::cout);
+#endif
 
     return 0;
 }

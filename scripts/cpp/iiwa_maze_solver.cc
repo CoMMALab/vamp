@@ -17,6 +17,7 @@
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/planning/simplify.hh>
 #include <vamp/random/halton.hh>
+#include <vamp/utils/profiling.hh>
 #include <vamp/robots/iiwa_marker.hh>
 
 using Robot = vamp::robots::IiwaMarker;
@@ -296,14 +297,14 @@ auto main(int, char **) -> int
     // find_valid_psi_pose above).
     auto [start_psi_found, start_state_array] =
         find_valid_psi_pose({ 
-            0.5383931994438171,
-            -0.2849438190460205,
+            0.6155468821525574F + 0.05F - 0.15F, //0.5383931994438171,
+            -0.62754705131053925F, //-0.2849438190460205,
             0.2260778248310089
         });
     auto [goal_psi_found, goal_state_array] =
         find_valid_psi_pose({
-            0.5523142218589783,
-            0.033929165452718735,
+            0.5836458206176758F + 0.05F - 0.2F, // 0.5523142218589783,
+            0.4369207215309143F, // 0.033929165452718735,
             0.2260778248310089
         });
     if (!start_psi_found || !goal_psi_found)
@@ -404,4 +405,9 @@ auto main(int, char **) -> int
         }
         std::cout << std::endl;
     }
+#ifdef VAMP_PROFILING
+    std::cout << "\n--- Kernel profiling (aggregated over all problems) ---" << std::endl;
+    vamp::utils::profiling::report(std::cout);
+#endif
+
 }

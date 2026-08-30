@@ -11,6 +11,7 @@
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/local_planner.hh>
 #include <vamp/planning/validate.hh>
+#include <vamp/utils/profiling.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning::constraint
@@ -310,6 +311,7 @@ namespace vamp::planning::constraint
             std::vector<Configuration> *outer_samples = nullptr,
             bool collect_waypoints = false) const noexcept -> bool
         {
+            VAMP_PROFILE_SCOPE(Validate);
             // std::cout << "Attempting to connect start ";
             // print_configuration(start, "start");
             // std::cout << " to goal ";

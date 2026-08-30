@@ -92,6 +92,7 @@
 #include <vamp/planning/simplify.hh>
 #include <vamp/random/halton.hh>
 #include <vamp/robots/fr3_marker.hh>
+#include <vamp/utils/profiling.hh>
 
 using Robot = vamp::robots::FR3Marker;
 using ParameterizedSpace = Robot::ParameterizedSpace;
@@ -1195,5 +1196,10 @@ auto main(int argc, char **argv) -> int
         print_distance_stats("EEF distance", eef_distance_per_problem);
         print_distance_stats("shortcut EEF distance", shortcut_eef_distance_per_problem);
     }
+#ifdef VAMP_PROFILING
+    std::cout << "\n--- Kernel profiling (aggregated over all problems) ---" << std::endl;
+    vamp::utils::profiling::report(std::cout);
+#endif
+
     return 0;
 }

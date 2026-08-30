@@ -11,6 +11,7 @@
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
+#include <vamp/utils/profiling.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning
@@ -69,6 +70,7 @@ namespace vamp::planning
 
             for (const auto &goal : goals)
             {
+                VAMP_PROFILE_SCOPE(ConnectWithin);
                 const auto direct = lp.connect_within(
                     start, goal, environment, unbounded, std::numeric_limits<std::size_t>::max());
                 if (direct.status == SteerStatus::Reached)
@@ -124,7 +126,10 @@ namespace vamp::planning
 
                 float *ptr = buffer_index(free_index);
                 c.to_array(ptr);
-                tree_a->insert(free_index, ptr);
+                {
+                    VAMP_PROFILE_SCOPE(NNInsert);
+                    tree_a->insert(free_index, ptr);
+                }
                 parents[free_index] = parent;
                 radii[free_index] = std::numeric_limits<float>::max();
                 return free_index++;
@@ -142,11 +147,19 @@ namespace vamp::planning
                     tree_a_is_start = not tree_a_is_start;
                 }
 
-                auto temp = rng->next();
+                auto temp = [&]
+                {
+                    VAMP_PROFILE_SCOPE(Sample);
+                    return rng->next();
+                }();
                 typename Space::StateBuffer temp_array;
                 temp.to_array(temp_array.data());
 
-                const auto nearest = tree_a->nearest(temp_array.data());
+                const auto nearest = [&]
+                {
+                    VAMP_PROFILE_SCOPE(NNNearest);
+                    return tree_a->nearest(temp_array.data());
+                }();
                 if (not nearest)
                 {
                     continue;
@@ -166,13 +179,17 @@ namespace vamp::planning
                 // Edges are executed from start to goal: goal-tree edges run child -> parent,
                 // so the local planner steers and validates along the local path in that
                 // direction (identical for symmetric interpolation).
-                const auto extension = lp.steer(
-                    nearest_configuration,
-                    temp,
-                    steer_distance,
-                    settings.range,
-                    tree_a_is_start,
-                    environment);
+                const auto extension = [&]
+                {
+                    VAMP_PROFILE_SCOPE(Steer);
+                    return lp.steer(
+                        nearest_configuration,
+                        temp,
+                        steer_distance,
+                        settings.range,
+                        tree_a_is_start,
+                        environment);
+                }();
 
                 if (extension.status != SteerStatus::Trapped)
                 {
@@ -190,7 +207,11 @@ namespace vamp::planning
                     }
 
                     // Extend to goal tree
-                    const auto other_nearest = tree_b->nearest(buffer_index(new_index));
+                    const auto other_nearest = [&]
+                    {
+                        VAMP_PROFILE_SCOPE(NNNearest);
+                        return tree_b->nearest(buffer_index(new_index));
+                    }();
                     if (not other_nearest)
                     {
                         continue;
@@ -220,13 +241,17 @@ namespace vamp::planning
                         const bool final_step =
                             (i_extension == n_extensions - 1) or (remaining <= settings.range);
 
-                        const auto step = lp.steer(
-                            prior,
-                            other_nearest_configuration,
-                            remaining,
-                            (final_step) ? std::numeric_limits<float>::max() : settings.range,
-                            tree_a_is_start,
-                            environment);
+                        const auto step = [&]
+                        {
+                            VAMP_PROFILE_SCOPE(Steer);
+                            return lp.steer(
+                                prior,
+                                other_nearest_configuration,
+                                remaining,
+                                (final_step) ? std::numeric_limits<float>::max() : settings.range,
+                                tree_a_is_start,
+                                environment);
+                        }();
 
                         if (step.status == SteerStatus::Trapped)
                         {

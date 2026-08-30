@@ -65,6 +65,7 @@
 #include <vamp/random/halton.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/robots/rby1.hh>
+#include <vamp/utils/profiling.hh>
 #include <vamp/vector.hh>
 
 using Robot = vamp::robots::RBY1;
@@ -643,6 +644,11 @@ auto main(int argc, char **argv) -> int
 
     std::cout << "\nSolved " << solved_count << " / " << attempted_count << " attempted problem(s) ("
                << problems.size() << " loaded)." << std::endl;
+
+#ifdef VAMP_PROFILING
+    std::cout << "\n--- Kernel profiling ---" << std::endl;
+    vamp::utils::profiling::report(std::cout);
+#endif
 
     return 0;
 }

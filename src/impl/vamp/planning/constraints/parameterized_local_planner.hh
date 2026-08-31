@@ -72,11 +72,12 @@ namespace vamp::planning::constraint
             const Configuration &a,
             const Configuration &b,
             const Environment &e,
-            bool forward = true) const noexcept -> bool
+            bool forward = true,
+            std::vector<Configuration> *outer_samples = nullptr) const noexcept -> bool
         {
             const Configuration &start = (forward) ? a : b;
             const Configuration &goal = (forward) ? b : a;
-            return validate_resolved(start, goal, e);
+            return validate_resolved(start, goal, e, outer_samples);
         }
 
         // Admit the local path a -> b only if it is valid and has fewer interior waypoints
@@ -120,12 +121,23 @@ namespace vamp::planning::constraint
                 return {SteerStatus::Rejected, chain_};
             }
 
-            if (not validate(from, next, e, forward))
+            if (emit_outer_samples)
+            {
+                if (not validate(from, next, e, forward, &chain_))
+                {
+                    chain_.clear();
+                    return {SteerStatus::Trapped, chain_};
+                }
+            }
+            else if (not validate(from, next, e, forward))
             {
                 return {SteerStatus::Trapped, chain_};
             }
+            else
+            {
+                chain_.emplace_back(next);
+            }
 
-            chain_.emplace_back(next);
             return {(reach) ? SteerStatus::Reached : SteerStatus::Advanced, chain_};
         }
 
@@ -160,6 +172,17 @@ namespace vamp::planning::constraint
             support_polygon_xy = polygon_xy;
         }
 
+        // When true, steer() inserts the first rake-wide block of task-space samples
+        // (the one validate_resolved() computes and checks before its inner
+        // `for (i = 1; i < n; ++i)` loop even starts) into the chain, left-to-right,
+        // instead of collapsing the step to just its endpoint. Off by default.
+        inline static thread_local bool emit_outer_samples = false;
+
+        static inline void set_emit_outer_samples(bool value) noexcept
+        {
+            emit_outer_samples = value;
+        }
+
     private:
         mutable std::vector<Configuration> chain_;
 
@@ -183,6 +206,20 @@ namespace vamp::planning::constraint
             }
 
             return false;
+        }
+
+        // Reads out lane `lane` of a task-space StateBlock as a standalone Configuration.
+        // Only used for emit_outer_samples.
+        static inline auto extract_lane(
+            const typename Space::template StateBlock<rake> &block, std::size_t lane) noexcept -> Configuration
+        {
+            std::array<float, Space::dimension> arr;
+            for (std::size_t dim = 0; dim < Space::dimension; ++dim)
+            {
+                arr[dim] = block[{dim, lane}];
+            }
+
+            return Configuration(arr.data());
         }
 
         // Static-stability support polygon, in the mobile base's local xy frame (matches
@@ -263,10 +300,14 @@ namespace vamp::planning::constraint
         // validate_motion's non-Euclidean branch but with an IK-resolve step interposed
         // between interpolation and FK/CC. Returns false as soon as either the IK resolve or
         // the collision check fails for any sample block.
+        // `outer_samples`, when non-null, is appended with the first rake-wide block's
+        // lanes (left-to-right) once that block passes resolve_and_check_impl, before the
+        // inner `for (i = 1; i < n; ++i)` loop runs.
         inline auto validate_resolved(
             const Configuration &start,
             const Configuration &goal,
-            const Environment &environment) const noexcept -> bool
+            const Environment &environment,
+            std::vector<Configuration> *outer_samples = nullptr) const noexcept -> bool
         {
             // std::cout << "Attempting to connect start ";
             // print_configuration(start, "start");
@@ -287,6 +328,14 @@ namespace vamp::planning::constraint
             if (not resolve_and_check_impl(interp_block, environment, distance, &ambient_block))
             {
                 return false;
+            }
+
+            if (outer_samples != nullptr)
+            {
+                for (std::size_t lane = 0; lane < rake; ++lane)
+                {
+                    outer_samples->emplace_back(extract_lane(interp_block, lane));
+                }
             }
 
             if (n == 1)
@@ -352,11 +401,11 @@ namespace vamp::planning::constraint
         ) const noexcept -> bool
         {
             // just reject if the sampled eefs are in collision
-            // auto eef_coll_res = Space::template eefs_collision_free<rake>(environment, interp_block);
-            // if (not eef_coll_res)
-            // {
-            //     return false;
-            // }
+            auto eef_coll_res = Space::template eefs_collision_free<rake>(environment, interp_block);
+            if (not eef_coll_res)
+            {
+                return false;
+            }
 
             auto [param_valid, ambient_block] = Space::template resolve_block<rake>(interp_block);
             if (not param_valid)

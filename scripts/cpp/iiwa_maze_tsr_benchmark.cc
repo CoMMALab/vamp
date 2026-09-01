@@ -1,11 +1,26 @@
+// TSR-projection variant of iiwa_maze_solver_benchmark.cc: instead of planning over
+// ParameterizedSpace (samples resolved to the ambient configuration by IiwaMarker's
+// closed-form analytic IK, via ParameterizedSpace::resolve_block), this plans directly
+// over IiwaMarker's own ambient Configuration space with a generic
+// vamp::planning::constraint::TaskSpaceConstraint -- CBiRRT2-style projection (Berenson
+// et al., "Task Space Regions") that iteratively resolves the numeric TSR error/Jacobian
+// kernels (Robot::tsr_error + Robot::solve_tsr_error_lm_inner/outer/gradient_descent)
+// brought into iiwa_marker.hh, the same generic machinery scripts/mcflask_line_benchmark.py's
+// "geo" (geometric constrained RRTC) baseline uses for panda via
+// pa.TaskSpaceConstraint(...)/pa.rrtc(..., constraints).
+//
+// Same maze environment, same TSR box, and the same problem set (resources/iiwa_marker/
+// maze_problems_checked_ik.json) as iiwa_maze_solver_benchmark.cc, so results are directly
+// comparable: this is the "does the generic numeric TSR-projection local planner match the
+// closed-form analytic-IK task-space planner's success rate / speed / path quality on the
+// same problems" benchmark.
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
 #include <numeric>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -15,8 +30,11 @@
 #include <Eigen/Geometry>
 
 #include <vamp/collision/factory.hh>
-#include <vamp/planning/constraints/parameterized_local_planner.hh>
-#include <vamp/planning/constraints/task_space_informed_sampler.hh>
+#include <vamp/planning/constraints/local_planner.hh>
+#include <vamp/planning/constraints/manifold/constraint.hh>
+#include <vamp/planning/constraints/manifold/constraint_set.hh>
+#include <vamp/planning/constraints/manifold/task_space_constraint.hh>
+#include <vamp/planning/constraints/settings.hh>
 #include <vamp/planning/planners/rrtc.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/planning/simplify.hh>
@@ -25,14 +43,16 @@
 #include <vamp/utils/profiling.hh>
 
 using Robot = vamp::robots::IiwaMarker;
-using ParameterizedSpace = Robot::ParameterizedSpace;
 static constexpr const std::size_t rake = vamp::FloatVectorWidth;
 using EnvironmentInput = vamp::collision::Environment<float>;
 using EnvironmentVector = vamp::collision::Environment<vamp::FloatVector<rake>>;
 
-using TaskRRTC = vamp::planning::RRTC<Robot, rake, Robot::resolution, ParameterizedSpace>;
-using TaskLocalPlanner = vamp::planning::constraint::ParameterizedLocalPlanner<Robot, rake, Robot::resolution>;
-using TaskSampler = vamp::planning::TaskSpaceInformedSampler<Robot, ParameterizedSpace>;
+using TSRConstraint = vamp::planning::constraint::TaskSpaceConstraint<Robot, rake>;
+using ConstraintT = vamp::planning::constraint::Constraint<Robot, rake>;
+using ConstraintSetT = vamp::planning::constraint::ConstraintSet<Robot, rake>;
+using ConstrainedLP = vamp::planning::constraint::ConstrainedLocalPlanner<Robot, rake, Robot::resolution>;
+
+using TaskRRTC = vamp::planning::RRTC<Robot, rake, Robot::resolution>;
 
 struct Problem
 {
@@ -40,9 +60,6 @@ struct Problem
     std::array<float, 7> problem_end;
     std::array<float, 3> start_eef_pos;
     std::array<float, 3> goal_eef_pos;
-    // psi the generator found valid for this problem's start/goal -- see
-    // iiwa_maze_problem_generator.cc's find_valid_psi_pose for why this can't just be a shared
-    // constant across problems.
     float start_psi;
     float goal_psi;
 };
@@ -164,30 +181,6 @@ static void load_problems_from_json(std::vector<Problem> &problems, const std::s
     }
 }
 
-// Resolves a task-space pose through IK (ParameterizedSpace::resolve_block) and checks the
-// resulting ambient configuration for collision. Returns false on either failure; does not
-// print anything (this is the hot path inside the benchmark loop, unlike iiwa_maze_solver.cc's
-// verbose resolve_and_check).
-static auto resolve_and_check(
-    const ParameterizedSpace::StateArray &pose_array,
-    const EnvironmentVector &environment_v) -> bool
-{
-    ParameterizedSpace::State pose(pose_array.data());
-    ParameterizedSpace::StateBlock<rake> pose_block;
-    for (std::size_t i = 0; i < ParameterizedSpace::dimension; ++i)
-    {
-        pose_block[i] = pose.broadcast(i);
-    }
-
-    auto [param_valid, ambient_block] = ParameterizedSpace::resolve_block<rake>(pose_block);
-    if (not param_valid)
-    {
-        return false;
-    }
-
-    return Robot::fkcc<rake>(environment_v, ambient_block);
-}
-
 auto main(int, char **) -> int
 {
     EnvironmentInput environment;
@@ -215,85 +208,27 @@ auto main(int, char **) -> int
     environment.sort();
     auto env_v = EnvironmentVector(environment);
 
-    // --- Task Space Region: tool facing down (with only slack for numerical tilt), free yaw
-    // about the down axis, and pinned to the z=0 plane (xy free within the maze footprint).
-    // Matches iiwa_maze_solver.cc's working bounds -- a narrower box here starves the RRT's
-    // informed sampler of the space it needs to route around obstacles, even when the
-    // individual start/goal poses are themselves IK-valid.
-    TaskSampler::Transform world_to_reference = {0.0F, 0.0F, 0.22607783F, 0.0F, 1.0F, 0.0F, 0.0F};
-    TaskSampler::Transform eef_to_offset = {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+    // --- Task Space Region, same box as iiwa_maze_solver_benchmark.cc's TaskSampler
+    // Transform/Bound (tool facing down, xy free within the maze footprint, pinned to
+    // z = 0.22607783). TaskSpaceConstraint::Transform is (qw, qx, qy, qz, x, y, z) --
+    // matching Robot::tsr_error's generated input layout -- unlike
+    // TaskSpaceInformedSampler::Transform's (x, y, z, qx, qy, qz, qw), so the transforms
+    // below are the same physical frames as the other benchmark's, just reordered.
+    const std::array<TSRConstraint::Transform, Robot::n_eef> eef_to_offset = {
+        TSRConstraint::Transform{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F}};
+    const std::array<TSRConstraint::Transform, Robot::n_eef> world_to_reference = {
+        TSRConstraint::Transform{0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.22607783F}};
+    const std::array<TSRConstraint::Bound, Robot::n_eef> tsr_lower = {
+        TSRConstraint::Bound{-0.85F, -0.7F, -0.0F, -0.000F, -0.000F, -3.14159265358979F}};
+    const std::array<TSRConstraint::Bound, Robot::n_eef> tsr_upper = {
+        TSRConstraint::Bound{0.0F, 0.7F, 0.0F, 0.00F, 0.000F, 3.14159265358979F}};
 
-    TaskSampler::Bound tsr_lower = {-0.85F, -0.7F, -0.0F, -0.000F, -0.000F, -3.14159265358979F};
-    TaskSampler::Bound tsr_upper = {0.0F, 0.7F, 0.0F, 0.00F, 0.000F, 3.14159265358979F};
-
-    auto task_sampler = vamp::planning::make_task_space_informed_sampler<Robot, ParameterizedSpace>(
-        eef_to_offset,
-        world_to_reference,
-        tsr_lower,
-        tsr_upper,
-        environment,
-        std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>());
-
-    // psi (index 7) doesn't change the eef pose -- only which arm configuration reaches it --
-    // so instead of hardcoding one shared value, sweep a handful of candidates and keep the
-    // first that resolves within joint limits and collision-free. See find_valid_psi_pose in
-    // iiwa_maze_problem_generator.cc for the full rationale.
-    constexpr int kNumPsiCandidates = 16;
-    auto find_valid_psi_pose =
-        [&](const std::array<float, 3> &eef_pos) -> std::pair<bool, ParameterizedSpace::StateArray>
+    auto make_lp = [&]() -> ConstrainedLP
     {
-        for (int k = 0; k < kNumPsiCandidates; ++k)
-        {
-            const float psi =
-                2.0F * static_cast<float>(M_PI) * static_cast<float>(k) / static_cast<float>(kNumPsiCandidates);
-            ParameterizedSpace::StateArray pose_array = {
-                {eef_pos[0], eef_pos[1], 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, psi}};
-            if (resolve_and_check(pose_array, env_v))
-            {
-                return {true, pose_array};
-            }
-        }
-
-        return {false, {}};
+        auto tsr = std::make_shared<TSRConstraint>(eef_to_offset, world_to_reference, tsr_lower, tsr_upper);
+        std::vector<std::shared_ptr<const ConstraintT>> constraints = {tsr};
+        return ConstrainedLP(ConstraintSetT(std::move(constraints)));
     };
-
-    std::cout << "\n--- TaskSpaceInformedSampler samples ---" << std::endl;
-    for (int i = 0; i < 5; ++i)
-    {
-        ParameterizedSpace::State sample_state = task_sampler->next();
-        const auto sample_array = sample_state.to_array();
-
-        std::cout << "Sample " << i << ": ";
-        for (std::size_t j = 0; j < ParameterizedSpace::dimension; ++j)
-        {
-            std::cout << sample_array[j] << (j < ParameterizedSpace::dimension - 1 ? ", " : "");
-        }
-        std::cout << std::endl;
-
-        ParameterizedSpace::StateBlock<rake> sample_block;
-        for (std::size_t j = 0; j < ParameterizedSpace::dimension; ++j)
-        {
-            sample_block[j] = sample_state.broadcast(j);
-        }
-
-        auto [sample_valid, sample_ambient_block] = ParameterizedSpace::resolve_block<rake>(sample_block);
-        std::cout << "  resolve_block valid: " << std::boolalpha << sample_valid << std::endl;
-        for (std::size_t j = 0; j < Robot::dimension; ++j)
-        {
-            std::cout << sample_ambient_block[{j, 0}] << (j < Robot::dimension - 1 ? ", " : "");
-        }
-        std::cout << std::endl;
-    }
-    std::cout << "--- end TaskSpaceInformedSampler samples ---\n" << std::endl;
-
-    // Imaginary maze entry/exit poses: tool pointing straight down (qx=1,qy=0,qz=0,qw=0), on
-    // the z=0 plane, redundancy parameter (psi) arbitrary at 1.45.
-    ParameterizedSpace::StateArray start_pose_array = {
-        {0.6155468821525574F + 0.05F - 0.15F, -0.62754705131053925F, 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, 1.45F}};
-    ParameterizedSpace::StateArray goal_pose_array = {
-        {0.5836458206176758F + 0.05F - 0.2F, 0.4369207215309143F, 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, 1.45F}};
-
-    auto rng = std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>();
 
     vamp::planning::RRTCSettings rrtc_settings;
     rrtc_settings.range = 0.75F;
@@ -301,81 +236,32 @@ auto main(int, char **) -> int
     rrtc_settings.max_samples = 500000;
     rrtc_settings.dynamic_domain = false;
 
-    const TaskLocalPlanner task_local_planner;
-
     vamp::planning::SimplifySettings simplify_settings;
     simplify_settings.operations = {vamp::planning::SHORTCUT};
 
-    // Dump each successful problem's raw and shortcut paths for offline "distance" analysis in
-    // python. Configurations here are this robot's task-space parameterization (x, y, z, qx,
-    // qy, qz, qw, psi), not joint angles.
-    auto path_to_json = [](const vamp::planning::Path<Robot, ParameterizedSpace> &path)
+    auto path_to_json = [](const vamp::planning::Path<Robot, Robot> &path)
     {
         nlohmann::json arr = nlohmann::json::array();
         for (const auto &state : path)
         {
-            // to_array() pads out to num_scalars_rounded (SIMD width); only the first
-            // ParameterizedSpace::dimension entries are meaningful.
             const auto full = state.to_array();
-            arr.push_back(std::vector<float>(full.begin(), full.begin() + ParameterizedSpace::dimension));
+            arr.push_back(std::vector<float>(full.begin(), full.begin() + Robot::dimension));
         }
 
         return arr;
     };
 
-    // Resolve each task-space pose through resolve_block to the ambient (joint-space)
-    // configuration -- this is what's actually physically reachable, so it's the
-    // representation "distance" analysis should really care about. Split from the json/
-    // distance helpers below so the (relatively expensive) IK resolution happens once per
-    // waypoint, not once per consumer.
-    auto resolve_ambient_path = [](const vamp::planning::Path<Robot, ParameterizedSpace> &path)
-    {
-        std::vector<Robot::ConfigurationArray> ambient_path;
-        ambient_path.reserve(path.size());
-        for (const auto &state : path)
-        {
-            ParameterizedSpace::StateBlock<rake> pose_block;
-            for (std::size_t i = 0; i < ParameterizedSpace::dimension; ++i)
-            {
-                pose_block[i] = state.broadcast(i);
-            }
-
-            auto [param_valid, ambient_block] = ParameterizedSpace::resolve_block<rake>(pose_block);
-            static_cast<void>(param_valid);
-
-            Robot::ConfigurationArray ambient_array;
-            for (std::size_t i = 0; i < Robot::dimension; ++i)
-            {
-                ambient_array[i] = ambient_block[{i, 0}];
-            }
-
-            ambient_path.push_back(ambient_array);
-        }
-
-        return ambient_path;
-    };
-
-    auto ambient_path_to_json = [](const std::vector<Robot::ConfigurationArray> &ambient_path)
-    {
-        nlohmann::json arr = nlohmann::json::array();
-        for (const auto &q : ambient_path)
-        {
-            arr.push_back(std::vector<float>(q.begin(), q.end()));
-        }
-
-        return arr;
-    };
-
-    // Hand-rolled Euclidean distance summed over consecutive ambient (joint-space) waypoints.
-    auto ambient_path_distance = [](const std::vector<Robot::ConfigurationArray> &ambient_path)
+    auto path_distance = [](const vamp::planning::Path<Robot, Robot> &path)
     {
         float total = 0.0F;
-        for (std::size_t i = 0; i + 1 < ambient_path.size(); ++i)
+        for (std::size_t i = 0; i + 1 < path.size(); ++i)
         {
+            const auto a = path[i].to_array();
+            const auto b = path[i + 1].to_array();
             float squared = 0.0F;
             for (std::size_t j = 0; j < Robot::dimension; ++j)
             {
-                const float diff = ambient_path[i][j] - ambient_path[i + 1][j];
+                const float diff = a[j] - b[j];
                 squared += diff * diff;
             }
 
@@ -385,9 +271,10 @@ auto main(int, char **) -> int
         return total;
     };
 
-    // Hand-rolled SE3 distance (translation distance and quaternion angle, combined in
-    // quadrature) between two eef poses. Kept identical to the mcvamp benchmark's version so
-    // the two files' "eef distance" numbers are directly comparable.
+    // Hand-rolled SE3 distance -- kept identical to iiwa_maze_solver_benchmark.cc's version
+    // so the two files' "eef distance" numbers are directly comparable, computed here via
+    // IiwaMarker::eefk (forward kinematics) since this benchmark's path is already the
+    // ambient joint-space path, not a task-space pose sequence.
     auto se3_distance = [](const Eigen::Vector3f &ta,
                             const Eigen::Quaternionf &qa,
                             const Eigen::Vector3f &tb,
@@ -400,74 +287,49 @@ auto main(int, char **) -> int
         return std::sqrt(translation_distance * translation_distance + rotation_distance * rotation_distance);
     };
 
-    // Total SE3 distance along a task-space pose path. The State already *is* the eef pose
-    // (x, y, z, qx, qy, qz, qw, psi) -- no FK needed -- and index 7 (psi, the self-motion-
-    // manifold redundancy parameter) is simply never read here, since it isn't part of the eef
-    // pose.
-    auto path_se3_distance = [&](const vamp::planning::Path<Robot, ParameterizedSpace> &path)
+    auto path_se3_distance = [&](const vamp::planning::Path<Robot, Robot> &path)
     {
         float total = 0.0F;
         for (std::size_t i = 0; i + 1 < path.size(); ++i)
         {
             const auto a = path[i].to_array();
             const auto b = path[i + 1].to_array();
-            const Eigen::Vector3f ta(a[0], a[1], a[2]);
-            const Eigen::Quaternionf qa(a[6], a[3], a[4], a[5]);
-            const Eigen::Vector3f tb(b[0], b[1], b[2]);
-            const Eigen::Quaternionf qb(b[6], b[3], b[4], b[5]);
-            total += se3_distance(ta, qa, tb, qb);
+            std::array<float, 7> qa{}, qb{};
+            std::copy(a.begin(), a.begin() + 7, qa.begin());
+            std::copy(b.begin(), b.begin() + 7, qb.begin());
+            const auto pose_a = Robot::eefk(qa);
+            const auto pose_b = Robot::eefk(qb);
+            total += se3_distance(
+                pose_a.translation(),
+                Eigen::Quaternionf(pose_a.rotation()),
+                pose_b.translation(),
+                Eigen::Quaternionf(pose_b.rotation()));
         }
 
         return total;
     };
 
     nlohmann::json all_paths = nlohmann::json::array();
-    const char *paths_output_path = "resources/iiwa_marker/maze_solver_benchmark_paths.json";
-
-    {
-        const ParameterizedSpace::State start_state(start_pose_array.data());
-        const ParameterizedSpace::State goal_state(goal_pose_array.data());
-
-        auto result = TaskRRTC::solve(
-            start_state,
-            goal_state,
-            env_v,
-            rrtc_settings,
-            task_sampler,
-            task_local_planner);
-
-        std::cout << "RRTC path size: " << result.path.size() << ", iterations: " << result.iterations
-                  << ", microseconds: " << result.nanoseconds / 1000.0F << ", with tree sizes: " << result.size[0]
-                  << ", " << result.size[1] << std::endl;
-    }
+    const char *paths_output_path = "resources/iiwa_marker/maze_solver_tsr_benchmark_paths.json";
 
     std::vector<Problem> problems;
     const std::string problem_json_path = "resources/iiwa_marker/maze_problems_checked_ik.json";
     load_problems_from_json(problems, problem_json_path);
 
     std::size_t total_num_problems = 0;
+    std::size_t valid_problems = 0;
     std::size_t successful_problems = 0;
     std::vector<std::size_t> nanoseconds_per_problem;
     std::vector<std::size_t> iterations_per_problem;
     std::vector<std::size_t> shortcut_nanoseconds_per_problem;
     std::vector<std::size_t> path_size_before_shortcut;
     std::vector<std::size_t> path_size_after_shortcut;
-    std::size_t valid_problems = 0;
 
-    // "Configuration distance": ambient (joint-space) path length -- what's actually
-    // physically reachable, so the representation distance analysis should really care
-    // about. "EEF distance": path_se3_distance's SE3 metric over the task-space poses
-    // themselves, skipping psi (index 7) -- Space::distance mixes psi into its metric
-    // (it's a self-motion-manifold redundancy parameter, not part of the eef pose), so it
-    // is not a faithful eef-space distance and can't be reused here.
     std::vector<float> configuration_distance_per_problem;
     std::vector<float> shortcut_configuration_distance_per_problem;
     std::vector<float> eef_distance_per_problem;
     std::vector<float> shortcut_eef_distance_per_problem;
 
-    // Time/iterations RRTC actually spent on problems it gave up on (ran out of
-    // max_iterations/max_samples with no path) -- tracked separately from the successful
-    // stats above since a timed-out search's cost profile is not comparable to a solved one.
     std::vector<std::size_t> failed_nanoseconds_per_problem;
     std::vector<std::size_t> failed_iterations_per_problem;
 
@@ -475,30 +337,30 @@ auto main(int, char **) -> int
     {
         std::cout << "Planning problem " << total_num_problems + 1 << " / " << problems.size() << std::endl;
         total_num_problems++;
-        // Restart the Halton sequence for each problem so results are reproducible per-problem
-        // and independent of how many samples earlier problems in this run consumed.
-        task_sampler->reset();
 
-        auto make_pose_array = [](const std::array<float, 3> &eef_pos, float psi)
-        {
-            ParameterizedSpace::StateArray pose_array{};
-            pose_array[0] = eef_pos[0];
-            pose_array[1] = eef_pos[1];
-            pose_array[2] = 0.22607783F;
-            pose_array[3] = 0.0F;
-            pose_array[4] = -1.0F;
-            pose_array[5] = 0.0F;
-            pose_array[6] = 0.0F;
-            pose_array[7] = psi;
-            return pose_array;
-        };
-        const ParameterizedSpace::StateArray start_pose_array = make_pose_array(problem.start_eef_pos, problem.start_psi);
-        const ParameterizedSpace::StateArray goal_pose_array = make_pose_array(problem.goal_eef_pos, problem.goal_psi);
+        // A fresh local planner (and thus a fresh, unshared constraint-evaluation cache and
+        // constraint instance) per problem -- ConstrainedLocalPlanner/Constraint are not
+        // thread-safe/reentrant to share across problems.
+        auto lp = make_lp();
 
-        const bool start_valid = resolve_and_check(start_pose_array, env_v);
-        const bool goal_valid = resolve_and_check(goal_pose_array, env_v);
+        // By-value std::array construction (not `.data()`): the by-pointer FloatVector
+        // constructor assumes an aligned, SIMD-width-padded buffer (see interface.hh's
+        // load_vector), which problem.problem_start/problem_end -- plain, unaligned,
+        // 7-wide std::arrays -- are not; that mismatch segfaults on an unaligned "aligned"
+        // load. The by-value overload copies into its own padded/aligned buffer instead,
+        // matching how iiwa_parameterized_ik_planner's iiwa_try.cc constructs
+        // Robot::Configuration from a plain array.
+        Robot::Configuration start_config(problem.problem_start);
+        Robot::Configuration goal_config(problem.problem_end);
 
-        if (not start_valid or not goal_valid)
+        // Snap onto the TSR manifold before checking feasibility/planning: the loaded
+        // ambient configs came from the closed-form IK benchmark's problem generator, so
+        // they satisfy the TSR up to that solver's numerical precision, not necessarily
+        // this constraint's own tolerance.
+        const bool start_ok = lp.project(start_config) and lp.satisfied(start_config);
+        const bool goal_ok = lp.project(goal_config) and lp.satisfied(goal_config);
+
+        if (not start_ok or not goal_ok)
         {
             std::cout << "Skipping problem due to invalid start or goal configuration." << std::endl;
             continue;
@@ -506,16 +368,10 @@ auto main(int, char **) -> int
 
         valid_problems++;
 
-        const ParameterizedSpace::State start_state(start_pose_array.data());
-        const ParameterizedSpace::State goal_state(goal_pose_array.data());
+        auto rng = std::make_shared<vamp::rng::Halton<Robot>>();
 
-        auto result = TaskRRTC::solve(
-            start_state,
-            goal_state,
-            env_v,
-            rrtc_settings,
-            task_sampler,
-            task_local_planner);
+        auto result = TaskRRTC::solve<ConstrainedLP>(
+            start_config, goal_config, env_v, rrtc_settings, rng, lp);
 
         if (result.path.size() > 0)
         {
@@ -523,18 +379,14 @@ auto main(int, char **) -> int
             nanoseconds_per_problem.push_back(result.nanoseconds);
             iterations_per_problem.push_back(result.iterations);
 
-            auto shortcut_result =
-                vamp::planning::simplify<Robot, rake, Robot::resolution, TaskLocalPlanner, ParameterizedSpace>(
-                    result.path, env_v, simplify_settings, rng, task_local_planner);
+            auto shortcut_result = vamp::planning::simplify<Robot, rake, Robot::resolution, ConstrainedLP>(
+                result.path, env_v, simplify_settings, rng, lp);
             shortcut_nanoseconds_per_problem.push_back(shortcut_result.nanoseconds);
             path_size_before_shortcut.push_back(result.path.size());
             path_size_after_shortcut.push_back(shortcut_result.path.size());
 
-            const auto ambient_path = resolve_ambient_path(result.path);
-            const auto shortcut_ambient_path = resolve_ambient_path(shortcut_result.path);
-
-            const float configuration_distance = ambient_path_distance(ambient_path);
-            const float shortcut_configuration_distance = ambient_path_distance(shortcut_ambient_path);
+            const float configuration_distance = path_distance(result.path);
+            const float shortcut_configuration_distance = path_distance(shortcut_result.path);
             const float eef_distance = path_se3_distance(result.path);
             const float shortcut_eef_distance = path_se3_distance(shortcut_result.path);
 
@@ -549,12 +401,10 @@ auto main(int, char **) -> int
             path_entry["goal_eef_pos"] = problem.goal_eef_pos;
             path_entry["nanoseconds"] = result.nanoseconds;
             path_entry["path"] = path_to_json(result.path);
-            path_entry["ambient_path"] = ambient_path_to_json(ambient_path);
             path_entry["path_ambient_distance"] = configuration_distance;
             path_entry["path_se3_distance"] = eef_distance;
             path_entry["shortcut_nanoseconds"] = shortcut_result.nanoseconds;
             path_entry["shortcut_path"] = path_to_json(shortcut_result.path);
-            path_entry["shortcut_ambient_path"] = ambient_path_to_json(shortcut_ambient_path);
             path_entry["shortcut_path_ambient_distance"] = shortcut_configuration_distance;
             path_entry["shortcut_path_se3_distance"] = shortcut_eef_distance;
             path_entry["iterations"] = result.iterations;
@@ -585,7 +435,6 @@ auto main(int, char **) -> int
               << "Success rate: " << (static_cast<float>(successful_problems) / static_cast<float>(valid_problems)) * 100.0F
               << "%" << std::endl;
 
-    // Shared by both the successful- and failed-problem time/iteration breakdowns below.
     auto print_time_stats =
         [](const std::string &label, std::vector<std::size_t> nanoseconds, std::vector<std::size_t> iterations)
     {
@@ -619,44 +468,7 @@ auto main(int, char **) -> int
 
     if (successful_problems > 0)
     {
-        std::size_t total_nanoseconds = 0;
-        std::size_t total_iterations = 0;
-        for (std::size_t i = 0; i < successful_problems; i++)
-        {
-            total_nanoseconds += nanoseconds_per_problem[i];
-            total_iterations += iterations_per_problem[i];
-        }
-        std::cout << "Average time (ms) for successful problems: "
-                  << (total_nanoseconds / successful_problems) / 1000000.0 << std::endl;
-        std::cout << "Average iterations for successful problems: " << total_iterations / successful_problems
-                  << std::endl;
-
-        std::sort(nanoseconds_per_problem.begin(), nanoseconds_per_problem.end());
-        std::sort(iterations_per_problem.begin(), iterations_per_problem.end());
-        std::cout << "Median time (ms) for successful problems: "
-                  << (nanoseconds_per_problem[successful_problems / 2]) / 1000000.0 << std::endl;
-        std::cout << "Median iterations for successful problems: "
-                  << iterations_per_problem[successful_problems / 2] << std::endl;
-        std::cout << "Minimum time (ms) for successful problems: " << (nanoseconds_per_problem[0]) / 1000000.0
-                  << std::endl;
-        std::cout << "Minimum iterations for successful problems: " << iterations_per_problem[0] << std::endl;
-        std::cout << "Maximum time (ms) for successful problems: "
-                  << (nanoseconds_per_problem[successful_problems - 1]) / 1000000.0 << std::endl;
-        std::cout << "Maximum iterations for successful problems: "
-                  << iterations_per_problem[successful_problems - 1] << std::endl;
-
-        std::cout << "Q1 time (ms) for successful problems: "
-                  << (nanoseconds_per_problem[successful_problems / 4]) / 1000000.0 << std::endl;
-        std::cout << "Q1 iterations for successful problems: " << iterations_per_problem[successful_problems / 4]
-                  << std::endl;
-        std::cout << "Q3 time (ms) for successful problems: "
-                  << (nanoseconds_per_problem[3 * successful_problems / 4]) / 1000000.0 << std::endl;
-        std::cout << "Q3 iterations for successful problems: "
-                  << iterations_per_problem[3 * successful_problems / 4] << std::endl;
-        std::cout << "95th percentile time (ms) for successful problems: "
-                  << (nanoseconds_per_problem[95 * successful_problems / 100]) / 1000000.0 << std::endl;
-        std::cout << "95th percentile iterations for successful problems: "
-                  << iterations_per_problem[95 * successful_problems / 100] << std::endl;
+        print_time_stats("successful problems", nanoseconds_per_problem, iterations_per_problem);
 
         std::size_t total_shortcut_nanoseconds = 0;
         std::size_t total_size_before = 0;

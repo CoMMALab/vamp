@@ -193,17 +193,22 @@ if(VAMP_BUILD_CPP_DEMO)
     add_executable(vamp_iiwa_maze_solver_benchmark scripts/cpp/iiwa_maze_solver_benchmark.cc)
     target_link_libraries(vamp_iiwa_maze_solver_benchmark PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
 
+    add_executable(vamp_iiwa_maze_tsr_benchmark scripts/cpp/iiwa_maze_tsr_benchmark.cc)
+    target_link_libraries(vamp_iiwa_maze_tsr_benchmark PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
+
     add_executable(vamp_iiwa_branch_selector scripts/cpp/iiwa_branch_selector.cc)
     target_link_libraries(vamp_iiwa_branch_selector PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
 
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
       target_compile_options(vamp_iiwa_maze_solver PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
       target_compile_options(vamp_iiwa_maze_solver_benchmark PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+      target_compile_options(vamp_iiwa_maze_tsr_benchmark PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
       target_compile_options(vamp_iiwa_branch_selector PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
     endif()
 
     if(VAMP_ENABLE_PROFILING)
       target_compile_definitions(vamp_iiwa_maze_solver_benchmark PRIVATE VAMP_PROFILING)
+      target_compile_definitions(vamp_iiwa_maze_tsr_benchmark PRIVATE VAMP_PROFILING)
       target_compile_definitions(vamp_iiwa_maze_solver PRIVATE VAMP_PROFILING)
     endif()
   endif()

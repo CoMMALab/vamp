@@ -53,7 +53,7 @@
             0.2260778248310089
         ],
         "iterations": 658,
-        "nanoseconds": 3197859,
+        "nanoseconds": 2258476,
         "path": [
             [
                 0.5383931994438171,
@@ -138,7 +138,7 @@
                 -0.7935754656791687
             ]
         ],
-        "shortcut_nanoseconds": 174967,
+        "shortcut_nanoseconds": 102359,
         "shortcut_path": [
             [
                 0.5383931994438171,
@@ -548,7 +548,7 @@
             0.2260778248310089
         ],
         "iterations": 8263,
-        "nanoseconds": 29698747,
+        "nanoseconds": 23960227,
         "path": [
             [
                 0.4824548065662384,
@@ -1082,7 +1082,7 @@
                 -0.917041003704071
             ]
         ],
-        "shortcut_nanoseconds": 1790873,
+        "shortcut_nanoseconds": 1865950,
         "shortcut_path": [
             [
                 0.4824548065662384,
@@ -1332,7 +1332,7 @@
             0.2260778248310089
         ],
         "iterations": 1065,
-        "nanoseconds": 3437064,
+        "nanoseconds": 3499810,
         "path": [
             [
                 0.568702757358551,
@@ -1476,7 +1476,7 @@
                 0.20151296257972717
             ]
         ],
-        "shortcut_nanoseconds": 142276,
+        "shortcut_nanoseconds": 142973,
         "shortcut_path": [
             [
                 0.568702757358551,
@@ -1617,7 +1617,7 @@
             0.2260778248310089
         ],
         "iterations": 534,
-        "nanoseconds": 2146459,
+        "nanoseconds": 2147006,
         "path": [
             [
                 0.6791767477989197,
@@ -1742,7 +1742,7 @@
                 0.23171095550060272
             ]
         ],
-        "shortcut_nanoseconds": 137339,
+        "shortcut_nanoseconds": 130151,
         "shortcut_path": [
             [
                 0.6791767477989197,
@@ -1891,7 +1891,7 @@
             0.2260778248310089
         ],
         "iterations": 228,
-        "nanoseconds": 1148605,
+        "nanoseconds": 1154641,
         "path": [
             [
                 0.6643990874290466,
@@ -2063,7 +2063,7 @@
                 -1.8848341703414917
             ]
         ],
-        "shortcut_nanoseconds": 197781,
+        "shortcut_nanoseconds": 197381,
         "shortcut_path": [
             [
                 0.6643990874290466,
@@ -2395,7 +2395,7 @@
             0.2260778248310089
         ],
         "iterations": 2433,
-        "nanoseconds": 8780748,
+        "nanoseconds": 9000395,
         "path": [
             [
                 0.43484073877334595,
@@ -2764,7 +2764,7 @@
                 -1.2995843887329102
             ]
         ],
-        "shortcut_nanoseconds": 755801,
+        "shortcut_nanoseconds": 747029,
         "shortcut_path": [
             [
                 0.43484073877334595,
@@ -2928,7 +2928,7 @@
             0.2260778248310089
         ],
         "iterations": 1150,
-        "nanoseconds": 4025291,
+        "nanoseconds": 4193924,
         "path": [
             [
                 0.4623655080795288,
@@ -3023,7 +3023,7 @@
                 -0.8146305084228516
             ]
         ],
-        "shortcut_nanoseconds": 39551,
+        "shortcut_nanoseconds": 39427,
         "shortcut_path": [
             [
                 0.4623655080795288,
@@ -3163,7 +3163,7 @@
             0.2260778248310089
         ],
         "iterations": 648,
-        "nanoseconds": 2682749,
+        "nanoseconds": 2653277,
         "path": [
             [
                 0.5419055223464966,
@@ -3316,7 +3316,7 @@
                 0.17812985181808472
             ]
         ],
-        "shortcut_nanoseconds": 191727,
+        "shortcut_nanoseconds": 175718,
         "shortcut_path": [
             [
                 0.5419055223464966,
@@ -3494,7 +3494,7 @@
             0.2260778248310089
         ],
         "iterations": 646,
-        "nanoseconds": 8847101,
+        "nanoseconds": 2090934,
         "path": [
             [
                 0.48123306035995483,
@@ -3685,7 +3685,7 @@
                 -0.8226718306541443
             ]
         ],
-        "shortcut_nanoseconds": 1136282,
+        "shortcut_nanoseconds": 276304,
         "shortcut_path": [
             [
                 0.48123306035995483,
@@ -3838,7 +3838,7 @@
             0.2260778248310089
         ],
         "iterations": 58,
-        "nanoseconds": 395942,
+        "nanoseconds": 385161,
         "path": [
             [
                 0.40479302406311035,
@@ -3970,7 +3970,7 @@
                 -0.5933272838592529
             ]
         ],
-        "shortcut_nanoseconds": 63721,
+        "shortcut_nanoseconds": 63680,
         "shortcut_path": [
             [
                 0.40479302406311035,
@@ -4176,7 +4176,7 @@
             0.2260778248310089
         ],
         "iterations": 300,
-        "nanoseconds": 1828348,
+        "nanoseconds": 1645550,
         "path": [
             [
                 0.6986522674560547,
@@ -4369,7 +4369,7 @@
                 -1.4443477392196655
             ]
         ],
-        "shortcut_nanoseconds": 312043,
+        "shortcut_nanoseconds": 314327,
         "shortcut_path": [
             [
                 0.6986522674560547,
@@ -4619,7 +4619,7 @@
             0.2260778248310089
         ],
         "iterations": 4465,
-        "nanoseconds": 14676152,
+        "nanoseconds": 14324796,
         "path": [
             [
                 0.6930151581764221,
@@ -4890,7 +4890,7 @@
                 -1.4418983459472656
             ]
         ],
-        "shortcut_nanoseconds": 402385,
+        "shortcut_nanoseconds": 421542,
         "shortcut_path": [
             [
                 0.6930151581764221,
@@ -5106,7 +5106,7 @@
             0.2260778248310089
         ],
         "iterations": 991,
-        "nanoseconds": 3916882,
+        "nanoseconds": 3880821,
         "path": [
             [
                 0.49044275283813477,
@@ -5308,7 +5308,7 @@
                 -1.772829294204712
             ]
         ],
-        "shortcut_nanoseconds": 279479,
+        "shortcut_nanoseconds": 282552,
         "shortcut_path": [
             [
                 0.49044275283813477,
@@ -5541,7 +5541,7 @@
             0.2260778248310089
         ],
         "iterations": 4378,
-        "nanoseconds": 14935316,
+        "nanoseconds": 15160951,
         "path": [
             [
                 0.6543477177619934,
@@ -5800,7 +5800,7 @@
                 -1.3119916915893555
             ]
         ],
-        "shortcut_nanoseconds": 406470,
+        "shortcut_nanoseconds": 405786,
         "shortcut_path": [
             [
                 0.6543477177619934,
@@ -6090,7 +6090,7 @@
             0.2260778248310089
         ],
         "iterations": 5905,
-        "nanoseconds": 23682446,
+        "nanoseconds": 23087785,
         "path": [
             [
                 0.613322913646698,
@@ -6397,7 +6397,7 @@
                 0.6791992783546448
             ]
         ],
-        "shortcut_nanoseconds": 559507,
+        "shortcut_nanoseconds": 558878,
         "shortcut_path": [
             [
                 0.613322913646698,
@@ -6716,7 +6716,7 @@
             0.2260778248310089
         ],
         "iterations": 2791,
-        "nanoseconds": 8996564,
+        "nanoseconds": 9154316,
         "path": [
             [
                 0.2600097060203552,
@@ -6997,7 +6997,7 @@
                 -1.2617459297180176
             ]
         ],
-        "shortcut_nanoseconds": 437692,
+        "shortcut_nanoseconds": 460737,
         "shortcut_path": [
             [
                 0.2600097060203552,
@@ -7240,7 +7240,7 @@
             0.2260778248310089
         ],
         "iterations": 4023,
-        "nanoseconds": 10996307,
+        "nanoseconds": 11005296,
         "path": [
             [
                 0.5695103406906128,
@@ -7472,7 +7472,7 @@
                 0.6688963174819946
             ]
         ],
-        "shortcut_nanoseconds": 411549,
+        "shortcut_nanoseconds": 391789,
         "shortcut_path": [
             [
                 0.5695103406906128,
@@ -7669,7 +7669,7 @@
             0.2260778248310089
         ],
         "iterations": 442,
-        "nanoseconds": 1731808,
+        "nanoseconds": 1848531,
         "path": [
             [
                 0.6148388981819153,
@@ -7852,7 +7852,7 @@
                 -1.3941251039505005
             ]
         ],
-        "shortcut_nanoseconds": 244208,
+        "shortcut_nanoseconds": 266806,
         "shortcut_path": [
             [
                 0.6148388981819153,
@@ -8012,7 +8012,7 @@
             0.2260778248310089
         ],
         "iterations": 744,
-        "nanoseconds": 3060978,
+        "nanoseconds": 2992654,
         "path": [
             [
                 0.4245869517326355,
@@ -8165,7 +8165,7 @@
                 0.22687596082687378
             ]
         ],
-        "shortcut_nanoseconds": 194330,
+        "shortcut_nanoseconds": 183460,
         "shortcut_path": [
             [
                 0.4245869517326355,
@@ -8406,7 +8406,7 @@
             0.2260778248310089
         ],
         "iterations": 1938,
-        "nanoseconds": 6390470,
+        "nanoseconds": 6415071,
         "path": [
             [
                 0.3993009328842163,
@@ -8703,7 +8703,7 @@
                 -1.9997416734695435
             ]
         ],
-        "shortcut_nanoseconds": 526076,
+        "shortcut_nanoseconds": 525054,
         "shortcut_path": [
             [
                 0.3993009328842163,
@@ -9013,7 +9013,7 @@
             0.2260778248310089
         ],
         "iterations": 3260,
-        "nanoseconds": 9980424,
+        "nanoseconds": 10022135,
         "path": [
             [
                 0.4121208190917969,
@@ -9302,7 +9302,7 @@
                 -1.8811724185943604
             ]
         ],
-        "shortcut_nanoseconds": 451573,
+        "shortcut_nanoseconds": 447421,
         "shortcut_path": [
             [
                 0.4121208190917969,
@@ -9448,7 +9448,7 @@
             0.2260778248310089
         ],
         "iterations": 740,
-        "nanoseconds": 2541901,
+        "nanoseconds": 2529688,
         "path": [
             [
                 0.6530070900917053,
@@ -9532,7 +9532,7 @@
                 -0.9687410593032837
             ]
         ],
-        "shortcut_nanoseconds": 7495,
+        "shortcut_nanoseconds": 7728,
         "shortcut_path": [
             [
                 0.6530070900917053,
@@ -9664,7 +9664,7 @@
             0.2260778248310089
         ],
         "iterations": 48,
-        "nanoseconds": 436513,
+        "nanoseconds": 419081,
         "path": [
             [
                 0.6147197484970093,
@@ -9797,7 +9797,7 @@
                 0.5612422823905945
             ]
         ],
-        "shortcut_nanoseconds": 67124,
+        "shortcut_nanoseconds": 62570,
         "shortcut_path": [
             [
                 0.6147197484970093,
@@ -10083,7 +10083,7 @@
             0.2260778248310089
         ],
         "iterations": 903,
-        "nanoseconds": 3217012,
+        "nanoseconds": 3145859,
         "path": [
             [
                 0.6539162397384644,
@@ -10385,7 +10385,7 @@
                 -1.4509421586990356
             ]
         ],
-        "shortcut_nanoseconds": 311894,
+        "shortcut_nanoseconds": 282905,
         "shortcut_path": [
             [
                 0.6539162397384644,
@@ -10618,7 +10618,7 @@
             0.2260778248310089
         ],
         "iterations": 2350,
-        "nanoseconds": 8741056,
+        "nanoseconds": 8316662,
         "path": [
             [
                 0.29604822397232056,
@@ -10868,7 +10868,7 @@
                 -0.28026649355888367
             ]
         ],
-        "shortcut_nanoseconds": 299947,
+        "shortcut_nanoseconds": 305037,
         "shortcut_path": [
             [
                 0.29604822397232056,
@@ -11103,7 +11103,7 @@
             0.2260778248310089
         ],
         "iterations": 1996,
-        "nanoseconds": 7254357,
+        "nanoseconds": 6810927,
         "path": [
             [
                 0.5626778602600098,
@@ -11324,7 +11324,7 @@
                 0.24692317843437195
             ]
         ],
-        "shortcut_nanoseconds": 230258,
+        "shortcut_nanoseconds": 216792,
         "shortcut_path": [
             [
                 0.5626778602600098,
@@ -11612,7 +11612,7 @@
             0.2260778248310089
         ],
         "iterations": 804,
-        "nanoseconds": 3738612,
+        "nanoseconds": 3977800,
         "path": [
             [
                 0.2846684455871582,
@@ -11921,7 +11921,7 @@
                 0.2336025834083557
             ]
         ],
-        "shortcut_nanoseconds": 757845,
+        "shortcut_nanoseconds": 763756,
         "shortcut_path": [
             [
                 0.2846684455871582,
@@ -12166,7 +12166,7 @@
             0.2260778248310089
         ],
         "iterations": 544,
-        "nanoseconds": 2075936,
+        "nanoseconds": 2070873,
         "path": [
             [
                 0.25055745244026184,
@@ -12378,7 +12378,7 @@
                 -0.8442560434341431
             ]
         ],
-        "shortcut_nanoseconds": 268010,
+        "shortcut_nanoseconds": 261755,
         "shortcut_path": [
             [
                 0.25055745244026184,
@@ -12611,7 +12611,7 @@
             0.2260778248310089
         ],
         "iterations": 1269,
-        "nanoseconds": 4781075,
+        "nanoseconds": 4845175,
         "path": [
             [
                 0.2704263925552368,
@@ -12861,7 +12861,7 @@
                 -0.9583629369735718
             ]
         ],
-        "shortcut_nanoseconds": 352647,
+        "shortcut_nanoseconds": 368562,
         "shortcut_path": [
             [
                 0.2704263925552368,
@@ -13168,7 +13168,7 @@
             0.2260778248310089
         ],
         "iterations": 1959,
-        "nanoseconds": 5831922,
+        "nanoseconds": 6002643,
         "path": [
             [
                 0.42287659645080566,
@@ -13460,7 +13460,7 @@
                 -0.685153067111969
             ]
         ],
-        "shortcut_nanoseconds": 246018,
+        "shortcut_nanoseconds": 252352,
         "shortcut_path": [
             [
                 0.42287659645080566,
@@ -13576,7 +13576,7 @@
             0.2260778248310089
         ],
         "iterations": 466,
-        "nanoseconds": 1896191,
+        "nanoseconds": 1858178,
         "path": [
             [
                 0.6270232200622559,
@@ -13660,7 +13660,7 @@
                 -1.0834605693817139
             ]
         ],
-        "shortcut_nanoseconds": 6367,
+        "shortcut_nanoseconds": 6284,
         "shortcut_path": [
             [
                 0.6270232200622559,
@@ -13801,7 +13801,7 @@
             0.2260778248310089
         ],
         "iterations": 229,
-        "nanoseconds": 1189283,
+        "nanoseconds": 1197731,
         "path": [
             [
                 0.6599156260490417,
@@ -13935,7 +13935,7 @@
                 -1.4296228885650635
             ]
         ],
-        "shortcut_nanoseconds": 120337,
+        "shortcut_nanoseconds": 121782,
         "shortcut_path": [
             [
                 0.6599156260490417,
@@ -14193,7 +14193,7 @@
             0.2260778248310089
         ],
         "iterations": 2778,
-        "nanoseconds": 11173481,
+        "nanoseconds": 11414518,
         "path": [
             [
                 0.3267778158187866,
@@ -14502,7 +14502,7 @@
                 0.23949570953845978
             ]
         ],
-        "shortcut_nanoseconds": 494633,
+        "shortcut_nanoseconds": 514155,
         "shortcut_path": [
             [
                 0.3267778158187866,
@@ -14702,7 +14702,7 @@
             0.2260778248310089
         ],
         "iterations": 608,
-        "nanoseconds": 1756463,
+        "nanoseconds": 1808454,
         "path": [
             [
                 0.2843489348888397,
@@ -14846,7 +14846,7 @@
                 -0.03296291083097458
             ]
         ],
-        "shortcut_nanoseconds": 180430,
+        "shortcut_nanoseconds": 170999,
         "shortcut_path": [
             [
                 0.2843489348888397,
@@ -15032,7 +15032,7 @@
             0.2260778248310089
         ],
         "iterations": 498,
-        "nanoseconds": 2048291,
+        "nanoseconds": 2054795,
         "path": [
             [
                 0.4900130033493042,
@@ -15207,7 +15207,7 @@
                 -0.48165708780288696
             ]
         ],
-        "shortcut_nanoseconds": 412051,
+        "shortcut_nanoseconds": 412745,
         "shortcut_path": [
             [
                 0.4900130033493042,
@@ -15392,7 +15392,7 @@
             0.2260778248310089
         ],
         "iterations": 714,
-        "nanoseconds": 2915954,
+        "nanoseconds": 2987821,
         "path": [
             [
                 0.28121861815452576,
@@ -15640,7 +15640,7 @@
                 -0.8263109922409058
             ]
         ],
-        "shortcut_nanoseconds": 419704,
+        "shortcut_nanoseconds": 433774,
         "shortcut_path": [
             [
                 0.28121861815452576,
@@ -15922,7 +15922,7 @@
             0.2260778248310089
         ],
         "iterations": 1722,
-        "nanoseconds": 6257147,
+        "nanoseconds": 6280336,
         "path": [
             [
                 0.35047078132629395,
@@ -16182,7 +16182,7 @@
                 0.3044615685939789
             ]
         ],
-        "shortcut_nanoseconds": 344534,
+        "shortcut_nanoseconds": 344746,
         "shortcut_path": [
             [
                 0.35047078132629395,
@@ -16381,7 +16381,7 @@
             0.2260778248310089
         ],
         "iterations": 1333,
-        "nanoseconds": 5297194,
+        "nanoseconds": 5040950,
         "path": [
             [
                 0.6975958943367004,
@@ -16544,7 +16544,7 @@
                 -1.3068280220031738
             ]
         ],
-        "shortcut_nanoseconds": 191929,
+        "shortcut_nanoseconds": 181150,
         "shortcut_path": [
             [
                 0.6975958943367004,
@@ -16866,7 +16866,7 @@
             0.2260778248310089
         ],
         "iterations": 2206,
-        "nanoseconds": 7000804,
+        "nanoseconds": 7007765,
         "path": [
             [
                 0.2661420702934265,
@@ -17208,7 +17208,7 @@
                 -0.7840065360069275
             ]
         ],
-        "shortcut_nanoseconds": 636284,
+        "shortcut_nanoseconds": 641925,
         "shortcut_path": [
             [
                 0.2661420702934265,
@@ -17477,7 +17477,7 @@
             0.2260778248310089
         ],
         "iterations": 9370,
-        "nanoseconds": 37561364,
+        "nanoseconds": 35728386,
         "path": [
             [
                 0.4501905143260956,
@@ -17785,7 +17785,7 @@
                 -0.8493449091911316
             ]
         ],
-        "shortcut_nanoseconds": 750927,
+        "shortcut_nanoseconds": 747613,
         "shortcut_path": [
             [
                 0.4501905143260956,
@@ -17986,7 +17986,7 @@
             0.2260778248310089
         ],
         "iterations": 1065,
-        "nanoseconds": 3624120,
+        "nanoseconds": 3627678,
         "path": [
             [
                 0.3225143849849701,
@@ -18129,7 +18129,7 @@
                 -0.8341102004051208
             ]
         ],
-        "shortcut_nanoseconds": 145107,
+        "shortcut_nanoseconds": 144843,
         "shortcut_path": [
             [
                 0.3225143849849701,
@@ -18316,7 +18316,7 @@
             0.2260778248310089
         ],
         "iterations": 1952,
-        "nanoseconds": 7753380,
+        "nanoseconds": 7755684,
         "path": [
             [
                 0.3539372980594635,
@@ -18508,7 +18508,7 @@
                 -0.8000461459159851
             ]
         ],
-        "shortcut_nanoseconds": 159435,
+        "shortcut_nanoseconds": 160571,
         "shortcut_path": [
             [
                 0.3539372980594635,
@@ -18651,7 +18651,7 @@
             0.2260778248310089
         ],
         "iterations": 51,
-        "nanoseconds": 379646,
+        "nanoseconds": 371367,
         "path": [
             [
                 0.4173292815685272,
@@ -18765,7 +18765,7 @@
                 -1.4789727926254272
             ]
         ],
-        "shortcut_nanoseconds": 85820,
+        "shortcut_nanoseconds": 88298,
         "shortcut_path": [
             [
                 0.4173292815685272,
@@ -18906,7 +18906,7 @@
             0.2260778248310089
         ],
         "iterations": 545,
-        "nanoseconds": 2124566,
+        "nanoseconds": 2250915,
         "path": [
             [
                 0.39493608474731445,
@@ -19049,7 +19049,7 @@
                 -1.376108169555664
             ]
         ],
-        "shortcut_nanoseconds": 129452,
+        "shortcut_nanoseconds": 120362,
         "shortcut_path": [
             [
                 0.39493608474731445,
@@ -19236,7 +19236,7 @@
             0.2260778248310089
         ],
         "iterations": 227,
-        "nanoseconds": 1116066,
+        "nanoseconds": 1051486,
         "path": [
             [
                 0.4561096131801605,
@@ -19419,7 +19419,7 @@
                 -1.7514469623565674
             ]
         ],
-        "shortcut_nanoseconds": 133233,
+        "shortcut_nanoseconds": 127532,
         "shortcut_path": [
             [
                 0.4561096131801605,
@@ -19534,7 +19534,7 @@
             0.2260778248310089
         ],
         "iterations": 37,
-        "nanoseconds": 240515,
+        "nanoseconds": 236583,
         "path": [
             [
                 0.272584468126297,
@@ -19628,7 +19628,7 @@
                 0.46892213821411133
             ]
         ],
-        "shortcut_nanoseconds": 73969,
+        "shortcut_nanoseconds": 70580,
         "shortcut_path": [
             [
                 0.272584468126297,
@@ -19958,7 +19958,7 @@
             0.2260778248310089
         ],
         "iterations": 13188,
-        "nanoseconds": 36250529,
+        "nanoseconds": 36209794,
         "path": [
             [
                 0.3753761053085327,
@@ -20356,7 +20356,7 @@
                 -0.3985470235347748
             ]
         ],
-        "shortcut_nanoseconds": 851280,
+        "shortcut_nanoseconds": 843783,
         "shortcut_path": [
             [
                 0.3753761053085327,
@@ -20539,7 +20539,7 @@
             0.2260778248310089
         ],
         "iterations": 662,
-        "nanoseconds": 2955002,
+        "nanoseconds": 2826648,
         "path": [
             [
                 0.7013872265815735,
@@ -20662,7 +20662,7 @@
                 -1.5246632099151611
             ]
         ],
-        "shortcut_nanoseconds": 128514,
+        "shortcut_nanoseconds": 129581,
         "shortcut_path": [
             [
                 0.7013872265815735,
@@ -20813,7 +20813,7 @@
             0.2260778248310089
         ],
         "iterations": 40,
-        "nanoseconds": 314478,
+        "nanoseconds": 312876,
         "path": [
             [
                 0.3030661940574646,
@@ -20938,7 +20938,7 @@
                 -0.9352479577064514
             ]
         ],
-        "shortcut_nanoseconds": 210958,
+        "shortcut_nanoseconds": 212040,
         "shortcut_path": [
             [
                 0.3030661940574646,
@@ -21096,7 +21096,7 @@
             0.2260778248310089
         ],
         "iterations": 888,
-        "nanoseconds": 3957380,
+        "nanoseconds": 3911709,
         "path": [
             [
                 0.5570977330207825,
@@ -21269,7 +21269,7 @@
                 -1.106654405593872
             ]
         ],
-        "shortcut_nanoseconds": 243910,
+        "shortcut_nanoseconds": 243742,
         "shortcut_path": [
             [
                 0.5570977330207825,
@@ -21483,7 +21483,7 @@
             0.2260778248310089
         ],
         "iterations": 1978,
-        "nanoseconds": 7082835,
+        "nanoseconds": 7109815,
         "path": [
             [
                 0.42228811979293823,
@@ -21723,7 +21723,7 @@
                 -1.234256625175476
             ]
         ],
-        "shortcut_nanoseconds": 279473,
+        "shortcut_nanoseconds": 278549,
         "shortcut_path": [
             [
                 0.42228811979293823,
@@ -21886,7 +21886,7 @@
             0.2260778248310089
         ],
         "iterations": 193,
-        "nanoseconds": 1061360,
+        "nanoseconds": 968753,
         "path": [
             [
                 0.2741781175136566,
@@ -22009,7 +22009,7 @@
                 0.1606595665216446
             ]
         ],
-        "shortcut_nanoseconds": 65658,
+        "shortcut_nanoseconds": 64858,
         "shortcut_path": [
             [
                 0.2741781175136566,
@@ -22277,7 +22277,7 @@
             0.2260778248310089
         ],
         "iterations": 1365,
-        "nanoseconds": 5133641,
+        "nanoseconds": 4790588,
         "path": [
             [
                 0.4555306136608124,
@@ -22559,7 +22559,7 @@
                 -0.6414974927902222
             ]
         ],
-        "shortcut_nanoseconds": 657403,
+        "shortcut_nanoseconds": 615453,
         "shortcut_path": [
             [
                 0.4555306136608124,
@@ -22756,7 +22756,7 @@
             0.2260778248310089
         ],
         "iterations": 888,
-        "nanoseconds": 3262873,
+        "nanoseconds": 3073621,
         "path": [
             [
                 0.42198458313941956,
@@ -22948,7 +22948,7 @@
                 0.7194600701332092
             ]
         ],
-        "shortcut_nanoseconds": 420406,
+        "shortcut_nanoseconds": 418118,
         "shortcut_path": [
             [
                 0.42198458313941956,
@@ -23235,7 +23235,7 @@
             0.2260778248310089
         ],
         "iterations": 6571,
-        "nanoseconds": 19553335,
+        "nanoseconds": 18670384,
         "path": [
             [
                 0.5539847612380981,
@@ -23536,7 +23536,7 @@
                 0.16665877401828766
             ]
         ],
-        "shortcut_nanoseconds": 388895,
+        "shortcut_nanoseconds": 388746,
         "shortcut_path": [
             [
                 0.5539847612380981,
@@ -23851,7 +23851,7 @@
             0.2260778248310089
         ],
         "iterations": 7734,
-        "nanoseconds": 21385622,
+        "nanoseconds": 21354221,
         "path": [
             [
                 0.2884579300880432,
@@ -24208,7 +24208,7 @@
                 -0.3475878834724426
             ]
         ],
-        "shortcut_nanoseconds": 840252,
+        "shortcut_nanoseconds": 882547,
         "shortcut_path": [
             [
                 0.2884579300880432,
@@ -24437,7 +24437,7 @@
             0.2260778248310089
         ],
         "iterations": 251,
-        "nanoseconds": 1053063,
+        "nanoseconds": 1112436,
         "path": [
             [
                 0.642693281173706,
@@ -24618,7 +24618,7 @@
                 -1.4899637699127197
             ]
         ],
-        "shortcut_nanoseconds": 297011,
+        "shortcut_nanoseconds": 316920,
         "shortcut_path": [
             [
                 0.642693281173706,
@@ -24870,7 +24870,7 @@
             0.2260778248310089
         ],
         "iterations": 1090,
-        "nanoseconds": 4319680,
+        "nanoseconds": 4374735,
         "path": [
             [
                 0.6840036511421204,
@@ -25112,7 +25112,7 @@
                 -1.5039849281311035
             ]
         ],
-        "shortcut_nanoseconds": 678149,
+        "shortcut_nanoseconds": 670227,
         "shortcut_path": [
             [
                 0.6840036511421204,
@@ -25309,7 +25309,7 @@
             0.2260778248310089
         ],
         "iterations": 531,
-        "nanoseconds": 1970859,
+        "nanoseconds": 1936879,
         "path": [
             [
                 0.29461053013801575,
@@ -25483,7 +25483,7 @@
                 -1.3887830972671509
             ]
         ],
-        "shortcut_nanoseconds": 198864,
+        "shortcut_nanoseconds": 158101,
         "shortcut_path": [
             [
                 0.29461053013801575,
@@ -25714,7 +25714,7 @@
             0.2260778248310089
         ],
         "iterations": 2575,
-        "nanoseconds": 10341520,
+        "nanoseconds": 10277784,
         "path": [
             [
                 0.4169325828552246,
@@ -26002,7 +26002,7 @@
                 -0.987148642539978
             ]
         ],
-        "shortcut_nanoseconds": 942524,
+        "shortcut_nanoseconds": 943781,
         "shortcut_path": [
             [
                 0.4169325828552246,
@@ -26158,7 +26158,7 @@
             0.2260778248310089
         ],
         "iterations": 30,
-        "nanoseconds": 182970,
+        "nanoseconds": 172574,
         "path": [
             [
                 0.42253196239471436,
@@ -26242,7 +26242,7 @@
                 0.5386565923690796
             ]
         ],
-        "shortcut_nanoseconds": 12795,
+        "shortcut_nanoseconds": 16854,
         "shortcut_path": [
             [
                 0.42253196239471436,
@@ -26428,7 +26428,7 @@
             0.2260778248310089
         ],
         "iterations": 928,
-        "nanoseconds": 4533658,
+        "nanoseconds": 4373276,
         "path": [
             [
                 0.6065904498100281,
@@ -26639,7 +26639,7 @@
                 -1.7245336771011353
             ]
         ],
-        "shortcut_nanoseconds": 296861,
+        "shortcut_nanoseconds": 297284,
         "shortcut_path": [
             [
                 0.6065904498100281,
@@ -26945,7 +26945,7 @@
             0.2260778248310089
         ],
         "iterations": 6085,
-        "nanoseconds": 26290883,
+        "nanoseconds": 26011824,
         "path": [
             [
                 0.662234365940094,
@@ -27265,7 +27265,7 @@
                 0.6878939867019653
             ]
         ],
-        "shortcut_nanoseconds": 388236,
+        "shortcut_nanoseconds": 420620,
         "shortcut_path": [
             [
                 0.662234365940094,
@@ -27527,7 +27527,7 @@
             0.2260778248310089
         ],
         "iterations": 7734,
-        "nanoseconds": 16760149,
+        "nanoseconds": 16611189,
         "path": [
             [
                 0.2990257740020752,
@@ -27814,7 +27814,7 @@
                 -0.4150114059448242
             ]
         ],
-        "shortcut_nanoseconds": 383941,
+        "shortcut_nanoseconds": 385038,
         "shortcut_path": [
             [
                 0.2990257740020752,
@@ -28025,7 +28025,7 @@
             0.2260778248310089
         ],
         "iterations": 3588,
-        "nanoseconds": 11951186,
+        "nanoseconds": 11951069,
         "path": [
             [
                 0.557626485824585,
@@ -28177,7 +28177,7 @@
                 0.3857431709766388
             ]
         ],
-        "shortcut_nanoseconds": 173033,
+        "shortcut_nanoseconds": 185472,
         "shortcut_path": [
             [
                 0.557626485824585,
@@ -28455,7 +28455,7 @@
             0.2260778248310089
         ],
         "iterations": 3414,
-        "nanoseconds": 11799497,
+        "nanoseconds": 11911127,
         "path": [
             [
                 0.286561518907547,
@@ -28737,7 +28737,7 @@
                 0.1426248848438263
             ]
         ],
-        "shortcut_nanoseconds": 612298,
+        "shortcut_nanoseconds": 642160,
         "shortcut_path": [
             [
                 0.286561518907547,
@@ -28961,7 +28961,7 @@
             0.2260778248310089
         ],
         "iterations": 2812,
-        "nanoseconds": 11067392,
+        "nanoseconds": 11063412,
         "path": [
             [
                 0.38316667079925537,
@@ -29183,7 +29183,7 @@
                 0.19414982199668884
             ]
         ],
-        "shortcut_nanoseconds": 181262,
+        "shortcut_nanoseconds": 182518,
         "shortcut_path": [
             [
                 0.38316667079925537,
@@ -29407,7 +29407,7 @@
             0.2260778248310089
         ],
         "iterations": 1873,
-        "nanoseconds": 5985324,
+        "nanoseconds": 5997547,
         "path": [
             [
                 0.4870929718017578,
@@ -29629,7 +29629,7 @@
                 0.6777999997138977
             ]
         ],
-        "shortcut_nanoseconds": 264229,
+        "shortcut_nanoseconds": 268806,
         "shortcut_path": [
             [
                 0.4870929718017578,
@@ -29871,7 +29871,7 @@
             0.2260778248310089
         ],
         "iterations": 761,
-        "nanoseconds": 2939294,
+        "nanoseconds": 2749547,
         "path": [
             [
                 0.37406349182128906,
@@ -30113,7 +30113,7 @@
                 -1.2133615016937256
             ]
         ],
-        "shortcut_nanoseconds": 439082,
+        "shortcut_nanoseconds": 414236,
         "shortcut_path": [
             [
                 0.37406349182128906,
@@ -30346,7 +30346,7 @@
             0.2260778248310089
         ],
         "iterations": 9415,
-        "nanoseconds": 41127151,
+        "nanoseconds": 40579136,
         "path": [
             [
                 0.6747661232948303,
@@ -30569,7 +30569,7 @@
                 -0.8253504037857056
             ]
         ],
-        "shortcut_nanoseconds": 350087,
+        "shortcut_nanoseconds": 331753,
         "shortcut_path": [
             [
                 0.6747661232948303,
@@ -30855,7 +30855,7 @@
             0.2260778248310089
         ],
         "iterations": 2242,
-        "nanoseconds": 8612969,
+        "nanoseconds": 8601714,
         "path": [
             [
                 0.43766504526138306,
@@ -31148,7 +31148,7 @@
                 -1.2007616758346558
             ]
         ],
-        "shortcut_nanoseconds": 533583,
+        "shortcut_nanoseconds": 543725,
         "shortcut_path": [
             [
                 0.43766504526138306,
@@ -31452,7 +31452,7 @@
             0.2260778248310089
         ],
         "iterations": 9370,
-        "nanoseconds": 39053961,
+        "nanoseconds": 37165507,
         "path": [
             [
                 0.6390047073364258,
@@ -31801,7 +31801,7 @@
                 0.7086812853813171
             ]
         ],
-        "shortcut_nanoseconds": 700302,
+        "shortcut_nanoseconds": 691356,
         "shortcut_path": [
             [
                 0.6390047073364258,
@@ -32172,7 +32172,7 @@
             0.2260778248310089
         ],
         "iterations": 1936,
-        "nanoseconds": 7531935,
+        "nanoseconds": 7171386,
         "path": [
             [
                 0.6587632298469543,
@@ -32542,7 +32542,7 @@
                 -0.5573511123657227
             ]
         ],
-        "shortcut_nanoseconds": 1147289,
+        "shortcut_nanoseconds": 1147318,
         "shortcut_path": [
             [
                 0.6587632298469543,
@@ -32750,7 +32750,7 @@
             0.2260778248310089
         ],
         "iterations": 1128,
-        "nanoseconds": 4127352,
+        "nanoseconds": 4340316,
         "path": [
             [
                 0.36550846695899963,
@@ -32923,7 +32923,7 @@
                 -0.4050008952617645
             ]
         ],
-        "shortcut_nanoseconds": 274345,
+        "shortcut_nanoseconds": 263995,
         "shortcut_path": [
             [
                 0.36550846695899963,
@@ -33029,7 +33029,7 @@
             0.2260778248310089
         ],
         "iterations": 11,
-        "nanoseconds": 107070,
+        "nanoseconds": 93023,
         "path": [
             [
                 0.5409256815910339,
@@ -33104,7 +33104,7 @@
                 -0.9629066586494446
             ]
         ],
-        "shortcut_nanoseconds": 28770,
+        "shortcut_nanoseconds": 28228,
         "shortcut_path": [
             [
                 0.5409256815910339,
@@ -33334,7 +33334,7 @@
             0.2260778248310089
         ],
         "iterations": 1729,
-        "nanoseconds": 6643478,
+        "nanoseconds": 6601520,
         "path": [
             [
                 0.4717613458633423,
@@ -33641,7 +33641,7 @@
                 -1.9629337787628174
             ]
         ],
-        "shortcut_nanoseconds": 424883,
+        "shortcut_nanoseconds": 442724,
         "shortcut_path": [
             [
                 0.4717613458633423,
@@ -33879,7 +33879,7 @@
             0.2260778248310089
         ],
         "iterations": 867,
-        "nanoseconds": 3820071,
+        "nanoseconds": 3837014,
         "path": [
             [
                 0.7007192969322205,
@@ -34061,7 +34061,7 @@
                 -1.3003151416778564
             ]
         ],
-        "shortcut_nanoseconds": 238476,
+        "shortcut_nanoseconds": 230198,
         "shortcut_path": [
             [
                 0.7007192969322205,
@@ -34276,7 +34276,7 @@
             0.2260778248310089
         ],
         "iterations": 641,
-        "nanoseconds": 2671988,
+        "nanoseconds": 2654956,
         "path": [
             [
                 0.5865647792816162,
@@ -34488,7 +34488,7 @@
                 0.5041199326515198
             ]
         ],
-        "shortcut_nanoseconds": 266899,
+        "shortcut_nanoseconds": 268580,
         "shortcut_path": [
             [
                 0.5865647792816162,
@@ -34802,7 +34802,7 @@
             0.2260778248310089
         ],
         "iterations": 5062,
-        "nanoseconds": 16693289,
+        "nanoseconds": 16506014,
         "path": [
             [
                 0.43669411540031433,
@@ -35187,7 +35187,7 @@
                 -1.5590585470199585
             ]
         ],
-        "shortcut_nanoseconds": 715289,
+        "shortcut_nanoseconds": 673890,
         "shortcut_path": [
             [
                 0.43669411540031433,
@@ -35454,7 +35454,7 @@
             0.2260778248310089
         ],
         "iterations": 1668,
-        "nanoseconds": 6622052,
+        "nanoseconds": 6337692,
         "path": [
             [
                 0.5602654218673706,
@@ -35673,7 +35673,7 @@
                 0.1366649568080902
             ]
         ],
-        "shortcut_nanoseconds": 341352,
+        "shortcut_nanoseconds": 344020,
         "shortcut_path": [
             [
                 0.5602654218673706,
@@ -35918,7 +35918,7 @@
             0.2260778248310089
         ],
         "iterations": 1540,
-        "nanoseconds": 6150873,
+        "nanoseconds": 6157875,
         "path": [
             [
                 0.585436999797821,
@@ -36130,7 +36130,7 @@
                 -1.6762363910675049
             ]
         ],
-        "shortcut_nanoseconds": 262148,
+        "shortcut_nanoseconds": 266797,
         "shortcut_path": [
             [
                 0.585436999797821,
@@ -36291,7 +36291,7 @@
             0.2260778248310089
         ],
         "iterations": 69,
-        "nanoseconds": 523930,
+        "nanoseconds": 535779,
         "path": [
             [
                 0.5678720474243164,
@@ -36425,7 +36425,7 @@
                 -1.262333631515503
             ]
         ],
-        "shortcut_nanoseconds": 258720,
+        "shortcut_nanoseconds": 251774,
         "shortcut_path": [
             [
                 0.5678720474243164,
@@ -36602,7 +36602,7 @@
             0.2260778248310089
         ],
         "iterations": 335,
-        "nanoseconds": 1697367,
+        "nanoseconds": 1699273,
         "path": [
             [
                 0.6881861686706543,
@@ -36785,7 +36785,7 @@
                 -0.750220000743866
             ]
         ],
-        "shortcut_nanoseconds": 244245,
+        "shortcut_nanoseconds": 258296,
         "shortcut_path": [
             [
                 0.6881861686706543,
@@ -37044,7 +37044,7 @@
             0.2260778248310089
         ],
         "iterations": 4390,
-        "nanoseconds": 16521206,
+        "nanoseconds": 16188811,
         "path": [
             [
                 0.2703022360801697,
@@ -37343,7 +37343,7 @@
                 -0.8364428877830505
             ]
         ],
-        "shortcut_nanoseconds": 474765,
+        "shortcut_nanoseconds": 500395,
         "shortcut_path": [
             [
                 0.2703022360801697,
@@ -37678,7 +37678,7 @@
             0.2260778248310089
         ],
         "iterations": 6877,
-        "nanoseconds": 28846769,
+        "nanoseconds": 28295257,
         "path": [
             [
                 0.6495517492294312,
@@ -38017,7 +38017,7 @@
                 0.1324240267276764
             ]
         ],
-        "shortcut_nanoseconds": 511499,
+        "shortcut_nanoseconds": 539191,
         "shortcut_path": [
             [
                 0.6495517492294312,
@@ -38226,7 +38226,7 @@
             0.2260778248310089
         ],
         "iterations": 2053,
-        "nanoseconds": 7412477,
+        "nanoseconds": 7273431,
         "path": [
             [
                 0.43379947543144226,
@@ -38398,7 +38398,7 @@
                 -1.138736605644226
             ]
         ],
-        "shortcut_nanoseconds": 232385,
+        "shortcut_nanoseconds": 211747,
         "shortcut_path": [
             [
                 0.43379947543144226,
@@ -38586,7 +38586,7 @@
             0.2260778248310089
         ],
         "iterations": 300,
-        "nanoseconds": 1550404,
+        "nanoseconds": 1560019,
         "path": [
             [
                 0.42397868633270264,
@@ -38759,7 +38759,7 @@
                 0.21585753560066223
             ]
         ],
-        "shortcut_nanoseconds": 190642,
+        "shortcut_nanoseconds": 193184,
         "shortcut_path": [
             [
                 0.42397868633270264,
@@ -39171,7 +39171,7 @@
             0.2260778248310089
         ],
         "iterations": 7989,
-        "nanoseconds": 23128107,
+        "nanoseconds": 22630707,
         "path": [
             [
                 0.40996190905570984,
@@ -39685,7 +39685,7 @@
                 -0.8722168207168579
             ]
         ],
-        "shortcut_nanoseconds": 1296403,
+        "shortcut_nanoseconds": 1313347,
         "shortcut_path": [
             [
                 0.40996190905570984,
@@ -40070,7 +40070,7 @@
             0.2260778248310089
         ],
         "iterations": 7654,
-        "nanoseconds": 29990647,
+        "nanoseconds": 29308878,
         "path": [
             [
                 0.6464473009109497,
@@ -40418,7 +40418,7 @@
                 0.14095436036586761
             ]
         ],
-        "shortcut_nanoseconds": 1092115,
+        "shortcut_nanoseconds": 995654,
         "shortcut_path": [
             [
                 0.6464473009109497,
@@ -40691,7 +40691,7 @@
             0.2260778248310089
         ],
         "iterations": 1806,
-        "nanoseconds": 6216864,
+        "nanoseconds": 6292960,
         "path": [
             [
                 0.6917011737823486,
@@ -40932,7 +40932,7 @@
                 -0.5787830352783203
             ]
         ],
-        "shortcut_nanoseconds": 315315,
+        "shortcut_nanoseconds": 315401,
         "shortcut_path": [
             [
                 0.6917011737823486,
@@ -41211,7 +41211,7 @@
             0.2260778248310089
         ],
         "iterations": 5199,
-        "nanoseconds": 13671938,
+        "nanoseconds": 13329705,
         "path": [
             [
                 0.5077527761459351,
@@ -41537,7 +41537,7 @@
                 -1.9029641151428223
             ]
         ],
-        "shortcut_nanoseconds": 774029,
+        "shortcut_nanoseconds": 748100,
         "shortcut_path": [
             [
                 0.5077527761459351,
@@ -41767,7 +41767,7 @@
             0.2260778248310089
         ],
         "iterations": 70,
-        "nanoseconds": 562133,
+        "nanoseconds": 597160,
         "path": [
             [
                 0.4580150246620178,
@@ -41911,7 +41911,7 @@
                 -0.6443704962730408
             ]
         ],
-        "shortcut_nanoseconds": 258690,
+        "shortcut_nanoseconds": 272007,
         "shortcut_path": [
             [
                 0.4580150246620178,
@@ -42124,7 +42124,7 @@
             0.2260778248310089
         ],
         "iterations": 906,
-        "nanoseconds": 4541143,
+        "nanoseconds": 4543692,
         "path": [
             [
                 0.6011104583740234,
@@ -42392,7 +42392,7 @@
                 0.5360245108604431
             ]
         ],
-        "shortcut_nanoseconds": 288055,
+        "shortcut_nanoseconds": 294269,
         "shortcut_path": [
             [
                 0.6011104583740234,
@@ -42647,7 +42647,7 @@
             0.2260778248310089
         ],
         "iterations": 1009,
-        "nanoseconds": 3241816,
+        "nanoseconds": 3262347,
         "path": [
             [
                 0.5680734515190125,
@@ -42859,7 +42859,7 @@
                 0.6055894494056702
             ]
         ],
-        "shortcut_nanoseconds": 404442,
+        "shortcut_nanoseconds": 413911,
         "shortcut_path": [
             [
                 0.5680734515190125,
@@ -43281,7 +43281,7 @@
             0.2260778248310089
         ],
         "iterations": 4467,
-        "nanoseconds": 18536396,
+        "nanoseconds": 17932959,
         "path": [
             [
                 0.6755507588386536,
@@ -43768,7 +43768,7 @@
                 0.16387693583965302
             ]
         ],
-        "shortcut_nanoseconds": 1153034,
+        "shortcut_nanoseconds": 1093253,
         "shortcut_path": [
             [
                 0.6755507588386536,
@@ -44006,7 +44006,7 @@
             0.2260778248310089
         ],
         "iterations": 2097,
-        "nanoseconds": 7015997,
+        "nanoseconds": 6736657,
         "path": [
             [
                 0.3833276629447937,
@@ -44197,7 +44197,7 @@
                 0.10613697022199631
             ]
         ],
-        "shortcut_nanoseconds": 345433,
+        "shortcut_nanoseconds": 339814,
         "shortcut_path": [
             [
                 0.3833276629447937,
@@ -44368,7 +44368,7 @@
             0.2260778248310089
         ],
         "iterations": 277,
-        "nanoseconds": 1502726,
+        "nanoseconds": 1508882,
         "path": [
             [
                 0.5411566495895386,
@@ -44520,7 +44520,7 @@
                 0.5339161157608032
             ]
         ],
-        "shortcut_nanoseconds": 144578,
+        "shortcut_nanoseconds": 143806,
         "shortcut_path": [
             [
                 0.5411566495895386,
@@ -44672,7 +44672,7 @@
             0.2260778248310089
         ],
         "iterations": 251,
-        "nanoseconds": 1090677,
+        "nanoseconds": 1098246,
         "path": [
             [
                 0.6553487777709961,
@@ -44796,7 +44796,7 @@
                 -1.7750920057296753
             ]
         ],
-        "shortcut_nanoseconds": 130844,
+        "shortcut_nanoseconds": 130782,
         "shortcut_path": [
             [
                 0.6553487777709961,
@@ -45180,7 +45180,7 @@
             0.2260778248310089
         ],
         "iterations": 11244,
-        "nanoseconds": 32316903,
+        "nanoseconds": 31177010,
         "path": [
             [
                 0.32219117879867554,
@@ -45674,7 +45674,7 @@
                 -0.4186873137950897
             ]
         ],
-        "shortcut_nanoseconds": 1728128,
+        "shortcut_nanoseconds": 1719552,
         "shortcut_path": [
             [
                 0.32219117879867554,
@@ -45906,7 +45906,7 @@
             0.2260778248310089
         ],
         "iterations": 210,
-        "nanoseconds": 1298397,
+        "nanoseconds": 1081517,
         "path": [
             [
                 0.5089033842086792,
@@ -46048,7 +46048,7 @@
                 -1.0534782409667969
             ]
         ],
-        "shortcut_nanoseconds": 161509,
+        "shortcut_nanoseconds": 167092,
         "shortcut_path": [
             [
                 0.5089033842086792,
@@ -46200,7 +46200,7 @@
             0.2260778248310089
         ],
         "iterations": 37,
-        "nanoseconds": 284376,
+        "nanoseconds": 278849,
         "path": [
             [
                 0.3953731060028076,
@@ -46333,7 +46333,7 @@
                 -0.47567638754844666
             ]
         ],
-        "shortcut_nanoseconds": 141854,
+        "shortcut_nanoseconds": 143127,
         "shortcut_path": [
             [
                 0.3953731060028076,
@@ -46592,7 +46592,7 @@
             0.2260778248310089
         ],
         "iterations": 1143,
-        "nanoseconds": 4131643,
+        "nanoseconds": 4162392,
         "path": [
             [
                 0.4398708641529083,
@@ -46882,7 +46882,7 @@
                 0.4204882085323334
             ]
         ],
-        "shortcut_nanoseconds": 375400,
+        "shortcut_nanoseconds": 375846,
         "shortcut_path": [
             [
                 0.4398708641529083,
@@ -47135,7 +47135,7 @@
             0.2260778248310089
         ],
         "iterations": 396,
-        "nanoseconds": 1695041,
+        "nanoseconds": 1705523,
         "path": [
             [
                 0.45316773653030396,
@@ -47367,7 +47367,7 @@
                 -1.512194275856018
             ]
         ],
-        "shortcut_nanoseconds": 311002,
+        "shortcut_nanoseconds": 312287,
         "shortcut_path": [
             [
                 0.45316773653030396,
@@ -47528,7 +47528,7 @@
             0.2260778248310089
         ],
         "iterations": 220,
-        "nanoseconds": 1275770,
+        "nanoseconds": 1377468,
         "path": [
             [
                 0.28572559356689453,
@@ -47662,7 +47662,7 @@
                 -0.5756235122680664
             ]
         ],
-        "shortcut_nanoseconds": 195054,
+        "shortcut_nanoseconds": 198052,
         "shortcut_path": [
             [
                 0.28572559356689453,
@@ -47911,7 +47911,7 @@
             0.2260778248310089
         ],
         "iterations": 1914,
-        "nanoseconds": 7848180,
+        "nanoseconds": 7593786,
         "path": [
             [
                 0.27498549222946167,
@@ -48201,7 +48201,7 @@
                 0.13332141935825348
             ]
         ],
-        "shortcut_nanoseconds": 684576,
+        "shortcut_nanoseconds": 671604,
         "shortcut_path": [
             [
                 0.27498549222946167,
@@ -48535,7 +48535,7 @@
             0.2260778248310089
         ],
         "iterations": 1456,
-        "nanoseconds": 4347441,
+        "nanoseconds": 4338934,
         "path": [
             [
                 0.37949299812316895,
@@ -48857,7 +48857,7 @@
                 -1.0355191230773926
             ]
         ],
-        "shortcut_nanoseconds": 626921,
+        "shortcut_nanoseconds": 632422,
         "shortcut_path": [
             [
                 0.37949299812316895,
@@ -49027,7 +49027,7 @@
             0.2260778248310089
         ],
         "iterations": 1128,
-        "nanoseconds": 4379991,
+        "nanoseconds": 4371483,
         "path": [
             [
                 0.6526634097099304,
@@ -49180,7 +49180,7 @@
                 -1.4037498235702515
             ]
         ],
-        "shortcut_nanoseconds": 188897,
+        "shortcut_nanoseconds": 216173,
         "shortcut_path": [
             [
                 0.6526634097099304,
@@ -49331,7 +49331,7 @@
             0.2260778248310089
         ],
         "iterations": 1578,
-        "nanoseconds": 6706377,
+        "nanoseconds": 6274726,
         "path": [
             [
                 0.4515974223613739,
@@ -49474,7 +49474,7 @@
                 -0.21740008890628815
             ]
         ],
-        "shortcut_nanoseconds": 143376,
+        "shortcut_nanoseconds": 144019,
         "shortcut_path": [
             [
                 0.4515974223613739,
@@ -49571,7 +49571,7 @@
             0.2260778248310089
         ],
         "iterations": 5,
-        "nanoseconds": 60895,
+        "nanoseconds": 61687,
         "path": [
             [
                 0.5115222930908203,
@@ -49636,7 +49636,7 @@
                 -1.948777437210083
             ]
         ],
-        "shortcut_nanoseconds": 4947,
+        "shortcut_nanoseconds": 7048,
         "shortcut_path": [
             [
                 0.5115222930908203,
@@ -49785,7 +49785,7 @@
             0.2260778248310089
         ],
         "iterations": 513,
-        "nanoseconds": 2148556,
+        "nanoseconds": 2132117,
         "path": [
             [
                 0.39468085765838623,
@@ -49975,7 +49975,7 @@
                 -1.8675458431243896
             ]
         ],
-        "shortcut_nanoseconds": 183504,
+        "shortcut_nanoseconds": 176790,
         "shortcut_path": [
             [
                 0.39468085765838623,
@@ -50165,7 +50165,7 @@
             0.2260778248310089
         ],
         "iterations": 731,
-        "nanoseconds": 2732453,
+        "nanoseconds": 2798590,
         "path": [
             [
                 0.6501719355583191,
@@ -50336,7 +50336,7 @@
                 -1.0340096950531006
             ]
         ],
-        "shortcut_nanoseconds": 175343,
+        "shortcut_nanoseconds": 175864,
         "shortcut_path": [
             [
                 0.6501719355583191,
@@ -50579,7 +50579,7 @@
             0.2260778248310089
         ],
         "iterations": 901,
-        "nanoseconds": 3028799,
+        "nanoseconds": 3138235,
         "path": [
             [
                 0.6430150270462036,
@@ -50829,7 +50829,7 @@
                 -0.5989719033241272
             ]
         ],
-        "shortcut_nanoseconds": 354579,
+        "shortcut_nanoseconds": 358390,
         "shortcut_path": [
             [
                 0.6430150270462036,
@@ -51154,7 +51154,7 @@
             0.2260778248310089
         ],
         "iterations": 6498,
-        "nanoseconds": 18500285,
+        "nanoseconds": 19095647,
         "path": [
             [
                 0.47244784235954285,
@@ -51529,7 +51529,7 @@
                 -0.11809337139129639
             ]
         ],
-        "shortcut_nanoseconds": 539884,
+        "shortcut_nanoseconds": 528845,
         "shortcut_path": [
             [
                 0.47244784235954285,
@@ -51778,7 +51778,7 @@
             0.2260778248310089
         ],
         "iterations": 150,
-        "nanoseconds": 856982,
+        "nanoseconds": 873882,
         "path": [
             [
                 0.5401419401168823,
@@ -51923,7 +51923,7 @@
                 0.1700805425643921
             ]
         ],
-        "shortcut_nanoseconds": 225152,
+        "shortcut_nanoseconds": 217038,
         "shortcut_path": [
             [
                 0.5401419401168823,
@@ -52162,7 +52162,7 @@
             0.2260778248310089
         ],
         "iterations": 1659,
-        "nanoseconds": 6063191,
+        "nanoseconds": 6130801,
         "path": [
             [
                 0.3742179274559021,
@@ -52434,7 +52434,7 @@
                 -0.8184387683868408
             ]
         ],
-        "shortcut_nanoseconds": 370816,
+        "shortcut_nanoseconds": 377886,
         "shortcut_path": [
             [
                 0.3742179274559021,
@@ -52631,7 +52631,7 @@
             0.2260778248310089
         ],
         "iterations": 762,
-        "nanoseconds": 3117401,
+        "nanoseconds": 3179711,
         "path": [
             [
                 0.4274209439754486,
@@ -52814,7 +52814,7 @@
                 0.25688305497169495
             ]
         ],
-        "shortcut_nanoseconds": 176687,
+        "shortcut_nanoseconds": 177146,
         "shortcut_path": [
             [
                 0.4274209439754486,
@@ -52947,7 +52947,7 @@
             0.2260778248310089
         ],
         "iterations": 830,
-        "nanoseconds": 2742218,
+        "nanoseconds": 2887335,
         "path": [
             [
                 0.2713891863822937,
@@ -53070,7 +53070,7 @@
                 -0.8617965579032898
             ]
         ],
-        "shortcut_nanoseconds": 132432,
+        "shortcut_nanoseconds": 148839,
         "shortcut_path": [
             [
                 0.2713891863822937,
@@ -53239,7 +53239,7 @@
             0.2260778248310089
         ],
         "iterations": 654,
-        "nanoseconds": 2466558,
+        "nanoseconds": 2501361,
         "path": [
             [
                 0.6641188263893127,
@@ -53393,7 +53393,7 @@
                 0.23164039850234985
             ]
         ],
-        "shortcut_nanoseconds": 351722,
+        "shortcut_nanoseconds": 344916,
         "shortcut_path": [
             [
                 0.6641188263893127,
@@ -53552,7 +53552,7 @@
             0.2260778248310089
         ],
         "iterations": 1128,
-        "nanoseconds": 4186473,
+        "nanoseconds": 4196725,
         "path": [
             [
                 0.36838674545288086,
@@ -53733,7 +53733,7 @@
                 -1.5218027830123901
             ]
         ],
-        "shortcut_nanoseconds": 173278,
+        "shortcut_nanoseconds": 176151,
         "shortcut_path": [
             [
                 0.36838674545288086,
@@ -53985,7 +53985,7 @@
             0.2260778248310089
         ],
         "iterations": 624,
-        "nanoseconds": 2773152,
+        "nanoseconds": 2779940,
         "path": [
             [
                 0.29589903354644775,
@@ -54254,7 +54254,7 @@
                 -0.5405814051628113
             ]
         ],
-        "shortcut_nanoseconds": 523311,
+        "shortcut_nanoseconds": 519097,
         "shortcut_path": [
             [
                 0.29589903354644775,
@@ -54436,7 +54436,7 @@
             0.2260778248310089
         ],
         "iterations": 192,
-        "nanoseconds": 975569,
+        "nanoseconds": 1045889,
         "path": [
             [
                 0.6457173824310303,
@@ -54560,7 +54560,7 @@
                 -0.8687261939048767
             ]
         ],
-        "shortcut_nanoseconds": 180849,
+        "shortcut_nanoseconds": 181458,
         "shortcut_path": [
             [
                 0.6457173824310303,
@@ -54719,7 +54719,7 @@
             0.2260778248310089
         ],
         "iterations": 491,
-        "nanoseconds": 2080130,
+        "nanoseconds": 2114750,
         "path": [
             [
                 0.4326319396495819,
@@ -54891,7 +54891,7 @@
                 -1.2442834377288818
             ]
         ],
-        "shortcut_nanoseconds": 179529,
+        "shortcut_nanoseconds": 189023,
         "shortcut_path": [
             [
                 0.4326319396495819,
@@ -55061,7 +55061,7 @@
             0.2260778248310089
         ],
         "iterations": 1082,
-        "nanoseconds": 3646306,
+        "nanoseconds": 3668753,
         "path": [
             [
                 0.3650578558444977,
@@ -55205,7 +55205,7 @@
                 -1.5598441362380981
             ]
         ],
-        "shortcut_nanoseconds": 134632,
+        "shortcut_nanoseconds": 144180,
         "shortcut_path": [
             [
                 0.3650578558444977,
@@ -55355,7 +55355,7 @@
             0.2260778248310089
         ],
         "iterations": 784,
-        "nanoseconds": 3010125,
+        "nanoseconds": 3035810,
         "path": [
             [
                 0.2536330819129944,
@@ -55499,7 +55499,7 @@
                 -0.5429299473762512
             ]
         ],
-        "shortcut_nanoseconds": 160921,
+        "shortcut_nanoseconds": 161893,
         "shortcut_path": [
             [
                 0.2536330819129944,
@@ -55676,7 +55676,7 @@
             0.2260778248310089
         ],
         "iterations": 2126,
-        "nanoseconds": 8226202,
+        "nanoseconds": 7794180,
         "path": [
             [
                 0.6861143708229065,
@@ -55886,7 +55886,7 @@
                 -0.9612821340560913
             ]
         ],
-        "shortcut_nanoseconds": 389193,
+        "shortcut_nanoseconds": 365599,
         "shortcut_path": [
             [
                 0.6861143708229065,
@@ -56085,7 +56085,7 @@
             0.2260778248310089
         ],
         "iterations": 3916,
-        "nanoseconds": 16461827,
+        "nanoseconds": 16537707,
         "path": [
             [
                 0.5565639734268188,
@@ -56266,7 +56266,7 @@
                 -1.14664626121521
             ]
         ],
-        "shortcut_nanoseconds": 183482,
+        "shortcut_nanoseconds": 183843,
         "shortcut_path": [
             [
                 0.5565639734268188,
@@ -56437,7 +56437,7 @@
             0.2260778248310089
         ],
         "iterations": 901,
-        "nanoseconds": 3360460,
+        "nanoseconds": 3397289,
         "path": [
             [
                 0.6564189195632935,
@@ -56580,7 +56580,7 @@
                 -1.8752655982971191
             ]
         ],
-        "shortcut_nanoseconds": 204546,
+        "shortcut_nanoseconds": 204452,
         "shortcut_path": [
             [
                 0.6564189195632935,
@@ -56776,7 +56776,7 @@
             0.2260778248310089
         ],
         "iterations": 489,
-        "nanoseconds": 2237106,
+        "nanoseconds": 2325572,
         "path": [
             [
                 0.4888576567173004,
@@ -56960,7 +56960,7 @@
                 -0.12314262986183167
             ]
         ],
-        "shortcut_nanoseconds": 323270,
+        "shortcut_nanoseconds": 325496,
         "shortcut_path": [
             [
                 0.4888576567173004,
@@ -57182,7 +57182,7 @@
             0.2260778248310089
         ],
         "iterations": 4555,
-        "nanoseconds": 16035309,
+        "nanoseconds": 16333771,
         "path": [
             [
                 0.5240795612335205,
@@ -57451,7 +57451,7 @@
                 -0.7617881894111633
             ]
         ],
-        "shortcut_nanoseconds": 359141,
+        "shortcut_nanoseconds": 341602,
         "shortcut_path": [
             [
                 0.5240795612335205,
@@ -57759,7 +57759,7 @@
             0.2260778248310089
         ],
         "iterations": 1806,
-        "nanoseconds": 8185878,
+        "nanoseconds": 8132056,
         "path": [
             [
                 0.3923787772655487,
@@ -58050,7 +58050,7 @@
                 -1.1467139720916748
             ]
         ],
-        "shortcut_nanoseconds": 573819,
+        "shortcut_nanoseconds": 557643,
         "shortcut_path": [
             [
                 0.3923787772655487,
@@ -58266,7 +58266,7 @@
             0.2260778248310089
         ],
         "iterations": 1272,
-        "nanoseconds": 4691948,
+        "nanoseconds": 4696765,
         "path": [
             [
                 0.6074267625808716,
@@ -58468,7 +58468,7 @@
                 -1.81559419631958
             ]
         ],
-        "shortcut_nanoseconds": 326543,
+        "shortcut_nanoseconds": 331554,
         "shortcut_path": [
             [
                 0.6074267625808716,
@@ -58629,7 +58629,7 @@
             0.2260778248310089
         ],
         "iterations": 399,
-        "nanoseconds": 1756378,
+        "nanoseconds": 1768754,
         "path": [
             [
                 0.31506675481796265,
@@ -58763,7 +58763,7 @@
                 -0.6395140290260315
             ]
         ],
-        "shortcut_nanoseconds": 112703,
+        "shortcut_nanoseconds": 111393,
         "shortcut_path": [
             [
                 0.31506675481796265,
@@ -59147,7 +59147,7 @@
             0.2260778248310089
         ],
         "iterations": 5247,
-        "nanoseconds": 15086915,
+        "nanoseconds": 15163236,
         "path": [
             [
                 0.5694929361343384,
@@ -59614,7 +59614,7 @@
                 -0.8141201734542847
             ]
         ],
-        "shortcut_nanoseconds": 1235329,
+        "shortcut_nanoseconds": 1257574,
         "shortcut_path": [
             [
                 0.5694929361343384,
@@ -59960,7 +59960,7 @@
             0.2260778248310089
         ],
         "iterations": 6759,
-        "nanoseconds": 18527857,
+        "nanoseconds": 18855916,
         "path": [
             [
                 0.2685225009918213,
@@ -60307,7 +60307,7 @@
                 -0.7823721170425415
             ]
         ],
-        "shortcut_nanoseconds": 491670,
+        "shortcut_nanoseconds": 486292,
         "shortcut_path": [
             [
                 0.2685225009918213,
@@ -60734,7 +60734,7 @@
             0.2260778248310089
         ],
         "iterations": 2553,
-        "nanoseconds": 10555389,
+        "nanoseconds": 10582881,
         "path": [
             [
                 0.29627275466918945,
@@ -61180,7 +61180,7 @@
                 -0.8986024260520935
             ]
         ],
-        "shortcut_nanoseconds": 975679,
+        "shortcut_nanoseconds": 960837,
         "shortcut_path": [
             [
                 0.29627275466918945,
@@ -61473,7 +61473,7 @@
             0.2260778248310089
         ],
         "iterations": 570,
-        "nanoseconds": 2684595,
+        "nanoseconds": 2578914,
         "path": [
             [
                 0.43321892619132996,
@@ -61696,7 +61696,7 @@
                 -0.9426657557487488
             ]
         ],
-        "shortcut_nanoseconds": 436204,
+        "shortcut_nanoseconds": 417427,
         "shortcut_path": [
             [
                 0.43321892619132996,
@@ -61928,7 +61928,7 @@
             0.2260778248310089
         ],
         "iterations": 686,
-        "nanoseconds": 2864806,
+        "nanoseconds": 2868089,
         "path": [
             [
                 0.4462818205356598,
@@ -62161,7 +62161,7 @@
                 -1.761644721031189
             ]
         ],
-        "shortcut_nanoseconds": 326917,
+        "shortcut_nanoseconds": 339844,
         "shortcut_path": [
             [
                 0.4462818205356598,
@@ -62429,7 +62429,7 @@
             0.2260778248310089
         ],
         "iterations": 1941,
-        "nanoseconds": 7657406,
+        "nanoseconds": 7741016,
         "path": [
             [
                 0.591941773891449,
@@ -62756,7 +62756,7 @@
                 -1.6388719081878662
             ]
         ],
-        "shortcut_nanoseconds": 641251,
+        "shortcut_nanoseconds": 671590,
         "shortcut_path": [
             [
                 0.591941773891449,
@@ -62976,7 +62976,7 @@
             0.2260778248310089
         ],
         "iterations": 230,
-        "nanoseconds": 1173985,
+        "nanoseconds": 1165862,
         "path": [
             [
                 0.5318038463592529,
@@ -63129,7 +63129,7 @@
                 -1.942737340927124
             ]
         ],
-        "shortcut_nanoseconds": 229116,
+        "shortcut_nanoseconds": 229295,
         "shortcut_path": [
             [
                 0.5318038463592529,
@@ -63379,7 +63379,7 @@
             0.2260778248310089
         ],
         "iterations": 1090,
-        "nanoseconds": 5083240,
+        "nanoseconds": 5123321,
         "path": [
             [
                 0.6599380970001221,
@@ -63641,7 +63641,7 @@
                 -1.2950456142425537
             ]
         ],
-        "shortcut_nanoseconds": 723883,
+        "shortcut_nanoseconds": 730838,
         "shortcut_path": [
             [
                 0.6599380970001221,
@@ -63865,7 +63865,7 @@
             0.2260778248310089
         ],
         "iterations": 761,
-        "nanoseconds": 3068099,
+        "nanoseconds": 3041068,
         "path": [
             [
                 0.41249310970306396,
@@ -64105,7 +64105,7 @@
                 -0.056190747767686844
             ]
         ],
-        "shortcut_nanoseconds": 347520,
+        "shortcut_nanoseconds": 334927,
         "shortcut_path": [
             [
                 0.41249310970306396,
@@ -64529,7 +64529,7 @@
             0.2260778248310089
         ],
         "iterations": 3253,
-        "nanoseconds": 11743004,
+        "nanoseconds": 11780730,
         "path": [
             [
                 0.6324666738510132,
@@ -64987,7 +64987,7 @@
                 -1.5145901441574097
             ]
         ],
-        "shortcut_nanoseconds": 1460997,
+        "shortcut_nanoseconds": 1452909,
         "shortcut_path": [
             [
                 0.6324666738510132,
@@ -65368,7 +65368,7 @@
             0.2260778248310089
         ],
         "iterations": 2186,
-        "nanoseconds": 8352697,
+        "nanoseconds": 8405083,
         "path": [
             [
                 0.6116262674331665,
@@ -65765,7 +65765,7 @@
                 -1.5432106256484985
             ]
         ],
-        "shortcut_nanoseconds": 1148359,
+        "shortcut_nanoseconds": 1078373,
         "shortcut_path": [
             [
                 0.6116262674331665,
@@ -66075,7 +66075,7 @@
             0.2260778248310089
         ],
         "iterations": 4422,
-        "nanoseconds": 16821543,
+        "nanoseconds": 16911322,
         "path": [
             [
                 0.525957465171814,
@@ -66337,7 +66337,7 @@
                 0.35107526183128357
             ]
         ],
-        "shortcut_nanoseconds": 250521,
+        "shortcut_nanoseconds": 266941,
         "shortcut_path": [
             [
                 0.525957465171814,
@@ -66489,7 +66489,7 @@
             0.2260778248310089
         ],
         "iterations": 762,
-        "nanoseconds": 2952909,
+        "nanoseconds": 2984427,
         "path": [
             [
                 0.532484233379364,
@@ -66613,7 +66613,7 @@
                 0.22318290174007416
             ]
         ],
-        "shortcut_nanoseconds": 89426,
+        "shortcut_nanoseconds": 88689,
         "shortcut_path": [
             [
                 0.532484233379364,
@@ -66844,7 +66844,7 @@
             0.2260778248310089
         ],
         "iterations": 4612,
-        "nanoseconds": 12821631,
+        "nanoseconds": 12484050,
         "path": [
             [
                 0.4483007788658142,
@@ -67114,7 +67114,7 @@
                 -0.7154285311698914
             ]
         ],
-        "shortcut_nanoseconds": 507711,
+        "shortcut_nanoseconds": 484798,
         "shortcut_path": [
             [
                 0.4483007788658142,
@@ -67322,7 +67322,7 @@
             0.2260778248310089
         ],
         "iterations": 478,
-        "nanoseconds": 2263571,
+        "nanoseconds": 2279399,
         "path": [
             [
                 0.6545618772506714,
@@ -67513,7 +67513,7 @@
                 -1.9884291887283325
             ]
         ],
-        "shortcut_nanoseconds": 185176,
+        "shortcut_nanoseconds": 176770,
         "shortcut_path": [
             [
                 0.6545618772506714,
@@ -67729,7 +67729,7 @@
             0.2260778248310089
         ],
         "iterations": 556,
-        "nanoseconds": 2530767,
+        "nanoseconds": 2519597,
         "path": [
             [
                 0.4269583225250244,
@@ -67922,7 +67922,7 @@
                 -1.5856720209121704
             ]
         ],
-        "shortcut_nanoseconds": 295914,
+        "shortcut_nanoseconds": 294435,
         "shortcut_path": [
             [
                 0.4269583225250244,
@@ -68100,7 +68100,7 @@
             0.2260778248310089
         ],
         "iterations": 1128,
-        "nanoseconds": 4673655,
+        "nanoseconds": 4671643,
         "path": [
             [
                 0.6105040907859802,
@@ -68291,7 +68291,7 @@
                 -1.9320505857467651
             ]
         ],
-        "shortcut_nanoseconds": 229785,
+        "shortcut_nanoseconds": 235738,
         "shortcut_path": [
             [
                 0.6105040907859802,
@@ -68444,7 +68444,7 @@
             0.2260778248310089
         ],
         "iterations": 16,
-        "nanoseconds": 232593,
+        "nanoseconds": 232117,
         "path": [
             [
                 0.6883095502853394,
@@ -68567,7 +68567,7 @@
                 -1.4391119480133057
             ]
         ],
-        "shortcut_nanoseconds": 97929,
+        "shortcut_nanoseconds": 85101,
         "shortcut_path": [
             [
                 0.6883095502853394,
@@ -68772,7 +68772,7 @@
             0.2260778248310089
         ],
         "iterations": 5905,
-        "nanoseconds": 18046168,
+        "nanoseconds": 17898065,
         "path": [
             [
                 0.4114473760128021,
@@ -68993,7 +68993,7 @@
                 -0.8102084994316101
             ]
         ],
-        "shortcut_nanoseconds": 453333,
+        "shortcut_nanoseconds": 459627,
         "shortcut_path": [
             [
                 0.4114473760128021,
@@ -69182,7 +69182,7 @@
             0.2260778248310089
         ],
         "iterations": 762,
-        "nanoseconds": 2958504,
+        "nanoseconds": 2964127,
         "path": [
             [
                 0.3170953691005707,
@@ -69363,7 +69363,7 @@
                 -1.653295874595642
             ]
         ],
-        "shortcut_nanoseconds": 241985,
+        "shortcut_nanoseconds": 242173,
         "shortcut_path": [
             [
                 0.3170953691005707,
@@ -69642,7 +69642,7 @@
             0.2260778248310089
         ],
         "iterations": 1155,
-        "nanoseconds": 4537298,
+        "nanoseconds": 4493296,
         "path": [
             [
                 0.49346861243247986,
@@ -69923,7 +69923,7 @@
                 -1.1184391975402832
             ]
         ],
-        "shortcut_nanoseconds": 339833,
+        "shortcut_nanoseconds": 321399,
         "shortcut_path": [
             [
                 0.49346861243247986,
@@ -70121,7 +70121,7 @@
             0.2260778248310089
         ],
         "iterations": 762,
-        "nanoseconds": 2897890,
+        "nanoseconds": 2903824,
         "path": [
             [
                 0.25234368443489075,
@@ -70312,7 +70312,7 @@
                 -0.7922428250312805
             ]
         ],
-        "shortcut_nanoseconds": 192879,
+        "shortcut_nanoseconds": 192604,
         "shortcut_path": [
             [
                 0.25234368443489075,
@@ -70555,7 +70555,7 @@
             0.2260778248310089
         ],
         "iterations": 1065,
-        "nanoseconds": 4044023,
+        "nanoseconds": 4052428,
         "path": [
             [
                 0.5644327402114868,
@@ -70823,7 +70823,7 @@
                 0.6378551125526428
             ]
         ],
-        "shortcut_nanoseconds": 437256,
+        "shortcut_nanoseconds": 437944,
         "shortcut_path": [
             [
                 0.5644327402114868,
@@ -71042,7 +71042,7 @@
             0.2260778248310089
         ],
         "iterations": 1053,
-        "nanoseconds": 4409300,
+        "nanoseconds": 4428428,
         "path": [
             [
                 0.5989644527435303,
@@ -71214,7 +71214,7 @@
                 -1.7808878421783447
             ]
         ],
-        "shortcut_nanoseconds": 208543,
+        "shortcut_nanoseconds": 197728,
         "shortcut_path": [
             [
                 0.5989644527435303,
@@ -71546,7 +71546,7 @@
             0.2260778248310089
         ],
         "iterations": 3747,
-        "nanoseconds": 14965732,
+        "nanoseconds": 14240262,
         "path": [
             [
                 0.37552735209465027,
@@ -71924,7 +71924,7 @@
                 0.304879754781723
             ]
         ],
-        "shortcut_nanoseconds": 755803,
+        "shortcut_nanoseconds": 717342,
         "shortcut_path": [
             [
                 0.37552735209465027,
@@ -72314,7 +72314,7 @@
             0.2260778248310089
         ],
         "iterations": 3196,
-        "nanoseconds": 12180042,
+        "nanoseconds": 11567012,
         "path": [
             [
                 0.6989477872848511,
@@ -72712,7 +72712,7 @@
                 0.9016487002372742
             ]
         ],
-        "shortcut_nanoseconds": 797872,
+        "shortcut_nanoseconds": 752946,
         "shortcut_path": [
             [
                 0.6989477872848511,
@@ -72886,7 +72886,7 @@
             0.2260778248310089
         ],
         "iterations": 1053,
-        "nanoseconds": 4106986,
+        "nanoseconds": 4080494,
         "path": [
             [
                 0.4024571180343628,
@@ -72990,7 +72990,7 @@
                 -0.10581592470407486
             ]
         ],
-        "shortcut_nanoseconds": 81894,
+        "shortcut_nanoseconds": 77672,
         "shortcut_path": [
             [
                 0.4024571180343628,
@@ -73284,7 +73284,7 @@
             0.2260778248310089
         ],
         "iterations": 5365,
-        "nanoseconds": 18701318,
+        "nanoseconds": 19099798,
         "path": [
             [
                 0.6428149938583374,
@@ -73633,7 +73633,7 @@
                 0.5734302997589111
             ]
         ],
-        "shortcut_nanoseconds": 674716,
+        "shortcut_nanoseconds": 672691,
         "shortcut_path": [
             [
                 0.6428149938583374,
@@ -74085,7 +74085,7 @@
             0.2260778248310089
         ],
         "iterations": 4467,
-        "nanoseconds": 18086556,
+        "nanoseconds": 17664613,
         "path": [
             [
                 0.6802862882614136,
@@ -74572,7 +74572,7 @@
                 0.12084220349788666
             ]
         ],
-        "shortcut_nanoseconds": 864724,
+        "shortcut_nanoseconds": 1008111,
         "shortcut_path": [
             [
                 0.6802862882614136,
@@ -74801,7 +74801,7 @@
             0.2260778248310089
         ],
         "iterations": 146,
-        "nanoseconds": 1019012,
+        "nanoseconds": 945663,
         "path": [
             [
                 0.5460789203643799,
@@ -74982,7 +74982,7 @@
                 -0.6278647184371948
             ]
         ],
-        "shortcut_nanoseconds": 186315,
+        "shortcut_nanoseconds": 175047,
         "shortcut_path": [
             [
                 0.5460789203643799,
@@ -75189,7 +75189,7 @@
             0.2260778248310089
         ],
         "iterations": 286,
-        "nanoseconds": 1386058,
+        "nanoseconds": 1474368,
         "path": [
             [
                 0.7008748054504395,
@@ -75381,7 +75381,7 @@
                 -1.3038522005081177
             ]
         ],
-        "shortcut_nanoseconds": 289725,
+        "shortcut_nanoseconds": 286096,
         "shortcut_path": [
             [
                 0.7008748054504395,
@@ -75731,7 +75731,7 @@
             0.2260778248310089
         ],
         "iterations": 6369,
-        "nanoseconds": 16238142,
+        "nanoseconds": 16601902,
         "path": [
             [
                 0.4995722770690918,
@@ -76147,7 +76147,7 @@
                 -1.8636865615844727
             ]
         ],
-        "shortcut_nanoseconds": 952907,
+        "shortcut_nanoseconds": 951503,
         "shortcut_path": [
             [
                 0.4995722770690918,
@@ -76395,7 +76395,7 @@
             0.2260778248310089
         ],
         "iterations": 1387,
-        "nanoseconds": 5429524,
+        "nanoseconds": 5452697,
         "path": [
             [
                 0.6811873912811279,
@@ -76586,7 +76586,7 @@
                 -0.6754280924797058
             ]
         ],
-        "shortcut_nanoseconds": 460647,
+        "shortcut_nanoseconds": 463207,
         "shortcut_path": [
             [
                 0.6811873912811279,
@@ -76748,7 +76748,7 @@
             0.2260778248310089
         ],
         "iterations": 778,
-        "nanoseconds": 3084851,
+        "nanoseconds": 3040669,
         "path": [
             [
                 0.6684741973876953,
@@ -76890,7 +76890,7 @@
                 -1.4683306217193604
             ]
         ],
-        "shortcut_nanoseconds": 70449,
+        "shortcut_nanoseconds": 73088,
         "shortcut_path": [
             [
                 0.6684741973876953,
@@ -77123,7 +77123,7 @@
             0.2260778248310089
         ],
         "iterations": 2770,
-        "nanoseconds": 10933349,
+        "nanoseconds": 10798233,
         "path": [
             [
                 0.352168470621109,
@@ -77382,7 +77382,7 @@
                 -1.8200817108154297
             ]
         ],
-        "shortcut_nanoseconds": 552022,
+        "shortcut_nanoseconds": 541864,
         "shortcut_path": [
             [
                 0.352168470621109,
@@ -77582,7 +77582,7 @@
             0.2260778248310089
         ],
         "iterations": 742,
-        "nanoseconds": 2762954,
+        "nanoseconds": 2792474,
         "path": [
             [
                 0.5476074814796448,
@@ -77744,7 +77744,7 @@
                 0.7083863019943237
             ]
         ],
-        "shortcut_nanoseconds": 160102,
+        "shortcut_nanoseconds": 161849,
         "shortcut_path": [
             [
                 0.5476074814796448,
@@ -77968,7 +77968,7 @@
             0.2260778248310089
         ],
         "iterations": 2023,
-        "nanoseconds": 6117348,
+        "nanoseconds": 6117440,
         "path": [
             [
                 0.3892792761325836,
@@ -78181,7 +78181,7 @@
                 0.5083020329475403
             ]
         ],
-        "shortcut_nanoseconds": 512229,
+        "shortcut_nanoseconds": 514857,
         "shortcut_path": [
             [
                 0.3892792761325836,
@@ -78404,7 +78404,7 @@
             0.2260778248310089
         ],
         "iterations": 2122,
-        "nanoseconds": 7947680,
+        "nanoseconds": 7696253,
         "path": [
             [
                 0.2586314380168915,
@@ -78654,7 +78654,7 @@
                 0.09612827748060226
             ]
         ],
-        "shortcut_nanoseconds": 296309,
+        "shortcut_nanoseconds": 314114,
         "shortcut_path": [
             [
                 0.2586314380168915,
@@ -78853,7 +78853,7 @@
             0.2260778248310089
         ],
         "iterations": 1176,
-        "nanoseconds": 4726312,
+        "nanoseconds": 4798255,
         "path": [
             [
                 0.45558401942253113,
@@ -79016,7 +79016,7 @@
                 -1.251094102859497
             ]
         ],
-        "shortcut_nanoseconds": 100863,
+        "shortcut_nanoseconds": 101879,
         "shortcut_path": [
             [
                 0.45558401942253113,
@@ -79185,7 +79185,7 @@
             0.2260778248310089
         ],
         "iterations": 253,
-        "nanoseconds": 1077481,
+        "nanoseconds": 1077231,
         "path": [
             [
                 0.6634876132011414,
@@ -79348,7 +79348,7 @@
                 -1.7198466062545776
             ]
         ],
-        "shortcut_nanoseconds": 267078,
+        "shortcut_nanoseconds": 244729,
         "shortcut_path": [
             [
                 0.6634876132011414,
@@ -79580,7 +79580,7 @@
             0.2260778248310089
         ],
         "iterations": 1729,
-        "nanoseconds": 5992627,
+        "nanoseconds": 6128372,
         "path": [
             [
                 0.4438000023365021,
@@ -79813,7 +79813,7 @@
                 0.20533442497253418
             ]
         ],
-        "shortcut_nanoseconds": 185270,
+        "shortcut_nanoseconds": 172521,
         "shortcut_path": [
             [
                 0.4438000023365021,
@@ -80018,7 +80018,7 @@
             0.2260778248310089
         ],
         "iterations": 1077,
-        "nanoseconds": 4329976,
+        "nanoseconds": 4635172,
         "path": [
             [
                 0.30277547240257263,
@@ -80239,7 +80239,7 @@
                 -1.6192724704742432
             ]
         ],
-        "shortcut_nanoseconds": 234990,
+        "shortcut_nanoseconds": 220694,
         "shortcut_path": [
             [
                 0.30277547240257263,
@@ -80428,7 +80428,7 @@
             0.2260778248310089
         ],
         "iterations": 1289,
-        "nanoseconds": 3853177,
+        "nanoseconds": 4019819,
         "path": [
             [
                 0.4402349591255188,
@@ -80600,7 +80600,7 @@
                 -1.3615055084228516
             ]
         ],
-        "shortcut_nanoseconds": 128252,
+        "shortcut_nanoseconds": 127722,
         "shortcut_path": [
             [
                 0.4402349591255188,
@@ -80779,7 +80779,7 @@
             0.2260778248310089
         ],
         "iterations": 1387,
-        "nanoseconds": 4126622,
+        "nanoseconds": 4182905,
         "path": [
             [
                 0.32024136185646057,
@@ -80960,7 +80960,7 @@
                 -0.7068251371383667
             ]
         ],
-        "shortcut_nanoseconds": 225862,
+        "shortcut_nanoseconds": 226510,
         "shortcut_path": [
             [
                 0.32024136185646057,
@@ -81203,7 +81203,7 @@
             0.2260778248310089
         ],
         "iterations": 2792,
-        "nanoseconds": 10492252,
+        "nanoseconds": 10892326,
         "path": [
             [
                 0.27378809452056885,
@@ -81426,7 +81426,7 @@
                 -0.49870505928993225
             ]
         ],
-        "shortcut_nanoseconds": 403077,
+        "shortcut_nanoseconds": 438645,
         "shortcut_path": [
             [
                 0.27378809452056885,
@@ -81757,7 +81757,7 @@
             0.2260778248310089
         ],
         "iterations": 5979,
-        "nanoseconds": 15895068,
+        "nanoseconds": 16344941,
         "path": [
             [
                 0.44641420245170593,
@@ -82136,7 +82136,7 @@
                 -0.3913547396659851
             ]
         ],
-        "shortcut_nanoseconds": 763873,
+        "shortcut_nanoseconds": 811854,
         "shortcut_path": [
             [
                 0.44641420245170593,
@@ -82381,7 +82381,7 @@
             0.2260778248310089
         ],
         "iterations": 5019,
-        "nanoseconds": 13705025,
+        "nanoseconds": 13907228,
         "path": [
             [
                 0.382922887802124,
@@ -82602,7 +82602,7 @@
                 0.5166652798652649
             ]
         ],
-        "shortcut_nanoseconds": 405419,
+        "shortcut_nanoseconds": 435332,
         "shortcut_path": [
             [
                 0.382922887802124,
@@ -82926,7 +82926,7 @@
             0.2260778248310089
         ],
         "iterations": 4647,
-        "nanoseconds": 19607857,
+        "nanoseconds": 19658744,
         "path": [
             [
                 0.39177921414375305,
@@ -83284,7 +83284,7 @@
                 0.2285551279783249
             ]
         ],
-        "shortcut_nanoseconds": 1049760,
+        "shortcut_nanoseconds": 1061525,
         "shortcut_path": [
             [
                 0.39177921414375305,
@@ -83692,7 +83692,7 @@
             0.2260778248310089
         ],
         "iterations": 4007,
-        "nanoseconds": 12387595,
+        "nanoseconds": 12384367,
         "path": [
             [
                 0.5756499767303467,
@@ -84083,7 +84083,7 @@
                 -0.8528361916542053
             ]
         ],
-        "shortcut_nanoseconds": 1349227,
+        "shortcut_nanoseconds": 1341372,
         "shortcut_path": [
             [
                 0.5756499767303467,
@@ -84245,7 +84245,7 @@
             0.2260778248310089
         ],
         "iterations": 50,
-        "nanoseconds": 470683,
+        "nanoseconds": 457381,
         "path": [
             [
                 0.2677655518054962,
@@ -84369,7 +84369,7 @@
                 -0.49058806896209717
             ]
         ],
-        "shortcut_nanoseconds": 160392,
+        "shortcut_nanoseconds": 133281,
         "shortcut_path": [
             [
                 0.2677655518054962,
@@ -84600,7 +84600,7 @@
             0.2260778248310089
         ],
         "iterations": 6783,
-        "nanoseconds": 20792772,
+        "nanoseconds": 20617651,
         "path": [
             [
                 0.39955446124076843,
@@ -84861,7 +84861,7 @@
                 0.4653995633125305
             ]
         ],
-        "shortcut_nanoseconds": 549168,
+        "shortcut_nanoseconds": 572837,
         "shortcut_path": [
             [
                 0.39955446124076843,
@@ -85113,7 +85113,7 @@
             0.2260778248310089
         ],
         "iterations": 5479,
-        "nanoseconds": 14212937,
+        "nanoseconds": 13771668,
         "path": [
             [
                 0.3475232422351837,
@@ -85337,7 +85337,7 @@
                 0.3503149747848511
             ]
         ],
-        "shortcut_nanoseconds": 401993,
+        "shortcut_nanoseconds": 378835,
         "shortcut_path": [
             [
                 0.3475232422351837,
@@ -85451,7 +85451,7 @@
             0.2260778248310089
         ],
         "iterations": 78,
-        "nanoseconds": 524509,
+        "nanoseconds": 498764,
         "path": [
             [
                 0.6038233041763306,
@@ -85555,7 +85555,7 @@
                 -1.439736008644104
             ]
         ],
-        "shortcut_nanoseconds": 58464,
+        "shortcut_nanoseconds": 48360,
         "shortcut_path": [
             [
                 0.6038233041763306,

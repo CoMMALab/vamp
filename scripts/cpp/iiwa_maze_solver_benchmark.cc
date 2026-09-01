@@ -298,7 +298,7 @@ auto main(int, char **) -> int
     vamp::planning::RRTCSettings rrtc_settings;
     rrtc_settings.range = 0.75F;
     rrtc_settings.max_iterations = 500000;
-    rrtc_settings.max_samples = 500000;
+    rrtc_settings.max_samples = 5000000;
     rrtc_settings.dynamic_domain = false;
 
     const TaskLocalPlanner task_local_planner;

@@ -164,7 +164,7 @@ namespace vamp::planning::constraint
             const typename Space::template StateBlock<rake> &interp_block,
             const Environment &environment) const noexcept -> bool
         {
-            return resolve_and_check_impl(interp_block, environment);
+            return resolve_and_check_impl(interp_block, environment).ok;
         }
 
         static inline void set_support_polygon(const std::vector<std::array<float, 2>> &polygon_xy) noexcept
@@ -307,7 +307,8 @@ namespace vamp::planning::constraint
             const Configuration &start,
             const Configuration &goal,
             const Environment &environment,
-            std::vector<Configuration> *outer_samples = nullptr) const noexcept -> bool
+            std::vector<Configuration> *outer_samples = nullptr,
+            bool collect_waypoints = false) const noexcept -> bool
         {
             // std::cout << "Attempting to connect start ";
             // print_configuration(start, "start");
@@ -321,20 +322,37 @@ namespace vamp::planning::constraint
             const auto t_step = FloatVector<rake>::fill(1.F / static_cast<float>(rake * n));
 
             typename Space::template StateBlock<rake> interp_block;
-            typename Ambient::template ConfigurationBlock<rake> ambient_block;
             auto t_block = percents;
             Space::template interpolate_block<rake>(start, goal, t_block, interp_block);
 
-            if (not resolve_and_check_impl(interp_block, environment, distance, &ambient_block))
+            auto resolved = resolve_and_check_impl(interp_block, environment, distance);
+            if (not resolved.ok)
             {
                 return false;
             }
+
+            const auto &ambient_block = resolved.block;
 
             if (outer_samples != nullptr)
             {
                 for (std::size_t lane = 0; lane < rake; ++lane)
                 {
                     outer_samples->emplace_back(extract_lane(interp_block, lane));
+                }
+            }
+
+            if (collect_waypoints)
+            {
+                chain_.clear();
+                std::array<float, Space::dimension> lane_arr;
+                for (std::size_t lane = 7; lane < rake - 1; ++lane)
+                {
+                    for (std::size_t dim = 0; dim < Space::dimension; ++dim)
+                    {
+                        lane_arr[dim] = interp_block[{dim, lane}];
+                    }
+
+                    chain_.emplace_back(lane_arr);
                 }
             }
 
@@ -366,20 +384,21 @@ namespace vamp::planning::constraint
                 t_block = t_block - t_step;
                 Space::template interpolate_block<rake>(start, goal, t_block, interp_block);
 
-                if (not resolve_and_check_impl(interp_block, environment, distance, &ambient_block))
+                resolved = resolve_and_check_impl(interp_block, environment, distance);
+                if (not resolved.ok)
                 {
                     return false;
                 }
 
                 for (std::size_t lane = 0; lane < rake; ++lane)
                 {
-                    if (joint_delta_exceeds(prev_block, lane, ambient_block, lane))
+                    if (joint_delta_exceeds(prev_block, lane, resolved.block, lane))
                     {
                         return false;
                     }
                 }
 
-                prev_block = ambient_block;
+                prev_block = resolved.block;
             }
 
             for (std::size_t lane = 1; lane < rake; ++lane)
@@ -393,39 +412,58 @@ namespace vamp::planning::constraint
             return true;
         }
 
+        // Resolved-block result of resolve_and_check_impl: `block` is only meaningful when
+        // `ok` is true (all checks passed), so callers never need to distinguish "not
+        // resolved yet" from "resolved but invalid" -- mirrors how ConstrainedLocalPlanner's
+        // trace() only records a waypoint once its checks have passed.
+        struct ResolveResult
+        {
+            bool ok = false;
+            typename Ambient::template ConfigurationBlock<rake> block{};
+        };
+
         inline auto resolve_and_check_impl(
             const typename Space::template StateBlock<rake> &interp_block,
             const Environment &environment,
-            const float distance = 100.F,
-            typename Ambient::template ConfigurationBlock<rake> *ambient_out = nullptr
-        ) const noexcept -> bool
+            const float distance = 100.F) const noexcept -> ResolveResult
         {
             // just reject if the sampled eefs are in collision
-            auto eef_coll_res = Space::template eefs_collision_free<rake>(environment, interp_block);
-            if (not eef_coll_res)
             {
-                return false;
+                VAMP_PROFILE_SCOPE(EEFCollisionCheck);
+                auto eef_coll_res = Space::template eefs_collision_free<rake>(environment, interp_block);
+                if (not eef_coll_res)
+                {
+                    return {};
+                }
             }
 
-            auto [param_valid, ambient_block] = Space::template resolve_block<rake>(interp_block);
+            auto [param_valid, ambient_block] = [&]
+            {
+                VAMP_PROFILE_SCOPE(ResolveIK);
+                return Space::template resolve_block<rake>(interp_block);
+            }();
             if (not param_valid)
             {
-                return false;
+                return {};
             }
 
-            if (ambient_out != nullptr)
             {
-                *ambient_out = ambient_block;
+                VAMP_PROFILE_SCOPE(SupportPolygon);
+                if (not com_within_support_polygon(ambient_block))
+                {
+                    return {};
+                }
             }
 
-            if (not com_within_support_polygon(ambient_block))
+            const bool collision_free = [&]
             {
-                return false;
-            }
+                VAMP_PROFILE_SCOPE(CollisionCheck);
+                return (environment.attachments.empty()) ?
+                           Ambient::template fkcc<rake>(environment, ambient_block) :
+                           Ambient::template fkcc_attach<rake>(environment, ambient_block);
+            }();
 
-            return (environment.attachments.empty()) ?
-                       Ambient::template fkcc<rake>(environment, ambient_block) :
-                       Ambient::template fkcc_attach<rake>(environment, ambient_block);
+            return {collision_free, ambient_block};
         }
     };
 }  // namespace vamp::planning::constraint

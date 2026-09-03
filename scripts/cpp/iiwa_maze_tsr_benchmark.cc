@@ -190,7 +190,7 @@ static bool load_cuboids_from_json(EnvironmentInput &environment, const std::str
     return true;
 }
 
-auto main(int, char **) -> int
+auto main(int argc, char **argv) -> int
 {
     EnvironmentInput environment;
 
@@ -371,7 +371,8 @@ auto main(int, char **) -> int
     };
 
     nlohmann::json all_paths = nlohmann::json::array();
-    const char *paths_output_path = "resources/iiwa_marker/maze_solver_mcvamp_benchmark_paths.json";
+    const std::string paths_output_path =
+        (argc > 1) ? argv[1] : "resources/iiwa_marker/maze_solver_mcvamp_benchmark_paths.json";
 
     std::vector<Problem> problems;
     std::string problem_json_path = "resources/iiwa_marker/maze_problems_checked_ik.json";

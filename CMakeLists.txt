@@ -207,9 +207,26 @@ if(VAMP_BUILD_CPP_DEMO)
       scripts/cpp/bimanual_iiwa_leader_follower_shelf.cc)
     target_link_libraries(vamp_bimanual_iiwa_leader_follower_shelf PRIVATE vamp_cpp)
 
+    add_executable(vamp_bimanual_iiwa_projection_shelf
+      scripts/cpp/bimanual_iiwa_projection_shelf.cc)
+    target_link_libraries(vamp_bimanual_iiwa_projection_shelf PRIVATE vamp_cpp)
+
+    add_executable(vamp_bimanual_iiwa_parameterized_shelf
+      scripts/cpp/bimanual_iiwa_parameterized_shelf.cc)
+    target_link_libraries(vamp_bimanual_iiwa_parameterized_shelf PRIVATE vamp_cpp)
+
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
       target_compile_options(vamp_bimanual_iiwa_leader_follower_shelf PRIVATE
         -Wno-c++11-narrowing -Wno-sign-compare)
+      target_compile_options(vamp_bimanual_iiwa_projection_shelf PRIVATE
+        -Wno-c++11-narrowing -Wno-sign-compare)
+      target_compile_options(vamp_bimanual_iiwa_parameterized_shelf PRIVATE
+        -Wno-c++11-narrowing -Wno-sign-compare)
+    endif()
+    if(VAMP_ENABLE_PROFILING)
+      target_compile_definitions(vamp_bimanual_iiwa_leader_follower_shelf PRIVATE VAMP_PROFILING)
+      target_compile_definitions(vamp_bimanual_iiwa_projection_shelf PRIVATE VAMP_PROFILING)
+      target_compile_definitions(vamp_bimanual_iiwa_parameterized_shelf PRIVATE VAMP_PROFILING)
     endif()
   endif()
 endif()

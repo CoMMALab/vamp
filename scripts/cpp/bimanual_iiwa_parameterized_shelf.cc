@@ -1,21 +1,32 @@
-// C++ port of scripts/bimanual_iiwa_leader_follower_shelf.py: leader-follower task-space
-// RRTC planning over BimanualIiwa::LeaderFollowerSpace, reproducing the
-// iiwa_parameterized_ik_planner branch's BimanualIiwa shelf problem (scripts/
-// bimanual_iiwa.py / scripts/cpp/iiwa_try.cc) on the current
-// `bimanualiiwa.leader_follower_space` mechanism instead of that branch's old flat
-// `use_parameterized_ik`/`ik_parameters` one. See the python script's module docstring
-// for the full field-mapping rationale (old ik_parameters[0:3] -> smm, ik_parameters[3:10]
-// -> rel_pose).
+// ParameterizedSpace counterpart of bimanual_iiwa_leader_follower_shelf.cc: same shelf
+// scenario, but planning over BimanualIiwa::ParameterizedSpace (both arms IK'd from a
+// shared mid-frame task-space pose: t_mid_pose(7) + psi_left(1) + psi_right(1)) instead of
+// LeaderFollowerSpace (leader sampled directly in joint space, only the follower IK'd).
+//
+// The fixed hand-to-mid-frame offsets (t_mid_left / t_mid_right) are derived by calling
+// ParameterizedSpace::compute_mid_pose() on a known-valid reference ambient configuration
+// (kReferenceConfig below, the same "bottom" pose used elsewhere), rather than hand-typed
+// literals -- this is the "call compute midpose on the start pose to get and fix the
+// relative transforms" step.
+//
+// TODO(fill in): generate_problem_states() below is a stub. Unlike LeaderFollowerSpace
+// (whose named bottom/middle/top states are directly hand-authored 8-dim task-space
+// states, reused verbatim from the reference project), ParameterizedSpace's psi_left/
+// psi_right have no closed-form inverse from an ambient configuration -- resolve_block()
+// only goes task-space -> ambient, not the other way -- so the bottom/middle/top named
+// states can't be reconstructed the same way. Two options were discussed and left for
+// later:
+//   (a) Draw random valid states: ParameterizedSpace::sample() -> resolve_block<rake> ->
+//       collision-check, retrying until a valid (start, goal) pair is found per trial.
+//   (b) Numerically solve for psi_left/psi_right per named pose (bottom/middle/top) so
+//       resolve_block's ambient output FK-matches those references, reproducing the same
+//       named problems the other two benchmark files use.
+// Until generate_problem_states() returns at least two states, main() prints a notice and
+// exits without planning -- everything else in this file (environment, mid-pose fixing,
+// RRTC/local-planner wiring, stats, trajectory dump) is fully wired up and ready.
 //
 // Usage:
-//   vamp_bimanual_iiwa_leader_follower_shelf [n_trials] [range] [trajectory_dir]
-//
-// Every solved trial's shortcut path is resolved from LeaderFollowerSpace states to full
-// 14-dof ambient configurations, interpolated to Robot::resolution, and dumped to
-// <trajectory_dir>/trial_<n>_<start>_to_<goal>.txt: one waypoint per line, its
-// Robot::dimension joint values comma-separated (same format
-// vamp_bimanual_example_iiwa.cc wrote its single best trajectory in), for offline
-// playback/visualization.
+//   vamp_bimanual_iiwa_parameterized_shelf [n_trials] [range] [trajectory_dir]
 
 #include <algorithm>
 #include <array>
@@ -37,66 +48,31 @@
 #include <vamp/planning/simplify.hh>
 #include <vamp/random/halton.hh>
 #include <vamp/robots/bimanual_iiwa.hh>
+#include <vamp/utils/profiling.hh>
 #include <vamp/vector.hh>
 
 using Robot = vamp::robots::BimanualIiwa;
-using LeaderFollowerSpace = Robot::LeaderFollowerSpace;
+using ParameterizedSpace = Robot::ParameterizedSpace;
 static constexpr const std::size_t rake = vamp::FloatVectorWidth;
 using EnvironmentInput = vamp::collision::Environment<float>;
 using EnvironmentVector = vamp::collision::Environment<vamp::FloatVector<rake>>;
 
-using TaskRRTC = vamp::planning::RRTC<Robot, rake, Robot::resolution, LeaderFollowerSpace>;
-using TaskLocalPlanner =
-    vamp::planning::constraint::ParameterizedLocalPlanner<Robot, rake, Robot::resolution, LeaderFollowerSpace>;
+using TaskRRTC = vamp::planning::RRTC<Robot, rake, Robot::resolution, ParameterizedSpace>;
+using TaskLocalPlanner = vamp::planning::constraint::
+    ParameterizedLocalPlanner<Robot, rake, Robot::resolution, ParameterizedSpace>;
 
-// Default closure parameters from the old branch's BimanualIiwa::ik_parameters
-// ({1.0, 1.0, -1.0, 0.0, 0.0, 0.6, 0.927184, -0.374607, 0.0, 0.0}): first 3 are the
-// follower's self-motion-manifold branch (smm), last 7 are the fixed leader-to-follower
-// hand offset (rel_pose), as (x, y, z, qx, qy, qz, qw).
-constexpr std::array<float, 3> kDefaultSmm = {1.0F, 1.0F, -1.0F};
-constexpr std::array<float, 7> kDefaultRelPose = {0.0F, 0.0F, 0.6F, 0.927184F, -0.374607F, 0.0F, 0.0F};
+// A known-valid full 14-dof ambient configuration for this shelf scenario (the "bottom"
+// pose from resources/start_end_points/bimanual_iiwa.txt, same as used in
+// bimanual_iiwa_projection_shelf.cc / bimanual_iiwa_leader_follower_shelf.cc) -- the
+// reference `compute_mid_pose()` is called on to fix t_mid_left/t_mid_right.
+constexpr Robot::ConfigurationArray kReferenceConfig = {{
+    -0.6430910102907225F,   1.9156121024586796F, -1.7968254667817805F, 1.2945447141185198F,
+    -0.023834531305537934F, -0.876966810663043F, -1.7041643160834519F, 0.7137057906077047F,
+    1.9675104645685881F,    1.728621289619734F,  1.297295659493332F,   0.16350904416645204F,
+    -0.9339939993465736F,   2.3860537824177745F}};
 
-// The three named problem states from the old branch's scripts/bimanual_iiwa.py /
-// resources/iiwa/example_points.txt: each is (7 leader/left-arm joint angles, psi) --
-// exactly LeaderFollowerSpace::State's 8-element layout.
-struct NamedState
-{
-    std::string label;
-    LeaderFollowerSpace::StateArray array;
-};
-
-const std::vector<NamedState> kNamedStates = {
-    {"bottom",
-     {{-0.6430910102907225F,
-       1.9156121024586796F,
-       -1.7968254667817805F,
-       1.2945447141185198F,
-       -0.023834531305537934F,
-       -0.876966810663043F,
-       -1.7041643160834519F,
-       1.45F}}},
-    {"middle",
-     {{-0.5997312520566763F,
-       1.489780849654964F,
-       -1.4739679827359913F,
-       1.2905366081785483F,
-       -0.04421061906813227F,
-       -0.8793712572715165F,
-       -1.1603461715511334F,
-       1.45F}}},
-    {"top",
-     {{-0.1994994216078726F,
-       0.9140739951190965F,
-       -2.236618320862171F,
-       0.5238879195899456F,
-       0.7998441913611017F,
-       -1.3575398006936048F,
-       -1.0153092816310436F,
-       2.41F}}},
-};
-
-// Shelf cuboids from the old branch's resources/iiwa/cuboids/shelf_drake.txt: each row is
-// (x, y, z, dx, dy, dz) -- position + *full* extents (halved below to match
+// Shelf cuboids, identical to bimanual_iiwa_leader_follower_shelf.cc's kShelfCuboids: each
+// row is (x, y, z, dx, dy, dz) -- position + *full* extents (halved below to match
 // vamp::collision::factory::cuboid's half-extent convention).
 const std::vector<std::array<float, 6>> kShelfCuboids = {
     {0.8F, 0.3825F, 0.3F, 0.4F, 1.0F, 0.014F},
@@ -104,6 +80,20 @@ const std::vector<std::array<float, 6>> kShelfCuboids = {
     {1.0F, 0.3825F, 0.45F, 0.03F, 1.0F, 0.9F},
     {0.4F, 0.3825F, -0.2F, 5.0F, 5.0F, 0.2F},
 };
+
+// Sanity-check the reference ambient configuration directly against the environment (no
+// IK, no task-space resolution -- it's already a real joint configuration).
+auto is_config_valid(const Robot::Configuration &q, const EnvironmentVector &environment_v) -> bool
+{
+    Robot::ConfigurationBlock<rake> block;
+    for (std::size_t i = 0; i < Robot::dimension; ++i)
+    {
+        block[i] = q.broadcast(i);
+    }
+
+    return (environment_v.attachments.empty()) ? Robot::template fkcc<rake>(environment_v, block) :
+                                                  Robot::template fkcc_attach<rake>(environment_v, block);
+}
 
 auto build_environment() -> EnvironmentInput
 {
@@ -120,19 +110,31 @@ auto build_environment() -> EnvironmentInput
     return environment;
 }
 
-// IK-resolve a task-space state and collision-check the resulting ambient configuration.
-// Returns (valid, ambient_block); ambient_block is only meaningful when valid is true.
-auto resolve_and_validate(
-    const LeaderFollowerSpace::State &state,
-    const EnvironmentVector &environment_v) -> std::pair<bool, Robot::ConfigurationBlock<rake>>
+struct NamedState
 {
-    LeaderFollowerSpace::StateBlock<rake> block;
-    for (std::size_t i = 0; i < LeaderFollowerSpace::dimension; ++i)
+    std::string label;
+    ParameterizedSpace::StateArray array;
+};
+
+// TODO(fill in): see file header. Returns fewer than 2 states until real problem
+// generation is implemented, which main() treats as "nothing to plan."
+auto generate_problem_states(const EnvironmentVector & /*environment_v*/) -> std::vector<NamedState>
+{
+    return {};
+}
+
+// IK-resolve a task-space state and collision-check the resulting ambient configuration,
+// same as bimanual_iiwa_leader_follower_shelf.cc's resolve_and_validate.
+auto resolve_and_validate(const ParameterizedSpace::State &state, const EnvironmentVector &environment_v)
+    -> std::pair<bool, Robot::ConfigurationBlock<rake>>
+{
+    ParameterizedSpace::StateBlock<rake> block;
+    for (std::size_t i = 0; i < ParameterizedSpace::dimension; ++i)
     {
         block[i] = state.broadcast(i);
     }
 
-    auto [valid, ambient_block] = LeaderFollowerSpace::resolve_block<rake>(block);
+    auto [valid, ambient_block] = ParameterizedSpace::resolve_block<rake>(block);
     if (not valid)
     {
         return {false, ambient_block};
@@ -145,11 +147,6 @@ auto resolve_and_validate(
     return {collision_free, ambient_block};
 }
 
-// Per-(start, goal)-pair planning statistics, accumulated over every trial that drew that
-// pair. Time/iteration stats are computed over solved trials only (an unsolved trial has
-// no meaningful path cost, but its time/iterations are still noise dominated by whatever
-// iteration cap RRTC hit, not by the problem's actual difficulty); `total` counts every
-// trial that drew the pair, solved or not.
 struct PairStats
 {
     std::size_t total = 0;
@@ -180,23 +177,23 @@ auto median(std::vector<double> v) -> double
     return (n % 2 == 1) ? v[n / 2] : (v[n / 2 - 1] + v[n / 2]) / 2.0;
 }
 
-// Resolve a task-space path (LeaderFollowerSpace states) to full 14-dof ambient
+// Resolve a task-space path (ParameterizedSpace states) to full 14-dof ambient
 // configurations and dump one waypoint per line, comma-separated -- matches
-// vamp_bimanual_example_iiwa.cc's trajectory.txt format. A waypoint that fails to
-// resolve (shouldn't happen on an already-planned path, but resolve_block can fail
-// numerically) is skipped rather than aborting the whole dump.
-void write_task_path(const vamp::planning::Path<Robot, LeaderFollowerSpace> &path, const std::filesystem::path &file)
+// vamp_bimanual_example_iiwa.cc's trajectory.txt format. A waypoint that fails to resolve
+// (shouldn't happen on an already-planned path, but resolve_block can fail numerically)
+// is skipped rather than aborting the whole dump.
+void write_task_path(const vamp::planning::Path<Robot, ParameterizedSpace> &path, const std::filesystem::path &file)
 {
     std::ofstream out(file);
     for (const auto &state : path)
     {
-        LeaderFollowerSpace::StateBlock<rake> block;
-        for (std::size_t i = 0; i < LeaderFollowerSpace::dimension; ++i)
+        ParameterizedSpace::StateBlock<rake> block;
+        for (std::size_t i = 0; i < ParameterizedSpace::dimension; ++i)
         {
             block[i] = state.broadcast(i);
         }
 
-        auto [valid, ambient_block] = LeaderFollowerSpace::resolve_block<rake>(block);
+        auto [valid, ambient_block] = ParameterizedSpace::resolve_block<rake>(block);
         if (not valid)
         {
             continue;
@@ -221,26 +218,43 @@ auto main(int argc, char **argv) -> int
     const std::size_t n_trials = (argc > 1) ? static_cast<std::size_t>(std::stoul(argv[1])) : 100;
     const float range = (argc > 2) ? std::stof(argv[2]) : 0.5F;
     const std::filesystem::path trajectory_dir =
-        (argc > 3) ? argv[3] : "trajectories/bimanual_iiwa_leader_follower_shelf";
+        (argc > 3) ? argv[3] : "trajectories/bimanual_iiwa_parameterized_shelf";
     std::filesystem::create_directories(trajectory_dir);
     std::cout << "Writing shortcut trajectories to: " << trajectory_dir << std::endl;
 
     std::cout << std::boolalpha;
     std::cout << "Robot::dimension (ambient/joint space): " << Robot::dimension << std::endl;
-    std::cout << "LeaderFollowerSpace::dimension (task space): " << LeaderFollowerSpace::dimension << std::endl;
-
-    LeaderFollowerSpace::set_smm(kDefaultSmm);
-    LeaderFollowerSpace::rel_pose = kDefaultRelPose;
+    std::cout << "ParameterizedSpace::dimension (task space): " << ParameterizedSpace::dimension << std::endl;
 
     const EnvironmentInput environment = build_environment();
     const EnvironmentVector environment_v(environment);
     std::cout << "Environment has " << environment_v.cuboids.size() << " cuboids (shelf)." << std::endl;
 
-    std::cout << "\n--- Checking the three named problem states ---" << std::endl;
-    std::vector<NamedState> valid_states;
-    for (const auto &named : kNamedStates)
+    if (not is_config_valid(Robot::Configuration(kReferenceConfig), environment_v))
     {
-        LeaderFollowerSpace::State state(named.array.data());
+        std::cout << "Warning: kReferenceConfig is in collision under the current shelf geometry." << std::endl;
+    }
+
+    // Fix the hand-to-mid-frame offsets from the reference configuration -- "call compute
+    // midpose on the start pose to get and fix the relative transforms."
+    ParameterizedSpace::compute_mid_pose(kReferenceConfig);
+    std::cout << "t_mid_left:  ";
+    for (const auto v : ParameterizedSpace::t_mid_left)
+    {
+        std::cout << v << " ";
+    }
+    std::cout << "\nt_mid_right: ";
+    for (const auto v : ParameterizedSpace::t_mid_right)
+    {
+        std::cout << v << " ";
+    }
+    std::cout << std::endl;
+
+    std::cout << "\n--- Generating problem states (TODO: see file header) ---" << std::endl;
+    std::vector<NamedState> valid_states;
+    for (const auto &named : generate_problem_states(environment_v))
+    {
+        ParameterizedSpace::State state(named.array.data());
         const auto [valid, ambient_block] = resolve_and_validate(state, environment_v);
         std::cout << named.label << ": resolve+validate = " << valid << std::endl;
         if (valid)
@@ -251,8 +265,9 @@ auto main(int argc, char **argv) -> int
 
     if (valid_states.size() < 2)
     {
-        std::cout << "Fewer than two named states are valid under this rel_pose/smm; nothing to plan."
-                   << std::endl;
+        std::cout << "\ngenerate_problem_states() hasn't been filled in yet (see the TODO at the top of "
+                     "this file) -- nothing to plan."
+                  << std::endl;
         return 0;
     }
 
@@ -265,7 +280,7 @@ auto main(int argc, char **argv) -> int
 
     std::size_t solved_count = 0;
     std::map<std::string, PairStats> stats_by_pair;
-    auto task_rng = std::make_shared<vamp::rng::Halton<Robot, LeaderFollowerSpace>>();
+    auto task_rng = std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>();
 
     for (std::size_t trial = 0; trial < n_trials; ++trial)
     {
@@ -282,9 +297,8 @@ auto main(int argc, char **argv) -> int
         auto &pair_stats = stats_by_pair[pair_label];
         ++pair_stats.total;
 
-        LeaderFollowerSpace::State start_state(start_named.array.data());
-        LeaderFollowerSpace::State goal_state(goal_named.array.data());
-
+        ParameterizedSpace::State start_state(start_named.array.data());
+        ParameterizedSpace::State goal_state(goal_named.array.data());
 
         const auto t0 = std::chrono::steady_clock::now();
         auto result = TaskRRTC::solve<TaskLocalPlanner>(
@@ -304,7 +318,7 @@ auto main(int argc, char **argv) -> int
 
             const float cost_before = result.path.cost();
             vamp::planning::ShortcutSettings shortcut_settings;
-            vamp::planning::shortcut_path<Robot, rake, Robot::resolution, TaskLocalPlanner, LeaderFollowerSpace>(
+            vamp::planning::shortcut_path<Robot, rake, Robot::resolution, TaskLocalPlanner, ParameterizedSpace>(
                 result.path, environment_v, shortcut_settings, TaskLocalPlanner());
 
             std::cout << ", cost " << cost_before << " -> " << result.path.cost() << ", path size "
@@ -332,6 +346,11 @@ auto main(int argc, char **argv) -> int
         std::cout << "  mean iterations: " << mean(pair_stats.iterations) << std::endl;
         std::cout << "  median iterations: " << median(pair_stats.iterations) << std::endl;
     }
+
+#ifdef VAMP_PROFILING
+    std::cout << "\n--- Kernel profiling (aggregated over all trials) ---" << std::endl;
+    vamp::utils::profiling::report(std::cout);
+#endif
 
     return 0;
 }

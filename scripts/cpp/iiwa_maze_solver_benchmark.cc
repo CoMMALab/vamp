@@ -187,7 +187,7 @@ static auto resolve_and_check(
     return Robot::fkcc<rake>(environment_v, ambient_block);
 }
 
-auto main(int, char **) -> int
+auto main(int argc, char **argv) -> int
 {
     EnvironmentInput environment;
 
@@ -421,7 +421,8 @@ auto main(int, char **) -> int
     };
 
     nlohmann::json all_paths = nlohmann::json::array();
-    const char *paths_output_path = "resources/iiwa_marker/maze_solver_benchmark_paths.json";
+    const std::string paths_output_path =
+        (argc > 1) ? argv[1] : "resources/iiwa_marker/maze_solver_benchmark_paths.json";
 
     {
         const ParameterizedSpace::State start_state(start_pose_array.data());

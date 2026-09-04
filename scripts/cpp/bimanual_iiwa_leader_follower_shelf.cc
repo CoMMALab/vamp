@@ -8,7 +8,7 @@
 // -> rel_pose).
 //
 // Usage:
-//   vamp_bimanual_iiwa_leader_follower_shelf [n_trials] [range] [trajectory_dir]
+//   vamp_bimanual_iiwa_leader_follower_shelf [n_trials] [range] [trajectory_dir] [results_csv]
 //
 // Every solved trial's shortcut path is resolved from LeaderFollowerSpace states to full
 // 14-dof ambient configurations, interpolated to Robot::resolution, and dumped to
@@ -16,10 +16,22 @@
 // Robot::dimension joint values comma-separated (same format
 // vamp_bimanual_example_iiwa.cc wrote its single best trajectory in), for offline
 // playback/visualization.
+//
+// Every trial (solved or not) also gets one row in <results_csv> --
+// method,trial,pair,solved,planning_time_ms,iterations,shortcut_time_ms,config_distance,
+// eef_distance -- for offline analysis/plotting (see scripts/plot_bimanual_results.py).
+// config_distance/eef_distance are the SHORTCUT path's length only, computed on the
+// resolved ambient waypoints (task-space distance isn't ambient config-space distance):
+// config_distance is summed Robot::Configuration::distance() (ambient 14-dof Euclidean)
+// between consecutive resolved waypoints; eef_distance is each hand's SE3 path length
+// (translation distance and rotation angle combined in quadrature, matching
+// iiwa_maze_tsr_benchmark.cc's se3_distance), averaged over the two hands since they move
+// together under the closure constraint.
 
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -28,6 +40,8 @@
 #include <random>
 #include <string>
 #include <vector>
+
+#include <Eigen/Geometry>
 
 #include <vamp/collision/environment.hh>
 #include <vamp/collision/factory.hh>
@@ -156,6 +170,9 @@ struct PairStats
     std::size_t solved = 0;
     std::vector<double> times_ms;
     std::vector<double> iterations;
+    std::vector<double> shortcut_times_ms;
+    std::vector<double> config_distances;
+    std::vector<double> eef_distances;
 };
 
 auto mean(const std::vector<double> &v) -> double
@@ -181,13 +198,14 @@ auto median(std::vector<double> v) -> double
 }
 
 // Resolve a task-space path (LeaderFollowerSpace states) to full 14-dof ambient
-// configurations and dump one waypoint per line, comma-separated -- matches
-// vamp_bimanual_example_iiwa.cc's trajectory.txt format. A waypoint that fails to
-// resolve (shouldn't happen on an already-planned path, but resolve_block can fail
-// numerically) is skipped rather than aborting the whole dump.
-void write_task_path(const vamp::planning::Path<Robot, LeaderFollowerSpace> &path, const std::filesystem::path &file)
+// configurations, in order. A waypoint that fails to resolve (shouldn't happen on an
+// already-planned path, but resolve_block can fail numerically) is skipped rather than
+// aborting.
+auto resolve_ambient_waypoints(const vamp::planning::Path<Robot, LeaderFollowerSpace> &path)
+    -> std::vector<Robot::ConfigurationArray>
 {
-    std::ofstream out(file);
+    std::vector<Robot::ConfigurationArray> waypoints;
+    waypoints.reserve(path.size());
     for (const auto &state : path)
     {
         LeaderFollowerSpace::StateBlock<rake> block;
@@ -202,6 +220,25 @@ void write_task_path(const vamp::planning::Path<Robot, LeaderFollowerSpace> &pat
             continue;
         }
 
+        Robot::ConfigurationArray array{};
+        for (std::size_t i = 0; i < Robot::dimension; ++i)
+        {
+            array[i] = ambient_block[{i, 0}];
+        }
+
+        waypoints.push_back(array);
+    }
+
+    return waypoints;
+}
+
+// One waypoint per line, its Robot::dimension joint values comma-separated -- matches
+// vamp_bimanual_example_iiwa.cc's trajectory.txt format.
+void write_ambient_path(const std::vector<Robot::ConfigurationArray> &waypoints, const std::filesystem::path &file)
+{
+    std::ofstream out(file);
+    for (const auto &array : waypoints)
+    {
         for (std::size_t i = 0; i < Robot::dimension; ++i)
         {
             if (i != 0)
@@ -209,11 +246,56 @@ void write_task_path(const vamp::planning::Path<Robot, LeaderFollowerSpace> &pat
                 out << ",";
             }
 
-            out << ambient_block[{i, 0}];
+            out << array[i];
         }
 
         out << "\n";
     }
+}
+
+// Combined SE3 distance (translation distance and rotation angle in quadrature) between
+// two poses -- same formula as iiwa_maze_tsr_benchmark.cc's se3_distance.
+auto se3_distance(
+    const Eigen::Vector3f &ta,
+    const Eigen::Quaternionf &qa,
+    const Eigen::Vector3f &tb,
+    const Eigen::Quaternionf &qb) -> float
+{
+    const float translation_distance = (tb - ta).norm();
+    float dot = std::abs(static_cast<float>(qa.dot(qb)));
+    dot = std::min(1.0F, dot);
+    const float rotation_distance = 2.0F * std::acos(dot);
+    return std::sqrt(translation_distance * translation_distance + rotation_distance * rotation_distance);
+}
+
+struct PathMetrics
+{
+    float config_distance;
+    float eef_distance;
+};
+
+// config_distance: summed ambient (14-dof) Euclidean distance between consecutive
+// resolved waypoints. eef_distance: each hand's summed SE3 path length, averaged over
+// both hands (they move together under the closure constraint, so this isn't
+// double-counting so much as reporting "how far did the coupled pair of hands travel").
+auto compute_path_metrics(const std::vector<Robot::ConfigurationArray> &waypoints) -> PathMetrics
+{
+    PathMetrics metrics{0.0F, 0.0F};
+    for (std::size_t i = 0; i + 1 < waypoints.size(); ++i)
+    {
+        metrics.config_distance += Robot::Configuration(waypoints[i]).distance(Robot::Configuration(waypoints[i + 1]));
+
+        for (const std::size_t hand : {std::size_t{0}, std::size_t{1}})
+        {
+            const auto a = Robot::eefk(waypoints[i], hand);
+            const auto b = Robot::eefk(waypoints[i + 1], hand);
+            metrics.eef_distance +=
+                0.5F *
+                se3_distance(a.translation(), Eigen::Quaternionf(a.rotation()), b.translation(), Eigen::Quaternionf(b.rotation()));
+        }
+    }
+
+    return metrics;
 }
 
 auto main(int argc, char **argv) -> int
@@ -222,8 +304,23 @@ auto main(int argc, char **argv) -> int
     const float range = (argc > 2) ? std::stof(argv[2]) : 0.5F;
     const std::filesystem::path trajectory_dir =
         (argc > 3) ? argv[3] : "trajectories/bimanual_iiwa_leader_follower_shelf";
+    const std::filesystem::path results_csv_path =
+        (argc > 4) ? argv[4] : "results/bimanual_iiwa_leader_follower_shelf.csv";
     std::filesystem::create_directories(trajectory_dir);
+    std::filesystem::create_directories(results_csv_path.parent_path());
     std::cout << "Writing shortcut trajectories to: " << trajectory_dir << std::endl;
+    std::cout << "Writing per-trial results to: " << results_csv_path << std::endl;
+
+    std::ofstream results_csv(results_csv_path);
+    if (not results_csv)
+    {
+        std::cerr << "Failed to open results CSV for writing: " << results_csv_path << std::endl;
+        return 1;
+    }
+
+    results_csv << "method,trial,pair,solved,planning_time_ms,iterations,shortcut_time_ms,config_distance,"
+                   "eef_distance\n";
+    results_csv.flush();
 
     std::cout << std::boolalpha;
     std::cout << "Robot::dimension (ambient/joint space): " << Robot::dimension << std::endl;
@@ -295,6 +392,9 @@ auto main(int argc, char **argv) -> int
         std::cout << "trial " << trial << " (" << pair_label << "): solved=" << result.solved
                    << ", iterations=" << result.iterations << ", " << elapsed_ms << " ms";
 
+        results_csv << "leader_follower," << trial << ",\"" << pair_label << "\"," << result.solved << ","
+                    << elapsed_ms << "," << result.iterations << ",";
+
         if (result.solved)
         {
             ++solved_count;
@@ -303,19 +403,34 @@ auto main(int argc, char **argv) -> int
             pair_stats.iterations.push_back(static_cast<double>(result.iterations));
 
             const float cost_before = result.path.cost();
+            const auto shortcut_t0 = std::chrono::steady_clock::now();
             vamp::planning::ShortcutSettings shortcut_settings;
             vamp::planning::shortcut_path<Robot, rake, Robot::resolution, TaskLocalPlanner, LeaderFollowerSpace>(
                 result.path, environment_v, shortcut_settings, TaskLocalPlanner());
+            const auto shortcut_elapsed_ms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - shortcut_t0).count();
+            pair_stats.shortcut_times_ms.push_back(shortcut_elapsed_ms);
 
             std::cout << ", cost " << cost_before << " -> " << result.path.cost() << ", path size "
-                       << result.path.size();
+                       << result.path.size() << ", shortcut " << shortcut_elapsed_ms << " ms";
 
             result.path.interpolate_to_resolution(Robot::resolution);
+            const auto ambient_waypoints = resolve_ambient_waypoints(result.path);
+            const auto metrics = compute_path_metrics(ambient_waypoints);
+            pair_stats.config_distances.push_back(metrics.config_distance);
+            pair_stats.eef_distances.push_back(metrics.eef_distance);
+
+            std::cout << ", config distance " << metrics.config_distance << ", eef distance " << metrics.eef_distance;
+
             const std::string filename =
                 "trial_" + std::to_string(trial) + "_" + start_named.label + "_to_" + goal_named.label + ".txt";
-            write_task_path(result.path, trajectory_dir / filename);
+            write_ambient_path(ambient_waypoints, trajectory_dir / filename);
+
+            results_csv << shortcut_elapsed_ms << "," << metrics.config_distance << "," << metrics.eef_distance;
         }
 
+        results_csv << "\n";
+        results_csv.flush();
         std::cout << std::endl;
     }
 
@@ -331,6 +446,12 @@ auto main(int argc, char **argv) -> int
         std::cout << "  median time: " << median(pair_stats.times_ms) << " ms" << std::endl;
         std::cout << "  mean iterations: " << mean(pair_stats.iterations) << std::endl;
         std::cout << "  median iterations: " << median(pair_stats.iterations) << std::endl;
+        std::cout << "  mean shortcut time: " << mean(pair_stats.shortcut_times_ms) << " ms" << std::endl;
+        std::cout << "  median shortcut time: " << median(pair_stats.shortcut_times_ms) << " ms" << std::endl;
+        std::cout << "  mean config distance: " << mean(pair_stats.config_distances) << std::endl;
+        std::cout << "  median config distance: " << median(pair_stats.config_distances) << std::endl;
+        std::cout << "  mean eef distance: " << mean(pair_stats.eef_distances) << std::endl;
+        std::cout << "  median eef distance: " << median(pair_stats.eef_distances) << std::endl;
     }
 
     return 0;

@@ -26,10 +26,24 @@
 // scripts/mcflask_line_benchmark.py's "geo" baseline uses for panda via
 // pa.TaskSpaceConstraint(...)/pa.rrtc(..., constraints) -- as opposed to
 // iiwa_maze_solver_benchmark.cc's closed-form analytic IK (ParameterizedSpace::resolve_block).
+//
+// Usage:
+//   vamp_iiwa_maze_tsr_benchmark [paths_json] [results_csv]
+//
+// Every attempted problem (solved or not) gets one row in <results_csv> -- same schema as
+// bimanual_iiwa_*_shelf.cc's results CSVs (method,trial,pair,solved,planning_time_ms,
+// iterations,shortcut_time_ms,config_distance,eef_distance; "pair" is left blank, these
+// are numbered maze problems, not named start/goal pairs) -- so
+// scripts/plot_bimanual_results.py works unchanged on this file's output too.
+// shortcut_time_ms/config_distance/eef_distance are only populated for solved problems and
+// are the SHORTCUT path's values, not the raw RRTC path's; planning_time_ms/iterations are
+// recorded for every attempted (valid start/goal) problem, including ones RRTC failed to
+// solve.
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <numeric>
@@ -373,6 +387,22 @@ auto main(int argc, char **argv) -> int
     nlohmann::json all_paths = nlohmann::json::array();
     const std::string paths_output_path =
         (argc > 1) ? argv[1] : "resources/iiwa_marker/maze_solver_mcvamp_benchmark_paths.json";
+    const std::filesystem::path results_csv_path =
+        (argc > 2) ? argv[2] : "results/iiwa_maze_tsr_benchmark.csv";
+    std::filesystem::create_directories(results_csv_path.parent_path());
+    std::ofstream results_csv(results_csv_path);
+    if (not results_csv)
+    {
+        std::cerr << "Failed to open results CSV for writing: " << results_csv_path << std::endl;
+        return 1;
+    }
+
+    // Same schema as bimanual_iiwa_*_shelf.cc's results CSVs (see
+    // scripts/plot_bimanual_results.py) so the same plotting script works unchanged here --
+    // "pair" doesn't apply to these numbered maze problems, so it's left blank.
+    results_csv << "method,trial,pair,solved,planning_time_ms,iterations,shortcut_time_ms,config_distance,"
+                   "eef_distance\n";
+    results_csv.flush();
 
     std::vector<Problem> problems;
     std::string problem_json_path = "resources/iiwa_marker/maze_problems_checked_ik.json";
@@ -472,6 +502,10 @@ auto main(int argc, char **argv) -> int
             {
                 paths_file << all_paths.dump(4);
             }
+
+            results_csv << "iiwa_maze_tsr," << (total_num_problems - 1) << ",,1," << (result.nanoseconds / 1.0e6)
+                        << "," << result.iterations << "," << (shortcut_result.nanoseconds / 1.0e6) << ","
+                        << shortcut_configuration_distance << "," << shortcut_eef_distance << "\n";
         }
         else
         {
@@ -479,10 +513,16 @@ auto main(int argc, char **argv) -> int
             failed_iterations_per_problem.push_back(result.iterations);
             std::cout << "Unable to solve problem with start and goal configs after " << result.iterations
                       << " iterations, " << result.nanoseconds / 1000000.0 << " ms." << std::endl;
+
+            results_csv << "iiwa_maze_tsr," << (total_num_problems - 1) << ",,0," << (result.nanoseconds / 1.0e6)
+                        << "," << result.iterations << ",,,\n";
         }
+
+        results_csv.flush();
     }
 
     std::cout << "Saved " << all_paths.size() << " problem paths to " << paths_output_path << std::endl;
+    std::cout << "Saved per-problem results to " << results_csv_path << std::endl;
 
     const std::size_t failed_problems = valid_problems - successful_problems;
     std::cout << "Total problems: " << total_num_problems << std::endl

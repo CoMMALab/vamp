@@ -1,24 +1,46 @@
 // Usage:
-//   vamp_iiwa_maze_solver_benchmark [paths_json] [results_csv]
+//   vamp_iiwa_maze_solver_benchmark [--use_smm] [--use_psi] [paths_json] [results_csv] [trajectory_dir]
 //
 // Every attempted problem (solved or not) gets one row in <results_csv> -- same schema as
 // bimanual_iiwa_*_shelf.cc's results CSVs (method,trial,pair,solved,planning_time_ms,
 // iterations,shortcut_time_ms,config_distance,eef_distance; "pair" is left blank, these
-// are numbered maze problems, not named start/goal pairs) -- so
-// scripts/plot_bimanual_results.py works unchanged on this file's output too.
+// are numbered maze problems, not named start/goal pairs), plus a trailing resolve_time_ms
+// column (see find_valid_start_goal_on_branch) -- so scripts/plot_bimanual_results.py works
+// unchanged on this file's output too (it reads columns by name and ignores the extra one).
 // shortcut_time_ms/config_distance/eef_distance are only populated for solved problems and
-// are the SHORTCUT path's values, not the raw RRTC path's; planning_time_ms/iterations are
-// recorded for every attempted (valid start/goal) problem, including ones RRTC failed to
-// solve.
+// are the SHORTCUT path's values, not the raw RRTC path's; planning_time_ms/iterations/
+// resolve_time_ms are recorded for every attempted (valid start/goal) problem, including ones
+// RRTC failed to solve.
+//
+// Every solved problem's shortcut path is also dumped to
+// <trajectory_dir>/problem_<n>.txt: one waypoint per line, its Robot::dimension joint values
+// comma-separated -- same format bimanual_iiwa_*_shelf.cc's write_ambient_path uses (see
+// write_ambient_path below), for offline playback/visualization. This is in addition to, not
+// instead of, <paths_json>'s combined JSON dump of every solved problem's raw and shortcut
+// paths (task-space and ambient).
+//
+// By default, each problem's start/goal eef poses are resolved to a valid ambient
+// configuration by searching: the saved psi/smm from iiwa_maze_problem_generator.cc are
+// ignored entirely, and instead every GC2/GC4/GC6 branch is tried in a fixed order
+// ({1,1,1}, {1,1,-1}, {1,-1,1}, {1,-1,-1}, {-1,1,1}, {-1,1,-1}, {-1,-1,1}, {-1,-1,-1}), sweeping
+// psi deterministically from 0 within each branch (same sweep as the generator), until one
+// branch resolves both endpoints. Pass --use_smm to instead load the generator's saved smm
+// directly and only sweep psi on that one branch, skipping the branch sweep. Pass --use_psi
+// (only meaningful together with --use_smm; ignored on its own) to additionally use the
+// generator's saved psi directly too, resolving each endpoint once with no search at all. The
+// resolve_time_ms column is exactly what these
+// flags are meant to speed up, so run the benchmark with each combination to compare.
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -55,9 +77,15 @@ struct Problem
     std::array<float, 3> goal_eef_pos;
     // psi the generator found valid for this problem's start/goal -- see
     // iiwa_maze_problem_generator.cc's find_valid_psi_pose for why this can't just be a shared
-    // constant across problems.
+    // constant across problems. Unused unless --use_psi is passed (which itself requires
+    // --use_smm); otherwise re-swept by find_valid_start_goal_on_branch.
     float start_psi;
     float goal_psi;
+    // GC2/GC4/GC6 branch the generator resolved this problem's start/goal on (see
+    // iiwa_maze_problem_generator.cc's find_valid_start_goal_on_shared_branch); only present in
+    // problem files produced after that change, and only used when --use_smm is passed.
+    std::array<float, 3> smm{1.0F, 1.0F, 1.0F};
+    bool has_smm = false;
 };
 
 static bool load_cuboids_from_json(EnvironmentInput &environment, const std::string &path)
@@ -167,6 +195,11 @@ static void load_problems_from_json(std::vector<Problem> &problems, const std::s
             p.goal_eef_pos = item.at("goal_eef_pos").get<std::array<float, 3>>();
             p.start_psi = item.at("start_psi").get<float>();
             p.goal_psi = item.at("goal_psi").get<float>();
+            if (item.contains("smm"))
+            {
+                p.smm = item.at("smm").get<std::array<float, 3>>();
+                p.has_smm = true;
+            }
             problems.push_back(p);
         }
         catch (const std::exception &e)
@@ -201,8 +234,203 @@ static auto resolve_and_check(
     return Robot::fkcc<rake>(environment_v, ambient_block);
 }
 
+// One waypoint per line, its Robot::dimension joint values comma-separated -- same format the
+// bimanual_iiwa_*_shelf.cc benchmarks' write_ambient_path uses (which in turn matches
+// vamp_bimanual_example_iiwa.cc's trajectory.txt), for offline playback/visualization.
+static void write_ambient_path(const std::vector<Robot::ConfigurationArray> &waypoints, const std::filesystem::path &file)
+{
+    std::ofstream out(file);
+    for (const auto &array : waypoints)
+    {
+        for (std::size_t i = 0; i < Robot::dimension; ++i)
+        {
+            if (i != 0)
+            {
+                out << ",";
+            }
+
+            out << array[i];
+        }
+
+        out << "\n";
+    }
+}
+
+// GC2/GC4/GC6 (elbow_sel/shoulder_sel/wrist_sel) branches, each axis in {-1, +1}, in the fixed
+// search order requested: first axis held at +1 across all four combinations of the remaining
+// two, then held at -1 across the same four -- i.e. standard binary counting with -1 as the
+// "high" bit, most-significant axis first.
+static constexpr std::array<std::array<float, 3>, 8> kBranchOrder = {{
+    {1.0F, 1.0F, 1.0F},
+    {1.0F, 1.0F, -1.0F},
+    {1.0F, -1.0F, 1.0F},
+    {1.0F, -1.0F, -1.0F},
+    {-1.0F, 1.0F, 1.0F},
+    {-1.0F, 1.0F, -1.0F},
+    {-1.0F, -1.0F, 1.0F},
+    {-1.0F, -1.0F, -1.0F},
+}};
+
+// Resolves start_eef_pos/goal_eef_pos to a valid (IK + collision-free) pose pair on a *shared*
+// GC branch -- a single RRTC run needs one consistent arm posture throughout, since
+// ParameterizedSpace::resolve_block reads `smm` as global state, not something carried inside
+// the State it resolves (same requirement iiwa_maze_problem_generator.cc's
+// find_valid_start_goal_on_shared_branch enforces at generation time).
+//
+// When `fixed_branch` holds a value (--use_smm), only that branch is tried. Otherwise every
+// branch in kBranchOrder is tried in order until one resolves both endpoints. Within whichever
+// branch(es) are tried, psi is swept deterministically from 0 upward in kNumPsiCandidates
+// evenly-spaced steps, keeping the first candidate that resolves -- exactly
+// iiwa_maze_problem_generator.cc's find_valid_psi_pose sweep, not a random draw. This matters
+// beyond just matching the generator's convention: independent uniform-random psi per endpoint
+// reliably picks a different (and never validated) arm posture than the one the generator's
+// is_straight_line_trivial check vetted the problem's difficulty against, and psi genuinely
+// changes the swept volume of the elbow/forearm through the workspace (it's a self-motion-
+// manifold parameter, not a free label) -- so a random psi can silently turn a solvable maze
+// route into one where the arm clips a wall, even though the single resolved pose is itself
+// perfectly valid. Sweeping from 0 the same way the generator did reproduces (or comes very
+// close to) its saved psi, keeping this benchmark's problem instances consistent with the ones
+// the dataset was actually built and filtered against.
+//
+// `fixed_psi`, when set (--use_smm plus --use_psi), skips that sweep entirely and resolves each
+// endpoint once with the generator's own saved psi -- valid to do only alongside `fixed_branch`,
+// since a saved psi was only ever verified valid on the generator's saved branch, not an
+// arbitrary one. This is the fastest possible path through this function: one resolve_and_check
+// call per endpoint, no search at all.
+//
+// Times the whole search (every branch/psi attempt, successful or not) with a steady_clock,
+// since this is exactly the cost --use_smm/--use_psi are meant to cut down -- logged to
+// resolve_time_ms in the results CSV so the modes can be compared directly.
+static auto find_valid_start_goal_on_branch(
+    const std::array<float, 3> &start_eef_pos,
+    const std::array<float, 3> &goal_eef_pos,
+    const EnvironmentVector &environment_v,
+    const std::optional<std::array<float, 3>> &fixed_branch,
+    const std::optional<std::pair<float, float>> &fixed_psi = std::nullopt)
+    -> std::tuple<
+        bool,
+        ParameterizedSpace::StateArray,
+        ParameterizedSpace::StateArray,
+        std::array<float, 3>,
+        std::chrono::nanoseconds>
+{
+    constexpr int kNumPsiCandidates = 16;
+
+    auto try_resolve = [&](const std::array<float, 3> &eef_pos,
+                            const std::optional<float> &forced_psi) -> std::optional<ParameterizedSpace::StateArray>
+    {
+        if (forced_psi)
+        {
+            const ParameterizedSpace::StateArray pose_array = {
+                {eef_pos[0], eef_pos[1], 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, *forced_psi}};
+            if (resolve_and_check(pose_array, environment_v))
+            {
+                return pose_array;
+            }
+
+            std::cout << "Failed to resolve eef_pos (" << eef_pos[0] << ", " << eef_pos[1] << ", " << eef_pos[2]
+                      << ") with saved psi " << *forced_psi << " on the saved branch" << std::endl;
+            return std::nullopt;
+        }
+
+        for (int k = 0; k < kNumPsiCandidates; ++k)
+        {
+            const float psi =
+                2.0F * static_cast<float>(M_PI) * static_cast<float>(k) / static_cast<float>(kNumPsiCandidates);
+            const ParameterizedSpace::StateArray pose_array = {
+                {eef_pos[0], eef_pos[1], 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, psi}};
+            if (resolve_and_check(pose_array, environment_v))
+            {
+                return pose_array;
+            }
+        }
+        std::cout << "Failed to resolve eef_pos (" << eef_pos[0] << ", " << eef_pos[1] << ", " << eef_pos[2]
+                  << ") on this branch after sweeping " << kNumPsiCandidates << " psi candidates" << std::endl;
+
+        return std::nullopt;
+    };
+
+    auto try_branch = [&](const std::array<float, 3> &branch)
+        -> std::optional<std::pair<ParameterizedSpace::StateArray, ParameterizedSpace::StateArray>>
+    {
+        ParameterizedSpace::set_smm(branch);
+
+        auto start_pose = try_resolve(
+            start_eef_pos, fixed_psi ? std::optional<float>(fixed_psi->first) : std::nullopt);
+        if (!start_pose)
+        {
+            return std::nullopt;
+        }
+
+        auto goal_pose = try_resolve(
+            goal_eef_pos, fixed_psi ? std::optional<float>(fixed_psi->second) : std::nullopt);
+        if (!goal_pose)
+        {
+            return std::nullopt;
+        }
+
+        return std::make_pair(*start_pose, *goal_pose);
+    };
+
+    const auto search_start = std::chrono::steady_clock::now();
+
+    if (fixed_branch)
+    {
+        if (auto poses = try_branch(*fixed_branch))
+        {
+            const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - search_start);
+            return {true, poses->first, poses->second, *fixed_branch, elapsed};
+        }
+    }
+    else
+    {
+        for (const auto &branch : kBranchOrder)
+        {
+            if (auto poses = try_branch(branch))
+            {
+                const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - search_start);
+                return {true, poses->first, poses->second, branch, elapsed};
+            }
+        }
+    }
+
+    const auto elapsed =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - search_start);
+    return {false, {}, {}, {}, elapsed};
+}
+
 auto main(int argc, char **argv) -> int
 {
+    bool use_smm = false;
+    bool use_psi_requested = false;
+    std::vector<std::string> positional_args;
+    for (int i = 1; i < argc; ++i)
+    {
+        if (std::string(argv[i]) == "--use_smm")
+        {
+            use_smm = true;
+        }
+        else if (std::string(argv[i]) == "--use_psi")
+        {
+            use_psi_requested = true;
+        }
+        else
+        {
+            positional_args.push_back(argv[i]);
+        }
+    }
+
+    // --use_psi only means anything alongside --use_smm (a saved psi was only ever verified
+    // valid on the saved branch, not an arbitrary one -- see find_valid_start_goal_on_branch),
+    // so it's silently ignored on its own rather than treated as an error.
+    const bool use_psi = use_psi_requested and use_smm;
+    if (use_psi_requested and not use_smm)
+    {
+        std::cout << "--use_psi has no effect without --use_smm; ignoring it." << std::endl;
+    }
+
     EnvironmentInput environment;
 
     const std::vector<std::string> candidate_paths = {
@@ -309,7 +537,7 @@ auto main(int argc, char **argv) -> int
     auto rng = std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>();
 
     vamp::planning::RRTCSettings rrtc_settings;
-    rrtc_settings.range = 0.75F;
+    rrtc_settings.range = 0.3F;
     rrtc_settings.max_iterations = 500000;
     rrtc_settings.max_samples = 5000000;
     rrtc_settings.dynamic_domain = false;
@@ -436,25 +664,31 @@ auto main(int argc, char **argv) -> int
 
     nlohmann::json all_paths = nlohmann::json::array();
     const std::string paths_output_path =
-        (argc > 1) ? argv[1] : "resources/iiwa_marker/maze_solver_benchmark_paths.json";
+        (positional_args.size() > 0) ? positional_args[0] : "resources/iiwa_marker/maze_solver_benchmark_paths.json";
     const std::filesystem::path results_csv_path =
-        (argc > 2) ? argv[2] : "results/iiwa_maze_solver_benchmark.csv";
+        (positional_args.size() > 1) ? positional_args[1] : "results/iiwa_maze_solver_benchmark.csv";
+    const std::filesystem::path trajectory_dir =
+        (positional_args.size() > 2) ? positional_args[2] : "trajectories/iiwa_maze_solver_benchmark";
     std::filesystem::create_directories(results_csv_path.parent_path());
+    std::filesystem::create_directories(trajectory_dir);
     std::ofstream results_csv(results_csv_path);
     if (not results_csv)
     {
         std::cerr << "Failed to open results CSV for writing: " << results_csv_path << std::endl;
         return 1;
     }
+    std::cout << "Writing shortcut trajectories to: " << trajectory_dir << std::endl;
 
     // Same schema as bimanual_iiwa_*_shelf.cc's results CSVs (see
     // scripts/plot_bimanual_results.py) so the same plotting script works unchanged here --
-    // "pair" doesn't apply to these numbered maze problems, so it's left blank.
+    // "pair" doesn't apply to these numbered maze problems, so it's left blank. Plus a trailing
+    // resolve_time_ms column (see find_valid_start_goal_on_branch), not part of that shared
+    // schema but harmless since plot_bimanual_results.py reads columns by name.
     // shortcut_time_ms/config_distance/eef_distance are only populated for solved problems
-    // and are the SHORTCUT path's values, not the raw RRTC path's; planning_time_ms and
-    // iterations are recorded for every attempted problem, solved or not.
+    // and are the SHORTCUT path's values, not the raw RRTC path's; planning_time_ms,
+    // iterations, and resolve_time_ms are recorded for every attempted problem, solved or not.
     results_csv << "method,trial,pair,solved,planning_time_ms,iterations,shortcut_time_ms,config_distance,"
-                   "eef_distance\n";
+                   "eef_distance,resolve_time_ms\n";
     results_csv.flush();
 
     {
@@ -478,6 +712,21 @@ auto main(int argc, char **argv) -> int
     const std::string problem_json_path = "resources/iiwa_marker/maze_problems_checked_ik.json";
     load_problems_from_json(problems, problem_json_path);
 
+    if (use_smm and use_psi)
+    {
+        std::cout << "--use_smm --use_psi: resolving each problem with its saved GC branch and psi directly, "
+                      "no search"
+                   << std::endl;
+    }
+    else if (use_smm)
+    {
+        std::cout << "--use_smm: resolving each problem's saved GC branch only, searching psi" << std::endl;
+    }
+    else
+    {
+        std::cout << "Resolving each problem by searching all GC branches" << std::endl;
+    }
+
     std::size_t total_num_problems = 0;
     std::size_t successful_problems = 0;
     std::vector<std::size_t> nanoseconds_per_problem;
@@ -486,6 +735,13 @@ auto main(int argc, char **argv) -> int
     std::vector<std::size_t> path_size_before_shortcut;
     std::vector<std::size_t> path_size_after_shortcut;
     std::size_t valid_problems = 0;
+    std::size_t unresolvable_problems = 0;
+
+    // How long find_valid_start_goal_on_branch took per problem -- recorded for every attempt,
+    // regardless of whether a branch was ultimately found, since a failed search's cost (e.g.
+    // exhausting all 8 branches under the default mode) is itself part of what --use_smm/
+    // --use_psi are meant to avoid.
+    std::vector<std::size_t> resolve_nanoseconds_per_problem;
 
     // "Configuration distance": ambient (joint-space) path length -- what's actually
     // physically reachable, so the representation distance analysis should really care
@@ -512,28 +768,36 @@ auto main(int argc, char **argv) -> int
         // and independent of how many samples earlier problems in this run consumed.
         task_sampler->reset();
 
-        auto make_pose_array = [](const std::array<float, 3> &eef_pos, float psi)
+        if (use_smm and not problem.has_smm)
         {
-            ParameterizedSpace::StateArray pose_array{};
-            pose_array[0] = eef_pos[0];
-            pose_array[1] = eef_pos[1];
-            pose_array[2] = 0.22607783F;
-            pose_array[3] = 0.0F;
-            pose_array[4] = -1.0F;
-            pose_array[5] = 0.0F;
-            pose_array[6] = 0.0F;
-            pose_array[7] = psi;
-            return pose_array;
-        };
-        const ParameterizedSpace::StateArray start_pose_array = make_pose_array(problem.start_eef_pos, problem.start_psi);
-        const ParameterizedSpace::StateArray goal_pose_array = make_pose_array(problem.goal_eef_pos, problem.goal_psi);
+            std::cout << "Skipping problem: --use_smm given but problem file has no saved smm "
+                          "(regenerate it with the current iiwa_maze_problem_generator.cc)."
+                       << std::endl;
+            continue;
+        }
 
-        const bool start_valid = resolve_and_check(start_pose_array, env_v);
-        const bool goal_valid = resolve_and_check(goal_pose_array, env_v);
+        const std::optional<std::array<float, 3>> fixed_branch =
+            use_smm ? std::optional<std::array<float, 3>>(problem.smm) : std::nullopt;
+        // --use_psi (only meaningful alongside --use_smm -- see the flag parsing above) also
+        // uses the generator's saved psi directly, skipping the psi sweep entirely for the
+        // fastest possible resolve path.
+        const std::optional<std::pair<float, float>> fixed_psi =
+            use_psi ? std::optional<std::pair<float, float>>(std::make_pair(problem.start_psi, problem.goal_psi))
+                    : std::nullopt;
 
-        if (not start_valid or not goal_valid)
+        const auto [resolved, start_pose_array, goal_pose_array, branch, resolve_ns] = find_valid_start_goal_on_branch(
+            problem.start_eef_pos, problem.goal_eef_pos, env_v, fixed_branch, fixed_psi);
+
+        resolve_nanoseconds_per_problem.push_back(static_cast<std::size_t>(resolve_ns.count()));
+
+        if (not resolved)
         {
-            std::cout << "Skipping problem due to invalid start or goal configuration." << std::endl;
+            unresolvable_problems++;
+            std::cout << "Unable to resolve problem's start/goal configuration on any GC branch after "
+                       << (resolve_ns.count() / 1.0e6) << " ms. Skipping problem." << std::endl;
+            results_csv << "iiwa_maze_solver," << (total_num_problems - 1) << ",,0,,,,,,"
+                        << (resolve_ns.count() / 1.0e6) << "\n";
+            results_csv.flush();
             continue;
         }
 
@@ -580,6 +844,8 @@ auto main(int argc, char **argv) -> int
             path_entry["problem_index"] = total_num_problems - 1;
             path_entry["start_eef_pos"] = problem.start_eef_pos;
             path_entry["goal_eef_pos"] = problem.goal_eef_pos;
+            path_entry["smm"] = branch;
+            path_entry["resolve_nanoseconds"] = resolve_ns.count();
             path_entry["nanoseconds"] = result.nanoseconds;
             path_entry["path"] = path_to_json(result.path);
             path_entry["ambient_path"] = ambient_path_to_json(ambient_path);
@@ -599,20 +865,24 @@ auto main(int argc, char **argv) -> int
                 paths_file << all_paths.dump(4);
             }
 
+            const std::string trajectory_filename = "problem_" + std::to_string(total_num_problems - 1) + ".txt";
+            write_ambient_path(shortcut_ambient_path, trajectory_dir / trajectory_filename);
+
             results_csv << "iiwa_maze_solver," << (total_num_problems - 1) << ",,1,"
                         << (result.nanoseconds / 1.0e6) << "," << result.iterations << ","
                         << (shortcut_result.nanoseconds / 1.0e6) << "," << shortcut_configuration_distance << ","
-                        << shortcut_eef_distance << "\n";
+                        << shortcut_eef_distance << "," << (resolve_ns.count() / 1.0e6) << "\n";
         }
         else
         {
             failed_nanoseconds_per_problem.push_back(result.nanoseconds);
             failed_iterations_per_problem.push_back(result.iterations);
             std::cout << "Unable to solve problem with start and goal configs after " << result.iterations
-                      << " iterations, " << result.nanoseconds / 1000000.0 << " ms." << std::endl;
+                      << " iterations, " << result.nanoseconds / 1000000.0 << " ms. " << result.size[0] << ", " << result.size[1] << std::endl;
 
             results_csv << "iiwa_maze_solver," << (total_num_problems - 1) << ",,0,"
-                        << (result.nanoseconds / 1.0e6) << "," << result.iterations << ",,,\n";
+                        << (result.nanoseconds / 1.0e6) << "," << result.iterations << ",,,,"
+                        << (resolve_ns.count() / 1.0e6) << "\n";
         }
 
         results_csv.flush();
@@ -620,14 +890,41 @@ auto main(int argc, char **argv) -> int
 
     std::cout << "Saved " << all_paths.size() << " problem paths to " << paths_output_path << std::endl;
     std::cout << "Saved per-problem results to " << results_csv_path << std::endl;
+    std::cout << "Saved " << all_paths.size() << " shortcut trajectory files to " << trajectory_dir << std::endl;
 
     const std::size_t failed_problems = valid_problems - successful_problems;
     std::cout << "Total problems: " << total_num_problems << std::endl
+              << "Unresolvable problems (no GC branch found): " << unresolvable_problems << std::endl
               << "Valid problems: " << valid_problems << std::endl
               << "Successful problems: " << successful_problems << std::endl
               << "Failed problems: " << failed_problems << std::endl
               << "Success rate: " << (static_cast<float>(successful_problems) / static_cast<float>(valid_problems)) * 100.0F
               << "%" << std::endl;
+
+    // How long find_valid_start_goal_on_branch took, over every attempted problem (resolved or
+    // not) -- this is the number --use_smm/--use_psi are meant to shrink, by skipping the
+    // branch sweep and/or the psi search.
+    if (!resolve_nanoseconds_per_problem.empty())
+    {
+        std::vector<float> resolve_ms_per_problem;
+        resolve_ms_per_problem.reserve(resolve_nanoseconds_per_problem.size());
+        for (const auto ns : resolve_nanoseconds_per_problem)
+        {
+            resolve_ms_per_problem.push_back(static_cast<float>(ns) / 1.0e6F);
+        }
+
+        std::sort(resolve_ms_per_problem.begin(), resolve_ms_per_problem.end());
+        const std::size_t n = resolve_ms_per_problem.size();
+        const float sum = std::accumulate(resolve_ms_per_problem.begin(), resolve_ms_per_problem.end(), 0.0F);
+        const std::string resolve_mode_label =
+            (use_smm and use_psi) ? "--use_smm --use_psi" : (use_smm ? "--use_smm" : "branch search");
+        std::cout << "\n--- Resolve time (find_valid_start_goal_on_branch), " << resolve_mode_label << " ---"
+                  << std::endl;
+        std::cout << "Average resolve time (ms): " << sum / static_cast<float>(n) << std::endl;
+        std::cout << "Median resolve time (ms): " << resolve_ms_per_problem[n / 2] << std::endl;
+        std::cout << "Min resolve time (ms): " << resolve_ms_per_problem[0] << std::endl;
+        std::cout << "Max resolve time (ms): " << resolve_ms_per_problem[n - 1] << std::endl;
+    }
 
     // Shared by both the successful- and failed-problem time/iteration breakdowns below.
     auto print_time_stats =

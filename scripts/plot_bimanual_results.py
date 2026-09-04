@@ -54,6 +54,17 @@ _METRICS = [
     ("eef_distance", "EEF-space distance"),
 ]
 
+
+def _metrics_for(df: pd.DataFrame) -> List[tuple]:
+    """_METRICS plus resolve_time_ms (the maze problem generator's start/goal-branch
+    resolve cost -- see iiwa_maze_solver_benchmark.cc) when that column is present, so
+    this script still runs unchanged on CSVs that don't have it (e.g. bimanual shelf
+    results)."""
+    metrics = list(_METRICS)
+    if "resolve_time_ms" in df.columns:
+        metrics.insert(0, ("resolve_time_ms", "Resolve time (ms)"))
+    return metrics
+
 COLORS = ['#66c2a5','#fc8d62','#8da0cb','#e78ac3']
 
 def _set_style() -> None:
@@ -114,22 +125,28 @@ def _method_palette(methods: List[str]) -> dict:
 
 def print_summary(df: pd.DataFrame) -> None:
     methods = _method_order(df)
+    has_resolve = "resolve_time_ms" in df.columns
     rows = []
     for method in methods:
         sub = df[df["method"] == method]
         solved = sub[sub["solved"]]
-        rows.append(
+        row = {
+            "method": _display_name(method),
+            "n_trials": len(sub),
+            "n_solved": len(solved),
+            "success_rate_%": 100.0 * len(solved) / len(sub) if len(sub) else float("nan"),
+        }
+        if has_resolve:
+            row["median_resolve_ms"] = solved["resolve_time_ms"].median()
+        row.update(
             {
-                "method": _display_name(method),
-                "n_trials": len(sub),
-                "n_solved": len(solved),
-                "success_rate_%": 100.0 * len(solved) / len(sub) if len(sub) else float("nan"),
                 "median_planning_ms": solved["planning_time_ms"].median(),
                 "median_shortcut_ms": solved["shortcut_time_ms"].median(),
                 "median_config_distance": solved["config_distance"].median(),
                 "median_eef_distance": solved["eef_distance"].median(),
             }
         )
+        rows.append(row)
 
     summary = pd.DataFrame(rows).set_index("method")
     with pd.option_context("display.float_format", "{:.4f}".format):
@@ -146,11 +163,14 @@ def plot_small_multiples(df: pd.DataFrame, output_dir: Path) -> Path:
     solved = df[df["solved"]].copy()
     solved["Method"] = solved["method"].map(_display_name)
 
+    metrics = _metrics_for(df)
     # Panel width scales with method count so boxes/labels don't get crushed once
     # there's more than a handful of methods being compared.
     panel_width = max(4.4, 0.85 * len(methods) + 2.2)
-    fig, axes = plt.subplots(1, len(_METRICS), figsize=(panel_width * len(_METRICS), 5.0), sharex=False)
-    for ax, (column, title) in zip(axes, _METRICS):
+    fig, axes = plt.subplots(1, len(metrics), figsize=(panel_width * len(metrics), 5.0), sharex=False)
+    if len(metrics) == 1:
+        axes = [axes]
+    for ax, (column, title) in zip(axes, metrics):
         sns.boxplot(
             data=solved,
             x="Method",
@@ -197,48 +217,111 @@ def plot_small_multiples(df: pd.DataFrame, output_dir: Path) -> Path:
     return path
 
 
+def plot_success_rate(df: pd.DataFrame, output_dir: Path) -> Path:
+    """Fraction of all trials each method actually solved -- the cost metrics elsewhere
+    are computed only over solved trials, so this is the one plot that shows how often a
+    method fails to produce a path at all."""
+    methods = _method_order(df)
+    display_names = [_display_name(m) for m in methods]
+    palette = _method_palette(methods)
+    rates = [100.0 * df.loc[df["method"] == m, "solved"].mean() for m in methods]
+
+    fig, ax = plt.subplots(figsize=(1.6 * len(methods) + 2.0, 4.6))
+    x = range(len(methods))
+    ax.bar(
+        x,
+        rates,
+        width=0.55,
+        color=[palette[m] for m in methods],
+        edgecolor="0.3",
+        linewidth=1.0,
+        zorder=3,
+    )
+    for xi, rate in zip(x, rates):
+        ax.annotate(
+            f"{rate:.1f}%",
+            xy=(xi, rate),
+            xytext=(0, 4),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=10,
+            fontweight="bold",
+            color="0.2",
+        )
+
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(display_names, rotation=22, ha="right")
+    ax.set_ylabel("Success rate (%)")
+    ax.set_title("Success rate by method", pad=12, fontweight="bold")
+    ax.set_ylim(0, 105)
+    sns.despine(ax=ax)
+    ax.grid(axis="x", visible=False)
+
+    fig.tight_layout()
+    path = output_dir / "success_rate.pdf"
+    fig.savefig(path, dpi=200, bbox_inches="tight")
+    fig.savefig(path.with_suffix(".svg"), bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+_STACKED_TIME_STAGES = [
+    # (csv column, legend label, hatch)
+    ("resolve_time_ms", "Resolve", ".."),
+    ("planning_time_ms", "Planning", None),
+    ("shortcut_time_ms", "Shortcut", "//"),
+]
+
+
 def plot_stacked_time(df: pd.DataFrame, output_dir: Path) -> Path:
-    """Median planning time + median shortcut time, stacked per method -- the total
-    end-to-end wall-clock cost a user actually waits for, with each bar's total
-    annotated."""
+    """Median time per stage (resolve/planning/shortcut), stacked per method -- whichever
+    of those columns a given method's CSV actually has. A method missing a stage (e.g. no
+    resolve_time_ms, or no shortcut_time_ms because it doesn't shortcut) just contributes
+    0 to that segment instead of NaN-ing out its whole bar."""
     methods = _method_order(df)
     display_names = [_display_name(m) for m in methods]
     palette = _method_palette(methods)
     solved = df[df["solved"]]
 
-    planning = [solved.loc[solved["method"] == m, "planning_time_ms"].median() for m in methods]
-    shortcut = [solved.loc[solved["method"] == m, "shortcut_time_ms"].median() for m in methods]
-    totals = [p + s for p, s in zip(planning, shortcut)]
+    stages = [(col, label, hatch) for col, label, hatch in _STACKED_TIME_STAGES if col in df.columns]
+
+    per_stage = {}
+    for col, _, _ in stages:
+        per_stage[col] = [
+            solved.loc[solved["method"] == m, col].median() if col in solved.columns else float("nan")
+            for m in methods
+        ]
+        # A method that never reports a stage (e.g. no shortcutting) should contribute 0
+        # to the stack, not NaN out the rest of its bar.
+        per_stage[col] = [0.0 if pd.isna(v) else v for v in per_stage[col]]
+
+    totals = [sum(per_stage[col][i] for col, _, _ in stages) for i in range(len(methods))]
 
     fig, ax = plt.subplots(figsize=(1.7 * len(methods) + 2.2, 5.2))
     x = range(len(methods))
     bar_width = 0.55
 
-    ax.bar(
-        x,
-        planning,
-        width=bar_width,
-        color=[palette[m] for m in methods],
-        edgecolor="0.3",
-        linewidth=1.0,
-        label="Planning",
-        zorder=3,
-    )
-    ax.bar(
-        x,
-        shortcut,
-        width=bar_width,
-        bottom=planning,
-        color=[palette[m] for m in methods],
-        edgecolor="0.3",
-        linewidth=1.0,
-        hatch="//",
-        alpha=0.55,
-        label="Shortcut",
-        zorder=3,
-    )
+    running_bottom = [0.0] * len(methods)
+    for col, label, hatch in stages:
+        values = per_stage[col]
+        bar_kwargs = dict(
+            width=bar_width,
+            bottom=list(running_bottom),
+            color=[palette[m] for m in methods],
+            edgecolor="0.3",
+            linewidth=1.0,
+            label=label,
+            zorder=3,
+        )
+        if hatch is not None:
+            bar_kwargs.update(hatch=hatch, alpha=0.55)
+        ax.bar(x, values, **bar_kwargs)
+        running_bottom = [b + v for b, v in zip(running_bottom, values)]
 
     for xi, total in zip(x, totals):
+        if pd.isna(total) or total == 0:
+            continue
         ax.annotate(
             f"{total:.2f} ms",
             xy=(xi, total),
@@ -254,9 +337,10 @@ def plot_stacked_time(df: pd.DataFrame, output_dir: Path) -> Path:
     ax.set_xticks(list(x))
     ax.set_xticklabels(display_names, rotation=22, ha="right")
     ax.set_ylabel("Median time (ms)")
-    ax.set_title("Median planning + shortcut time", pad=12, fontweight="bold")
+    ax.set_title("Planning time", pad=12, fontweight="bold")
     ax.legend(frameon=False, loc="upper left", bbox_to_anchor=(1.0, 1.0))
-    ax.set_ylim(0, max(totals) * 1.18 if totals else 1)
+    max_total = pd.Series(totals, dtype=float).max(skipna=True)
+    ax.set_ylim(0, max_total * 1.18 if pd.notna(max_total) and max_total > 0 else 1)
     sns.despine(ax=ax)
     ax.grid(axis="x", visible=False)
 
@@ -311,6 +395,7 @@ _TABLE_COLUMNS = [
     # (key, header, higher_is_better, fmt)
     ("success_rate", "Success (\\%)", True, "{:.1f}"),
     ("iterations", "Iterations", False, "{:.0f}"),
+    ("resolve_time", "Resolve (ms)", False, "{:.2f}"),
     ("planning_time", "Planning (ms)", False, "{:.2f}"),
     ("shortcut_time", "Shortcut (ms)", False, "{:.2f}"),
     ("total_time", "Total (ms)", False, "{:.2f}"),
@@ -320,12 +405,21 @@ _TABLE_COLUMNS = [
 ]
 
 
+def _table_columns_for(df: pd.DataFrame) -> List[tuple]:
+    """_TABLE_COLUMNS, dropping the resolve_time row on CSVs that don't carry a
+    resolve_time_ms column (e.g. bimanual shelf results)."""
+    if "resolve_time_ms" in df.columns:
+        return _TABLE_COLUMNS
+    return [c for c in _TABLE_COLUMNS if c[0] != "resolve_time"]
+
+
 def _table_stats(df: pd.DataFrame) -> "pd.DataFrame":
-    """Per-method median stats feeding the LaTeX table: success rate, iteration count
-    and planning/shortcut/total time on solved trials, time-to-failure on failed trials
-    (how long a method burns before giving up), and shortcut path length (config- and
-    eef-space)."""
+    """Per-method median stats feeding the LaTeX table: success rate, iteration count,
+    resolve time (when present) and planning/shortcut/total time on solved trials,
+    time-to-failure on failed trials (how long a method burns before giving up), and
+    shortcut path length (config- and eef-space)."""
     methods = _method_order(df)
+    has_resolve = "resolve_time_ms" in df.columns
     rows = []
     for method in methods:
         sub = df[df["method"] == method]
@@ -333,32 +427,35 @@ def _table_stats(df: pd.DataFrame) -> "pd.DataFrame":
         failed = sub[~sub["solved"]]
         planning = solved["planning_time_ms"].median()
         shortcut = solved["shortcut_time_ms"].median()
-        rows.append(
-            {
-                "method": _display_name(method),
-                "success_rate": 100.0 * len(solved) / len(sub) if len(sub) else float("nan"),
-                "iterations": solved["iterations"].median(),
-                "planning_time": planning,
-                "shortcut_time": shortcut,
-                "total_time": planning + shortcut,
-                "failure_time": failed["planning_time_ms"].median() if len(failed) else float("nan"),
-                "config_distance": solved["config_distance"].median(),
-                "eef_distance": solved["eef_distance"].median(),
-            }
-        )
+        row = {
+            "method": _display_name(method),
+            "success_rate": 100.0 * len(solved) / len(sub) if len(sub) else float("nan"),
+            "iterations": solved["iterations"].median(),
+            "planning_time": planning,
+            "shortcut_time": shortcut,
+            "total_time": planning + shortcut,
+            "failure_time": failed["planning_time_ms"].median() if len(failed) else float("nan"),
+            "config_distance": solved["config_distance"].median(),
+            "eef_distance": solved["eef_distance"].median(),
+        }
+        if has_resolve:
+            row["resolve_time"] = solved["resolve_time_ms"].median()
+        rows.append(row)
     return pd.DataFrame(rows).set_index("method")
 
 
 def generate_latex_table(df: pd.DataFrame, output_dir: Path) -> Path:
-    """Median success rate / planning / shortcut / total / failure time and shortcut path
-    length per method, as a ready-to-paste booktabs LaTeX table with the best value in
-    each row bolded (highest for success rate, lowest everywhere else).
+    """Median success rate / iterations / resolve / planning / shortcut / total / failure
+    time and shortcut path length per method, as a ready-to-paste booktabs LaTeX table
+    with the best value in each row bolded (highest for success rate, lowest
+    everywhere else).
 
     Transposed relative to `_table_stats` (metrics as rows, methods as columns): with
     only a handful of methods this stays narrow enough to fit a single IEEE column,
-    whereas one column per metric runs 8 columns wide and bleeds across the page."""
+    whereas one column per metric runs 8+ columns wide and bleeds across the page."""
     stats = _table_stats(df)  # index: method, columns: metric key
     methods = list(stats.index)
+    table_columns = _table_columns_for(df)
 
     lines = []
     lines.append("% Auto-generated by plot_bimanual_results.py -- paste into your LaTeX source.")
@@ -373,7 +470,7 @@ def generate_latex_table(df: pd.DataFrame, output_dir: Path) -> Path:
     lines.append(header)
     lines.append("\\midrule")
 
-    for key, display_name, higher_is_better, fmt in _TABLE_COLUMNS:
+    for key, display_name, higher_is_better, fmt in table_columns:
         row = stats[key]
         valid = row.dropna()
         best = (valid.max() if higher_is_better else valid.min()) if not valid.empty else None
@@ -421,11 +518,13 @@ def main(
     small_multiples_path = plot_small_multiples(df, output_path)
     stacked_time_path = plot_stacked_time(df, output_path)
     distance_scatter_path = plot_distance_scatter(df, output_path)
+    success_rate_path = plot_success_rate(df, output_path)
     table_path, table_tex = generate_latex_table(df, output_path)
 
     print(f"\nSaved: {small_multiples_path} (+ .svg)")
     print(f"Saved: {stacked_time_path} (+ .svg)")
     print(f"Saved: {distance_scatter_path} (+ .svg)")
+    print(f"Saved: {success_rate_path} (+ .svg)")
     print(f"Saved: {table_path}\n")
     print(table_tex)
 

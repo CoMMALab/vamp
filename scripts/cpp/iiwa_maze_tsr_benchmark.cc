@@ -46,6 +46,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <numeric>
 #include <utility>
 #include <vector>
@@ -89,6 +90,15 @@ struct Problem
 {
     std::array<float, Robot::dimension> problem_start;
     std::array<float, Robot::dimension> problem_end;
+    // GC2/GC4/GC6 branch the generator resolved this problem's start/goal on (see
+    // iiwa_maze_problem_generator.cc's find_valid_start_goal_on_shared_branch). This solver
+    // never selects or depends on a branch itself (it plans directly in ambient space via a
+    // generic TaskSpaceConstraint projection, not the closed-form ParameterizedSpace resolve_block
+    // iiwa_maze_solver_benchmark.cc uses) -- kept purely to break success rate down by branch,
+    // to see whether some arm postures are harder for this planner too. Only present in problem
+    // files produced after find_valid_start_goal_on_shared_branch was added.
+    std::array<float, 3> smm{1.0F, 1.0F, 1.0F};
+    bool has_smm = false;
 };
 
 void load_problems_from_json(std::vector<Problem> &problems, const std::string &path)
@@ -124,6 +134,11 @@ void load_problems_from_json(std::vector<Problem> &problems, const std::string &
             Problem p;
             p.problem_start = item.at("problem_start").get<std::array<float, Robot::dimension>>();
             p.problem_end = item.at("problem_end").get<std::array<float, Robot::dimension>>();
+            if (item.contains("smm"))
+            {
+                p.smm = item.at("smm").get<std::array<float, 3>>();
+                p.has_smm = true;
+            }
             problems.push_back(p);
         }
         catch (const std::exception &e)
@@ -417,6 +432,18 @@ auto main(int argc, char **argv) -> int
     std::vector<std::size_t> path_size_before_shortcut;
     std::vector<std::size_t> path_size_after_shortcut;
 
+    // Per-GC-branch {attempted, solved} counts, keyed by the generator's saved smm (see
+    // Problem::smm above) -- "attempted" here means the problem's start/goal passed
+    // is_config_valid and RRTC was actually run, matching valid_problems' definition. Problems
+    // from a problem file with no saved smm (has_smm false) have no branch to attribute to, so
+    // they're excluded rather than binned separately.
+    struct BranchStats
+    {
+        std::size_t attempted = 0;
+        std::size_t solved = 0;
+    };
+    std::map<std::array<float, 3>, BranchStats> stats_by_branch;
+
     // "Configuration distance": ambient (joint-space) path length. "EEF distance":
     // eef_path_distance's SE3 metric over the FK-resolved eef poses. Named to match
     // iiwa_maze_solver_benchmark.cc's equivalent vectors/json keys.
@@ -446,12 +473,20 @@ auto main(int argc, char **argv) -> int
         }
 
         valid_problems++;
+        if (problem.has_smm)
+        {
+            stats_by_branch[problem.smm].attempted++;
+        }
 
         auto result = RRTC::solve(start_config, goal_config, env_v, rrtc_settings, rng, region_lp);
 
         if (result.path.size() > 0)
         {
             successful_problems++;
+            if (problem.has_smm)
+            {
+                stats_by_branch[problem.smm].solved++;
+            }
             nanoseconds_per_problem.push_back(result.nanoseconds);
             iterations_per_problem.push_back(result.iterations);
 
@@ -531,6 +566,25 @@ auto main(int argc, char **argv) -> int
               << "Failed problems: " << failed_problems << std::endl
               << "Success rate: " << (static_cast<float>(successful_problems) / static_cast<float>(valid_problems)) * 100.0F
               << "%" << std::endl;
+
+    // Success rate broken down by GC2/GC4/GC6 branch (see Problem::smm) -- this planner doesn't
+    // select or depend on a branch itself, so this shows whether the branch the *generator*
+    // happened to resolve a problem on correlates with how hard this TSR-projection planner
+    // finds it, independent of iiwa_maze_solver_benchmark.cc's own branch-search behavior.
+    if (!stats_by_branch.empty())
+    {
+        std::cout << "\n--- Success rate by GC branch (elbow_sel, shoulder_sel, wrist_sel) ---" << std::endl;
+        for (const auto &[branch_key, branch_stats] : stats_by_branch)
+        {
+            const float branch_success_rate =
+                (branch_stats.attempted > 0)
+                    ? (static_cast<float>(branch_stats.solved) / static_cast<float>(branch_stats.attempted)) * 100.0F
+                    : 0.0F;
+            std::cout << "(" << branch_key[0] << ", " << branch_key[1] << ", " << branch_key[2]
+                      << "): " << branch_stats.solved << " / " << branch_stats.attempted << " solved ("
+                      << branch_success_rate << "%)" << std::endl;
+        }
+    }
 
     // Shared by both the successful- and failed-problem time/iteration breakdowns below.
     auto print_time_stats =

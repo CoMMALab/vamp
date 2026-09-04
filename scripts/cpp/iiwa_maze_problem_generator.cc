@@ -228,22 +228,24 @@ int main(int argc, char **argv)
     // psi (index 7) doesn't change the eef pose -- only which arm configuration reaches it --
     // so instead of hardcoding one value for every problem (which pushed the wrist bend, joint
     // 6, near its singularity for some eef positions and not others, and thus made enforcing
-    // the joint-7 limit reject a large, position-dependent fraction of problems), sweep a
-    // handful of candidates per endpoint and keep the first that resolves within joint limits
-    // and collision-free.
+    // the joint-7 limit reject a large, position-dependent fraction of problems), try a handful
+    // of candidates per endpoint and keep the first that resolves within joint limits and
+    // collision-free.
     constexpr int kNumPsiCandidates = 16;
 
-    // Sweeps psi (see above) for a single endpoint on whichever GC branch is currently set via
+    // Tries psi (see above) for a single endpoint on whichever GC branch is currently set via
     // ParameterizedSpace::set_smm -- branch selection itself lives one level up, in
     // find_valid_start_goal_on_shared_branch, since start and goal must resolve on the *same*
-    // branch (a physically consistent arm posture can't jump branches mid-problem).
+    // branch (a physically consistent arm posture can't jump branches mid-problem). Candidates
+    // are drawn uniformly at random from [0, 2*pi) rather than swept, per current experiment
+    // (comparing against iiwa_maze_solver_benchmark.cc, which is being changed to sample psi the
+    // same way, instead of both sides disagreeing about sweep-vs-random).
     auto find_valid_psi_pose = [&](const std::array<float, 3> &eef_pos)
         -> std::pair<bool, std::pair<ParameterizedSpace::StateArray, Robot::ConfigurationArray>>
     {
         for (int k = 0; k < kNumPsiCandidates; ++k)
         {
-            const float psi =
-                2.0F * static_cast<float>(M_PI) * static_cast<float>(k) / static_cast<float>(kNumPsiCandidates);
+            const float psi = static_cast<float>(rand()) / RAND_MAX * 2.0F * static_cast<float>(M_PI);
             const auto pose_array = make_pose_array(eef_pos, psi);
             auto [ik_valid, ambient_array] = resolve_ambient_config(pose_array);
             if (ik_valid)
@@ -309,7 +311,7 @@ int main(int argc, char **argv)
     // Reject problems that a straight line in eef-space already solves: sample points along
     // the segment from start to goal and check each with whichever validity check the endpoints
     // were accepted with. If every sample is collision free, the problem is trivial.
-    constexpr int kNumStraightLineSamples = 100;
+    constexpr int kNumStraightLineSamples = 200;
     auto is_straight_line_trivial = [&](const ParameterizedSpace::StateArray &start_pose_array,
                                          const ParameterizedSpace::StateArray &goal_pose_array)
     {
@@ -333,7 +335,7 @@ int main(int argc, char **argv)
         return true;
     };
 
-    while (problems.size() < 100)
+    while (problems.size() < 200)
     {
         // sample random position for the problem within the bounds of the environment
         std::array<float, 3> random_start_position = {

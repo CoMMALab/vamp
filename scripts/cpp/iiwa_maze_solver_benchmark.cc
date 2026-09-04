@@ -22,14 +22,14 @@
 // By default, each problem's start/goal eef poses are resolved to a valid ambient
 // configuration by searching: the saved psi/smm from iiwa_maze_problem_generator.cc are
 // ignored entirely, and instead every GC2/GC4/GC6 branch is tried in a fixed order
-// ({1,1,1}, {1,1,-1}, {1,-1,1}, {1,-1,-1}, {-1,1,1}, {-1,1,-1}, {-1,-1,1}, {-1,-1,-1}), sweeping
-// psi deterministically from 0 within each branch (same sweep as the generator), until one
-// branch resolves both endpoints. Pass --use_smm to instead load the generator's saved smm
-// directly and only sweep psi on that one branch, skipping the branch sweep. Pass --use_psi
-// (only meaningful together with --use_smm; ignored on its own) to additionally use the
-// generator's saved psi directly too, resolving each endpoint once with no search at all. The
-// resolve_time_ms column is exactly what these
-// flags are meant to speed up, so run the benchmark with each combination to compare.
+// ({1,1,1}, {1,1,-1}, {1,-1,1}, {1,-1,-1}, {-1,1,1}, {-1,1,-1}, {-1,-1,1}, {-1,-1,-1}), sampling
+// psi uniformly at random from [0, 2*pi) within each branch (same random draw as the current
+// generator), until one branch resolves both endpoints. Pass --use_smm to instead load the
+// generator's saved smm directly and only search psi on that one branch, skipping the branch
+// sweep. Pass --use_psi (only meaningful together with --use_smm; ignored on its own) to
+// additionally use the generator's saved psi directly too, resolving each endpoint once with no
+// search at all. The resolve_time_ms column is exactly what these flags are meant to speed up,
+// so run the benchmark with each combination to compare.
 
 #include <algorithm>
 #include <array>
@@ -39,8 +39,10 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <numeric>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -78,7 +80,7 @@ struct Problem
     // psi the generator found valid for this problem's start/goal -- see
     // iiwa_maze_problem_generator.cc's find_valid_psi_pose for why this can't just be a shared
     // constant across problems. Unused unless --use_psi is passed (which itself requires
-    // --use_smm); otherwise re-swept by find_valid_start_goal_on_branch.
+    // --use_smm); otherwise re-resolved by random sampling in find_valid_start_goal_on_branch.
     float start_psi;
     float goal_psi;
     // GC2/GC4/GC6 branch the generator resolved this problem's start/goal on (see
@@ -279,24 +281,16 @@ static constexpr std::array<std::array<float, 3>, 8> kBranchOrder = {{
 //
 // When `fixed_branch` holds a value (--use_smm), only that branch is tried. Otherwise every
 // branch in kBranchOrder is tried in order until one resolves both endpoints. Within whichever
-// branch(es) are tried, psi is swept deterministically from 0 upward in kNumPsiCandidates
-// evenly-spaced steps, keeping the first candidate that resolves -- exactly
-// iiwa_maze_problem_generator.cc's find_valid_psi_pose sweep, not a random draw. This matters
-// beyond just matching the generator's convention: independent uniform-random psi per endpoint
-// reliably picks a different (and never validated) arm posture than the one the generator's
-// is_straight_line_trivial check vetted the problem's difficulty against, and psi genuinely
-// changes the swept volume of the elbow/forearm through the workspace (it's a self-motion-
-// manifold parameter, not a free label) -- so a random psi can silently turn a solvable maze
-// route into one where the arm clips a wall, even though the single resolved pose is itself
-// perfectly valid. Sweeping from 0 the same way the generator did reproduces (or comes very
-// close to) its saved psi, keeping this benchmark's problem instances consistent with the ones
-// the dataset was actually built and filtered against.
+// branch(es) are tried, psi is drawn uniformly at random from [0, 2*pi) up to kNumPsiCandidates
+// times per endpoint, keeping the first candidate that resolves -- per current experiment,
+// matching iiwa_maze_problem_generator.cc's find_valid_psi_pose, which was changed to sample
+// psi the same way instead of sweeping, so both sides agree on how psi is chosen.
 //
-// `fixed_psi`, when set (--use_smm plus --use_psi), skips that sweep entirely and resolves each
-// endpoint once with the generator's own saved psi -- valid to do only alongside `fixed_branch`,
-// since a saved psi was only ever verified valid on the generator's saved branch, not an
-// arbitrary one. This is the fastest possible path through this function: one resolve_and_check
-// call per endpoint, no search at all.
+// `fixed_psi`, when set (--use_smm plus --use_psi), skips that random search entirely and
+// resolves each endpoint once with the generator's own saved psi -- valid to do only alongside
+// `fixed_branch`, since a saved psi was only ever verified valid on the generator's saved
+// branch, not an arbitrary one. This is the fastest possible path through this function: one
+// resolve_and_check call per endpoint, no search at all.
 //
 // Times the whole search (every branch/psi attempt, successful or not) with a steady_clock,
 // since this is exactly the cost --use_smm/--use_psi are meant to cut down -- logged to
@@ -305,6 +299,7 @@ static auto find_valid_start_goal_on_branch(
     const std::array<float, 3> &start_eef_pos,
     const std::array<float, 3> &goal_eef_pos,
     const EnvironmentVector &environment_v,
+    std::mt19937 &psi_rng,
     const std::optional<std::array<float, 3>> &fixed_branch,
     const std::optional<std::pair<float, float>> &fixed_psi = std::nullopt)
     -> std::tuple<
@@ -315,6 +310,7 @@ static auto find_valid_start_goal_on_branch(
         std::chrono::nanoseconds>
 {
     constexpr int kNumPsiCandidates = 16;
+    std::uniform_real_distribution<float> psi_dist(0.0F, 2.0F * static_cast<float>(M_PI));
 
     auto try_resolve = [&](const std::array<float, 3> &eef_pos,
                             const std::optional<float> &forced_psi) -> std::optional<ParameterizedSpace::StateArray>
@@ -727,6 +723,11 @@ auto main(int argc, char **argv) -> int
         std::cout << "Resolving each problem by searching all GC branches" << std::endl;
     }
 
+    // Seeded from std::random_device like iiwa_branch_selector.cc's branch sweep -- psi is
+    // sampled randomly (not swept) inside find_valid_start_goal_on_branch, so this is shared
+    // across every problem's resolution search.
+    std::mt19937 psi_rng(std::random_device{}());
+
     std::size_t total_num_problems = 0;
     std::size_t successful_problems = 0;
     std::vector<std::size_t> nanoseconds_per_problem;
@@ -736,6 +737,18 @@ auto main(int argc, char **argv) -> int
     std::vector<std::size_t> path_size_after_shortcut;
     std::size_t valid_problems = 0;
     std::size_t unresolvable_problems = 0;
+
+    // Per-GC-branch {attempted, solved} counts, keyed by the branch find_valid_start_goal_on_branch
+    // resolved the problem on -- attempted here means "resolved" (i.e. the RRTC solve was
+    // actually attempted on this branch), matching valid_problems' definition. Unresolvable
+    // problems (no branch found at all) have no branch to attribute to, so they're excluded
+    // (see unresolvable_problems above) rather than binned separately.
+    struct BranchStats
+    {
+        std::size_t attempted = 0;
+        std::size_t solved = 0;
+    };
+    std::map<std::array<float, 3>, BranchStats> stats_by_branch;
 
     // How long find_valid_start_goal_on_branch took per problem -- recorded for every attempt,
     // regardless of whether a branch was ultimately found, since a failed search's cost (e.g.
@@ -779,14 +792,14 @@ auto main(int argc, char **argv) -> int
         const std::optional<std::array<float, 3>> fixed_branch =
             use_smm ? std::optional<std::array<float, 3>>(problem.smm) : std::nullopt;
         // --use_psi (only meaningful alongside --use_smm -- see the flag parsing above) also
-        // uses the generator's saved psi directly, skipping the psi sweep entirely for the
-        // fastest possible resolve path.
+        // uses the generator's saved psi directly, skipping the random psi search entirely for
+        // the fastest possible resolve path.
         const std::optional<std::pair<float, float>> fixed_psi =
             use_psi ? std::optional<std::pair<float, float>>(std::make_pair(problem.start_psi, problem.goal_psi))
                     : std::nullopt;
 
         const auto [resolved, start_pose_array, goal_pose_array, branch, resolve_ns] = find_valid_start_goal_on_branch(
-            problem.start_eef_pos, problem.goal_eef_pos, env_v, fixed_branch, fixed_psi);
+            problem.start_eef_pos, problem.goal_eef_pos, env_v, psi_rng, fixed_branch, fixed_psi);
 
         resolve_nanoseconds_per_problem.push_back(static_cast<std::size_t>(resolve_ns.count()));
 
@@ -802,6 +815,7 @@ auto main(int argc, char **argv) -> int
         }
 
         valid_problems++;
+        stats_by_branch[branch].attempted++;
 
         const ParameterizedSpace::State start_state(start_pose_array.data());
         const ParameterizedSpace::State goal_state(goal_pose_array.data());
@@ -817,6 +831,7 @@ auto main(int argc, char **argv) -> int
         if (result.path.size() > 0)
         {
             successful_problems++;
+            stats_by_branch[branch].solved++;
             nanoseconds_per_problem.push_back(result.nanoseconds);
             iterations_per_problem.push_back(result.iterations);
 
@@ -900,6 +915,25 @@ auto main(int argc, char **argv) -> int
               << "Failed problems: " << failed_problems << std::endl
               << "Success rate: " << (static_cast<float>(successful_problems) / static_cast<float>(valid_problems)) * 100.0F
               << "%" << std::endl;
+
+    // Success rate broken down by GC2/GC4/GC6 branch -- each problem's branch is whichever one
+    // find_valid_start_goal_on_branch resolved it on (the saved smm under --use_smm, otherwise
+    // whichever of kBranchOrder was found first), so this shows whether some arm postures are
+    // systematically harder for RRTC to route through the maze on than others.
+    if (!stats_by_branch.empty())
+    {
+        std::cout << "\n--- Success rate by GC branch (elbow_sel, shoulder_sel, wrist_sel) ---" << std::endl;
+        for (const auto &[branch_key, branch_stats] : stats_by_branch)
+        {
+            const float branch_success_rate =
+                (branch_stats.attempted > 0)
+                    ? (static_cast<float>(branch_stats.solved) / static_cast<float>(branch_stats.attempted)) * 100.0F
+                    : 0.0F;
+            std::cout << "(" << branch_key[0] << ", " << branch_key[1] << ", " << branch_key[2]
+                      << "): " << branch_stats.solved << " / " << branch_stats.attempted << " solved ("
+                      << branch_success_rate << "%)" << std::endl;
+        }
+    }
 
     // How long find_valid_start_goal_on_branch took, over every attempted problem (resolved or
     // not) -- this is the number --use_smm/--use_psi are meant to shrink, by skipping the

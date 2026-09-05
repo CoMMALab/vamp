@@ -1,6 +1,20 @@
 // Usage:
-//   vamp_iiwa_maze_solver_benchmark [--use_smm] [--use_psi] [--use_fixed_order_smm]
+//   vamp_fr3_maze_solver_benchmark [--use_smm] [--use_psi] [--use_fixed_order_smm]
 //       [--use_deterministic_psi] [--results_csv <path>] [paths_json] [results_csv] [trajectory_dir]
+//
+// Port of iiwa_maze_solver_benchmark.cc to vamp::robots::FR3Marker (vamp/robots/fr3_marker.hh).
+// The task-space parameterization is the same 8-dim StateArray (x, y, z, qx, qy, qz, qw, <free
+// param>), but the free parameter (kept named "psi" below/in the CLI flags/CSV columns, for
+// compatibility with the iiwa benchmark and scripts/compare_iiwa_maze_results.py) is FR3's joint
+// 7 angle directly, and the branch triple `smm` is (case6_sel, case1_sel, q_actual_0) instead of
+// iiwa's GC2/GC4/GC6 -- see fr3_parameterization.hh and fr3_maze_problem_generator.cc's header
+// for the full rationale. Consequences for this file, relative to the iiwa version:
+//   - case6_sel/case1_sel are read via a `> 0.5` threshold in resolve_block, so they live in
+//     {0, 1}, not {-1, +1} -- kBranchOrder below enumerates the resulting 4 branches, not 8.
+//   - q_actual_0 only matters in the (measure-zero) wrist-point-singular case, so it's redrawn
+//     per-psi-candidate right alongside q7 (see try_resolve below) rather than being fixed for
+//     an entire branch the way iiwa's GC2/GC4/GC6 triple is; --use_smm/--use_psi still load the
+//     generator's exact saved (case6_sel, case1_sel, q_actual_0, q7) with no search at all.
 //
 // --results_csv <path> overrides <results_csv> above without needing to also pass
 // <paths_json>/<trajectory_dir> positionally; if both are given, --results_csv wins.
@@ -24,22 +38,25 @@
 // paths (task-space and ambient).
 //
 // By default, each problem's start/goal eef poses are resolved to a valid ambient
-// configuration by searching: the saved psi/smm from iiwa_maze_problem_generator.cc are ignored
-// entirely, and instead all 8 GC2/GC4/GC6 branches ({1,1,1}, {1,1,-1}, {1,-1,1}, {1,-1,-1},
-// {-1,1,1}, {-1,1,-1}, {-1,-1,1}, {-1,-1,-1}) are tried in a freshly shuffled order per problem
-// (see make_branch_search_order), sampling psi uniformly at random from [0, 2*pi) within each
-// branch (same random draw as the current generator), until one branch resolves both endpoints.
+// configuration by searching: the saved smm/psi from fr3_maze_problem_generator.cc are ignored
+// entirely, and instead all 4 (case6_sel, case1_sel) branches ({0,0}, {0,1}, {1,0}, {1,1}) are
+// tried in a freshly shuffled order per problem (see make_branch_search_order), sampling q7
+// (psi) uniformly at random from [0, 2*pi) and q_actual_0 uniformly from FR3Marker's joint 1
+// range within each branch (same random draws as the current generator), until one branch
+// resolves both endpoints.
 //
-// --use_fixed_order_smm walks the 8 branches in their fixed order instead, always starting from
-// (1,1,1) (only meaningful without --use_smm, which only ever has one branch to try). Ignored
+// --use_fixed_order_smm walks the 4 branches in their fixed order instead, always starting from
+// (0,0) (only meaningful without --use_smm, which only ever has one branch to try). Ignored
 // otherwise (i.e. combining it with --use_smm is a silent no-op, not an error).
-// --use_deterministic_psi sweeps psi deterministically from 0 upward in evenly-spaced steps
-// instead of sampling it at random -- meaningful with or without --use_smm, since a psi search
-// happens in both modes unless --use_psi is also given.
-// --use_smm loads the generator's saved smm directly and only searches psi on that one branch,
-// skipping the branch search. --use_psi (only meaningful together with --use_smm; ignored on
-// its own) additionally uses the generator's saved psi directly too, resolving each endpoint
-// once with no search at all.
+// --use_deterministic_psi sweeps q7 deterministically from 0 upward in evenly-spaced steps
+// instead of sampling it at random -- meaningful with or without --use_smm, since a q7 search
+// happens in both modes unless --use_psi is also given. q_actual_0 is still sampled at random
+// regardless (it only ever matters in the singular fallback, so there's no "sweep" for it to
+// mean).
+// --use_smm loads the generator's saved (case6_sel, case1_sel, q_actual_0) directly and only
+// searches q7 on that one branch, skipping the branch search. --use_psi (only meaningful
+// together with --use_smm; ignored on its own) additionally uses the generator's saved q7
+// directly too, resolving each endpoint once with no search at all.
 // --results_csv <path> overrides where results are written (see Usage above).
 //
 // The resolve_time_ms column is exactly what --use_smm/--use_psi are meant to speed up (and
@@ -74,9 +91,10 @@
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/planning/simplify.hh>
 #include <vamp/random/halton.hh>
-#include <vamp/robots/iiwa_marker.hh>
+#include <vamp/robots/fr3_marker.hh>
+#include <vamp/utils/profiling.hh>
 
-using Robot = vamp::robots::IiwaMarker;
+using Robot = vamp::robots::FR3Marker;
 using ParameterizedSpace = Robot::ParameterizedSpace;
 static constexpr const std::size_t rake = vamp::FloatVectorWidth;
 using EnvironmentInput = vamp::collision::Environment<float>;
@@ -86,22 +104,31 @@ using TaskRRTC = vamp::planning::RRTC<Robot, rake, Robot::resolution, Parameteri
 using TaskLocalPlanner = vamp::planning::constraint::ParameterizedLocalPlanner<Robot, rake, Robot::resolution>;
 using TaskSampler = vamp::planning::TaskSpaceInformedSampler<Robot, ParameterizedSpace>;
 
+// Fixed height / orientation for the maze task -- see fr3_maze_problem_generator.cc's kEefZ
+// comment (kept numerically identical to the iiwa benchmark on the assumption of a shared
+// maze/mount frame).
+constexpr float kEefZ = 0.150519F;
+
+// FR3's joint 1 range, used to sample q_actual_0 (see file header).
+constexpr float kQActual0Min = Robot::lower_bound[0];
+constexpr float kQActual0Max = Robot::upper_bound[0];
+
 struct Problem
 {
-    std::array<float, 7> problem_start;
-    std::array<float, 7> problem_end;
+    std::array<float, Robot::dimension> problem_start;
+    std::array<float, Robot::dimension> problem_end;
     std::array<float, 3> start_eef_pos;
     std::array<float, 3> goal_eef_pos;
-    // psi the generator found valid for this problem's start/goal -- see
-    // iiwa_maze_problem_generator.cc's find_valid_psi_pose for why this can't just be a shared
-    // constant across problems. Unused unless --use_psi is passed (which itself requires
-    // --use_smm); otherwise re-resolved by random sampling in find_valid_start_goal_on_branch.
+    // q7 the generator found valid for this problem's start/goal (field named "psi" for
+    // compatibility -- see file header). Unused unless --use_psi is passed (which itself
+    // requires --use_smm); otherwise re-resolved by random sampling in
+    // find_valid_start_goal_on_branch.
     float start_psi;
     float goal_psi;
-    // GC2/GC4/GC6 branch the generator resolved this problem's start/goal on (see
-    // iiwa_maze_problem_generator.cc's find_valid_start_goal_on_shared_branch); only present in
-    // problem files produced after that change, and only used when --use_smm is passed.
-    std::array<float, 3> smm{1.0F, 1.0F, 1.0F};
+    // (case6_sel, case1_sel, q_actual_0) branch the generator resolved this problem's start/goal
+    // on (see fr3_maze_problem_generator.cc's find_valid_start_goal_on_shared_branch); only used
+    // when --use_smm is passed.
+    std::array<float, 3> smm{1.0F, 1.0F, 0.0F};
     bool has_smm = false;
 };
 
@@ -148,8 +175,8 @@ static bool load_cuboids_from_json(EnvironmentInput &environment, const std::str
 
         try
         {
-            float x = obj.at("x").get<float>() + 0.05F;  // push it slightly forward
-            float y = obj.at("y").get<float>();
+            float x = obj.at("x").get<float>() + 0.285*2;  // push it slightly forward, matches fr3_maze_problem_generator
+            float y = obj.at("y").get<float>() + 0.0F; // push it slightly left, matches fr3_maze_problem_generator
             float z = obj.at("z").get<float>();
             float dx = obj.at("dx").get<float>();
             float dy = obj.at("dy").get<float>();
@@ -206,12 +233,13 @@ static void load_problems_from_json(std::vector<Problem> &problems, const std::s
         try
         {
             Problem p;
-            p.problem_start = item.at("problem_start").get<std::array<float, 7>>();
-            p.problem_end = item.at("problem_end").get<std::array<float, 7>>();
+            p.problem_start = item.at("problem_start").get<std::array<float, Robot::dimension>>();
+            p.problem_end = item.at("problem_end").get<std::array<float, Robot::dimension>>();
             p.start_eef_pos = item.at("start_eef_pos").get<std::array<float, 3>>();
             p.goal_eef_pos = item.at("goal_eef_pos").get<std::array<float, 3>>();
-            p.start_psi = item.at("start_psi").get<float>();
-            p.goal_psi = item.at("goal_psi").get<float>();
+            // set start psi to 0 if not present in the JSON, as it is optional and only used when --use_psi is passed
+            p.start_psi = item.value("start_psi", 0.0F);
+            p.goal_psi = item.value("goal_psi", 0.0F);
             if (item.contains("smm"))
             {
                 p.smm = item.at("smm").get<std::array<float, 3>>();
@@ -229,8 +257,7 @@ static void load_problems_from_json(std::vector<Problem> &problems, const std::s
 
 // Resolves a task-space pose through IK (ParameterizedSpace::resolve_block) and checks the
 // resulting ambient configuration for collision. Returns false on either failure; does not
-// print anything (this is the hot path inside the benchmark loop, unlike iiwa_maze_solver.cc's
-// verbose resolve_and_check).
+// print anything (this is the hot path inside the benchmark loop).
 static auto resolve_and_check(
     const ParameterizedSpace::StateArray &pose_array,
     const EnvironmentVector &environment_v) -> bool
@@ -252,8 +279,8 @@ static auto resolve_and_check(
 }
 
 // One waypoint per line, its Robot::dimension joint values comma-separated -- same format the
-// bimanual_iiwa_*_shelf.cc benchmarks' write_ambient_path uses (which in turn matches
-// vamp_bimanual_example_iiwa.cc's trajectory.txt), for offline playback/visualization.
+// bimanual_iiwa_*_shelf.cc benchmarks' write_ambient_path uses, for offline playback/
+// visualization.
 static void write_ambient_path(const std::vector<Robot::ConfigurationArray> &waypoints, const std::filesystem::path &file)
 {
     std::ofstream out(file);
@@ -273,26 +300,22 @@ static void write_ambient_path(const std::vector<Robot::ConfigurationArray> &way
     }
 }
 
-// GC2/GC4/GC6 (elbow_sel/shoulder_sel/wrist_sel) branches, each axis in {-1, +1}, in the fixed
-// search order requested: first axis held at +1 across all four combinations of the remaining
-// two, then held at -1 across the same four -- i.e. standard binary counting with -1 as the
-// "high" bit, most-significant axis first.
-static constexpr std::array<std::array<float, 3>, 8> kBranchOrder = {{
-    {1.0F, 1.0F, 1.0F},
-    {1.0F, 1.0F, -1.0F},
-    {1.0F, -1.0F, 1.0F},
-    {1.0F, -1.0F, -1.0F},
-    {-1.0F, 1.0F, 1.0F},
-    {-1.0F, 1.0F, -1.0F},
-    {-1.0F, -1.0F, 1.0F},
-    {-1.0F, -1.0F, -1.0F},
+// (case6_sel, case1_sel) branches, each in {0, 1} -- see file header for why there are 4 here,
+// not iiwa's 8. q_actual_0 (the third smm slot) isn't part of branch identity (it's redrawn
+// per-psi-candidate in try_resolve below), so it's left at 0 here and overwritten before every
+// ParameterizedSpace::set_smm call.
+static constexpr std::array<std::array<float, 3>, 4> kBranchOrder = {{
+    {1.0F, 0.0F, 0.0F},
+    {1.0F, 1.0F, 0.0F},
+    {1.0F, 0.0F, 0.0F},
+    {1.0F, 1.0F, 0.0F},
 }};
 
 // Returns a freshly shuffled copy of kBranchOrder -- used by find_valid_start_goal_on_branch's
 // branch search below when use_sampled_branch_order is true, so which branch gets tried first
-// isn't always (1, 1, 1). Shuffled, not independently re-sampled per branch slot, so it's still
-// a search over all 8 branches exactly once, just in a randomized order.
-static auto make_branch_search_order(std::mt19937 &rng) -> std::array<std::array<float, 3>, 8>
+// isn't always (0, 0). Shuffled, not independently re-sampled per branch slot, so it's still a
+// search over all 4 branches exactly once, just in a randomized order.
+static auto make_branch_search_order(std::mt19937 &rng) -> std::array<std::array<float, 3>, 4>
 {
     auto order = kBranchOrder;
     std::shuffle(order.begin(), order.end(), rng);
@@ -300,27 +323,31 @@ static auto make_branch_search_order(std::mt19937 &rng) -> std::array<std::array
 }
 
 // Resolves start_eef_pos/goal_eef_pos to a valid (IK + collision-free) pose pair on a *shared*
-// GC branch -- a single RRTC run needs one consistent arm posture throughout, since
-// ParameterizedSpace::resolve_block reads `smm` as global state, not something carried inside
-// the State it resolves (same requirement iiwa_maze_problem_generator.cc's
-// find_valid_start_goal_on_shared_branch enforces at generation time). This also means start
-// and goal are never tried on different branches mid-search: try_branch below resolves both
-// endpoints against the one branch it was called with before the search moves on, whether the
-// branches are visited in kBranchOrder's fixed order or make_branch_search_order's shuffled one.
+// (case6_sel, case1_sel) branch -- a single RRTC run needs one consistent arm posture
+// throughout, since ParameterizedSpace::resolve_block reads `smm` as global state, not
+// something carried inside the State it resolves (same requirement
+// fr3_maze_problem_generator.cc's find_valid_start_goal_on_shared_branch enforces at generation
+// time). This also means start and goal are never tried on different branches mid-search:
+// try_branch below resolves both endpoints against the one branch it was called with before the
+// search moves on, whether the branches are visited in kBranchOrder's fixed order or
+// make_branch_search_order's shuffled one.
 //
-// When `fixed_branch` holds a value (--use_smm), only that branch is tried. Otherwise all 8
+// When `fixed_branch` holds a value (--use_smm), only that branch is tried. Otherwise all 4
 // branches are tried -- in kBranchOrder's fixed order if `use_sampled_branch_order` is false
 // (--use_fixed_order_smm), or a freshly shuffled order per problem otherwise (the default) --
-// until one resolves both endpoints. Within whichever branch(es) are tried, psi is either
+// until one resolves both endpoints. Within whichever branch(es) are tried, q7 is either
 // sampled uniformly at random from [0, 2*pi) (the default) or swept deterministically from 0
 // upward in kNumPsiCandidates evenly-spaced steps (--use_deterministic_psi), up to
-// kNumPsiCandidates attempts per endpoint either way, keeping the first candidate that resolves.
+// kNumPsiCandidates attempts per endpoint either way, keeping the first candidate that resolves;
+// q_actual_0 is always sampled uniformly at random from FR3Marker's joint 1 range per attempt
+// (see file header -- it has no "sweep" to speak of).
 //
-// `fixed_psi`, when set (--use_smm plus --use_psi), skips that psi search entirely (regardless
-// of `use_deterministic_psi`) and resolves each endpoint once with the generator's own saved
-// psi -- valid to do only alongside `fixed_branch`, since a saved psi was only ever verified
-// valid on the generator's saved branch, not an arbitrary one. This is the fastest possible path
-// through this function: one resolve_and_check call per endpoint, no search at all.
+// `fixed_psi`, when set (--use_smm plus --use_psi), skips that q7/q_actual_0 search entirely
+// (regardless of `use_deterministic_psi`) and resolves each endpoint once with the generator's
+// own saved (q7, q_actual_0) -- valid to do only alongside `fixed_branch`, since a saved smm was
+// only ever verified valid on the generator's saved branch, not an arbitrary one. This is the
+// fastest possible path through this function: one resolve_and_check call per endpoint, no
+// search at all.
 //
 // Times the whole search (every branch/psi attempt, successful or not) with a steady_clock,
 // since this is exactly the cost these flags are meant to cut down (or, for
@@ -342,19 +369,27 @@ static auto find_valid_start_goal_on_branch(
         std::array<float, 3>,
         std::chrono::nanoseconds>
 {
-    constexpr int kNumPsiCandidates = 16;
-    std::uniform_real_distribution<float> psi_dist(0.0F, 2.0F * static_cast<float>(M_PI));
+    constexpr int kNumPsiCandidates = 200;
+    // psi_dist is not 0 to 2*pi because FR3's joint 7 has a limited range (see fr3_marker.hh's lower_bound[6]/upper_bound[6]), so the generator only ever samples within that range too. The generator's saved q7 is always within that range, so the search here doesn't need to go outside it either.
+    std::uniform_real_distribution<float> psi_dist(Robot::lower_bound[6], Robot::upper_bound[6]);
+    std::uniform_real_distribution<float> q_actual_0_dist(kQActual0Min, kQActual0Max);
 
+    // Returns the resolved pose and the q_actual_0 used to resolve it (needed so `fixed_branch`
+    // can be recorded with the q_actual_0 that actually worked, mirroring how the generator
+    // records it) -- 0.0F when `forced_psi` short-circuits the search.
     auto try_resolve = [&](const std::array<float, 3> &eef_pos,
-                            const std::optional<float> &forced_psi) -> std::optional<ParameterizedSpace::StateArray>
+                            const std::array<float, 2> &branch,
+                            const std::optional<float> &forced_psi)
+        -> std::optional<std::pair<ParameterizedSpace::StateArray, float>>
     {
         if (forced_psi)
         {
+            ParameterizedSpace::set_smm({branch[0], branch[1], 0.0F});
             const ParameterizedSpace::StateArray pose_array = {
-                {eef_pos[0], eef_pos[1], 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, *forced_psi}};
+                {eef_pos[0], eef_pos[1], kEefZ, 0.0F, -1.0F, 0.0F, 0.0F, *forced_psi}};
             if (resolve_and_check(pose_array, environment_v))
             {
-                return pose_array;
+                return std::make_pair(pose_array, 0.0F);
             }
 
             std::cout << "Failed to resolve eef_pos (" << eef_pos[0] << ", " << eef_pos[1] << ", " << eef_pos[2]
@@ -364,14 +399,18 @@ static auto find_valid_start_goal_on_branch(
 
         for (int attempt = 0; attempt < kNumPsiCandidates; ++attempt)
         {
+            // psi is FR3's joint 7 angle directly, and cannot be sampled from [0, 2*pi) -- see fr3_marker.hh's lower_bound[6]/upper_bound[6] for the actual joint limits.
+            
             const float psi = use_deterministic_psi
-                ? 2.0F * static_cast<float>(M_PI) * static_cast<float>(attempt) / static_cast<float>(kNumPsiCandidates)
+                ? static_cast<float>(attempt) / static_cast<float>(kNumPsiCandidates) * (Robot::upper_bound[6] - Robot::lower_bound[6]) + Robot::lower_bound[6]
                 : psi_dist(psi_rng);
+            const float q_actual_0 = q_actual_0_dist(psi_rng);
+            ParameterizedSpace::set_smm({branch[0], branch[1], q_actual_0});
             const ParameterizedSpace::StateArray pose_array = {
-                {eef_pos[0], eef_pos[1], 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, psi}};
+                {eef_pos[0], eef_pos[1], kEefZ, 0.0F, -1.0F, 0.0F, 0.0F, psi}};
             if (resolve_and_check(pose_array, environment_v))
             {
-                return pose_array;
+                return std::make_pair(pose_array, q_actual_0);
             }
         }
         std::cout << "Failed to resolve eef_pos (" << eef_pos[0] << ", " << eef_pos[1] << ", " << eef_pos[2]
@@ -382,25 +421,30 @@ static auto find_valid_start_goal_on_branch(
     };
 
     auto try_branch = [&](const std::array<float, 3> &branch)
-        -> std::optional<std::pair<ParameterizedSpace::StateArray, ParameterizedSpace::StateArray>>
+        -> std::optional<std::tuple<ParameterizedSpace::StateArray, ParameterizedSpace::StateArray, float>>
     {
-        ParameterizedSpace::set_smm(branch);
+        const std::array<float, 2> case_sel = {branch[0], branch[1]};
 
-        auto start_pose = try_resolve(
-            start_eef_pos, fixed_psi ? std::optional<float>(fixed_psi->first) : std::nullopt);
-        if (!start_pose)
+        auto start_result = try_resolve(
+            start_eef_pos, case_sel, fixed_psi ? std::optional<float>(fixed_psi->first) : std::nullopt);
+        if (!start_result)
         {
             return std::nullopt;
         }
 
-        auto goal_pose = try_resolve(
-            goal_eef_pos, fixed_psi ? std::optional<float>(fixed_psi->second) : std::nullopt);
-        if (!goal_pose)
+        auto goal_result = try_resolve(
+            goal_eef_pos, case_sel, fixed_psi ? std::optional<float>(fixed_psi->second) : std::nullopt);
+        if (!goal_result)
         {
             return std::nullopt;
         }
 
-        return std::make_pair(*start_pose, *goal_pose);
+        // Report the goal's q_actual_0 as "the" branch q_actual_0 -- see
+        // fr3_maze_problem_generator.cc's find_valid_start_goal_on_shared_branch for why it
+        // doesn't matter which endpoint's draw is kept (q_actual_0 is a singular-case tie-break,
+        // not a posture selector, so start/goal don't need to share it the way they share
+        // case6_sel/case1_sel).
+        return std::make_tuple(start_result->first, goal_result->first, goal_result->second);
     };
 
     const auto search_start = std::chrono::steady_clock::now();
@@ -411,7 +455,8 @@ static auto find_valid_start_goal_on_branch(
         {
             const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now() - search_start);
-            return {true, poses->first, poses->second, *fixed_branch, elapsed};
+            const auto &[start_pose, goal_pose, q_actual_0] = *poses;
+            return {true, start_pose, goal_pose, {(*fixed_branch)[0], (*fixed_branch)[1], q_actual_0}, elapsed};
         }
     }
     else
@@ -423,7 +468,8 @@ static auto find_valid_start_goal_on_branch(
             {
                 const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
                     std::chrono::steady_clock::now() - search_start);
-                return {true, poses->first, poses->second, branch, elapsed};
+                const auto &[start_pose, goal_pose, q_actual_0] = *poses;
+                return {true, start_pose, goal_pose, {branch[0], branch[1], q_actual_0}, elapsed};
             }
         }
     }
@@ -487,15 +533,15 @@ auto main(int argc, char **argv) -> int
         std::cout << "--use_psi has no effect without --use_smm; ignoring it." << std::endl;
     }
 
-    // See find_valid_start_goal_on_branch: false (default) shuffles the 8-branch search order
-    // per problem; --use_fixed_order_smm instead always starts from (1, 1, 1) and walks
+    // See find_valid_start_goal_on_branch: false (default) shuffles the 4-branch search order
+    // per problem; --use_fixed_order_smm instead always starts from (0, 0) and walks
     // kBranchOrder in its fixed order.
     const bool use_sampled_branch_order = not use_fixed_order_smm;
 
     EnvironmentInput environment;
 
     const std::vector<std::string> candidate_paths = {
-        "resources/environments/real_maze.json",
+        "resources/environments/maze_cuboids.json",
     };
 
     bool loaded = false;
@@ -519,10 +565,10 @@ auto main(int argc, char **argv) -> int
 
     // --- Task Space Region: tool facing down (with only slack for numerical tilt), free yaw
     // about the down axis, and pinned to the z=0 plane (xy free within the maze footprint).
-    // Matches iiwa_maze_solver.cc's working bounds -- a narrower box here starves the RRT's
+    // Matches the iiwa benchmark's working bounds -- a narrower box here starves the RRT's
     // informed sampler of the space it needs to route around obstacles, even when the
     // individual start/goal poses are themselves IK-valid.
-    TaskSampler::Transform world_to_reference = {0.0F, 0.0F, 0.22607783F, 0.0F, 1.0F, 0.0F, 0.0F};
+    TaskSampler::Transform world_to_reference = {0.0F, 0.0F, kEefZ, 0.0F, 1.0F, 0.0F, 0.0F};
     TaskSampler::Transform eef_to_offset = {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
 
     TaskSampler::Bound tsr_lower = {-0.85F, -0.7F, -0.0F, -0.000F, -0.000F, -3.14159265358979F};
@@ -535,29 +581,6 @@ auto main(int argc, char **argv) -> int
         tsr_upper,
         environment,
         std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>());
-
-    // psi (index 7) doesn't change the eef pose -- only which arm configuration reaches it --
-    // so instead of hardcoding one shared value, sweep a handful of candidates and keep the
-    // first that resolves within joint limits and collision-free. See find_valid_psi_pose in
-    // iiwa_maze_problem_generator.cc for the full rationale.
-    constexpr int kNumPsiCandidates = 16;
-    auto find_valid_psi_pose =
-        [&](const std::array<float, 3> &eef_pos) -> std::pair<bool, ParameterizedSpace::StateArray>
-    {
-        for (int k = 0; k < kNumPsiCandidates; ++k)
-        {
-            const float psi =
-                2.0F * static_cast<float>(M_PI) * static_cast<float>(k) / static_cast<float>(kNumPsiCandidates);
-            ParameterizedSpace::StateArray pose_array = {
-                {eef_pos[0], eef_pos[1], 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, psi}};
-            if (resolve_and_check(pose_array, env_v))
-            {
-                return {true, pose_array};
-            }
-        }
-
-        return {false, {}};
-    };
 
     std::cout << "\n--- TaskSpaceInformedSampler samples ---" << std::endl;
     for (int i = 0; i < 5; ++i)
@@ -589,19 +612,22 @@ auto main(int argc, char **argv) -> int
     std::cout << "--- end TaskSpaceInformedSampler samples ---\n" << std::endl;
 
     // Imaginary maze entry/exit poses: tool pointing straight down (qx=1,qy=0,qz=0,qw=0), on
-    // the z=0 plane, redundancy parameter (psi) arbitrary at 1.45.
+    // the z=0 plane, q7 arbitrary at 1.45. Same numeric positions as the iiwa benchmark's demo
+    // block -- purely illustrative, not tied to any particular problem file.
+    ParameterizedSpace::set_smm({1.0F, 1.0F, 0.0F});
     ParameterizedSpace::StateArray start_pose_array = {
-        {0.6155468821525574F + 0.05F - 0.15F, -0.62754705131053925F, 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, 1.45F}};
+        {0.6155468821525574F + 0.05F - 0.15F, -0.62754705131053925F, kEefZ, 0.0F, -1.0F, 0.0F, 0.0F, 1.45F}};
     ParameterizedSpace::StateArray goal_pose_array = {
-        {0.5836458206176758F + 0.05F - 0.2F, 0.4369207215309143F, 0.22607783F, 0.0F, -1.0F, 0.0F, 0.0F, 1.45F}};
+        {0.5836458206176758F + 0.05F - 0.2F, 0.4369207215309143F, kEefZ, 0.0F, -1.0F, 0.0F, 0.0F, 1.45F}};
 
     auto rng = std::make_shared<vamp::rng::Halton<Robot, ParameterizedSpace>>();
 
     vamp::planning::RRTCSettings rrtc_settings;
-    rrtc_settings.range = 0.3F;
-    rrtc_settings.max_iterations = 500000;
-    rrtc_settings.max_samples = 5000000;
+    rrtc_settings.range = 0.42F;
+    rrtc_settings.max_iterations = 100000;
+    rrtc_settings.max_samples = 100000;
     rrtc_settings.dynamic_domain = false;
+    rrtc_settings.radius = 1.0F;
 
     const TaskLocalPlanner task_local_planner;
 
@@ -610,7 +636,7 @@ auto main(int argc, char **argv) -> int
 
     // Dump each successful problem's raw and shortcut paths for offline "distance" analysis in
     // python. Configurations here are this robot's task-space parameterization (x, y, z, qx,
-    // qy, qz, qw, psi), not joint angles.
+    // qy, qz, qw, q7), not joint angles.
     auto path_to_json = [](const vamp::planning::Path<Robot, ParameterizedSpace> &path)
     {
         nlohmann::json arr = nlohmann::json::array();
@@ -688,8 +714,8 @@ auto main(int argc, char **argv) -> int
     };
 
     // Hand-rolled SE3 distance (translation distance and quaternion angle, combined in
-    // quadrature) between two eef poses. Kept identical to the mcvamp benchmark's version so
-    // the two files' "eef distance" numbers are directly comparable.
+    // quadrature) between two eef poses. Kept identical to the iiwa/mcvamp benchmarks' version
+    // so the "eef distance" numbers are directly comparable.
     auto se3_distance = [](const Eigen::Vector3f &ta,
                             const Eigen::Quaternionf &qa,
                             const Eigen::Vector3f &tb,
@@ -703,9 +729,8 @@ auto main(int argc, char **argv) -> int
     };
 
     // Total SE3 distance along a task-space pose path. The State already *is* the eef pose
-    // (x, y, z, qx, qy, qz, qw, psi) -- no FK needed -- and index 7 (psi, the self-motion-
-    // manifold redundancy parameter) is simply never read here, since it isn't part of the eef
-    // pose.
+    // (x, y, z, qx, qy, qz, qw, q7) -- no FK needed -- and index 7 (q7, the free/self-motion
+    // joint angle) is simply never read here, since it isn't part of the eef pose.
     auto path_se3_distance = [&](const vamp::planning::Path<Robot, ParameterizedSpace> &path)
     {
         float total = 0.0F;
@@ -725,13 +750,13 @@ auto main(int argc, char **argv) -> int
 
     nlohmann::json all_paths = nlohmann::json::array();
     const std::string paths_output_path =
-        (positional_args.size() > 0) ? positional_args[0] : "resources/iiwa_marker/maze_solver_benchmark_paths.json";
+        (positional_args.size() > 0) ? positional_args[0] : "resources/fr3_marker/maze_solver_benchmark_paths.json";
     // --results_csv takes priority over the positional slot if both are somehow given.
     const std::filesystem::path results_csv_path = (not results_csv_override.empty()) ? results_csv_override
                                                     : (positional_args.size() > 1)     ? positional_args[1]
-                                                                                        : "results/iiwa_maze_solver_benchmark.csv";
+                                                                                        : "results/fr3_maze_solver_benchmark.csv";
     const std::filesystem::path trajectory_dir =
-        (positional_args.size() > 2) ? positional_args[2] : "trajectories/iiwa_maze_solver_benchmark";
+        (positional_args.size() > 2) ? positional_args[2] : "trajectories/fr3_maze_solver_benchmark";
     std::filesystem::create_directories(results_csv_path.parent_path());
     std::filesystem::create_directories(trajectory_dir);
     std::ofstream results_csv(results_csv_path);
@@ -756,6 +781,7 @@ auto main(int argc, char **argv) -> int
     results_csv.flush();
 
     {
+        ParameterizedSpace::set_smm({1.0F, 1.0F, 0.0F});
         const ParameterizedSpace::State start_state(start_pose_array.data());
         const ParameterizedSpace::State goal_state(goal_pose_array.data());
 
@@ -773,30 +799,31 @@ auto main(int argc, char **argv) -> int
     }
 
     std::vector<Problem> problems;
-    const std::string problem_json_path = "resources/iiwa_marker/maze_problems_checked_ik.json";
+    const std::string problem_json_path = "resources/fr3_marker/maze_problems_checked_ik.json";
     load_problems_from_json(problems, problem_json_path);
 
     if (use_smm and use_psi)
     {
-        std::cout << "--use_smm --use_psi: resolving each problem with its saved GC branch and psi directly, "
+        std::cout << "--use_smm --use_psi: resolving each problem with its saved branch and psi directly, "
                       "no search"
                    << std::endl;
     }
     else if (use_smm)
     {
-        std::cout << "--use_smm: resolving each problem's saved GC branch only, "
+        std::cout << "--use_smm: resolving each problem's saved branch only, "
                    << (use_deterministic_psi ? "sweeping psi" : "searching psi") << std::endl;
     }
     else
     {
-        std::cout << "Resolving each problem by searching all GC branches ("
-                   << (use_sampled_branch_order ? "shuffled order" : "fixed order from (1,1,1)") << "), "
+        std::cout << "Resolving each problem by searching all branches ("
+                   << (use_sampled_branch_order ? "shuffled order" : "fixed order from (0,0)") << "), "
                    << (use_deterministic_psi ? "sweeping psi" : "searching psi") << std::endl;
     }
 
     // Seeded from std::random_device like iiwa_branch_selector.cc's branch sweep -- also used to
     // shuffle the branch search order (make_branch_search_order) when use_sampled_branch_order
-    // is set, so this is shared across every problem's resolution search.
+    // is set, and to sample q_actual_0, so this is shared across every problem's resolution
+    // search.
     std::mt19937 psi_rng(std::random_device{}());
 
     std::size_t total_num_problems = 0;
@@ -809,30 +836,35 @@ auto main(int argc, char **argv) -> int
     std::size_t valid_problems = 0;
     std::size_t unresolvable_problems = 0;
 
-    // Per-GC-branch {attempted, solved} counts, keyed by the branch find_valid_start_goal_on_branch
-    // resolved the problem on -- attempted here means "resolved" (i.e. the RRTC solve was
-    // actually attempted on this branch), matching valid_problems' definition. Unresolvable
-    // problems (no branch found at all) have no branch to attribute to, so they're excluded
-    // (see unresolvable_problems above) rather than binned separately.
+    // Per-branch {attempted, solved} counts, keyed by the (case6_sel, case1_sel, q_actual_0)
+    // find_valid_start_goal_on_branch resolved the problem on -- attempted here means "resolved"
+    // (i.e. the RRTC solve was actually attempted on this branch), matching valid_problems'
+    // definition. Unresolvable problems (no branch found at all) have no branch to attribute to,
+    // so they're excluded (see unresolvable_problems above) rather than binned separately.
+    // Keyed on the full 3-tuple (not just case6_sel/case1_sel) since q_actual_0 varies per
+    // problem even on the same discrete branch -- this mostly just means each bucket ends up
+    // with attempted=solved=1, unlike the iiwa version's genuinely repeated 8-branch keys; see
+    // the printout below for the same information collapsed onto (case6_sel, case1_sel).
     struct BranchStats
     {
         std::size_t attempted = 0;
         std::size_t solved = 0;
     };
     std::map<std::array<float, 3>, BranchStats> stats_by_branch;
+    std::map<std::array<float, 2>, BranchStats> stats_by_case_branch;
 
     // How long find_valid_start_goal_on_branch took per problem -- recorded for every attempt,
     // regardless of whether a branch was ultimately found, since a failed search's cost (e.g.
-    // exhausting all 8 branches under the default mode) is itself part of what --use_smm/
+    // exhausting all 4 branches under the default mode) is itself part of what --use_smm/
     // --use_psi are meant to avoid.
     std::vector<std::size_t> resolve_nanoseconds_per_problem;
 
     // "Configuration distance": ambient (joint-space) path length -- what's actually
     // physically reachable, so the representation distance analysis should really care
     // about. "EEF distance": path_se3_distance's SE3 metric over the task-space poses
-    // themselves, skipping psi (index 7) -- Space::distance mixes psi into its metric
-    // (it's a self-motion-manifold redundancy parameter, not part of the eef pose), so it
-    // is not a faithful eef-space distance and can't be reused here.
+    // themselves, skipping q7 (index 7) -- Space::distance mixes q7 into its metric (it's a
+    // self-motion joint, not part of the eef pose), so it is not a faithful eef-space distance
+    // and can't be reused here.
     std::vector<float> configuration_distance_per_problem;
     std::vector<float> shortcut_configuration_distance_per_problem;
     std::vector<float> eef_distance_per_problem;
@@ -855,7 +887,7 @@ auto main(int argc, char **argv) -> int
         if (use_smm and not problem.has_smm)
         {
             std::cout << "Skipping problem: --use_smm given but problem file has no saved smm "
-                          "(regenerate it with the current iiwa_maze_problem_generator.cc)."
+                          "(regenerate it with the current fr3_maze_problem_generator.cc)."
                        << std::endl;
             continue;
         }
@@ -863,8 +895,8 @@ auto main(int argc, char **argv) -> int
         const std::optional<std::array<float, 3>> fixed_branch =
             use_smm ? std::optional<std::array<float, 3>>(problem.smm) : std::nullopt;
         // --use_psi (only meaningful alongside --use_smm -- see the flag parsing above) also
-        // uses the generator's saved psi directly, skipping the random psi search entirely for
-        // the fastest possible resolve path.
+        // uses the generator's saved q7 directly, skipping the random q7/q_actual_0 search
+        // entirely for the fastest possible resolve path.
         const std::optional<std::pair<float, float>> fixed_psi =
             use_psi ? std::optional<std::pair<float, float>>(std::make_pair(problem.start_psi, problem.goal_psi))
                     : std::nullopt;
@@ -884,9 +916,9 @@ auto main(int argc, char **argv) -> int
         if (not resolved)
         {
             unresolvable_problems++;
-            std::cout << "Unable to resolve problem's start/goal configuration on any GC branch after "
+            std::cout << "Unable to resolve problem's start/goal configuration on any branch after "
                        << (resolve_ns.count() / 1.0e6) << " ms. Skipping problem." << std::endl;
-            results_csv << "iiwa_maze_solver," << (total_num_problems - 1) << ",,0,,,,,,"
+            results_csv << "fr3_maze_solver," << (total_num_problems - 1) << ",,0,,,,,,"
                         << (resolve_ns.count() / 1.0e6) << "\n";
             results_csv.flush();
             continue;
@@ -894,6 +926,15 @@ auto main(int argc, char **argv) -> int
 
         valid_problems++;
         stats_by_branch[branch].attempted++;
+        stats_by_case_branch[{branch[0], branch[1]}].attempted++;
+
+        // find_valid_start_goal_on_branch already left `smm` set to `branch` via its internal
+        // try_resolve calls, but the last call it made was for the goal endpoint of whichever
+        // branch attempt failed *before* the one that succeeded, in the non-fixed-branch search
+        // case -- re-set it explicitly here so the RRTC solve below (and every resolve_block
+        // call TaskRRTC/TaskLocalPlanner make while extending the tree) definitely uses the
+        // branch this problem was actually resolved on.
+        ParameterizedSpace::set_smm(branch);
 
         const ParameterizedSpace::State start_state(start_pose_array.data());
         const ParameterizedSpace::State goal_state(goal_pose_array.data());
@@ -910,6 +951,7 @@ auto main(int argc, char **argv) -> int
         {
             successful_problems++;
             stats_by_branch[branch].solved++;
+            stats_by_case_branch[{branch[0], branch[1]}].solved++;
             nanoseconds_per_problem.push_back(result.nanoseconds);
             iterations_per_problem.push_back(result.iterations);
 
@@ -919,6 +961,7 @@ auto main(int argc, char **argv) -> int
             shortcut_nanoseconds_per_problem.push_back(shortcut_result.nanoseconds);
             path_size_before_shortcut.push_back(result.path.size());
             path_size_after_shortcut.push_back(shortcut_result.path.size());
+            shortcut_result.path.interpolate_to_resolution(256);
 
             const auto ambient_path = resolve_ambient_path(result.path);
             const auto shortcut_ambient_path = resolve_ambient_path(shortcut_result.path);
@@ -961,7 +1004,7 @@ auto main(int argc, char **argv) -> int
             const std::string trajectory_filename = "problem_" + std::to_string(total_num_problems - 1) + ".txt";
             write_ambient_path(shortcut_ambient_path, trajectory_dir / trajectory_filename);
 
-            results_csv << "iiwa_maze_solver," << (total_num_problems - 1) << ",,1,"
+            results_csv << "fr3_maze_solver," << (total_num_problems - 1) << ",,1,"
                         << (result.nanoseconds / 1.0e6) << "," << result.iterations << ","
                         << (shortcut_result.nanoseconds / 1.0e6) << "," << shortcut_configuration_distance << ","
                         << shortcut_eef_distance << "," << (resolve_ns.count() / 1.0e6) << "\n";
@@ -973,7 +1016,7 @@ auto main(int argc, char **argv) -> int
             std::cout << "Unable to solve problem with start and goal configs after " << result.iterations
                       << " iterations, " << result.nanoseconds / 1000000.0 << " ms. " << result.size[0] << ", " << result.size[1] << std::endl;
 
-            results_csv << "iiwa_maze_solver," << (total_num_problems - 1) << ",,0,"
+            results_csv << "fr3_maze_solver," << (total_num_problems - 1) << ",,0,"
                         << (result.nanoseconds / 1.0e6) << "," << result.iterations << ",,,,"
                         << (resolve_ns.count() / 1.0e6) << "\n";
         }
@@ -987,29 +1030,28 @@ auto main(int argc, char **argv) -> int
 
     const std::size_t failed_problems = valid_problems - successful_problems;
     std::cout << "Total problems: " << total_num_problems << std::endl
-              << "Unresolvable problems (no GC branch found): " << unresolvable_problems << std::endl
+              << "Unresolvable problems (no branch found): " << unresolvable_problems << std::endl
               << "Valid problems: " << valid_problems << std::endl
               << "Successful problems: " << successful_problems << std::endl
               << "Failed problems: " << failed_problems << std::endl
               << "Success rate: " << (static_cast<float>(successful_problems) / static_cast<float>(valid_problems)) * 100.0F
               << "%" << std::endl;
 
-    // Success rate broken down by GC2/GC4/GC6 branch -- each problem's branch is whichever one
-    // find_valid_start_goal_on_branch resolved it on (the saved smm under --use_smm, otherwise
-    // whichever of kBranchOrder was found first), so this shows whether some arm postures are
-    // systematically harder for RRTC to route through the maze on than others.
-    if (!stats_by_branch.empty())
+    // Success rate broken down by (case6_sel, case1_sel) -- collapsing out q_actual_0, which
+    // varies per problem even on the same discrete branch (see stats_by_branch's comment above)
+    // -- so this shows whether either of FR3's two IK-formula selectors is systematically harder
+    // for RRTC to route through the maze on than the other.
+    if (!stats_by_case_branch.empty())
     {
-        std::cout << "\n--- Success rate by GC branch (elbow_sel, shoulder_sel, wrist_sel) ---" << std::endl;
-        for (const auto &[branch_key, branch_stats] : stats_by_branch)
+        std::cout << "\n--- Success rate by branch (case6_sel, case1_sel) ---" << std::endl;
+        for (const auto &[branch_key, branch_stats] : stats_by_case_branch)
         {
             const float branch_success_rate =
                 (branch_stats.attempted > 0)
                     ? (static_cast<float>(branch_stats.solved) / static_cast<float>(branch_stats.attempted)) * 100.0F
                     : 0.0F;
-            std::cout << "(" << branch_key[0] << ", " << branch_key[1] << ", " << branch_key[2]
-                      << "): " << branch_stats.solved << " / " << branch_stats.attempted << " solved ("
-                      << branch_success_rate << "%)" << std::endl;
+            std::cout << "(" << branch_key[0] << ", " << branch_key[1] << "): " << branch_stats.solved << " / "
+                      << branch_stats.attempted << " solved (" << branch_success_rate << "%)" << std::endl;
         }
     }
 
@@ -1154,6 +1196,10 @@ auto main(int argc, char **argv) -> int
         print_distance_stats("EEF distance", eef_distance_per_problem);
         print_distance_stats("shortcut EEF distance", shortcut_eef_distance_per_problem);
     }
+#ifdef VAMP_PROFILING
+    std::cout << "\n--- Kernel profiling (aggregated over all problems) ---" << std::endl;
+    vamp::utils::profiling::report(std::cout);
+#endif
 
     return 0;
 }

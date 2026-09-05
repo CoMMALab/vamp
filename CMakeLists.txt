@@ -206,6 +206,39 @@ if(VAMP_BUILD_CPP_DEMO)
     endif()
   endif()
 
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/impl/vamp/robots/fr3_marker.hh")
+    CPMAddPackage("gh:nlohmann/json@3.11.3")
+
+    add_executable(vamp_fr3_maze_problem_generator scripts/cpp/fr3_maze_problem_generator.cc)
+    target_link_libraries(vamp_fr3_maze_problem_generator PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
+
+    add_executable(vamp_fr3_maze_solver scripts/cpp/fr3_maze_solver.cc)
+    target_link_libraries(vamp_fr3_maze_solver PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
+
+    add_executable(vamp_fr3_maze_solver_benchmark scripts/cpp/fr3_maze_solver_benchmark.cc)
+    target_link_libraries(vamp_fr3_maze_solver_benchmark PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
+
+    add_executable(vamp_fr3_maze_tsr_benchmark scripts/cpp/fr3_maze_tsr_benchmark.cc)
+    target_link_libraries(vamp_fr3_maze_tsr_benchmark PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
+
+    add_executable(vamp_fr3_mcvamp_problem_generator scripts/cpp/fr3_mcvamp_problem_generator.cc)
+    target_link_libraries(vamp_fr3_mcvamp_problem_generator PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      target_compile_options(vamp_fr3_maze_problem_generator PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+      target_compile_options(vamp_fr3_maze_solver PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+      target_compile_options(vamp_fr3_maze_solver_benchmark PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+      target_compile_options(vamp_fr3_maze_tsr_benchmark PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+      target_compile_options(vamp_fr3_mcvamp_problem_generator PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+    endif()
+
+    if(VAMP_ENABLE_PROFILING)
+      target_compile_definitions(vamp_fr3_maze_solver_benchmark PRIVATE VAMP_PROFILING)
+      target_compile_definitions(vamp_fr3_maze_tsr_benchmark PRIVATE VAMP_PROFILING)
+      target_compile_definitions(vamp_fr3_maze_solver PRIVATE VAMP_PROFILING)
+    endif()
+  endif()
+
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/impl/vamp/robots/bimanual_iiwa.hh")
     add_executable(vamp_bimanual_iiwa_leader_follower_shelf
       scripts/cpp/bimanual_iiwa_leader_follower_shelf.cc)

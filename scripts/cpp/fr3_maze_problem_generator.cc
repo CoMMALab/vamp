@@ -126,10 +126,10 @@ static auto load_cuboids_from_json(EnvironmentInput &environment, const std::str
         {
             float x = obj.at("x").get<float>() + 0.285*2;  // push it slightly forward, matches fr3_maze_problem_generator
             float y = obj.at("y").get<float>() + 0.0F; // push it slightly left, matches fr3_maze_problem_generator
-            float z = obj.at("z").get<float>();
-            float dx = obj.at("dx").get<float>();
-            float dy = obj.at("dy").get<float>();
-            float dz = obj.at("dz").get<float>();
+            float z = obj.at("z").get<float>() + 0.05F; // push it slightly up, matches fr3_maze_problem_generator
+            float dx = obj.at("dx").get<float>() + 0.01F;
+            float dy = obj.at("dy").get<float>() + 0.01F; // make it bigger
+            float dz = obj.at("dz").get<float>() + 0.01F; // make it bigger
 
             float roll = 0.0F, pitch = 0.0F, yaw = 0.0F;
             if (obj.contains("roll")) roll = obj.at("roll").get<float>();

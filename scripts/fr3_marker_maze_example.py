@@ -83,9 +83,9 @@ def load_maze_environment() -> vamp.Environment:
     for c in cuboids:
         # Matches fr3_maze_solver_benchmark.cc's load_cuboids_from_json: push forward/up
         # and pad dz, on the assumption of a shared maze/mount frame with the iiwa rig.
-        position = [c["x"] + 0.285 * 2, c["y"], c["z"] + 0.05]
+        position = [c["x"] + 0.285 * 2, c["y"], c["z"]]
         orientation = [c.get("roll", 0.0), c.get("pitch", 0.0), c.get("yaw", 0.0)]
-        half_extents = [(c["dx"] + 0.01) / 2.0, (c["dy"] + 0.01) / 2.0, (c["dz"] + 0.01) / 2.0]
+        half_extents = [(c["dx"] + 0.0) / 2.0, (c["dy"] + 0.0) / 2.0, (c["dz"] + 0.0) / 2.0]
         env.add_cuboid(vamp.Cuboid(position, orientation, half_extents))
 
     return env

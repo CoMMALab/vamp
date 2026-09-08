@@ -48,7 +48,7 @@ def add_maze_cuboids(server) -> None:
             dimensions=dimensions,
             wxyz=wxyz,
             position=position,
-            opacity=0.6,
+            opacity=0.9,
         )
 
 

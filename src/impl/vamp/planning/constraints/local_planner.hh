@@ -47,12 +47,15 @@ namespace vamp::planning::constraint
     struct ConstrainedLocalPlanner
     {
         // Chord discretization is linear in configuration coordinates; quaternion segments
-        // are renormalized after every linear construction (nlerp), which covers robots
-        // whose only non-Euclidean joints are quaternion-parameterized (SO(3)/free-flyer).
+        // and (cos, sin) circle segments are renormalized after every linear construction
+        // (nlerp), which covers robots whose only non-Euclidean joints are
+        // quaternion-parameterized (SO(3)/free-flyer) or circle-parameterized
+        // (SO(2)/planar base heading).
         static_assert(
-            Robot::euclidean or Robot::so3_offsets.size() > 0,
+            Robot::euclidean or Robot::so3_offsets.size() > 0 or has_so2_offsets_v<Robot>,
             "ConstrainedLocalPlanner requires a Euclidean robot or one whose non-Euclidean "
-            "joints are all quaternion-parameterized (so3_offsets)");
+            "joints are all quaternion-parameterized (so3_offsets) or circle-parameterized "
+            "(so2_offsets)");
 
         using Configuration = typename Robot::Configuration;
         using Block = typename Robot::template ConfigurationBlock<rake>;
@@ -144,6 +147,7 @@ namespace vamp::planning::constraint
             }
 
             renormalize_so3<Robot, rake>(block);
+            renormalize_so2<Robot, rake>(block);
             const auto winner = constraints.project_any(block, step_length);
             if (winner < 0)
             {
@@ -246,6 +250,7 @@ namespace vamp::planning::constraint
             }
 
             renormalize_so3<Robot, rake>(block);
+            renormalize_so2<Robot, rake>(block);
             if (not constraints.project_all(block, distance))
             {
                 return false;
@@ -320,6 +325,7 @@ namespace vamp::planning::constraint
 
                 auto projected = linear;
                 renormalize_so3<Robot, rake>(projected);
+                renormalize_so2<Robot, rake>(projected);
                 if (not constraints.project_all(projected, max_gap * rake))
                 {
                     return false;

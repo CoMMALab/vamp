@@ -187480,7 +187480,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[472],
         static constexpr bool euclidean = false;
         static constexpr std::array<std::size_t, 1> so3_offsets = { 15 };
         static constexpr float joint_limit_margin = 0.015f;
-        static constexpr std::array<std::size_t, 1> nn_ignored_dims = { 10,11 };
+        static constexpr std::array<std::size_t, 2> nn_ignored_dims = { 10,11 };
 
         // Ambient configuration-space robot that resolve_block() maps into.
         using Ambient = RBY1;

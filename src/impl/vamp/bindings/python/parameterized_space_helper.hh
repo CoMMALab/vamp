@@ -412,18 +412,17 @@ namespace vamp::binding
             }
         }
 
-        // Recovers (elbow_sel, wrist_sel) per arm from an already-resolved whole-body ambient
-        // configuration alone -- for a ConstrainedLocalPlanner-based planner (e.g. RBY1's
-        // projection-based mcvamp planner), which never goes through resolve_block/
-        // ParameterizedSpace and so has no GCP already lying around to read. See
-        // RBY1::ParameterizedSpace::classify_smm_block for why shoulder_sel isn't included
-        // (not yet recoverable from an ambient configuration alone). Only present on spaces
-        // with a classify_smm_block concept; see detail::has_classify_smm above. Takes a
-        // plain std::array<float, Ambient::dimension> rather than
-        // Ambient::ConfigurationArray for the same nanobind-caster reason compute_mid_pose
-        // does -- see that method's comment.
+        // Recovers (elbow_sel, shoulder_sel, wrist_sel) per arm from an already-resolved
+        // whole-body ambient configuration alone -- for a ConstrainedLocalPlanner-based
+        // planner (e.g. RBY1's projection-based mcvamp planner), which never goes through
+        // resolve_block/ParameterizedSpace and so has no GCP already lying around to read.
+        // Only present on spaces with a classify_smm_block concept; see
+        // detail::has_classify_smm above. Takes a plain
+        // std::array<float, Ambient::dimension> rather than Ambient::ConfigurationArray for
+        // the same nanobind-caster reason compute_mid_pose does -- see that method's
+        // comment.
         static auto classify_smm(const std::array<float, Ambient::dimension> &ambient)
-            -> std::pair<std::array<float, 2>, std::array<float, 2>>
+            -> std::pair<std::array<float, 3>, std::array<float, 3>>
         {
             if constexpr (detail::has_classify_smm<Space, rake>::value)
             {
@@ -442,8 +441,8 @@ namespace vamp::binding
 
                 const auto classified = Space::template classify_smm_block<rake>(block);
                 return {
-                    {classified[0][0][{0, 0}], classified[0][1][{0, 0}]},
-                    {classified[1][0][{0, 0}], classified[1][1][{0, 0}]}};
+                    {classified[0][0][{0, 0}], classified[0][1][{0, 0}], classified[0][2][{0, 0}]},
+                    {classified[1][0][{0, 0}], classified[1][1][{0, 0}], classified[1][2][{0, 0}]}};
             }
             else
             {
@@ -453,12 +452,12 @@ namespace vamp::binding
             }
         }
 
-        // Set the target GCP branch (elbow_sel, wrist_sel per arm) a
+        // Set the target GCP branch (elbow_sel, shoulder_sel, wrist_sel per arm) a
         // ConstrainedLocalPlanner-based planner (ConstraintSettings::fix_single_smm) must stay
         // on -- typically the result of classify_smm() applied to a planning problem's own
         // start configuration ("stay on whatever branch the start is already on"). Only
         // present on spaces with a set_target_smm concept; see has_set_target_smm_v above.
-        static void set_target_smm(const std::array<float, 2> &left, const std::array<float, 2> &right)
+        static void set_target_smm(const std::array<float, 3> &left, const std::array<float, 3> &right)
         {
             if constexpr (has_set_target_smm_v<Space>)
             {

@@ -163,9 +163,8 @@ namespace vamp::binding
                 "classify_smm",
                 &Traits::classify_smm,
                 "ambient_configuration"_a,
-                "Recover (elbow_sel, wrist_sel) per arm from an already-resolved whole-body "
-                "ambient configuration alone, as (left, right) pairs. shoulder_sel is not "
-                "included -- not yet recoverable from an ambient configuration alone. For a "
+                "Recover (elbow_sel, shoulder_sel, wrist_sel) per arm from an already-resolved "
+                "whole-body ambient configuration alone, as (left, right) triples. For a "
                 "ConstrainedLocalPlanner-based planner (ConstraintSettings.fix_single_smm), "
                 "which never goes through resolve()/this space at all.");
         }

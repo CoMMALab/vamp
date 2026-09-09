@@ -168,9 +168,17 @@ if(VAMP_BUILD_CPP_DEMO)
     add_executable(vamp_rby1_gcp_branch_selector scripts/cpp/rby1_gcp_branch_selector.cc)
     target_link_libraries(vamp_rby1_gcp_branch_selector PRIVATE vamp_cpp)
 
+    add_executable(vamp_rby1_mcvamp_planner scripts/cpp/rby1_mcvamp_planner.cc)
+    target_link_libraries(vamp_rby1_mcvamp_planner PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
+
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
       target_compile_options(vamp_rby1_task_space_planner PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
       target_compile_options(vamp_rby1_gcp_branch_selector PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+      target_compile_options(vamp_rby1_mcvamp_planner PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+    endif()
+    if(VAMP_ENABLE_PROFILING)
+      target_compile_definitions(vamp_rby1_task_space_planner PRIVATE VAMP_PROFILING)
+      target_compile_definitions(vamp_rby1_mcvamp_planner PRIVATE VAMP_PROFILING)
     endif()
   endif()
 

@@ -119,14 +119,33 @@ using vamp::rng::RBY1FixedBaseSampler;
 // ParameterizedSpace::sample().
 auto main(int argc, char **argv) -> int
 {
-    if (argc != 3)
+    // --run_unsolvable is a flag, not a positional argument -- pull it out first (it may
+    // appear anywhere on the command line) so the remaining positional-argument count check
+    // below is unaffected by where the caller places it.
+    bool run_unsolvable = false;
+    std::vector<std::string> positional_args;
+    for (int i = 1; i < argc; ++i)
     {
-        std::cerr << "usage: " << argv[0] << " <input_problems.json> <output_results.json>" << std::endl;
+        const std::string arg = argv[i];
+        if (arg == "--run_unsolvable")
+        {
+            run_unsolvable = true;
+        }
+        else
+        {
+            positional_args.push_back(arg);
+        }
+    }
+
+    if (positional_args.size() != 2)
+    {
+        std::cerr << "usage: " << argv[0]
+                   << " <input_problems.json> <output_results.json> [--run_unsolvable]" << std::endl;
         return 1;
     }
 
-    const std::string input_json_path = argv[1];
-    const std::string output_json_path = argv[2];
+    const std::string input_json_path = positional_args[0];
+    const std::string output_json_path = positional_args[1];
     std::cout << std::boolalpha;
     std::cout << "Robot::dimension (ambient/joint space): " << Robot::dimension << std::endl;
     std::cout << "ParameterizedSpace::dimension (task space): " << ParameterizedSpace::dimension << std::endl;
@@ -290,7 +309,7 @@ auto main(int argc, char **argv) -> int
 
 
     // --- Planning problems: start/goal pairs in ParameterizedSpace's task space, read from
-    // input_json_path. Two formats are accepted:
+    // input_json_path. Three formats are accepted:
     //
     // A bare array, each entry optionally carrying a "file" field for traceability back to
     // whatever generated the problem (this is the current format, e.g.
@@ -300,25 +319,95 @@ auto main(int argc, char **argv) -> int
     //   ...
     // ]
     //
-    // or the earlier { "problems": [...] } wrapper, with the same per-entry shape (minus
-    // "file"), kept for backward compatibility.
-    std::ifstream input_file(input_json_path);
-    if (not input_file)
-    {
-        std::cerr << "Failed to open input JSON file: " << input_json_path << std::endl;
-        return 1;
-    }
+    // the earlier { "problems": [...] } wrapper, with the same per-entry shape (minus
+    // "file"), kept for backward compatibility;
+    //
+    // or a ".jsonl" file (one JSON object per line, as logged live by ruby's RRTC call sites),
+    // where each line has its own "start"/"goal" plus bookkeeping fields ("t", "pid",
+    // "task_index", "kind", "solved", "dimension", ...) instead of "file". The "kind" and
+    // "task_index" fields are used in place of "file" for traceability.
+    const bool is_jsonl = input_json_path.size() >= 6 and
+        input_json_path.compare(input_json_path.size() - 6, 6, ".jsonl") == 0;
 
     nlohmann::json input_json;
-    input_file >> input_json;
-    const auto &problems_json = input_json.is_array() ? input_json : input_json.at("problems");
+    nlohmann::json problems_json_storage;
+
+    if (is_jsonl)
+    {
+        std::ifstream input_file(input_json_path);
+        if (not input_file)
+        {
+            std::cerr << "Failed to open input JSONL file: " << input_json_path << std::endl;
+            return 1;
+        }
+
+        problems_json_storage = nlohmann::json::array();
+        std::string line;
+        while (std::getline(input_file, line))
+        {
+            if (line.find_first_not_of(" \t\r\n") == std::string::npos)
+            {
+                continue;
+            }
+
+            problems_json_storage.push_back(nlohmann::json::parse(line));
+        }
+    }
+    else
+    {
+        std::ifstream input_file(input_json_path);
+        if (not input_file)
+        {
+            std::cerr << "Failed to open input JSON file: " << input_json_path << std::endl;
+            return 1;
+        }
+
+        input_file >> input_json;
+    }
+
+    const auto &problems_json = is_jsonl ? problems_json_storage
+        : (input_json.is_array() ? input_json : input_json.at("problems"));
 
     nlohmann::json output_json = nlohmann::json::array();
 
     for (std::size_t problem_index = 0; problem_index < problems_json.size(); ++problem_index)
     {
         const auto &problem_json = problems_json[problem_index];
-        const auto file_field = problem_json.value("file", std::string());
+
+        // Only "leg" calls are real reach-to-grasp problems; "probe" calls are throwaway
+        // feasibility checks ruby fires off along the way and aren't worth planning full
+        // paths for. Entries with no "kind" field (the plain start/goal formats) have no
+        // such distinction to make, so they're always run.
+        if (problem_json.value("kind", std::string("leg")) != "leg")
+        {
+            continue;
+        }
+
+        // Entries logged from an unsolved rrtc call (jsonl "solved": false) are skipped by
+        // default -- there's no point re-attempting a problem the original call already
+        // gave up on -- unless --run_unsolvable was passed. Entries with no "solved" field
+        // (the plain start/goal formats) are always run.
+        if (not run_unsolvable and not problem_json.value("solved", true))
+        {
+            std::cout << "\n=== Planning problem " << problem_index
+                       << " === skipped (logged as unsolved; pass --run_unsolvable to run it anyway)"
+                       << std::endl;
+            continue;
+        }
+
+        std::string file_field = problem_json.value("file", std::string());
+        if (file_field.empty() and is_jsonl)
+        {
+            const auto kind_field = problem_json.value("kind", std::string());
+            if (problem_json.contains("task_index"))
+            {
+                file_field = kind_field + " task_index=" + std::to_string(problem_json.at("task_index").get<long long>());
+            }
+            else
+            {
+                file_field = kind_field;
+            }
+        }
 
         std::cout << "\n=== Planning problem " << problem_index
                    << (file_field.empty() ? "" : " (" + file_field + ")") << " ===" << std::endl;
@@ -328,6 +417,18 @@ auto main(int argc, char **argv) -> int
         if (not file_field.empty())
         {
             problem_result["file"] = file_field;
+        }
+
+        // Plain (not string-embedded) join keys, so a comparison script can match this
+        // problem up against vamp_rby1_mcvamp_planner's output (which records the same
+        // "task_index"/"kind" straight off the source jsonl entry) without parsing "file".
+        if (problem_json.contains("task_index"))
+        {
+            problem_result["task_index"] = problem_json.at("task_index");
+        }
+        if (problem_json.contains("kind"))
+        {
+            problem_result["kind"] = problem_json.at("kind");
         }
 
         const auto start_vec = problem_json.at("start").get<std::vector<float>>();
@@ -428,6 +529,25 @@ auto main(int argc, char **argv) -> int
             continue;
         }
 
+        // Both endpoints have now passed the full resolve_and_check gauntlet (eef-collision
+        // prefilter, IK resolve_block, CoM support-polygon stability, fkcc/fkcc_attach), so
+        // their resolved ambient (24-dof) configurations are valid, stable, collision-free
+        // joint states -- exactly the start/goal an ambient-space (mcvamp-style) planner
+        // needs, independent of whether the task-space RRTC below finds a connecting path.
+        // Recorded here (lane 0 of each block) as "start_q"/"goal_q" for that consumer.
+        {
+            nlohmann::json start_q_json = nlohmann::json::array();
+            nlohmann::json goal_q_json = nlohmann::json::array();
+            for (std::size_t i = 0; i < Robot::dimension; ++i)
+            {
+                start_q_json.push_back(start_ambient[{i, 0}]);
+                goal_q_json.push_back(goal_ambient[{i, 0}]);
+            }
+
+            problem_result["start_q"] = std::move(start_q_json);
+            problem_result["goal_q"] = std::move(goal_q_json);
+        }
+
         // --- RRTC over ParameterizedSpace, with ParameterizedLocalPlanner as the IK-resolving
         // local planner. NN<ParameterizedSpace> (the KD-tree) is built implicitly inside RRTC::solve
         // from ParameterizedSpace::dimension/so3_offsets -- nothing to construct by hand here.
@@ -457,6 +577,7 @@ auto main(int argc, char **argv) -> int
         problem_result["cost"] = result.cost;
         problem_result["iterations"] = result.iterations;
         problem_result["nanoseconds"] = result.nanoseconds;
+        problem_result["planning_time_ms"] = result.nanoseconds / 1000000.0F;
         problem_result["tree_size_start"] = result.size[0];
         problem_result["tree_size_goal"] = result.size[1];
         problem_result["path_size"] = result.path.size();
@@ -488,8 +609,14 @@ auto main(int argc, char **argv) -> int
 
             // Resolve every waypoint on the (interpolated, shortcutted) path through IK and
             // record the full ambient (joint-space) configuration, mirroring what print_result
-            // used to print.
+            // used to print. Also accumulate config_distance -- summed ambient (24-dof)
+            // Euclidean distance between consecutive resolved waypoints -- the same metric
+            // vamp_rby1_mcvamp_planner reports, so the two planners' solved paths are
+            // comparable apples-to-apples regardless of how each one navigates to get there.
             nlohmann::json trajectory_json = nlohmann::json::array();
+            float config_distance = 0.0F;
+            Robot::ConfigurationArray prev_ambient_array{};
+            bool have_prev = false;
             for (std::size_t i = 0; i < result.path.size(); ++i)
             {
                 const auto &state = result.path[i];
@@ -501,9 +628,23 @@ auto main(int argc, char **argv) -> int
                 auto [valid, ambient_block] = ParameterizedSpace::resolve_block<rake>(block);
 
                 nlohmann::json ambient_configuration_json = nlohmann::json::array();
+                Robot::ConfigurationArray ambient_array{};
                 for (std::size_t j = 0; j < Robot::dimension; ++j)
                 {
-                    ambient_configuration_json.push_back(ambient_block[{j, 0}]);
+                    ambient_array[j] = ambient_block[{j, 0}];
+                    ambient_configuration_json.push_back(ambient_array[j]);
+                }
+
+                if (valid)
+                {
+                    if (have_prev)
+                    {
+                        config_distance += Robot::Configuration(prev_ambient_array)
+                                                .distance(Robot::Configuration(ambient_array));
+                    }
+
+                    prev_ambient_array = ambient_array;
+                    have_prev = true;
                 }
 
                 nlohmann::json waypoint_json;
@@ -512,6 +653,7 @@ auto main(int argc, char **argv) -> int
                 trajectory_json.push_back(std::move(waypoint_json));
             }
 
+            problem_result["config_distance"] = config_distance;
             problem_result["trajectory"] = std::move(trajectory_json);
         }
 

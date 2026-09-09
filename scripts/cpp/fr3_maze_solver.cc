@@ -35,7 +35,6 @@
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/planning/simplify.hh>
 #include <vamp/random/halton.hh>
-#include <vamp/utils/profiling.hh>
 #include <vamp/robots/fr3_marker.hh>
 
 using Robot = vamp::robots::FR3Marker;
@@ -515,9 +514,4 @@ auto main(int, char **) -> int
         }
         std::cout << std::endl;
     }
-#ifdef VAMP_PROFILING
-    std::cout << "\n--- Kernel profiling (aggregated over all problems) ---" << std::endl;
-    vamp::utils::profiling::report(std::cout);
-#endif
-
 }

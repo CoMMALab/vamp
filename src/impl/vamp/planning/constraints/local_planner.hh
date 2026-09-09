@@ -12,7 +12,6 @@
 #include <vamp/planning/cost.hh>
 #include <vamp/planning/local_planner.hh>
 #include <vamp/planning/validate.hh>
-#include <vamp/utils/profiling.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning::constraint

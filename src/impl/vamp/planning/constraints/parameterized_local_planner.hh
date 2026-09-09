@@ -429,7 +429,6 @@ namespace vamp::planning::constraint
         {
             // just reject if the sampled eefs are in collision
             {
-                VAMP_PROFILE_SCOPE(EEFCollisionCheck);
                 auto eef_coll_res = Space::template eefs_collision_free<rake>(environment, interp_block);
                 if (not eef_coll_res)
                 {
@@ -439,7 +438,6 @@ namespace vamp::planning::constraint
 
             auto [param_valid, ambient_block] = [&]
             {
-                VAMP_PROFILE_SCOPE(ResolveIK);
                 return Space::template resolve_block<rake>(interp_block);
             }();
             if (not param_valid)
@@ -448,7 +446,6 @@ namespace vamp::planning::constraint
             }
 
             {
-                VAMP_PROFILE_SCOPE(SupportPolygon);
                 if (not com_within_support_polygon(ambient_block))
                 {
                     return {};
@@ -457,7 +454,6 @@ namespace vamp::planning::constraint
 
             const bool collision_free = [&]
             {
-                VAMP_PROFILE_SCOPE(CollisionCheck);
                 return (environment.attachments.empty()) ?
                            Ambient::template fkcc<rake>(environment, ambient_block) :
                            Ambient::template fkcc_attach<rake>(environment, ambient_block);

@@ -187450,7 +187450,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[472],
     
 
     
-    
     //
     // Center-of-mass kinematics
     //
@@ -188349,6 +188348,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[472],
 
     
 
+    
 
     
     //
@@ -188369,7 +188369,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[472],
         static constexpr bool euclidean = false;
         static constexpr std::array<std::size_t, 1> so3_offsets = { 15 };
         static constexpr float joint_limit_margin = 0.015f;
-        // static constexpr std::array<std::size_t, 2> nn_ignored_dims = { 10,11 };
 
         // Ambient configuration-space robot that resolve_block() maps into.
         using Ambient = RBY1;
@@ -188446,101 +188445,28 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[472],
         inline static thread_local std::array<float, 7> t_mid_right = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
 
         // Target GCP branch for ConstrainedLocalPlanner's optional single-SMM restriction
-        // (see ConstraintSettings::fix_single_smm in
-        // src/impl/vamp/planning/constraints/settings.hh): the (elbow_sel, wrist_sel) every
-        // candidate configuration must classify to, per arm, while that setting is on. Not
-        // read by resolve_block (that's what left_gcp/right_gcp above are for) -- only by
-        // classify_smm_block/smm_mask_block below, which ConstrainedLocalPlanner calls
-        // instead when it never goes through resolve_block at all (e.g. RBY1's projection-
-        // based mcvamp planner, which samples/projects directly in ambient space). shoulder_sel
-        // has no entry here: classify_smm_block can't recover it from an ambient
-        // configuration alone yet (see that function's comment), so it isn't enforced.
-        inline static thread_local std::array<float, 2> target_smm_left = {0.0f, 1.0f};
-        inline static thread_local std::array<float, 2> target_smm_right = {0.0f, 1.0f};
+        // (see vamp::planning::constraint::ConstraintSettings::fix_single_smm): the
+        // (elbow_sel, shoulder_sel, wrist_sel) every candidate configuration must classify
+        // to, per arm, while that setting is on. Not read by resolve_block (that's what
+        // left_gcp/right_gcp above are for) -- only by classify_smm_block/smm_mask_block
+        // below, which ConstrainedLocalPlanner calls instead when it never goes through
+        // resolve_block at all (e.g. RBY1's projection-based mcvamp planner, which samples/
+        // projects directly in ambient space).
+        inline static thread_local std::array<float, 3> target_smm_left = {0.0f, 0.0f, 1.0f};
+        inline static thread_local std::array<float, 3> target_smm_right = {0.0f, 0.0f, 1.0f};
 
-        // Set the target GCP branch (elbow_sel, wrist_sel) both arms must classify to while
-        // ConstraintSettings::fix_single_smm is on. Typically set once per planning problem
-        // from classify_smm_block() applied to that problem's own start configuration (i.e.
-        // "stay on whatever branch the start is already on"), the same way left_gcp/right_gcp
-        // get fixed for a whole RRTC run via set_gcp.
+        // Set the target GCP branch (elbow_sel, shoulder_sel, wrist_sel) both arms must
+        // classify to while ConstraintSettings::fix_single_smm is on. Typically set once per
+        // planning problem from classify_smm_block() applied to that problem's own start
+        // configuration (i.e. "stay on whatever branch the start is already on"), the same
+        // way left_gcp/right_gcp get fixed for a whole RRTC run via set_gcp.
         static inline void set_target_smm(
-            const std::array<float, 2> &left, const std::array<float, 2> &right) noexcept
+            const std::array<float, 3> &left, const std::array<float, 3> &right) noexcept
         {
             target_smm_left = left;
             target_smm_right = right;
         }
-
-        // Recovers (elbow_sel, wrist_sel) per arm from an already-resolved ambient
-        // configuration alone -- the inverse of what resolve_block does starting from a
-        // target task-space pose plus a chosen left_gcp/right_gcp. Needed because
-        // ConstrainedLocalPlanner (the generic projection-based local planner -- see
-        // rby1_mcvamp_planner.cc) never goes through resolve_block or ParameterizedSpace at
-        // all: it samples/projects directly in Ambient's own configuration space, so there is
-        // no left_gcp/right_gcp already lying around to compare a candidate against; it has
-        // to be read back out of the candidate's own joint values.
-        //
-        // wrist_sel is exact and pose-independent: q[15]/q[22] (left/right wrist) is exactly
-        // wrist_sel * (a nonnegative magnitude) by construction (see resolve_block's
-        // `q[15] = left_gcp[2] * v[10]`), so its sign IS wrist_sel.
-        //
-        // elbow_sel is also exact and pose-independent, for a less obvious reason: writing
-        // q[13]/q[20] (left/right elbow)'s two CondExpEq branches as functions of the same
-        // asin argument x121, branch0(x121) = -1.80315340003661 + x121 and
-        // branch1(x121) = 1.33843925355319 - x121 (see resolve_block above) -- and
-        // -1.80315340003661 + 1.33843925355319 == pi exactly, so branch1(x121) ==
-        // pi - branch0(x121) for every x121, i.e. the two branches are an exact pi-apart
-        // (antipodal) reflection of each other regardless of what pose produced x121.
-        // Classifying by whichever branch's CENTER (x121 = 0: -1.80315340003661 for branch0,
-        // 1.33843925355319 for branch1 -- themselves exactly pi apart) the actual joint value
-        // is angularly closer to is therefore exact, not a heuristic, and needs no target
-        // pose at all.
-        //
-        // shoulder_sel (q[10]/q[17]) has no such shortcut: its own two CondExpEq branches
-        // both carry an atan2(-px, -py) term with an ordinary (non-antipodal) offset, so
-        // classifying it needs the actual arm-base-relative wrist position (px, py) -- real
-        // forward-kinematics reconstruction through the torso chain. Not implemented here
-        // (would need either a from-scratch reconstruction of resolve_block's torso/mid-frame
-        // transform composition, or -- better -- extending cricket's
-        // rainbow_arm_parameterization codegen to emit this as a proper companion to
-        // RainbowLeftArmParameterizationFromPose/RainbowRightArmParameterizationFromPose,
-        // the way this whole function ideally should have been generated instead of hand-
-        // written). shoulder_sel is therefore left unenforced by smm_mask_block below, not
-        // guessed.
-        template <std::size_t rake>
-        static inline auto classify_smm_block(const Ambient::ConfigurationBlock<rake> &q) noexcept
-            -> std::array<std::array<FloatVector<rake, 1>, 2>, 2>
-        {
-            using V = FloatVector<rake, 1>;
-
-            auto elbow_sel = [](const V &joint) -> V
-            { return V(1.).blend(V(0.), cos(joint - V(-1.80315340003661)) >= V(0.)); };
-
-            auto wrist_sel = [](const V &joint) -> V
-            { return V(-1.).blend(V(1.), joint >= V(0.)); };
-
-            return {
-                std::array<V, 2>{elbow_sel(q[13]), wrist_sel(q[15])},
-                std::array<V, 2>{elbow_sel(q[20]), wrist_sel(q[22])}};
-        }
-
-        // Per-lane 1.0/0.0 mask: whether that lane's (elbow_sel, wrist_sel) -- both arms --
-        // matches target_smm_left/target_smm_right exactly (these are discrete branch
-        // labels, not continuous values, so exact equality is the right test, unlike e.g.
-        // fkcc's tolerance-based checks). Intended to be combined with a block's fkcc mask
-        // the same way ConstrainedLocalPlanner's fkcc_block gate already works: reject the
-        // whole block ("not all points in the same SMM") unless every lane matches.
-        template <std::size_t rake>
-        static inline auto smm_mask_block(const Ambient::ConfigurationBlock<rake> &q) noexcept
-            -> FloatVector<rake, 1>
-        {
-            using V = FloatVector<rake, 1>;
-            const auto classified = classify_smm_block<rake>(q);
-
-            return (classified[0][0] == V(target_smm_left[0])) &
-                   (classified[0][1] == V(target_smm_left[1])) &
-                   (classified[1][0] == V(target_smm_right[0])) &
-                   (classified[1][1] == V(target_smm_right[1]));
-        }
+        
 
         using State = FloatVector<dimension>;
         struct alignas(FloatVectorAlignment) StateArray
@@ -189202,6 +189128,280 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[472],
 
 
             return y;
+        }
+        
+
+        
+        // Recovers (elbow_sel, shoulder_sel, wrist_sel) per arm from an already-resolved
+        // ambient configuration alone -- the inverse of what resolve_block does starting
+        // from a target task-space pose plus a chosen left_gcp/right_gcp. Needed because
+        // ConstrainedLocalPlanner (the generic projection-based local planner -- see
+        // rby1_mcvamp_planner.cc) never goes through resolve_block or ParameterizedSpace at
+        // all: it samples/projects directly in Ambient's own configuration space, so there
+        // is no left_gcp/right_gcp already lying around to compare a candidate against; it
+        // has to be read back out of the candidate's own joint values. See
+        // RainbowClassifyGcpCG/RainbowLeftArmClassifyGcp/RainbowRightArmClassifyGcp
+        // (cricket's src/parameterization/rainbow_ik_cg.hh /
+        // rainbow_arm_parameterization.hh) for the actual math this generates.
+        template <std::size_t rake>
+        static inline auto classify_smm_block(const Ambient::ConfigurationBlock<rake> &q) noexcept
+            -> std::array<std::array<FloatVector<rake, 1>, 3>, 2>
+        {
+            using V = FloatVector<rake, 1>;
+            std::array<V, 42> v;
+            std::array<V, 3> left_gcp_out;
+            std::array<V, 3> right_gcp_out;
+
+               v[0] = cos(q[5]);
+   v[1] = 0. - q[3];
+   v[2] = sin(q[4]);
+   v[3] = 0. - v[2];
+   v[4] = v[1] * v[3];
+   v[5] = sin(q[5]);
+   v[6] = 0. - v[5];
+   v[7] = q[2] * v[0] + v[4] * v[6];
+   v[8] = cos(q[6]);
+   v[4] = q[2] * v[5] + v[4] * v[0];
+   v[9] = sin(q[6]);
+   v[10] = 0. - v[9];
+   v[11] = v[7] * v[8] + v[4] * v[10];
+   v[12] = cos(q[7]);
+   v[7] = v[7] * v[9] + v[4] * v[8];
+   v[13] = sin(q[7]);
+   v[14] = 0. - v[13];
+   v[15] = v[11] * v[12] + v[7] * v[14];
+   v[16] = cos(q[9]);
+   v[17] = cos(q[4]);
+   v[1] = v[1] * v[17];
+   v[18] = cos(q[8]);
+   v[11] = v[11] * v[13] + v[7] * v[12];
+   v[19] = sin(q[8]);
+   v[20] = v[1] * v[18] + v[11] * v[19];
+   v[21] = sin(q[9]);
+   v[22] = v[15] * v[16] + v[20] * v[21];
+   v[23] = 0. - v[19];
+   v[11] = v[1] * v[23] + v[11] * v[18];
+   v[7] = q[0] + 0.35 * v[4] + 0.35 * v[7] + 0.309426548461 * v[11];
+   v[3] = q[2] * v[3];
+   v[4] = q[3] * v[0] + v[3] * v[6];
+   v[3] = q[3] * v[5] + v[3] * v[0];
+   v[5] = v[4] * v[8] + v[3] * v[10];
+   v[4] = v[4] * v[9] + v[3] * v[8];
+   v[1] = v[5] * v[12] + v[4] * v[14];
+   v[24] = q[2] * v[17];
+   v[5] = v[5] * v[13] + v[4] * v[12];
+   v[25] = v[24] * v[18] + v[5] * v[19];
+   v[26] = v[1] * v[16] + v[25] * v[21];
+   v[5] = v[24] * v[23] + v[5] * v[18];
+   v[4] = q[1] + 0.35 * v[3] + 0.35 * v[4] + 0.309426548461 * v[5];
+   v[6] = v[17] * v[6];
+   v[17] = v[17] * v[0];
+   v[10] = v[6] * v[8] + v[17] * v[10];
+   v[6] = v[6] * v[9] + v[17] * v[8];
+   v[14] = v[10] * v[12] + v[6] * v[14];
+   v[10] = v[10] * v[13] + v[6] * v[12];
+   v[19] = v[2] * v[18] + v[10] * v[19];
+   v[13] = v[14] * v[16] + v[19] * v[21];
+   v[10] = v[2] * v[23] + v[10] * v[18];
+   v[6] = 0.2805 + 0.35 * v[17] + 0.35 * v[6] + 0.309426548461 * v[10];
+   v[21] = 0. - v[21];
+   v[20] = v[15] * v[21] + v[20] * v[16];
+   v[15] = cos(q[10]);
+   v[17] = 0.939692620922329 * v[15];
+   v[15] = -0.342020142950857 * v[15];
+   v[23] = 0.939692620922329 * v[17] - 0.342020142950857 * v[15];
+   v[18] = sin(q[10]);
+   v[2] = 0.342020142950857 * v[18];
+   v[12] = 0. - 0.939692620922329 * v[18];
+   v[9] = v[22] * v[23] + v[20] * v[2] + v[11] * v[12];
+   v[8] = cos(q[12]);
+   v[0] = 0.939692620922329 * v[20] + 0.342020142950857 * v[11];
+   v[3] = cos(q[11]);
+   v[24] = sin(q[11]);
+   v[27] = 0.939692620922329 * v[3] + 0.342020142950857 * v[24];
+   v[28] = v[22] * v[18] + v[20] * v[15] + v[11] * v[17];
+   v[24] = -0.342020142950857 * v[3] + 0.939692620922329 * v[24];
+   v[3] = v[0] * v[27] + v[28] * v[24];
+   v[29] = sin(q[12]);
+   v[30] = v[9] * v[8] + v[3] * v[29];
+   v[31] = 0. - v[24];
+   v[28] = v[0] * v[31] + v[28] * v[27];
+   v[0] = cos(q[13]);
+   v[32] = sin(q[13]);
+   v[33] = 0. - v[32];
+   v[34] = v[30] * v[0] + v[28] * v[33];
+   v[35] = v[30] * v[32] + v[28] * v[0];
+   v[36] = cos(q[14]);
+   v[37] = 0. - v[29];
+   v[38] = sin(q[14]);
+   v[39] = sin(q[15]);
+   v[40] = cos(q[15]);
+   v[3] = (v[34] * v[36] + (v[9] * v[37] + v[3] * v[8]) * v[38]) * v[39] + v[35] * v[40];
+   v[35] = v[7] + 0.22 * v[20] + 0.080073452 * v[11] + 0.031 * v[30] + -0.276 * v[28] + -0.031 * v[34] + -0.256 * v[35] + -0.1548 * v[3];
+   v[25] = v[1] * v[21] + v[25] * v[16];
+   v[1] = v[26] * v[23] + v[25] * v[2] + v[5] * v[12];
+   v[34] = 0.939692620922329 * v[25] + 0.342020142950857 * v[5];
+   v[28] = v[26] * v[18] + v[25] * v[15] + v[5] * v[17];
+   v[30] = v[34] * v[27] + v[28] * v[24];
+   v[9] = v[1] * v[8] + v[30] * v[29];
+   v[28] = v[34] * v[31] + v[28] * v[27];
+   v[34] = v[9] * v[0] + v[28] * v[33];
+   v[41] = v[9] * v[32] + v[28] * v[0];
+   v[30] = (v[34] * v[36] + (v[1] * v[37] + v[30] * v[8]) * v[38]) * v[39] + v[41] * v[40];
+   v[41] = v[4] + 0.22 * v[25] + 0.080073452 * v[5] + 0.031 * v[9] + -0.276 * v[28] + -0.031 * v[34] + -0.256 * v[41] + -0.1548 * v[30];
+   v[21] = v[14] * v[21] + v[19] * v[16];
+   v[12] = v[13] * v[23] + v[21] * v[2] + v[10] * v[12];
+   v[2] = 0.939692620922329 * v[21] + 0.342020142950857 * v[10];
+   v[18] = v[13] * v[18] + v[21] * v[15] + v[10] * v[17];
+   v[24] = v[2] * v[27] + v[18] * v[24];
+   v[29] = v[12] * v[8] + v[24] * v[29];
+   v[18] = v[2] * v[31] + v[18] * v[27];
+   v[33] = v[29] * v[0] + v[18] * v[33];
+   v[32] = v[29] * v[32] + v[18] * v[0];
+   v[24] = (v[33] * v[36] + (v[12] * v[37] + v[24] * v[8]) * v[38]) * v[39] + v[32] * v[40];
+   v[32] = v[6] + 0.22 * v[21] + 0.080073452 * v[10] + 0.031 * v[29] + -0.276 * v[18] + -0.031 * v[33] + -0.256 * v[32] + -0.1548 * v[24];
+   v[33] = (- v[22]) * v[7] + (- v[26]) * v[4] + (- v[13]) * v[6] + v[22] * v[35] + v[26] * v[41] + v[13] * v[32] + 0.1548 * (v[22] * v[3] + v[26] * v[30] + v[13] * v[24]);
+   v[18] = v[11] * v[3] + v[5] * v[30] + v[10] * v[24];
+   v[29] = (- v[11]) * v[7] + (- v[5]) * v[4] + (- v[10]) * v[6] + v[11] * v[35] + v[5] * v[41] + v[10] * v[32];
+   v[24] = v[20] * v[3] + v[25] * v[30] + v[21] * v[24];
+   v[32] = (- v[20]) * v[7] + (- v[25]) * v[4] + (- v[21]) * v[6] + v[20] * v[35] + v[25] * v[41] + v[21] * v[32];
+   v[41] = -2.72185494444282e-07 + -0.145464356471299 * v[18] + -0.93969222526679 * v[29] + 0.0529448864045513 * v[24] + 0.342021230003561 * v[32];
+   v[32] = -0.234119109418322 + 0.145464356471299 * v[24] + 0.93969222526679 * v[32] + 0.0529448864045513 * v[18] + 0.342021230003561 * v[29];
+   v[32] = -1.00275505726673 + 6.98132097739206 * (v[33] * v[33] + v[41] * v[41] + v[32] * v[32]);
+   v[32] = V(v[32]).blend(V(-1.), (V(v[32]) < V(-1.)));
+   v[32] = V(v[32]).blend(V(1.), (V(v[32]) > V(1.)));
+   v[32] = asin(v[32]);
+   left_gcp_out[0] = V(1.).blend(V(0.), (V(cos(q[13] - (-1.80315340003661 + v[32]))) >= V(cos(q[13] - (1.33843925355319 - v[32])))));
+   v[32] = - v[41];
+   v[24] = - v[33];
+   v[29] = V(- v[32]).blend(V(v[32]), (V(v[32]) >= V(0.)));
+   v[18] = V(- v[24]).blend(V(v[24]), (V(v[24]) >= V(0.)));
+   v[18] = V(1.5707963267949 - atan(v[29] / v[18])).blend(V(atan(v[18] / v[29])), (V(v[29]) > V(v[18])));
+   v[29] = V(- v[18]).blend(V(v[18]), (V(v[24]) >= V(0.)));
+   v[18] = V(-3.14159265358979 + v[18]).blend(V(3.14159265358979 - v[18]), (V(v[24]) >= V(0.)));
+   v[18] = V(v[18]).blend(V(v[29]), (V(v[32]) >= V(0.)));
+   v[41] = v[33] * v[33] + v[41] * v[41];
+   v[41] = V(v[41]).blend(V(0.), (V(v[41]) <= V(0.)));
+   v[41] = sqrt(v[41]);
+   v[33] = V(v[41]).blend(V(1.), (V(v[41]) == V(0.)));
+   v[33] = V(1. / v[33]).blend(V(1e+30), (V(v[41]) == V(0.)));
+   v[41] = cos(q[12]);
+   v[29] = 0.031 * v[41];
+   v[29] = v[33] * (v[29] + -1. * cos(q[13]) * v[29] + -0.256 * v[41] * sin(q[13]));
+   v[29] = V(v[29]).blend(V(-1.), (V(v[29]) < V(-1.)));
+   v[29] = V(v[29]).blend(V(1.), (V(v[29]) > V(1.)));
+   v[29] = asin(v[29]);
+   left_gcp_out[1] = V(1.).blend(V(0.), (V(cos(q[10] - (-1. * v[18] + -1. * v[29]))) >= V(cos(q[10] - (3.14159265358979 + v[29] + -1. * v[18])))));
+   left_gcp_out[2] = V(-1.).blend(V(1.), (V(q[15]) >= V(0.)));
+   v[29] = cos(q[17]);
+   v[18] = 0.939692620922329 * v[29];
+   v[29] = 0.342020142950857 * v[29];
+   v[41] = 0.939692620922329 * v[18] - -0.342020142950857 * v[29];
+   v[33] = sin(q[17]);
+   v[32] = -0.342020142950857 * v[33];
+   v[24] = 0. - 0.939692620922329 * v[33];
+   v[35] = v[22] * v[41] + v[20] * v[32] + v[11] * v[24];
+   v[30] = cos(q[19]);
+   v[3] = 0.939692620922329 * v[20] + -0.342020142950857 * v[11];
+   v[12] = cos(q[18]);
+   v[40] = sin(q[18]);
+   v[39] = 0.939692620922329 * v[12] + -0.342020142950857 * v[40];
+   v[38] = v[22] * v[33] + v[20] * v[29] + v[11] * v[18];
+   v[40] = 0.342020142950857 * v[12] + 0.939692620922329 * v[40];
+   v[12] = v[3] * v[39] + v[38] * v[40];
+   v[37] = sin(q[19]);
+   v[36] = v[35] * v[30] + v[12] * v[37];
+   v[8] = 0. - v[40];
+   v[38] = v[3] * v[8] + v[38] * v[39];
+   v[3] = cos(q[20]);
+   v[0] = sin(q[20]);
+   v[2] = 0. - v[0];
+   v[31] = v[36] * v[3] + v[38] * v[2];
+   v[27] = v[36] * v[0] + v[38] * v[3];
+   v[15] = cos(q[21]);
+   v[17] = 0. - v[37];
+   v[23] = sin(q[21]);
+   v[19] = sin(q[22]);
+   v[14] = cos(q[22]);
+   v[12] = (v[31] * v[15] + (v[35] * v[17] + v[12] * v[30]) * v[23]) * v[19] + v[27] * v[14];
+   v[27] = v[7] + -0.22 * v[20] + 0.080073451539 * v[11] + 0.031 * v[36] + -0.276 * v[38] + -0.031 * v[31] + -0.256 * v[27] + -0.1548 * v[12];
+   v[31] = v[26] * v[41] + v[25] * v[32] + v[5] * v[24];
+   v[38] = 0.939692620922329 * v[25] + -0.342020142950857 * v[5];
+   v[36] = v[26] * v[33] + v[25] * v[29] + v[5] * v[18];
+   v[35] = v[38] * v[39] + v[36] * v[40];
+   v[16] = v[31] * v[30] + v[35] * v[37];
+   v[36] = v[38] * v[8] + v[36] * v[39];
+   v[38] = v[16] * v[3] + v[36] * v[2];
+   v[34] = v[16] * v[0] + v[36] * v[3];
+   v[35] = (v[38] * v[15] + (v[31] * v[17] + v[35] * v[30]) * v[23]) * v[19] + v[34] * v[14];
+   v[34] = v[4] + -0.22 * v[25] + 0.080073451539 * v[5] + 0.031 * v[16] + -0.276 * v[36] + -0.031 * v[38] + -0.256 * v[34] + -0.1548 * v[35];
+   v[24] = v[13] * v[41] + v[21] * v[32] + v[10] * v[24];
+   v[32] = 0.939692620922329 * v[21] + -0.342020142950857 * v[10];
+   v[33] = v[13] * v[33] + v[21] * v[29] + v[10] * v[18];
+   v[40] = v[32] * v[39] + v[33] * v[40];
+   v[37] = v[24] * v[30] + v[40] * v[37];
+   v[33] = v[32] * v[8] + v[33] * v[39];
+   v[2] = v[37] * v[3] + v[33] * v[2];
+   v[0] = v[37] * v[0] + v[33] * v[3];
+   v[40] = (v[2] * v[15] + (v[24] * v[17] + v[40] * v[30]) * v[23]) * v[19] + v[0] * v[14];
+   v[0] = v[6] + -0.22 * v[21] + 0.080073451539 * v[10] + 0.031 * v[37] + -0.276 * v[33] + -0.031 * v[2] + -0.256 * v[0] + -0.1548 * v[40];
+   v[13] = (- v[22]) * v[7] + (- v[26]) * v[4] + (- v[13]) * v[6] + v[22] * v[27] + v[26] * v[34] + v[13] * v[0] + 0.1548 * (v[22] * v[12] + v[26] * v[35] + v[13] * v[40]);
+   v[26] = v[11] * v[12] + v[5] * v[35] + v[10] * v[40];
+   v[10] = (- v[11]) * v[7] + (- v[5]) * v[4] + (- v[10]) * v[6] + v[11] * v[27] + v[5] * v[34] + v[10] * v[0];
+   v[0] = (- v[20]) * v[7] + (- v[25]) * v[4] + (- v[21]) * v[6] + v[20] * v[27] + v[25] * v[34] + v[21] * v[0];
+   v[40] = v[20] * v[12] + v[25] * v[35] + v[21] * v[40];
+   v[35] = -2.72185494444282e-07 + -0.145464356471299 * v[26] + -0.93969222526679 * v[10] + -0.342021230003561 * v[0] + -0.0529448864045513 * v[40];
+   v[40] = 0.234119109418322 + 0.145464356471299 * v[40] + 0.93969222526679 * v[0] + -0.342021230003561 * v[10] + -0.0529448864045513 * v[26];
+   v[40] = -1.00275505726673 + 6.98132097739206 * (v[13] * v[13] + v[35] * v[35] + v[40] * v[40]);
+   v[40] = V(v[40]).blend(V(-1.), (V(v[40]) < V(-1.)));
+   v[40] = V(v[40]).blend(V(1.), (V(v[40]) > V(1.)));
+   v[40] = asin(v[40]);
+   right_gcp_out[0] = V(1.).blend(V(0.), (V(cos(q[20] - (-1.80315340003661 + v[40]))) >= V(cos(q[20] - (1.33843925355319 - v[40])))));
+   v[40] = v[13] * v[13] + v[35] * v[35];
+   v[40] = V(v[40]).blend(V(0.), (V(v[40]) <= V(0.)));
+   v[40] = sqrt(v[40]);
+   v[0] = V(v[40]).blend(V(1.), (V(v[40]) == V(0.)));
+   v[0] = V(1. / v[0]).blend(V(1e+30), (V(v[40]) == V(0.)));
+   v[40] = cos(q[19]);
+   v[10] = 0.031 * v[40];
+   v[10] = v[0] * (-0.256 * v[40] * sin(q[20]) + v[10] + -1. * cos(q[20]) * v[10]);
+   v[10] = V(v[10]).blend(V(-1.), (V(v[10]) < V(-1.)));
+   v[10] = V(v[10]).blend(V(1.), (V(v[10]) > V(1.)));
+   v[10] = asin(v[10]);
+   v[35] = - v[35];
+   v[13] = - v[13];
+   v[40] = V(- v[35]).blend(V(v[35]), (V(v[35]) >= V(0.)));
+   v[0] = V(- v[13]).blend(V(v[13]), (V(v[13]) >= V(0.)));
+   v[0] = V(1.5707963267949 - atan(v[40] / v[0])).blend(V(atan(v[0] / v[40])), (V(v[40]) > V(v[0])));
+   v[40] = V(- v[0]).blend(V(v[0]), (V(v[13]) >= V(0.)));
+   v[0] = V(-3.14159265358979 + v[0]).blend(V(3.14159265358979 - v[0]), (V(v[13]) >= V(0.)));
+   v[0] = V(v[0]).blend(V(v[40]), (V(v[35]) >= V(0.)));
+   right_gcp_out[1] = V(1.).blend(V(0.), (V(cos(q[17] - (-1. * v[10] + -1. * v[0]))) >= V(cos(q[17] - (3.14159265358979 + v[10] + -1. * v[0])))));
+   right_gcp_out[2] = V(-1.).blend(V(1.), (V(q[22]) >= V(0.)));
+
+
+            return {left_gcp_out, right_gcp_out};
+        }
+
+        // Per-lane 1.0/0.0 mask: whether that lane's (elbow_sel, shoulder_sel, wrist_sel) --
+        // both arms -- matches target_smm_left/target_smm_right exactly (discrete branch
+        // labels, not continuous values, so exact equality is the right test, unlike e.g.
+        // fkcc's tolerance-based checks). Intended to be combined with a block's fkcc mask
+        // the same way ConstrainedLocalPlanner's fkcc_block gate already works: reject the
+        // whole block ("not all points in the same SMM") unless every lane matches.
+        template <std::size_t rake>
+        static inline auto smm_mask_block(const Ambient::ConfigurationBlock<rake> &q) noexcept
+            -> FloatVector<rake, 1>
+        {
+            using V = FloatVector<rake, 1>;
+            const auto classified = classify_smm_block<rake>(q);
+
+            return (classified[0][0] == V(target_smm_left[0])) &
+                   (classified[0][1] == V(target_smm_left[1])) &
+                   (classified[0][2] == V(target_smm_left[2])) &
+                   (classified[1][0] == V(target_smm_right[0])) &
+                   (classified[1][1] == V(target_smm_right[1])) &
+                   (classified[1][2] == V(target_smm_right[2]));
         }
         
 
@@ -190653,4 +190853,6 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[472],
 };
 }
 
+// NOLINTEND(*-magic-numbers)
+// NOLINTEND(*-magic-numbers)
 // NOLINTEND(*-magic-numbers)

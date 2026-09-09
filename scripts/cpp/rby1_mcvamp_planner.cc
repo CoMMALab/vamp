@@ -577,20 +577,56 @@ auto main(int argc, char **argv) -> int
         // already on -- "stay on the branch you started on" -- before any of this problem's
         // solving/projection runs, since ConstrainedLocalPlanner (via constraint_set below)
         // reads Robot::ParameterizedSpace::target_smm_left/right the moment fix_single_smm is
-        // on. Only elbow_sel/wrist_sel are actually enforced; see classify_smm_block's
-        // comment for why shoulder_sel isn't classified (yet).
+        // on. classify_smm_block now classifies all three (elbow_sel, shoulder_sel,
+        // wrist_sel) per arm.
+        //
+        // Diagnostic: also classify the goal and print both, since --fix_single_smm can only
+        // ever solve a problem whose start and goal already sit on the SAME branch -- every
+        // candidate on the goal's own (different) branch fails the start-fixed
+        // smm_mask_block gate by construction, so a start/goal branch mismatch looks
+        // identical to "every problem fails" from the RRTC result alone.
         if (fix_single_smm)
         {
             Robot::ConfigurationBlock<rake> start_block;
+            Robot::ConfigurationBlock<rake> goal_block;
             for (std::size_t i = 0; i < Robot::dimension; ++i)
             {
                 start_block[i] = start_config.broadcast(i);
+                goal_block[i] = goal_config.broadcast(i);
             }
 
             const auto start_smm = Robot::ParameterizedSpace::classify_smm_block<rake>(start_block);
-            Robot::ParameterizedSpace::set_target_smm(
-                {start_smm[0][0][{0, 0}], start_smm[0][1][{0, 0}]},
-                {start_smm[1][0][{0, 0}], start_smm[1][1][{0, 0}]});
+            const auto goal_smm = Robot::ParameterizedSpace::classify_smm_block<rake>(goal_block);
+
+            const std::array<float, 3> start_left = {
+                start_smm[0][0][{0, 0}], start_smm[0][1][{0, 0}], start_smm[0][2][{0, 0}]};
+            const std::array<float, 3> start_right = {
+                start_smm[1][0][{0, 0}], start_smm[1][1][{0, 0}], start_smm[1][2][{0, 0}]};
+            const std::array<float, 3> goal_left = {
+                goal_smm[0][0][{0, 0}], goal_smm[0][1][{0, 0}], goal_smm[0][2][{0, 0}]};
+            const std::array<float, 3> goal_right = {
+                goal_smm[1][0][{0, 0}], goal_smm[1][1][{0, 0}], goal_smm[1][2][{0, 0}]};
+
+            auto print_smm = [](const char *label, const std::array<float, 3> &left,
+                                 const std::array<float, 3> &right)
+            {
+                std::cout << "  " << label << " GCP (elbow_sel, shoulder_sel, wrist_sel): left=(" << left[0]
+                           << ", " << left[1] << ", " << left[2] << ") right=(" << right[0] << ", " << right[1]
+                           << ", " << right[2] << ")" << std::endl;
+            };
+            print_smm("start", start_left, start_right);
+            print_smm("goal ", goal_left, goal_right);
+
+            const bool same_smm = start_left == goal_left and start_right == goal_right;
+            if (not same_smm)
+            {
+                std::cout << "  WARNING: start and goal are on DIFFERENT GCP branches -- "
+                             "--fix_single_smm will reject this problem (every candidate on the "
+                             "goal's own branch fails the start-fixed target_smm mask)."
+                          << std::endl;
+            }
+
+            Robot::ParameterizedSpace::set_target_smm(start_left, start_right);
         }
 
         // Diagnostic: how far the raw, un-projected q_start/q_goal already sit from the

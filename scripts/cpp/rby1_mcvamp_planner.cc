@@ -23,7 +23,13 @@
 //
 // Usage:
 //   vamp_rby1_mcvamp_planner <input_problems.jsonl|input_problems.json> <output_results.json>
-//       [--run_unsolvable]
+//       [--run_unsolvable] [--fix_single_smm]
+//
+// --fix_single_smm restricts each problem's search to whatever GCP branch
+// (elbow_sel/wrist_sel per arm) its own start configuration is already on, rejecting any
+// candidate that would cross onto a different one -- see ConstraintSettings::fix_single_smm
+// and RBY1::ParameterizedSpace::smm_mask_block. Off by default. shoulder_sel isn't
+// classified/enforced yet (see classify_smm_block's comment for why).
 //
 // Same two required positional arguments (input, then output) and --run_unsolvable flag as
 // rby1_task_space_planner.cc, and the same single-JSON output: no separate results CSV or
@@ -395,6 +401,12 @@ auto main(int argc, char **argv) -> int
     // remaining positional-argument count check below is unaffected by where the caller
     // places it.
     bool run_unsolvable = false;
+    // Optional: restrict every problem's RRTC search to the same GCP branch
+    // (elbow_sel/wrist_sel per arm) its own start configuration is already on, rejecting any
+    // candidate that would cross onto a different one -- see
+    // ConstraintSettings::fix_single_smm and RBY1::ParameterizedSpace::smm_mask_block. Off by
+    // default (matches today's behavior exactly).
+    bool fix_single_smm = false;
     std::vector<std::string> positional_args;
     for (int i = 1; i < argc; ++i)
     {
@@ -402,6 +414,10 @@ auto main(int argc, char **argv) -> int
         if (arg == "--run_unsolvable")
         {
             run_unsolvable = true;
+        }
+        else if (arg == "--fix_single_smm")
+        {
+            fix_single_smm = true;
         }
         else
         {
@@ -411,7 +427,9 @@ auto main(int argc, char **argv) -> int
 
     if (positional_args.size() != 2)
     {
-        std::cerr << "usage: " << argv[0] << " <input_problems.json> <output_results.json> [--run_unsolvable]"
+        std::cerr << "usage: " << argv[0]
+                   << " <input_problems.json> <output_results.json> [--run_unsolvable] "
+                      "[--fix_single_smm]"
                    << std::endl;
         return 1;
     }
@@ -493,6 +511,7 @@ auto main(int argc, char **argv) -> int
     constraint_settings.emit_all_waypoints = false;
     constraint_settings.perturbation_scale = 0.2F;
     constraint_settings.tolerance = 1e-6F;
+    constraint_settings.fix_single_smm = fix_single_smm;
 
     // lTr/support_polygon/constraint_settings above are loop-invariant plain data; the
     // constraint objects and ConstrainedLocalPlanner built from them are not reused across
@@ -553,6 +572,26 @@ auto main(int argc, char **argv) -> int
         // there via resolve_and_check's support-polygon gate).
         Robot::Configuration start_config(problem.start);
         Robot::Configuration goal_config(problem.goal);
+
+        // Fix the target GCP branch to whatever this problem's own start configuration is
+        // already on -- "stay on the branch you started on" -- before any of this problem's
+        // solving/projection runs, since ConstrainedLocalPlanner (via constraint_set below)
+        // reads Robot::ParameterizedSpace::target_smm_left/right the moment fix_single_smm is
+        // on. Only elbow_sel/wrist_sel are actually enforced; see classify_smm_block's
+        // comment for why shoulder_sel isn't classified (yet).
+        if (fix_single_smm)
+        {
+            Robot::ConfigurationBlock<rake> start_block;
+            for (std::size_t i = 0; i < Robot::dimension; ++i)
+            {
+                start_block[i] = start_config.broadcast(i);
+            }
+
+            const auto start_smm = Robot::ParameterizedSpace::classify_smm_block<rake>(start_block);
+            Robot::ParameterizedSpace::set_target_smm(
+                {start_smm[0][0][{0, 0}], start_smm[0][1][{0, 0}]},
+                {start_smm[1][0][{0, 0}], start_smm[1][1][{0, 0}]});
+        }
 
         // Diagnostic: how far the raw, un-projected q_start/q_goal already sit from the
         // constraint manifold before we touch them at all. If these are consistently large

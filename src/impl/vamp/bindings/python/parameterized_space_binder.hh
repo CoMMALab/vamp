@@ -153,6 +153,35 @@ namespace vamp::binding
                 "this space's IK resolves onto. Affects every subsequent resolve()/planning "
                 "call on this thread (thread-local) until set again.");
         }
+        // Only present on task spaces with a classify_smm_block concept (currently RBY1);
+        // see the same gate on Traits::classify_smm (parameterized_space_helper.hh). For a
+        // ConstrainedLocalPlanner-based (non-task-space) planner, e.g. rby1_mcvamp_planner.cc
+        // -- see ConstraintSettings::fix_single_smm.
+        if constexpr (detail::has_classify_smm<typename Traits::Space, rake>::value)
+        {
+            t.def(
+                "classify_smm",
+                &Traits::classify_smm,
+                "ambient_configuration"_a,
+                "Recover (elbow_sel, wrist_sel) per arm from an already-resolved whole-body "
+                "ambient configuration alone, as (left, right) pairs. shoulder_sel is not "
+                "included -- not yet recoverable from an ambient configuration alone. For a "
+                "ConstrainedLocalPlanner-based planner (ConstraintSettings.fix_single_smm), "
+                "which never goes through resolve()/this space at all.");
+        }
+        if constexpr (has_set_target_smm_v<typename Traits::Space>)
+        {
+            t.def(
+                "set_target_smm",
+                &Traits::set_target_smm,
+                "left"_a,
+                "right"_a,
+                "Set the target (elbow_sel, wrist_sel) branch, per arm, a "
+                "ConstrainedLocalPlanner-based planner must stay on while "
+                "ConstraintSettings.fix_single_smm is set -- typically classify_smm() applied "
+                "to a planning problem's own start configuration. Affects every subsequent "
+                "planning call on this thread (thread-local) until set again.");
+        }
         t.def(
             "shortcut",
             &Traits::shortcut,

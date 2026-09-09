@@ -61,6 +61,14 @@ VAMP_DEFINE_HAS_METHOD(set_smm)
 // comment above for why this isn't unified with it (different method name, same shape).
 VAMP_DEFINE_HAS_METHOD(set_gc)
 
+// Target GCP branch a ConstrainedLocalPlanner-based (i.e. non-task-space) planner should be
+// restricted to -- see ConstraintSettings::fix_single_smm and
+// RBY1::ParameterizedSpace::set_target_smm/target_smm_left/target_smm_right. Distinct from
+// set_gcp above (which resolve_block itself reads while IK-resolving a task-space state):
+// this is read only by classify_smm_block/smm_mask_block, for a planner that never touches
+// resolve_block or ParameterizedSpace at all.
+VAMP_DEFINE_HAS_METHOD(set_target_smm)
+
 // Detects LeaderFollowerSpace's rel_pose data member directly (decltype(T::rel_pose) is
 // well-formed for a static data member exactly like it is for a static method), so a
 // literal offset can be assigned in place -- for problems (e.g. a rigid dual-arm carry)
@@ -93,6 +101,29 @@ namespace vamp::binding
             std::void_t<decltype(Space::template eefs_collision_free<r>(
                 std::declval<const vamp::collision::Environment<vamp::FloatVector<r>> &>(),
                 std::declval<const typename Space::template StateBlock<r> &>()))>> : std::true_type
+        {
+        };
+
+        // Detects whether Space exposes a templated
+        // classify_smm_block<r>(Ambient::ConfigurationBlock<r>) utility (currently only
+        // RBY1::ParameterizedSpace -- see its classify_smm_block/smm_mask_block and
+        // ConstraintSettings::fix_single_smm). A plain VAMP_DEFINE_HAS_METHOD doesn't work
+        // here since classify_smm_block is a template member: decltype(T::classify_smm_block)
+        // alone (no template argument) is ill-formed for an unresolved function template, so
+        // it needs the same explicit-instantiation SFINAE pattern as has_eefs_collision_free
+        // above rather than the macro.
+        template <typename Space, std::size_t r, typename = void>
+        struct has_classify_smm : std::false_type
+        {
+        };
+
+        template <typename Space, std::size_t r>
+        struct has_classify_smm<
+            Space,
+            r,
+            std::void_t<decltype(Space::template classify_smm_block<r>(std::declval<
+                const typename Space::Ambient::template ConfigurationBlock<r> &>()))>>
+            : std::true_type
         {
         };
     }  // namespace detail
@@ -378,6 +409,66 @@ namespace vamp::binding
             {
                 (void) gc;
                 throw std::runtime_error("this task space has no set_smm (self-motion-manifold branch) concept");
+            }
+        }
+
+        // Recovers (elbow_sel, wrist_sel) per arm from an already-resolved whole-body ambient
+        // configuration alone -- for a ConstrainedLocalPlanner-based planner (e.g. RBY1's
+        // projection-based mcvamp planner), which never goes through resolve_block/
+        // ParameterizedSpace and so has no GCP already lying around to read. See
+        // RBY1::ParameterizedSpace::classify_smm_block for why shoulder_sel isn't included
+        // (not yet recoverable from an ambient configuration alone). Only present on spaces
+        // with a classify_smm_block concept; see detail::has_classify_smm above. Takes a
+        // plain std::array<float, Ambient::dimension> rather than
+        // Ambient::ConfigurationArray for the same nanobind-caster reason compute_mid_pose
+        // does -- see that method's comment.
+        static auto classify_smm(const std::array<float, Ambient::dimension> &ambient)
+            -> std::pair<std::array<float, 2>, std::array<float, 2>>
+        {
+            if constexpr (detail::has_classify_smm<Space, rake>::value)
+            {
+                typename Ambient::ConfigurationArray q;
+                for (std::size_t i = 0; i < Ambient::dimension; ++i)
+                {
+                    q[i] = ambient[i];
+                }
+                typename Ambient::Configuration cfg(q);
+
+                typename Ambient::template ConfigurationBlock<rake> block;
+                for (std::size_t i = 0; i < Ambient::dimension; ++i)
+                {
+                    block[i] = cfg.broadcast(i);
+                }
+
+                const auto classified = Space::template classify_smm_block<rake>(block);
+                return {
+                    {classified[0][0][{0, 0}], classified[0][1][{0, 0}]},
+                    {classified[1][0][{0, 0}], classified[1][1][{0, 0}]}};
+            }
+            else
+            {
+                (void) ambient;
+                throw std::runtime_error(
+                    "this task space has no SMM classify (self-motion-manifold branch) concept");
+            }
+        }
+
+        // Set the target GCP branch (elbow_sel, wrist_sel per arm) a
+        // ConstrainedLocalPlanner-based planner (ConstraintSettings::fix_single_smm) must stay
+        // on -- typically the result of classify_smm() applied to a planning problem's own
+        // start configuration ("stay on whatever branch the start is already on"). Only
+        // present on spaces with a set_target_smm concept; see has_set_target_smm_v above.
+        static void set_target_smm(const std::array<float, 2> &left, const std::array<float, 2> &right)
+        {
+            if constexpr (has_set_target_smm_v<Space>)
+            {
+                Space::set_target_smm(left, right);
+            }
+            else
+            {
+                (void) left;
+                (void) right;
+                throw std::runtime_error("this task space has no target-SMM concept");
             }
         }
 

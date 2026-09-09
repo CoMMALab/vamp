@@ -1,8 +1,10 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -16,6 +18,32 @@
 
 namespace vamp::planning::constraint
 {
+    namespace detail
+    {
+        // Detects whether Robot::ParameterizedSpace exposes a
+        // smm_mask_block<rake>(Robot::ConfigurationBlock<rake>) -> FloatVector<rake, 1>
+        // (currently only RBY1::ParameterizedSpace does -- see its classify_smm_block/
+        // smm_mask_block and the ConstraintSettings::fix_single_smm comment for why this
+        // lives on ParameterizedSpace rather than on Robot or ConstrainedLocalPlanner
+        // itself). Guards ConstrainedLocalPlanner's optional single-SMM gate below so it
+        // still compiles for a Robot with no ParameterizedSpace at all, or one whose
+        // ParameterizedSpace hasn't implemented this yet.
+        template <typename Robot, std::size_t rake, typename = void>
+        struct has_smm_mask : std::false_type
+        {
+        };
+
+        template <typename Robot, std::size_t rake>
+        struct has_smm_mask<
+            Robot,
+            rake,
+            std::void_t<decltype(Robot::ParameterizedSpace::template smm_mask_block<rake>(
+                std::declval<const typename Robot::template ConfigurationBlock<rake> &>()))>>
+            : std::true_type
+        {
+        };
+    }  // namespace detail
+
     // Perturbation multipliers 0, -0.25, +0.25, -0.5, +0.5, ...: index 0 is unperturbed so
     // one lane always aims exactly at the steer target.
     template <std::size_t n>
@@ -182,7 +210,7 @@ namespace vamp::planning::constraint
                 next_block[j] = next.broadcast(j);
             }
 
-            if (not fkcc_block<Robot, rake>(e, next_block))
+            if (not fkcc_block<Robot, rake>(e, next_block) or not smm_ok(next_block))
             {
                 return {SteerStatus::Trapped, chain_};
             }
@@ -226,6 +254,37 @@ namespace vamp::planning::constraint
 
     private:
         mutable std::vector<Configuration> chain_;
+
+        // "Not all points in the same SMM" gate: when constraints.settings().fix_single_smm
+        // is on, every lane of `block` must classify to the same (per-robot, e.g. RBY1's
+        // GCP) branch as whatever ParameterizedSpace::set_target_smm() last fixed -- see
+        // ConstraintSettings::fix_single_smm's comment. A no-op (always true) for a Robot
+        // without smm_mask_block (detail::has_smm_mask above), so this compiles regardless
+        // of whether the current Robot supports it; assert (debug builds only) if the
+        // setting is on for one that doesn't, since that combination silently does nothing
+        // otherwise. Called alongside fkcc_block at every point this file already
+        // collision-checks a whole rake-wide block, with the same all-lanes-must-pass
+        // contract.
+        inline auto smm_ok(const Block &block) const noexcept -> bool
+        {
+            if constexpr (detail::has_smm_mask<Robot, rake>::value)
+            {
+                if (not constraints.settings().fix_single_smm)
+                {
+                    return true;
+                }
+
+                return Robot::ParameterizedSpace::template smm_mask_block<rake>(block).all();
+            }
+            else
+            {
+                assert(
+                    not constraints.settings().fix_single_smm and
+                    "ConstraintSettings::fix_single_smm is set but this Robot's "
+                    "ParameterizedSpace has no smm_mask_block -- the setting has no effect");
+                return true;
+            }
+        }
 
         // Trace the constrained local path a -> b: project the rake-lane discretization of
         // the chord onto the manifold, require continuity (adjacent lanes within twice the
@@ -282,7 +341,7 @@ namespace vamp::planning::constraint
                 max_gap2 = std::max(max_gap2, gap2);
             }
 
-            if (not fkcc_block<Robot, rake>(e, block))
+            if (not fkcc_block<Robot, rake>(e, block) or not smm_ok(block))
             {
                 return false;
             }
@@ -336,7 +395,7 @@ namespace vamp::planning::constraint
                     return false;
                 }
 
-                if (not fkcc_block<Robot, rake>(e, projected))
+                if (not fkcc_block<Robot, rake>(e, projected) or not smm_ok(projected))
                 {
                     return false;
                 }

@@ -43,6 +43,20 @@ namespace vamp::planning::constraint
 
         // Squared tolerance for a traced chain to count as attaining its endpoint.
         float endpoint_tolerance2 = 1e-6F;
+
+        // Restrict every projected/collision-checked configuration to a single, caller-fixed
+        // discrete IK branch ("SMM"/GCP: which self-motion-manifold sheet a redundant arm's
+        // closed-form parameterization resolved onto -- see e.g. RBY1::ParameterizedSpace's
+        // left_gcp/right_gcp). Off by default (no effect, no cost). When true, the target
+        // branch itself is read from Robot::ParameterizedSpace's own thread_local state (set
+        // via its set_target_smm()-style setter, the same pattern left_gcp/right_gcp already
+        // use) rather than stored here, since its type/width is robot-specific and this
+        // struct is deliberately robot-agnostic. Only meaningful for a Robot whose
+        // ParameterizedSpace exposes a classify_smm_block (see
+        // vamp::planning::constraint::detail::has_classify_smm in local_planner.hh);
+        // ConstrainedLocalPlanner rejects at compile time if this is set for a Robot that
+        // doesn't.
+        bool fix_single_smm = false;
     };
 
     // Knobs for chart construction and chart-LQMT edge validation (ChartLocalPlanner).

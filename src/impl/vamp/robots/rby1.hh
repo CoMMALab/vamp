@@ -188444,7 +188444,103 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[472],
         // overwrite directly or via compute_mid_pose() below.
         inline static thread_local std::array<float, 7> t_mid_left = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
         inline static thread_local std::array<float, 7> t_mid_right = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
-        
+
+        // Target GCP branch for ConstrainedLocalPlanner's optional single-SMM restriction
+        // (see ConstraintSettings::fix_single_smm in
+        // src/impl/vamp/planning/constraints/settings.hh): the (elbow_sel, wrist_sel) every
+        // candidate configuration must classify to, per arm, while that setting is on. Not
+        // read by resolve_block (that's what left_gcp/right_gcp above are for) -- only by
+        // classify_smm_block/smm_mask_block below, which ConstrainedLocalPlanner calls
+        // instead when it never goes through resolve_block at all (e.g. RBY1's projection-
+        // based mcvamp planner, which samples/projects directly in ambient space). shoulder_sel
+        // has no entry here: classify_smm_block can't recover it from an ambient
+        // configuration alone yet (see that function's comment), so it isn't enforced.
+        inline static thread_local std::array<float, 2> target_smm_left = {0.0f, 1.0f};
+        inline static thread_local std::array<float, 2> target_smm_right = {0.0f, 1.0f};
+
+        // Set the target GCP branch (elbow_sel, wrist_sel) both arms must classify to while
+        // ConstraintSettings::fix_single_smm is on. Typically set once per planning problem
+        // from classify_smm_block() applied to that problem's own start configuration (i.e.
+        // "stay on whatever branch the start is already on"), the same way left_gcp/right_gcp
+        // get fixed for a whole RRTC run via set_gcp.
+        static inline void set_target_smm(
+            const std::array<float, 2> &left, const std::array<float, 2> &right) noexcept
+        {
+            target_smm_left = left;
+            target_smm_right = right;
+        }
+
+        // Recovers (elbow_sel, wrist_sel) per arm from an already-resolved ambient
+        // configuration alone -- the inverse of what resolve_block does starting from a
+        // target task-space pose plus a chosen left_gcp/right_gcp. Needed because
+        // ConstrainedLocalPlanner (the generic projection-based local planner -- see
+        // rby1_mcvamp_planner.cc) never goes through resolve_block or ParameterizedSpace at
+        // all: it samples/projects directly in Ambient's own configuration space, so there is
+        // no left_gcp/right_gcp already lying around to compare a candidate against; it has
+        // to be read back out of the candidate's own joint values.
+        //
+        // wrist_sel is exact and pose-independent: q[15]/q[22] (left/right wrist) is exactly
+        // wrist_sel * (a nonnegative magnitude) by construction (see resolve_block's
+        // `q[15] = left_gcp[2] * v[10]`), so its sign IS wrist_sel.
+        //
+        // elbow_sel is also exact and pose-independent, for a less obvious reason: writing
+        // q[13]/q[20] (left/right elbow)'s two CondExpEq branches as functions of the same
+        // asin argument x121, branch0(x121) = -1.80315340003661 + x121 and
+        // branch1(x121) = 1.33843925355319 - x121 (see resolve_block above) -- and
+        // -1.80315340003661 + 1.33843925355319 == pi exactly, so branch1(x121) ==
+        // pi - branch0(x121) for every x121, i.e. the two branches are an exact pi-apart
+        // (antipodal) reflection of each other regardless of what pose produced x121.
+        // Classifying by whichever branch's CENTER (x121 = 0: -1.80315340003661 for branch0,
+        // 1.33843925355319 for branch1 -- themselves exactly pi apart) the actual joint value
+        // is angularly closer to is therefore exact, not a heuristic, and needs no target
+        // pose at all.
+        //
+        // shoulder_sel (q[10]/q[17]) has no such shortcut: its own two CondExpEq branches
+        // both carry an atan2(-px, -py) term with an ordinary (non-antipodal) offset, so
+        // classifying it needs the actual arm-base-relative wrist position (px, py) -- real
+        // forward-kinematics reconstruction through the torso chain. Not implemented here
+        // (would need either a from-scratch reconstruction of resolve_block's torso/mid-frame
+        // transform composition, or -- better -- extending cricket's
+        // rainbow_arm_parameterization codegen to emit this as a proper companion to
+        // RainbowLeftArmParameterizationFromPose/RainbowRightArmParameterizationFromPose,
+        // the way this whole function ideally should have been generated instead of hand-
+        // written). shoulder_sel is therefore left unenforced by smm_mask_block below, not
+        // guessed.
+        template <std::size_t rake>
+        static inline auto classify_smm_block(const Ambient::ConfigurationBlock<rake> &q) noexcept
+            -> std::array<std::array<FloatVector<rake, 1>, 2>, 2>
+        {
+            using V = FloatVector<rake, 1>;
+
+            auto elbow_sel = [](const V &joint) -> V
+            { return V(1.).blend(V(0.), cos(joint - V(-1.80315340003661)) >= V(0.)); };
+
+            auto wrist_sel = [](const V &joint) -> V
+            { return V(-1.).blend(V(1.), joint >= V(0.)); };
+
+            return {
+                std::array<V, 2>{elbow_sel(q[13]), wrist_sel(q[15])},
+                std::array<V, 2>{elbow_sel(q[20]), wrist_sel(q[22])}};
+        }
+
+        // Per-lane 1.0/0.0 mask: whether that lane's (elbow_sel, wrist_sel) -- both arms --
+        // matches target_smm_left/target_smm_right exactly (these are discrete branch
+        // labels, not continuous values, so exact equality is the right test, unlike e.g.
+        // fkcc's tolerance-based checks). Intended to be combined with a block's fkcc mask
+        // the same way ConstrainedLocalPlanner's fkcc_block gate already works: reject the
+        // whole block ("not all points in the same SMM") unless every lane matches.
+        template <std::size_t rake>
+        static inline auto smm_mask_block(const Ambient::ConfigurationBlock<rake> &q) noexcept
+            -> FloatVector<rake, 1>
+        {
+            using V = FloatVector<rake, 1>;
+            const auto classified = classify_smm_block<rake>(q);
+
+            return (classified[0][0] == V(target_smm_left[0])) &
+                   (classified[0][1] == V(target_smm_left[1])) &
+                   (classified[1][0] == V(target_smm_right[0])) &
+                   (classified[1][1] == V(target_smm_right[1]));
+        }
 
         using State = FloatVector<dimension>;
         struct alignas(FloatVectorAlignment) StateArray

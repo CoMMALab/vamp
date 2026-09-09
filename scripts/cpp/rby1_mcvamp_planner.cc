@@ -9,34 +9,36 @@
 // RBY1 has a fixed wheeled base and no legs to hold in place, so nothing beyond these two
 // constraints is needed for a valid ambient configuration.
 //
-// Problems are read directly from resources/ruby/rrtc_calls.jsonl (the live rrtc-call log
-// written by rby1's ruby side, one JSON object per line), which now bakes the already
-// IK-resolved ambient configurations for each logged call's task-space start/goal in as
-// "q_start"/"q_goal" -- exactly the ambient endpoint data this planner needs and has no other
-// way to obtain (it never touches ParameterizedSpace itself). vamp_rby1_task_space_planner's
-// older JSON-array output (with the equivalent "start_q"/"goal_q" naming) is also accepted,
-// for problem sets generated that way instead.
+// Problems are read from resources/ruby/rrtc_calls.jsonl (the live rrtc-call log written by
+// rby1's ruby side, one JSON object per line) using the same input conventions as
+// rby1_task_space_planner.cc: "start"/"goal" hold each entry's endpoint, "file"/"task_index"/
+// "kind" are carried through as bookkeeping, and a "leg" vs. "probe" `kind` plus a "solved"
+// flag decide what gets planned. The only difference from that planner is what "start"/"goal"
+// represent: there, ParameterizedSpace::dimension task-space floats to be IK-resolved; here,
+// already-ambient Robot::dimension floats to be projected directly (this planner never
+// touches ParameterizedSpace). rrtc_calls.jsonl interleaves both kinds of logged call under
+// the same "start"/"goal" keys (tagged by a "planner" field, "task_space" vs. "mcvamp"), so
+// each planner's own dimension check is what actually separates its entries out of the log --
+// a "start"/"goal" of the wrong length for this planner is skipped, not an error.
 //
 // Usage:
-//   vamp_rby1_mcvamp_planner <problems.jsonl|problems.json> [range] [trajectory_dir] [results_csv]
+//   vamp_rby1_mcvamp_planner <input_problems.jsonl|input_problems.json> <output_results.json>
+//       [--run_unsolvable]
+//
+// Same two required positional arguments (input, then output) and --run_unsolvable flag as
+// rby1_task_space_planner.cc, and the same single-JSON output: no separate results CSV or
+// trajectory-file directory -- every solved problem's shortcut path, interpolated to
+// Robot::resolution, is instead embedded as a "trajectory" array (one
+// {"ambient_configuration": [Robot::dimension floats]} object per waypoint) directly inside
+// that problem's result object, exactly like rby1_task_space_planner.cc's output.
 //
 // A ".jsonl" path is read as one JSON object per line, each shaped like resources/ruby/
-// rrtc_calls.jsonl's entries: { "task_index": <int>, "q_start": [<Robot::dimension floats>],
-// "q_goal": [<... floats>], ... }. Any other path is read as a single JSON document: a bare
-// array, or the {"problems": [...]} wrapper, of entries shaped like vamp_rby1_task_space_
-// planner's output: { "index": <int>, "start_q": [...], "goal_q": [...], ... }. Entries
-// missing their start/goal ambient configuration are skipped.
-//
-// Every solved problem's shortcut path, interpolated to Robot::resolution, is dumped to
-// <trajectory_dir>/problem_<enumeration>.txt: one waypoint per line, its Robot::dimension
-// joint values comma-separated (same format bimanual_iiwa_projection_shelf.cc uses).
-// `enumeration` is this run's own 0-based position in the loaded problem list, not the
-// entry's "index"/"task_index" -- those repeat across many entries (the same logged task
-// gets probed many times), so they can't name files uniquely.
-//
-// Every problem (solved or not) also gets one row in <results_csv> -- enumeration,index,
-// solved,planning_time_ms,iterations,shortcut_time_ms,config_distance -- for offline
-// analysis; `enumeration` there is what a trajectory file's name refers back to.
+// rrtc_calls.jsonl's entries: { "file": <string>, "start": [<Robot::dimension floats>],
+// "goal": [<... floats>], ... } or, for jsonl input specifically, "task_index"/"kind"/
+// "solved" in place of "file" (see rby1_task_space_planner.cc's matching comment). Any other
+// path is read as a single JSON document: a bare array, or the {"problems": [...]} wrapper,
+// of entries in the same "start"/"goal" shape. Entries whose `kind` isn't "leg", that are
+// logged as unsolved, or whose start/goal aren't Robot::dimension floats are skipped.
 
 #include <algorithm>
 #include <array>
@@ -128,10 +130,17 @@ struct RBY1FixedAmbientBaseSampler final : public vamp::rng::RNG<Robot, Robot>
     std::array<float, 4> fixed_base;
 };
 
-// One resolved (start, goal) problem, read from vamp_rby1_task_space_planner's output.
+// One (start, goal) problem in RBY1's ambient joint space, read from input_json_path --
+// `problem_index` is this entry's own raw position in the input (unique and gapless whether
+// or not the entry gets skipped), matching rby1_task_space_planner.cc's "index"; `file_field`,
+// `task_index`, and `kind` mirror that planner's bookkeeping fields, present here only when
+// the source entry had them.
 struct Problem
 {
-    std::size_t index;
+    std::size_t problem_index;
+    std::string file_field;
+    nlohmann::json task_index;
+    nlohmann::json kind;
     Robot::ConfigurationArray start;
     Robot::ConfigurationArray goal;
 };
@@ -234,27 +243,6 @@ auto relative_pose(const Robot::ConfigurationArray &q) -> BimanualTSC::Transform
     return {quat.w(), quat.x(), quat.y(), quat.z(), t.x(), t.y(), t.z()};
 }
 
-// One waypoint per line, its Robot::dimension joint values comma-separated -- matches
-// bimanual_iiwa_projection_shelf.cc's trajectory format.
-void write_ambient_path(const std::vector<Robot::ConfigurationArray> &waypoints, const std::filesystem::path &file)
-{
-    std::ofstream out(file);
-    for (const auto &array : waypoints)
-    {
-        for (std::size_t i = 0; i < Robot::dimension; ++i)
-        {
-            if (i != 0)
-            {
-                out << ",";
-            }
-
-            out << array[i];
-        }
-
-        out << "\n";
-    }
-}
-
 template <typename PathT>
 auto to_ambient_waypoints(const PathT &path) -> std::vector<Robot::ConfigurationArray>
 {
@@ -286,51 +274,76 @@ auto compute_config_distance(const std::vector<Robot::ConfigurationArray> &waypo
     return distance;
 }
 
-// Pulls start/goal ambient configurations out of one problem entry. Two key spellings are
-// accepted: "q_start"/"q_goal" -- the ones rby1's ruby-side rrtc-call logger now bakes
-// directly into resources/ruby/rrtc_calls.jsonl, already IK-resolved there -- and
-// "start_q"/"goal_q", vamp_rby1_task_space_planner's older output naming for the same
-// per-entry resolved ambient configurations. Returns false (leaving `problem` untouched) if
-// the entry isn't a "leg" call (see rby1_task_space_planner.cc's matching filter -- "probe"
-// calls are throwaway feasibility checks, not real reach-to-grasp problems), if neither
-// start/goal key pair is present, or if either has the wrong length.
-auto extract_problem(const nlohmann::json &entry, std::size_t fallback_index, Problem &problem) -> bool
+// Pulls start/goal ambient configurations out of one problem entry, from "start"/"goal" --
+// the same keys rby1_task_space_planner.cc reads (that planner's entries hold
+// ParameterizedSpace::dimension task-space floats there instead; a length mismatch is this
+// planner's signal that an entry belongs to that planner, not this one, not a malformed
+// entry). Returns false (leaving `problem` untouched) if the entry isn't a "leg" call (see
+// rby1_task_space_planner.cc's matching filter -- "probe" calls are throwaway feasibility
+// checks, not real reach-to-grasp problems), if it's logged as unsolved, if "start"/"goal"
+// are missing, or if either has the wrong length.
+auto extract_problem(
+    const nlohmann::json &entry, std::size_t problem_index, bool run_unsolvable, Problem &problem) -> bool
 {
     if (entry.value("kind", std::string("leg")) != "leg")
     {
         return false;
     }
 
-    const char *start_key = entry.contains("q_start") ? "q_start" : "start_q";
-    const char *goal_key = entry.contains("q_goal") ? "q_goal" : "goal_q";
-    if (not entry.contains(start_key) or not entry.contains(goal_key))
+    if (not run_unsolvable and not entry.value("solved", true))
     {
         return false;
     }
 
-    const auto start_vec = entry.at(start_key).get<std::vector<float>>();
-    const auto goal_vec = entry.at(goal_key).get<std::vector<float>>();
+    if (not entry.contains("start") or not entry.contains("goal"))
+    {
+        return false;
+    }
+
+    const auto start_vec = entry.at("start").get<std::vector<float>>();
+    const auto goal_vec = entry.at("goal").get<std::vector<float>>();
     if (start_vec.size() != Robot::dimension or goal_vec.size() != Robot::dimension)
     {
-        std::cerr << "Entry " << fallback_index << ": " << start_key << "/" << goal_key << " must have "
-                   << Robot::dimension << " elements; skipping." << std::endl;
         return false;
     }
 
-    problem.index = entry.value("index", entry.value("task_index", fallback_index));
+    problem.problem_index = problem_index;
+    if (entry.contains("task_index"))
+    {
+        problem.task_index = entry.at("task_index");
+    }
+    if (entry.contains("kind"))
+    {
+        problem.kind = entry.at("kind");
+    }
+
+    // Same "file" fallback as rby1_task_space_planner.cc: jsonl entries have no "file" field
+    // of their own, so build an equivalent trace-back string from "kind"/"task_index" instead.
+    problem.file_field = entry.value("file", std::string());
+    if (problem.file_field.empty())
+    {
+        const auto kind_field = entry.value("kind", std::string());
+        problem.file_field = entry.contains("task_index") ?
+            kind_field + " task_index=" + std::to_string(entry.at("task_index").get<long long>()) :
+            kind_field;
+    }
+
     std::copy(start_vec.begin(), start_vec.end(), problem.start.begin());
     std::copy(goal_vec.begin(), goal_vec.end(), problem.goal.begin());
     return true;
 }
 
-// Reads problems from either of two formats:
-//  - a ".jsonl" file (one JSON object per line), the live rrtc-call log format written to
-//    resources/ruby/rrtc_calls.jsonl, with "q_start"/"q_goal" (Robot::dimension floats each,
-//    already IK-resolved) baked into every line alongside the task-space "start"/"goal";
-//  - a bare JSON array, or the {"problems": [...]} wrapper, of entries carrying
-//    "start_q"/"goal_q" -- vamp_rby1_task_space_planner's output.
-// Entries missing their start/goal ambient configuration are skipped.
-auto load_problems(const std::string &path) -> std::vector<Problem>
+// Reads problems from the same three input shapes as rby1_task_space_planner.cc:
+//  - a bare JSON array, each entry optionally carrying a "file" field for traceability
+//    (e.g. resources/ruby/problem_set_skipped_intermediate.json);
+//  - the earlier { "problems": [...] } wrapper, same per-entry shape minus "file";
+//  - a ".jsonl" file (one JSON object per line, as logged live by ruby's RRTC call sites),
+//    where each line has its own "start"/"goal" plus "task_index"/"kind"/"solved"/"dimension"
+//    bookkeeping in place of "file" -- the live rrtc-call log format written to
+//    resources/ruby/rrtc_calls.jsonl.
+// Entries that aren't a "leg" call, are logged as unsolved (unless `run_unsolvable` is set),
+// or whose start/goal aren't Robot::dimension floats (see extract_problem) are skipped.
+auto load_problems(const std::string &path, bool run_unsolvable) -> std::vector<Problem>
 {
     std::ifstream input_file(path);
     if (not input_file)
@@ -340,12 +353,11 @@ auto load_problems(const std::string &path) -> std::vector<Problem>
 
     const bool is_jsonl = path.size() >= 6 and path.compare(path.size() - 6, 6, ".jsonl") == 0;
 
-    std::vector<Problem> problems;
+    nlohmann::json problems_json_storage = nlohmann::json::array();
 
     if (is_jsonl)
     {
         std::string line;
-        std::size_t line_index = 0;
         while (std::getline(input_file, line))
         {
             if (line.find_first_not_of(" \t\r\n") == std::string::npos)
@@ -353,27 +365,21 @@ auto load_problems(const std::string &path) -> std::vector<Problem>
                 continue;
             }
 
-            const auto entry = nlohmann::json::parse(line);
-            Problem problem;
-            if (extract_problem(entry, line_index, problem))
-            {
-                problems.push_back(problem);
-            }
-
-            ++line_index;
+            problems_json_storage.push_back(nlohmann::json::parse(line));
         }
-
-        return problems;
+    }
+    else
+    {
+        nlohmann::json input_json;
+        input_file >> input_json;
+        problems_json_storage = input_json.is_array() ? input_json : input_json.at("problems");
     }
 
-    nlohmann::json input_json;
-    input_file >> input_json;
-    const auto &entries = input_json.is_array() ? input_json : input_json.at("problems");
-
-    for (std::size_t i = 0; i < entries.size(); ++i)
+    std::vector<Problem> problems;
+    for (std::size_t problem_index = 0; problem_index < problems_json_storage.size(); ++problem_index)
     {
         Problem problem;
-        if (extract_problem(entries[i], i, problem))
+        if (extract_problem(problems_json_storage[problem_index], problem_index, run_unsolvable, problem))
         {
             problems.push_back(problem);
         }
@@ -384,24 +390,41 @@ auto load_problems(const std::string &path) -> std::vector<Problem>
 
 auto main(int argc, char **argv) -> int
 {
-    if (argc < 2)
+    // --run_unsolvable is a flag, not a positional argument -- pull it out first (it may
+    // appear anywhere on the command line), same as rby1_task_space_planner.cc, so the
+    // remaining positional-argument count check below is unaffected by where the caller
+    // places it.
+    bool run_unsolvable = false;
+    std::vector<std::string> positional_args;
+    for (int i = 1; i < argc; ++i)
     {
-        std::cerr << "usage: " << argv[0]
-                   << " <resolved_problems.json> [range] [trajectory_dir] [results_csv]" << std::endl;
+        const std::string arg = argv[i];
+        if (arg == "--run_unsolvable")
+        {
+            run_unsolvable = true;
+        }
+        else
+        {
+            positional_args.push_back(arg);
+        }
+    }
+
+    if (positional_args.size() != 2)
+    {
+        std::cerr << "usage: " << argv[0] << " <input_problems.json> <output_results.json> [--run_unsolvable]"
+                   << std::endl;
         return 1;
     }
 
-    const std::string problems_path = argv[1];
-    const float range = (argc > 2) ? std::stof(argv[2]) : 0.5F;
-    const std::filesystem::path trajectory_dir = (argc > 3) ? argv[3] : "trajectories/rby1_mcvamp_planner";
-    const std::filesystem::path results_csv_path = (argc > 4) ? argv[4] : "results/rby1_mcvamp_planner.csv";
-    // Same basename as results_csv_path, ".json" instead of ".csv" -- a per-problem-object
-    // mirror of the CSV, in the same shape vamp_rby1_task_space_planner writes (so a
-    // comparison script can load both with one code path). See scripts/compare_rby1_planners.py.
-    const std::filesystem::path results_json_path =
-        std::filesystem::path(results_csv_path).replace_extension(".json");
-    std::filesystem::create_directories(trajectory_dir);
-    std::filesystem::create_directories(results_csv_path.parent_path());
+    const std::string problems_path = positional_args[0];
+    const std::filesystem::path results_json_path = positional_args[1];
+    // Same as rby1_task_space_planner.cc's hardcoded RRTCSettings.range -- not exposed on the
+    // command line, so this planner's CLI matches that one's exactly.
+    const float range = 0.25F;
+    if (not results_json_path.parent_path().empty())
+    {
+        std::filesystem::create_directories(results_json_path.parent_path());
+    }
 
     std::cout << std::boolalpha;
     std::cout << "Robot::dimension (ambient/joint space): " << Robot::dimension << std::endl;
@@ -409,7 +432,7 @@ auto main(int argc, char **argv) -> int
     std::vector<Problem> problems;
     try
     {
-        problems = load_problems(problems_path);
+        problems = load_problems(problems_path, run_unsolvable);
     }
     catch (const std::exception &e)
     {
@@ -417,8 +440,8 @@ auto main(int argc, char **argv) -> int
         return 1;
     }
 
-    std::cout << "Loaded " << problems.size() << " resolved (start_q, goal_q) problem(s) from "
-               << problems_path << std::endl;
+    std::cout << "Loaded " << problems.size() << " ambient (start, goal) problem(s) from " << problems_path
+               << std::endl;
     if (problems.empty())
     {
         std::cout << "Nothing to plan." << std::endl;
@@ -494,28 +517,18 @@ auto main(int argc, char **argv) -> int
     // boundary -- at which point next()'s internal convergence loop never terminates. A
     // fresh Halton<Robot> per problem means that state never has the chance to accumulate.
 
-    std::ofstream results_csv(results_csv_path);
-    if (not results_csv)
-    {
-        std::cerr << "Failed to open results CSV for writing: " << results_csv_path << std::endl;
-        return 1;
-    }
-
-    results_csv << "enumeration,index,solved,planning_time_ms,iterations,shortcut_time_ms,config_distance\n";
-
     nlohmann::json output_json = nlohmann::json::array();
 
     std::size_t solved_count = 0;
     std::size_t attempted_count = 0;
 
-    // `problem.index` (task_index for jsonl input) repeats across many problems -- the same
-    // logged task gets probed many times -- so it can't be used to name trajectory files
-    // without collisions. `enumeration` (this loop's own position) is this run's unique,
-    // gapless counter instead; an indexed loop keeps it in lockstep even through `continue`.
-    for (std::size_t enumeration = 0; enumeration < problems.size(); ++enumeration)
+    // `problem.problem_index` is this entry's own raw position in the input (see the Problem
+    // struct comment) -- unique and gapless across every loaded problem, same as
+    // rby1_task_space_planner.cc's "index"-named output field.
+    for (const auto &problem : problems)
     {
-        const auto &problem = problems[enumeration];
-        std::cout << "\n=== Problem " << enumeration << " (index " << problem.index << ") ===" << std::endl;
+        std::cout << "\n=== Problem " << problem.problem_index
+                   << (problem.file_field.empty() ? "" : " (" + problem.file_field + ")") << " ===" << std::endl;
 
         // Fresh constraint objects, local planner, and Halton sampler for this problem alone
         // -- see the notes above the loop on why none of these are reused across problems.
@@ -552,15 +565,25 @@ auto main(int argc, char **argv) -> int
                    << goal_pre_error << " (tolerance " << constraint_settings.tolerance << ")" << std::endl;
 
         nlohmann::json problem_result;
-        problem_result["enumeration"] = enumeration;
-        problem_result["index"] = problem.index;
+        problem_result["index"] = problem.problem_index;
+        if (not problem.file_field.empty())
+        {
+            problem_result["file"] = problem.file_field;
+        }
+        if (not problem.task_index.is_null())
+        {
+            problem_result["task_index"] = problem.task_index;
+        }
+        if (not problem.kind.is_null())
+        {
+            problem_result["kind"] = problem.kind;
+        }
 
         const bool start_projected = local_planner.project(start_config);
         const bool goal_projected = local_planner.project(goal_config);
         if (not start_projected or not goal_projected)
         {
             std::cout << "Failed to project start/goal onto the constraint manifold; skipping." << std::endl;
-            results_csv << enumeration << "," << problem.index << ",false,,,,\n";
             problem_result["solved"] = false;
             problem_result["error"] = "start or goal failed to project onto the constraint manifold";
             output_json.push_back(std::move(problem_result));
@@ -570,7 +593,6 @@ auto main(int argc, char **argv) -> int
         if (not is_config_valid(start_config, environment_v) or not is_config_valid(goal_config, environment_v))
         {
             std::cout << "Projected start/goal is in collision; skipping." << std::endl;
-            results_csv << enumeration << "," << problem.index << ",false,,,,\n";
             problem_result["solved"] = false;
             problem_result["error"] = "projected start or goal is in collision";
             output_json.push_back(std::move(problem_result));
@@ -591,9 +613,6 @@ auto main(int argc, char **argv) -> int
         std::cout << "iterations: " << result.iterations << std::endl;
         std::cout << "milliseconds: " << (result.nanoseconds / 1000000.0F) << std::endl;
 
-        results_csv << enumeration << "," << problem.index << "," << result.solved << ","
-                    << (result.nanoseconds / 1000000.0F) << "," << result.iterations << ",";
-
         problem_result["solved"] = result.solved;
         problem_result["planning_time_ms"] = result.nanoseconds / 1000000.0F;
         problem_result["iterations"] = result.iterations;
@@ -610,35 +629,51 @@ auto main(int argc, char **argv) -> int
             const auto shortcut_elapsed_ms =
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - shortcut_t0).count();
 
-            // shortcut_result.path.interpolate_to_resolution(Robot::resolution);
+            // Densify the shortcutted path to Robot::resolution before writing it out, same as
+            // rby1_task_space_planner.cc, so the embedded trajectory is at a fixed step
+            // resolution rather than just the shortcutted waypoints.
+            shortcut_result.path.interpolate_to_resolution(Robot::resolution);
             const auto ambient_waypoints = to_ambient_waypoints(shortcut_result.path);
             const float config_distance = compute_config_distance(ambient_waypoints);
 
             std::cout << "  shortcut path size " << shortcut_result.path.size() << ", " << shortcut_elapsed_ms
                        << " ms, config distance " << config_distance << std::endl;
 
-            const std::string filename = "problem_" + std::to_string(enumeration) + ".txt";
-            write_ambient_path(ambient_waypoints, trajectory_dir / filename);
-
-            results_csv << shortcut_elapsed_ms << "," << config_distance;
-
             problem_result["shortcut_time_ms"] = shortcut_elapsed_ms;
             problem_result["shortcut_path_size"] = shortcut_result.path.size();
             problem_result["config_distance"] = config_distance;
+
+            // Embedded per-waypoint ambient configuration, same shape as
+            // rby1_task_space_planner.cc's "trajectory" field (that planner's waypoints also
+            // carry a "resolved" bool, since it IK-resolves each one from a task-space state;
+            // this planner's waypoints are already ambient, so there's nothing to resolve).
+            nlohmann::json trajectory_json = nlohmann::json::array();
+            for (const auto &array : ambient_waypoints)
+            {
+                nlohmann::json ambient_configuration_json = nlohmann::json::array();
+                for (std::size_t i = 0; i < Robot::dimension; ++i)
+                {
+                    ambient_configuration_json.push_back(array[i]);
+                }
+
+                nlohmann::json waypoint_json;
+                waypoint_json["ambient_configuration"] = std::move(ambient_configuration_json);
+                trajectory_json.push_back(std::move(waypoint_json));
+            }
+
+            problem_result["trajectory"] = std::move(trajectory_json);
         }
 
-        results_csv << "\n";
-        results_csv.flush();
         output_json.push_back(std::move(problem_result));
     }
 
-    std::ofstream results_json(results_json_path);
-    if (not results_json)
+    std::ofstream output_file(results_json_path);
+    if (not output_file)
     {
-        std::cerr << "Failed to open results JSON for writing: " << results_json_path << std::endl;
+        std::cerr << "Failed to open output JSON file: " << results_json_path << std::endl;
         return 1;
     }
-    results_json << output_json.dump(2) << std::endl;
+    output_file << output_json.dump(2) << std::endl;
     std::cout << "\nWrote " << output_json.size() << " planning result(s) to " << results_json_path << std::endl;
 
     std::cout << "\nSolved " << solved_count << " / " << attempted_count << " attempted problem(s) ("

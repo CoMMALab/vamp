@@ -338,6 +338,160 @@ namespace vamp::binding
                 "solve_torso_for_mid_pose_block_gradient_descent.");
         }
 
+        // Independent (unconstrained) bimanual counterpart of the torso-free search above:
+        // same idea, but each hand's goal pose is an ordinary, independent argument
+        // (left_pose/right_pose) instead of being derived from a shared t_mid_pose plus
+        // fixed per-arm offsets -- no compute_mid_pose() call is needed before using this.
+        // See cricket's rainbow_ik_cg.hh (RainbowIkCG's `compute_gradient` mode) and
+        // fk_template.hh (solve_torso_for_independent_poses_*) for the generated math.
+        if constexpr (has_independent_loss_jacobian_v<typename Traits::Space>)
+        {
+            nb_::class_<typename Traits::IndependentLossJacobianResult>(
+                t,
+                "IndependentLossJacobianResult",
+                "Feasibility loss (loss_left/loss_right) and its Jacobian (jac_left/jac_right) "
+                "w.r.t. [torso_0..5, left_j15, right_j24] for two independent fixed goal "
+                "poses and the currently-set GCP branch, plus the resulting ambient "
+                "configuration `q` -- loss is a smooth exterior penalty, exactly zero iff `q` "
+                "is an exact IK solution (feasible == True).")
+                .def(nb_::init<>())
+                .def_ro("feasible", &Traits::IndependentLossJacobianResult::feasible)
+                .def_ro("q", &Traits::IndependentLossJacobianResult::q)
+                .def_ro("loss_left", &Traits::IndependentLossJacobianResult::loss_left)
+                .def_ro("loss_right", &Traits::IndependentLossJacobianResult::loss_right)
+                .def_ro("jac_left", &Traits::IndependentLossJacobianResult::jac_left)
+                .def_ro("jac_right", &Traits::IndependentLossJacobianResult::jac_right);
+
+            t.def(
+                "independent_loss_jacobian",
+                &Traits::independent_loss_jacobian,
+                "torso"_a,
+                "left_pose"_a,
+                "right_pose"_a,
+                "left_j15"_a,
+                "right_j24"_a,
+                "Evaluate the torso/free-joint feasibility loss and its Jacobian at a single "
+                "[torso_0..5, left_j15, right_j24] candidate, for the two independent goal "
+                "poses `left_pose`/`right_pose` (x, y, z, qx, qy, qz, qw, base frame) and the "
+                "currently-set GCP branch (set_gcp).");
+        }
+
+        if constexpr (has_solve_torso_for_independent_poses_gradient_descent_v<typename Traits::Space> or
+                       has_solve_torso_for_independent_poses_lm_inner_v<typename Traits::Space>)
+        {
+            nb_::class_<typename Traits::IndependentSolveResultPy>(
+                t,
+                "IndependentSolveResult",
+                "Result of an independent-pose torso/free-joint feasibility search: "
+                "`converged` means loss_left/loss_right both fell under `tol`, at which "
+                "point `q` is an exact closed-form IK solution for both goal poses; "
+                "otherwise `q`/`torso`/`left_j15`/`right_j24` are the last iterate.")
+                .def(nb_::init<>())
+                .def_ro("converged", &Traits::IndependentSolveResultPy::converged)
+                .def_ro("q", &Traits::IndependentSolveResultPy::q)
+                .def_ro("torso", &Traits::IndependentSolveResultPy::torso)
+                .def_ro("left_j15", &Traits::IndependentSolveResultPy::left_j15)
+                .def_ro("right_j24", &Traits::IndependentSolveResultPy::right_j24)
+                .def_ro("loss_left", &Traits::IndependentSolveResultPy::loss_left)
+                .def_ro("loss_right", &Traits::IndependentSolveResultPy::loss_right)
+                .def_ro("iterations", &Traits::IndependentSolveResultPy::iterations);
+        }
+
+        if constexpr (has_solve_torso_for_independent_poses_gradient_descent_v<typename Traits::Space>)
+        {
+            t.def(
+                "solve_torso_for_independent_poses_gradient_descent",
+                &Traits::solve_torso_for_independent_poses_gradient_descent,
+                "torso_init"_a,
+                "left_pose"_a,
+                "right_pose"_a,
+                "left_j15_init"_a,
+                "right_j24_init"_a,
+                "max_iters"_a = std::size_t{100},
+                "step_size"_a = 0.1f,
+                "tol"_a = 1e-6f,
+                "Gradient-descent search for [torso_0..5, left_j15, right_j24] that makes "
+                "`left_pose`/`right_pose` (x, y, z, qx, qy, qz, qw, base frame) simultaneously "
+                "reachable on the currently-set GCP branch (set_gcp), starting from "
+                "`torso_init`/`left_j15_init`/`right_j24_init`.");
+        }
+
+        if constexpr (has_solve_torso_for_independent_poses_lm_inner_v<typename Traits::Space>)
+        {
+            t.def(
+                "solve_torso_for_independent_poses_lm_inner",
+                &Traits::solve_torso_for_independent_poses_lm_inner,
+                "torso_init"_a,
+                "left_pose"_a,
+                "right_pose"_a,
+                "left_j15_init"_a,
+                "right_j24_init"_a,
+                "max_iters"_a = std::size_t{50},
+                "step_size"_a = 1.0f,
+                "tol"_a = 1e-6f,
+                "Levenberg-Marquardt (inner form) counterpart of "
+                "solve_torso_for_independent_poses_gradient_descent -- same search, "
+                "better-conditioned steps near the feasible boundary, typically fewer "
+                "iterations.");
+        }
+
+        // Block/FloatVector counterparts: rake attempts at once (one entry per lane in
+        // torso_inits/left_j15_inits/right_j24_inits), for the SAME pair of goal poses,
+        // stopping as soon as any lane converges. Random sampling of the lanes is the
+        // caller's job -- see Traits::solve_torso_for_independent_poses_block_gradient_
+        // descent's comment above.
+        if constexpr (detail::has_independent_search_block<typename Traits::Space, rake>::value)
+        {
+            nb_::class_<typename Traits::IndependentSolveBlockResultPy>(
+                t,
+                "IndependentSolveBlockResult",
+                "Result of a batched independent-pose torso/free-joint feasibility search "
+                "over vamp.FloatVectorWidth independent [torso, left_j15, right_j24] "
+                "attempts for the same pair of goal poses: `lane` is which attempt converged "
+                "(or, if none did, whichever ended with the lowest loss_left + loss_right).")
+                .def(nb_::init<>())
+                .def_ro("converged", &Traits::IndependentSolveBlockResultPy::converged)
+                .def_ro("lane", &Traits::IndependentSolveBlockResultPy::lane)
+                .def_ro("q", &Traits::IndependentSolveBlockResultPy::q)
+                .def_ro("torso", &Traits::IndependentSolveBlockResultPy::torso)
+                .def_ro("left_j15", &Traits::IndependentSolveBlockResultPy::left_j15)
+                .def_ro("right_j24", &Traits::IndependentSolveBlockResultPy::right_j24)
+                .def_ro("loss_left", &Traits::IndependentSolveBlockResultPy::loss_left)
+                .def_ro("loss_right", &Traits::IndependentSolveBlockResultPy::loss_right)
+                .def_ro("iterations", &Traits::IndependentSolveBlockResultPy::iterations);
+
+            t.def(
+                "solve_torso_for_independent_poses_block_gradient_descent",
+                &Traits::solve_torso_for_independent_poses_block_gradient_descent,
+                "torso_inits"_a,
+                "left_pose"_a,
+                "right_pose"_a,
+                "left_j15_inits"_a,
+                "right_j24_inits"_a,
+                "max_iters"_a = std::size_t{100},
+                "step_size"_a = 0.1f,
+                "tol"_a = 1e-6f,
+                "Batched gradient-descent search: vamp.FloatVectorWidth independent "
+                "[torso, left_j15, right_j24] starting points (one entry per lane of "
+                "torso_inits/left_j15_inits/right_j24_inits, conventionally lane 0 == "
+                "{0,0,0,0,0,0}/0/0 and the rest randomly sampled by the caller) for the same "
+                "`left_pose`/`right_pose`, stopping as soon as any lane converges.");
+
+            t.def(
+                "solve_torso_for_independent_poses_block_lm_inner",
+                &Traits::solve_torso_for_independent_poses_block_lm_inner,
+                "torso_inits"_a,
+                "left_pose"_a,
+                "right_pose"_a,
+                "left_j15_inits"_a,
+                "right_j24_inits"_a,
+                "max_iters"_a = std::size_t{50},
+                "step_size"_a = 1.0f,
+                "tol"_a = 1e-6f,
+                "Levenberg-Marquardt (inner form) counterpart of "
+                "solve_torso_for_independent_poses_block_gradient_descent.");
+        }
+
         t.def(
             "shortcut",
             &Traits::shortcut,

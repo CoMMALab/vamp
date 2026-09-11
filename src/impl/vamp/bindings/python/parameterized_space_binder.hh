@@ -41,6 +41,12 @@ namespace vamp::binding
     template <typename Traits, typename Target>
     inline void bind_parameterized_space_methods(Target &t)
     {
+        // The SIMD block width every fixed-`rake`-shaped array parameter/return here
+        // (solve_torso_for_mid_pose_block_gradient_descent/_lm_inner's torso_inits/
+        // psi_left_inits/psi_right_inits) is sized against -- exposed so callers can shape
+        // their own numpy arrays without hardcoding or guessing the build's SIMD width.
+        t.attr("rake") = rake;
+
         t.def(
             "resolve",
             &Traits::resolve,
@@ -181,6 +187,157 @@ namespace vamp::binding
                 "to a planning problem's own start configuration. Affects every subsequent "
                 "planning call on this thread (thread-local) until set again.");
         }
+
+        // Torso/free-joint feasibility search (RBY1-specific): differentiates the closed-
+        // form arm IK's feasibility loss back through the real base->torso forward
+        // kinematics, and does gradient-based search over [torso_0..5, psi_left, psi_right]
+        // (base fixed at the origin) to make a goal mid-pose T_mid (base frame) reachable on
+        // the currently-set GCP branch -- see cricket's rainbow_ik_cg.hh
+        // (RainbowConstrainedBimanualIkCG's `compute_gradient` mode) and fk_template.hh
+        // (solve_torso_for_mid_pose_*) for the generated math. Only present on spaces with
+        // this concept (currently RBY1); see the matching has_*_v/detail::has_* gates on the
+        // Traits methods above.
+        if constexpr (has_torso_free_loss_jacobian_v<typename Traits::Space>)
+        {
+            nb_::class_<typename Traits::TorsoFreeLossJacobianResult>(
+                t,
+                "TorsoFreeLossJacobianResult",
+                "Feasibility loss (loss_left/loss_right) and its Jacobian (jac_left/jac_right) "
+                "w.r.t. [torso_0..5, psi_left, psi_right] for a fixed goal T_mid and the "
+                "currently-set GCP branch, plus the resulting ambient configuration `q` -- "
+                "loss is a smooth exterior penalty, exactly zero iff `q` is an exact IK "
+                "solution (feasible == True).")
+                .def(nb_::init<>())
+                .def_ro("feasible", &Traits::TorsoFreeLossJacobianResult::feasible)
+                .def_ro("q", &Traits::TorsoFreeLossJacobianResult::q)
+                .def_ro("loss_left", &Traits::TorsoFreeLossJacobianResult::loss_left)
+                .def_ro("loss_right", &Traits::TorsoFreeLossJacobianResult::loss_right)
+                .def_ro("jac_left", &Traits::TorsoFreeLossJacobianResult::jac_left)
+                .def_ro("jac_right", &Traits::TorsoFreeLossJacobianResult::jac_right);
+
+            t.def(
+                "torso_free_loss_jacobian",
+                &Traits::torso_free_loss_jacobian,
+                "torso"_a,
+                "t_mid_pose"_a,
+                "psi_left"_a,
+                "psi_right"_a,
+                "Evaluate the torso/free-joint feasibility loss and its Jacobian at a single "
+                "[torso_0..5, psi_left, psi_right] candidate, for the goal mid-pose "
+                "`t_mid_pose` (x, y, z, qx, qy, qz, qw, base frame) and the currently-set GCP "
+                "branch (set_gcp).");
+        }
+
+        if constexpr (has_solve_torso_for_mid_pose_gradient_descent_v<typename Traits::Space> or
+                       has_solve_torso_for_mid_pose_lm_inner_v<typename Traits::Space>)
+        {
+            nb_::class_<typename Traits::TorsoFreeSolveResultPy>(
+                t,
+                "TorsoFreeSolveResult",
+                "Result of a torso/free-joint feasibility search: `converged` means "
+                "loss_left/loss_right both fell under `tol`, at which point `q` is an exact "
+                "closed-form IK solution for the goal mid-pose; otherwise `q`/`torso`/"
+                "`psi_left`/`psi_right` are the last iterate.")
+                .def(nb_::init<>())
+                .def_ro("converged", &Traits::TorsoFreeSolveResultPy::converged)
+                .def_ro("q", &Traits::TorsoFreeSolveResultPy::q)
+                .def_ro("torso", &Traits::TorsoFreeSolveResultPy::torso)
+                .def_ro("psi_left", &Traits::TorsoFreeSolveResultPy::psi_left)
+                .def_ro("psi_right", &Traits::TorsoFreeSolveResultPy::psi_right)
+                .def_ro("loss_left", &Traits::TorsoFreeSolveResultPy::loss_left)
+                .def_ro("loss_right", &Traits::TorsoFreeSolveResultPy::loss_right)
+                .def_ro("iterations", &Traits::TorsoFreeSolveResultPy::iterations);
+        }
+
+        if constexpr (has_solve_torso_for_mid_pose_gradient_descent_v<typename Traits::Space>)
+        {
+            t.def(
+                "solve_torso_for_mid_pose_gradient_descent",
+                &Traits::solve_torso_for_mid_pose_gradient_descent,
+                "torso_init"_a,
+                "t_mid_pose"_a,
+                "psi_left_init"_a,
+                "psi_right_init"_a,
+                "max_iters"_a = std::size_t{100},
+                "step_size"_a = 0.1f,
+                "tol"_a = 1e-6f,
+                "Gradient-descent search for [torso_0..5, psi_left, psi_right] that makes "
+                "`t_mid_pose` (x, y, z, qx, qy, qz, qw, base frame) reachable on the "
+                "currently-set GCP branch (set_gcp), starting from `torso_init`/"
+                "`psi_left_init`/`psi_right_init`.");
+        }
+
+        if constexpr (has_solve_torso_for_mid_pose_lm_inner_v<typename Traits::Space>)
+        {
+            t.def(
+                "solve_torso_for_mid_pose_lm_inner",
+                &Traits::solve_torso_for_mid_pose_lm_inner,
+                "torso_init"_a,
+                "t_mid_pose"_a,
+                "psi_left_init"_a,
+                "psi_right_init"_a,
+                "max_iters"_a = std::size_t{50},
+                "step_size"_a = 1.0f,
+                "tol"_a = 1e-6f,
+                "Levenberg-Marquardt (inner form) counterpart of "
+                "solve_torso_for_mid_pose_gradient_descent -- same search, better-conditioned "
+                "steps near the feasible boundary, typically fewer iterations.");
+        }
+
+        // Block/FloatVector counterparts: rake attempts at once (one entry per lane in
+        // torso_inits/psi_left_inits/psi_right_inits), stopping as soon as any lane
+        // converges. Random sampling of the lanes is the caller's job -- see
+        // Traits::solve_torso_for_mid_pose_block_gradient_descent's comment above.
+        if constexpr (detail::has_torso_free_search_block<typename Traits::Space, rake>::value)
+        {
+            nb_::class_<typename Traits::TorsoFreeSolveBlockResultPy>(
+                t,
+                "TorsoFreeSolveBlockResult",
+                "Result of a batched torso/free-joint feasibility search over "
+                "vamp.FloatVectorWidth independent [torso, psi_left, psi_right] attempts for "
+                "the same goal mid-pose: `lane` is which attempt converged (or, if none did, "
+                "whichever ended with the lowest loss_left + loss_right).")
+                .def(nb_::init<>())
+                .def_ro("converged", &Traits::TorsoFreeSolveBlockResultPy::converged)
+                .def_ro("lane", &Traits::TorsoFreeSolveBlockResultPy::lane)
+                .def_ro("q", &Traits::TorsoFreeSolveBlockResultPy::q)
+                .def_ro("torso", &Traits::TorsoFreeSolveBlockResultPy::torso)
+                .def_ro("psi_left", &Traits::TorsoFreeSolveBlockResultPy::psi_left)
+                .def_ro("psi_right", &Traits::TorsoFreeSolveBlockResultPy::psi_right)
+                .def_ro("loss_left", &Traits::TorsoFreeSolveBlockResultPy::loss_left)
+                .def_ro("loss_right", &Traits::TorsoFreeSolveBlockResultPy::loss_right)
+                .def_ro("iterations", &Traits::TorsoFreeSolveBlockResultPy::iterations);
+
+            t.def(
+                "solve_torso_for_mid_pose_block_gradient_descent",
+                &Traits::solve_torso_for_mid_pose_block_gradient_descent,
+                "torso_inits"_a,
+                "t_mid_pose"_a,
+                "psi_left_inits"_a,
+                "psi_right_inits"_a,
+                "max_iters"_a = std::size_t{100},
+                "step_size"_a = 0.1f,
+                "tol"_a = 1e-6f,
+                "Batched gradient-descent search: vamp.FloatVectorWidth independent "
+                "[torso, psi_left, psi_right] starting points (one entry per lane of "
+                "torso_inits/psi_left_inits/psi_right_inits, conventionally lane 0 == "
+                "{0,0,0,0,0,0}/0/0 and the rest randomly sampled by the caller) for the same "
+                "`t_mid_pose`, stopping as soon as any lane converges.");
+
+            t.def(
+                "solve_torso_for_mid_pose_block_lm_inner",
+                &Traits::solve_torso_for_mid_pose_block_lm_inner,
+                "torso_inits"_a,
+                "t_mid_pose"_a,
+                "psi_left_inits"_a,
+                "psi_right_inits"_a,
+                "max_iters"_a = std::size_t{50},
+                "step_size"_a = 1.0f,
+                "tol"_a = 1e-6f,
+                "Levenberg-Marquardt (inner form) counterpart of "
+                "solve_torso_for_mid_pose_block_gradient_descent.");
+        }
+
         t.def(
             "shortcut",
             &Traits::shortcut,

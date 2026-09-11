@@ -125,6 +125,27 @@ struct has_flask_robot<T, true> : std::bool_constant<not std::is_same_v<typename
 template <typename T>
 constexpr bool has_flask_robot_v = has_flask_robot<T>::value;
 
+// Detects whether Robot::eefk takes a second (eef_index) argument -- multi-end-effector
+// robots (RBY1, BimanualIiwa) do; single-end-effector ones (Panda, UR5, Digit, ...) don't,
+// so this can't be a plain VAMP_DEFINE_HAS_METHOD(eefk) check (eefk always exists; only its
+// arity differs) -- same call-based SFINAE shape as
+// parameterized_space_helper.hh's detail::has_eefs_collision_free.
+template <typename T, typename = void>
+struct has_eefk_with_index : std::false_type
+{
+};
+
+template <typename T>
+struct has_eefk_with_index<
+    T,
+    std::void_t<decltype(T::eefk(std::declval<const std::array<float, T::dimension> &>(), std::size_t{0}))>>
+    : std::true_type
+{
+};
+
+template <typename T>
+constexpr bool has_eefk_with_index_v = has_eefk_with_index<T>::value;
+
 namespace vamp::binding
 {
     namespace nb = nanobind;
@@ -587,9 +608,21 @@ namespace vamp::binding
             return result;
         }
 
-        static auto eefk(const Cfg &c) -> Eigen::Matrix4f
+        // `eef_index` is only meaningful on multi-end-effector robots (see
+        // has_eefk_with_index_v above); ignored (always the robot's one and only eef) on
+        // single-end-effector ones, same "extra param that's a no-op where the underlying
+        // concept doesn't apply" shape as e.g. ParameterizedSpaceTraits::set_support_polygon.
+        static auto eefk(const Cfg &c, std::size_t eef_index) -> Eigen::Matrix4f
         {
-            return Robot::eefk(Input::array(c)).matrix();
+            if constexpr (has_eefk_with_index_v<Robot>)
+            {
+                return Robot::eefk(Input::array(c), eef_index).matrix();
+            }
+            else
+            {
+                (void) eef_index;
+                return Robot::eefk(Input::array(c)).matrix();
+            }
         }
 
         static auto debug(const Cfg &c, const Env &env) -> typename Robot::Debug

@@ -298,7 +298,10 @@ namespace vamp::binding
             "eefk",
             &Traits::eefk,
             "configuration"_a,
-            "End-effector forward kinematics. Returns a 4x4 transform.");
+            "eef_index"_a = std::size_t{0},
+            "End-effector forward kinematics. Returns a 4x4 transform. `eef_index` selects "
+            "which end effector on multi-end-effector robots (e.g. RBY1: 0 = left hand, "
+            "1 = right hand); ignored on single-end-effector robots.");
         t.def(
             "debug",
             &Traits::debug,

@@ -150,6 +150,10 @@ if(VAMP_INSTALL_CPP_LIBRARY)
 endif()
 
 # C++ demos
+# NOTE: the robot-specific experiment executables (rby1/iiwa_marker/fr3_marker/
+# bimanual_iiwa demos) that used to live here moved to PVAMP/src/experiments,
+# alongside their .cc sources -- see that directory's CMakeLists.txt, which
+# add_subdirectory()s this repo to get at vamp_cpp instead of building here.
 if(VAMP_BUILD_CPP_DEMO)
   add_executable(vamp_rrtc_example scripts/cpp/rrtc_example.cc)
   target_link_libraries(vamp_rrtc_example PRIVATE vamp_cpp)
@@ -157,102 +161,6 @@ if(VAMP_BUILD_CPP_DEMO)
   # Disable strict warnings for demos to maintain compatibility
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_rrtc_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-  endif()
-
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/impl/vamp/robots/rby1.hh")
-    CPMAddPackage("gh:nlohmann/json@3.11.3")
-
-    add_executable(vamp_rby1_task_space_planner scripts/cpp/rby1_task_space_planner.cc)
-    target_link_libraries(vamp_rby1_task_space_planner PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
-
-    add_executable(vamp_rby1_gcp_branch_selector scripts/cpp/rby1_gcp_branch_selector.cc)
-    target_link_libraries(vamp_rby1_gcp_branch_selector PRIVATE vamp_cpp)
-
-    add_executable(vamp_rby1_mcvamp_planner scripts/cpp/rby1_mcvamp_planner.cc)
-    target_link_libraries(vamp_rby1_mcvamp_planner PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
-
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-      target_compile_options(vamp_rby1_task_space_planner PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-      target_compile_options(vamp_rby1_gcp_branch_selector PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-      target_compile_options(vamp_rby1_mcvamp_planner PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-    endif()
-  endif()
-
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/impl/vamp/robots/iiwa_marker.hh")
-    CPMAddPackage("gh:nlohmann/json@3.11.3")
-
-    add_executable(vamp_iiwa_maze_solver scripts/cpp/iiwa_maze_solver.cc)
-    target_link_libraries(vamp_iiwa_maze_solver PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
-
-    add_executable(vamp_iiwa_maze_solver_benchmark scripts/cpp/iiwa_maze_solver_benchmark.cc)
-    target_link_libraries(vamp_iiwa_maze_solver_benchmark PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
-
-    add_executable(vamp_iiwa_maze_tsr_benchmark scripts/cpp/iiwa_maze_tsr_benchmark.cc)
-    target_link_libraries(vamp_iiwa_maze_tsr_benchmark PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
-
-    add_executable(vamp_iiwa_branch_selector scripts/cpp/iiwa_branch_selector.cc)
-    target_link_libraries(vamp_iiwa_branch_selector PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
-
-    add_executable(vamp_iiwa_maze_problem_generator scripts/cpp/iiwa_maze_problem_generator.cc)
-    target_link_libraries(vamp_iiwa_maze_problem_generator PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
-
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-      target_compile_options(vamp_iiwa_maze_solver PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-      target_compile_options(vamp_iiwa_maze_solver_benchmark PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-      target_compile_options(vamp_iiwa_maze_tsr_benchmark PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-      target_compile_options(vamp_iiwa_branch_selector PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-      target_compile_options(vamp_iiwa_maze_problem_generator PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-    endif()
-  endif()
-
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/impl/vamp/robots/fr3_marker.hh")
-    CPMAddPackage("gh:nlohmann/json@3.11.3")
-
-    add_executable(vamp_fr3_maze_problem_generator scripts/cpp/fr3_maze_problem_generator.cc)
-    target_link_libraries(vamp_fr3_maze_problem_generator PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
-
-    add_executable(vamp_fr3_maze_solver scripts/cpp/fr3_maze_solver.cc)
-    target_link_libraries(vamp_fr3_maze_solver PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
-
-    add_executable(vamp_fr3_maze_solver_benchmark scripts/cpp/fr3_maze_solver_benchmark.cc)
-    target_link_libraries(vamp_fr3_maze_solver_benchmark PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
-
-    add_executable(vamp_fr3_maze_tsr_benchmark scripts/cpp/fr3_maze_tsr_benchmark.cc)
-    target_link_libraries(vamp_fr3_maze_tsr_benchmark PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
-
-    add_executable(vamp_fr3_mcvamp_problem_generator scripts/cpp/fr3_mcvamp_problem_generator.cc)
-    target_link_libraries(vamp_fr3_mcvamp_problem_generator PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
-
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-      target_compile_options(vamp_fr3_maze_problem_generator PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-      target_compile_options(vamp_fr3_maze_solver PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-      target_compile_options(vamp_fr3_maze_solver_benchmark PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-      target_compile_options(vamp_fr3_maze_tsr_benchmark PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-      target_compile_options(vamp_fr3_mcvamp_problem_generator PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-    endif()
-  endif()
-
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/impl/vamp/robots/bimanual_iiwa.hh")
-    add_executable(vamp_bimanual_iiwa_leader_follower_shelf
-      scripts/cpp/bimanual_iiwa_leader_follower_shelf.cc)
-    target_link_libraries(vamp_bimanual_iiwa_leader_follower_shelf PRIVATE vamp_cpp)
-
-    add_executable(vamp_bimanual_iiwa_projection_shelf
-      scripts/cpp/bimanual_iiwa_projection_shelf.cc)
-    target_link_libraries(vamp_bimanual_iiwa_projection_shelf PRIVATE vamp_cpp)
-
-    add_executable(vamp_bimanual_iiwa_parameterized_shelf
-      scripts/cpp/bimanual_iiwa_parameterized_shelf.cc)
-    target_link_libraries(vamp_bimanual_iiwa_parameterized_shelf PRIVATE vamp_cpp)
-
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-      target_compile_options(vamp_bimanual_iiwa_leader_follower_shelf PRIVATE
-        -Wno-c++11-narrowing -Wno-sign-compare)
-      target_compile_options(vamp_bimanual_iiwa_projection_shelf PRIVATE
-        -Wno-c++11-narrowing -Wno-sign-compare)
-      target_compile_options(vamp_bimanual_iiwa_parameterized_shelf PRIVATE
-        -Wno-c++11-narrowing -Wno-sign-compare)
-    endif()
   endif()
 endif()
 

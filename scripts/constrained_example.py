@@ -3,7 +3,7 @@
 Plans with manifold constraints by passing `constraints=[...]` to the regular planner
 entry points (rrtc, aorrtc, grrtstar) and simplify:
 
-- line: the Panda's end-effector may only translate along its approach axis.
+- line: the Panda's end-effector may only translate along one axis, past ten small cuboids.
 - plane: the Panda's end-effector slides in a fixed-orientation plane through a sphere cage.
 - bimanual: the two arms of the bimanual Panda hold a fixed relative grasp transform.
 
@@ -35,8 +35,26 @@ PLANE_PROBLEM = [
 
 IDENTITY = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-# Allowed end-effector travel along the line constraint's axis, in meters.
+# Reference pose (qw, qx, qy, qz, x, y, z) of the line constraint: the end-effector slides along the y axis of
+# this frame (+-2.5 mm in x and z), with free orientation.
+LINE_POSE = [0.0, 1.0, 0.0, 0.0, 0.2986, 0.647752, 0.1899]
+
+# Length of the line drawn in the visualization, in meters on each side of the reference pose.
 LINE_EXTENT = 0.6
+
+# Ten cuboids for the line example, [center xyz, half extents xyz] (from the benchmark line problems).
+LINE_CUBOIDS = [
+    [0.72695, 0.20887, 0.18598, 0.0194, 0.0194, 0.0194],
+    [0.02292, -0.01773, 0.64186, 0.01884, 0.01884, 0.01884],
+    [0.25598, 0.10937, 0.53968, 0.0174, 0.0174, 0.0174],
+    [0.79233, -0.74942, 0.30435, 0.00497, 0.00497, 0.00497],
+    [0.76862, 0.14451, 0.66303, 0.02221, 0.02221, 0.02221],
+    [0.39214, -0.47536, -0.1113, 0.01254, 0.01254, 0.01254],
+    [0.68343, 0.3738, 0.39421, 0.01188, 0.01188, 0.01188],
+    [-0.00922, -0.54583, -0.02773, 0.01421, 0.01421, 0.01421],
+    [0.53951, 0.1226, 0.50953, 0.01703, 0.01703, 0.01703],
+    [0.19934, 0.34832, 0.02067, 0.00964, 0.00964, 0.00964],
+]
 
 # Reference pose (qw, qx, qy, qz, x, y, z) of the plane constraint: the end-effector
 # slides in the local x-y plane of this frame with fixed orientation.
@@ -54,19 +72,25 @@ def pose_to_transform(pose):
 
 
 def line_problem(module):
-    # The end-effector may only translate along the approach (local z) axis of its
-    # starting pose; position off-axis and orientation are held to +- 0.01.
-    start_seed = np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785], dtype=np.float32)
-    goal_seed = start_seed + np.array([0.0, 0.35, 0.0, 0.45, 0.0, -0.4, 0.0], dtype=np.float32)
+    # The end-effector slides along the y axis of LINE_POSE (position held to +-2.5 mm off the axis,
+    # orientation free) while ten small cuboids are in the way.
+    start_seed = np.array([0.973156, 0.403079, 0.110229, -1.873058, -0.063795, 2.27308, 1.907363],
+                          dtype=np.float32)
+    goal_seed = np.array([-1.24479, 0.703143, 0.134544, -1.384665, -0.106787, 2.081792, -0.299777],
+                         dtype=np.float32)
 
     tsr = module.TaskSpaceConstraint(
         IDENTITY,
-        pose_to_transform(module.eefk(start_seed)),
-        [-0.01, -0.01, -LINE_EXTENT, -0.01, -0.01, -0.01],
-        [0.01, 0.01, LINE_EXTENT, 0.01, 0.01, 0.01],
+        LINE_POSE,
+        [-0.0025, -10.0025, -0.0025, -1000.0, -1000.0, -1000.0],
+        [0.0025, 10.0025, 0.0025, 1000.0, 1000.0, 1000.0],
     )
 
-    return start_seed, goal_seed, [tsr], vamp.Environment()
+    e = vamp.Environment()
+    for cuboid in LINE_CUBOIDS:
+        e.add_cuboid(vamp.Cuboid(cuboid[:3], [0.0, 0.0, 0.0], cuboid[3:]))
+
+    return start_seed, goal_seed, [tsr], e
 
 
 def plane_problem(module):
@@ -275,11 +299,9 @@ def main(
             )
 
         if mode == "line":
-            # The line constraint is anchored at the end-effector pose of the start seed;
-            # motion is allowed only along the local z (approach) axis.
-            reference = np.array(module.eefk(start_seed[:n_q]))
-            rotation, origin = reference[:3, :3], reference[:3, 3]
-            axis = rotation[:, 2]
+            # The line runs along the y axis of LINE_POSE.
+            wxyz, origin = np.array(LINE_POSE[:4]), np.array(LINE_POSE[4:])
+            axis = tf.SO3(wxyz).as_matrix()[:, 1]
             server.scene.add_line_segments(
                 "/constraint/line",
                 points=np.array([[origin - LINE_EXTENT * axis, origin + LINE_EXTENT * axis]]),
@@ -288,7 +310,7 @@ def main(
             )
             server.scene.add_frame(
                 "/constraint/reference",
-                wxyz=tf.SO3.from_matrix(rotation).wxyz,
+                wxyz=wxyz,
                 position=origin,
                 axes_length=0.1,
                 axes_radius=0.004,

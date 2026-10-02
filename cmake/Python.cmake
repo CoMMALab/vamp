@@ -29,6 +29,8 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     baxter=Baxter
     digit=Digit
     r2c6=R2c6
+    bimanual_iiwa=BimanualIiwa
+    g1_unitree=G1Unitree
   )
 
   if(NOT VAMP_ROBOT_MODULES)

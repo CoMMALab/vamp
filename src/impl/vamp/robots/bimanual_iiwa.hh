@@ -13,7 +13,7 @@ namespace vamp::robots
 {
 struct BimanualIiwa
 {
-    static constexpr const char *name = "bimanualiiwa";
+    static constexpr const char *name = "bimanual_iiwa";
     static constexpr std::size_t dimension = 14;
     static constexpr std::size_t sample_dimension = 14;
     static constexpr std::size_t n_spheres = 102;

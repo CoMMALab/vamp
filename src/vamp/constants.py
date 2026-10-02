@@ -6,7 +6,6 @@ ROBOT_RRT_RANGES = {
     "panda": 1.0,
     "fetch": 1.0,
     "baxter": 0.5,
-    "digit": 0.75,
     }
 
 ROBOT_FIRST_JOINT_LOCATIONS = {

@@ -4,7 +4,6 @@
 #include <Eigen/Geometry>
 
 #include <vector>
-#include <optional>
 #include <vamp/collision/shapes.hh>
 #include <vamp/collision/capt.hh>
 #include <vamp/collision/attachments.hh>
@@ -22,7 +21,7 @@ namespace vamp::collision
         std::vector<Cuboid<DataT>> z_aligned_cuboids;
         std::vector<HeightField<DataT>> heightfields;
         std::vector<CAPT> pointclouds;
-        std::optional<Attachment<DataT>> attachments;
+        std::vector<Attachment<DataT>> attachments;
 
         Environment() = default;
 
@@ -38,6 +37,47 @@ namespace vamp::collision
           , pointclouds(other.pointclouds.begin(), other.pointclouds.end())
           , attachments(other.template clone_attachments<DataT>())
         {
+        }
+
+        inline auto add_sphere(const Sphere<DataT> &sphere)
+        {
+            spheres.emplace_back(sphere);
+            sort();
+        }
+
+        // Z-aligned shapes are classified here so they dispatch to the specialized
+        // collision routines.
+        inline auto add_cuboid(const Cuboid<DataT> &cuboid)
+        {
+            if (cuboid.axis_3_z == 1.)
+            {
+                z_aligned_cuboids.emplace_back(cuboid);
+            }
+            else
+            {
+                cuboids.emplace_back(cuboid);
+            }
+
+            sort();
+        }
+
+        inline auto add_capsule(const Capsule<DataT> &capsule)
+        {
+            if (capsule.xv == 0. and capsule.yv == 0.)
+            {
+                z_aligned_capsules.emplace_back(capsule);
+            }
+            else
+            {
+                capsules.emplace_back(capsule);
+            }
+
+            sort();
+        }
+
+        inline auto add_heightfield(const HeightField<DataT> &heightfield)
+        {
+            heightfields.emplace_back(heightfield);
         }
 
         inline auto sort()
@@ -73,23 +113,33 @@ namespace vamp::collision
         friend struct Environment;
 
         template <typename OtherDataT>
-        inline auto clone_attachments() const noexcept -> std::optional<Attachment<OtherDataT>>
+        inline auto clone_attachments() const noexcept -> std::vector<Attachment<OtherDataT>>
         {
-            if (attachments)
+            std::vector<Attachment<OtherDataT>> result;
+            result.reserve(attachments.size());
+            for (const auto &attachment : attachments)
             {
-                return Attachment<OtherDataT>(*attachments);
+                result.emplace_back(attachment);
             }
 
-            return std::nullopt;
+            return result;
         }
     };
 
+    // Poses every attachment riding on end-effector `end_effector`.
     template <typename DataT>
     inline auto set_attachment_pose(
         const Environment<DataT> &e,
+        std::size_t end_effector,
         const Eigen::Transform<DataT, 3, Eigen::Isometry> &p_tf) noexcept
     {
-        e.attachments->pose(p_tf);
+        for (const auto &attachment : e.attachments)
+        {
+            if (attachment.end_effector == end_effector)
+            {
+                attachment.pose(p_tf);
+            }
+        }
     }
 
 }  // namespace vamp::collision

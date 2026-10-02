@@ -27,6 +27,7 @@ namespace vamp::collision
         template <typename DT = DataT, typename = std::enable_if_t<not std::is_same_v<DT, float>>>
         Attachment(const Attachment<float> &o) noexcept : Attachment(o.tf)
         {
+            end_effector = o.end_effector;
             spheres.reserve(o.spheres.size());
             for (const auto &sphere : o.spheres)
             {
@@ -34,6 +35,8 @@ namespace vamp::collision
             }
         }
 
+        // Index into the robot's end-effector list this attachment rides on.
+        std::size_t end_effector = 0;
         std::vector<Sphere<DataT>> spheres;
         // HACK: To get around passing the environment as const but needing to re-pose the
         // attachments

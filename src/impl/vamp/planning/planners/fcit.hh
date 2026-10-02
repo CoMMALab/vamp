@@ -3,12 +3,14 @@
 #include <chrono>
 #include <limits>
 #include <memory>
+#include <type_traits>
 
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/nn.hh>
+#include <vamp/planning/local_planner.hh>
+#include <vamp/planning/nn/nn.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/utils.hh>
-#include <vamp/planning/roadmap.hh>
+#include <vamp/planning/planners/roadmap.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
@@ -66,7 +68,6 @@ namespace vamp::planning
     struct FCIT
     {
         using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
 
         inline static auto solve(
@@ -79,6 +80,25 @@ namespace vamp::planning
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
         }
 
+        // Roadmap edges are straight lines: only the unconstrained local planner is
+        // supported. Constrained, phase, and chart planning require RRTC, AORRTC, or
+        // GRRTStar.
+        template <typename Goal, typename LocalPlanner>
+        inline static auto solve(
+            const Configuration &start,
+            const Goal &goal,
+            const collision::Environment<FloatVector<rake>> &environment,
+            const RoadmapSettings<NeighborParamsT> &settings,
+            typename RNG::Ptr &rng,
+            const LocalPlanner &) noexcept -> PlanningResult<Robot>
+        {
+            static_assert(
+                std::is_same_v<LocalPlanner, UnconstrainedLocalPlanner<Robot, rake, resolution>>,
+                "FCIT only supports the unconstrained local planner: constrained, phase, and "
+                "chart planning require RRTC, AORRTC, or GRRTStar");
+            return solve(start, goal, environment, settings, rng);
+        }
+
         inline static auto solve(
             const Configuration &start,
             const std::vector<Configuration> &goals,
@@ -89,14 +109,13 @@ namespace vamp::planning
             auto start_time = std::chrono::steady_clock::now();
 
             PlanningResult<Robot> result;
-            NN<dimension> roadmap;
+            NN<Robot> roadmap;
+            roadmap.reserve(settings.max_samples);
+            roadmap.set_epsilon(settings.nn_epsilon);
 
             std::size_t iter = 0;
-            typename Robot::template ConfigurationBlock<rake> temp_block;
-            auto states = std::unique_ptr<float, decltype(&free)>(
-                vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
-                    settings.max_samples * Configuration::num_scalars_rounded),
-                &free);
+            auto states = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(
+                settings.max_samples * Configuration::num_scalars_rounded);
 
             // TODO: Is it better to just use arrays for these since we're reserving full capacity
             // anyway? Test it!
@@ -113,9 +132,10 @@ namespace vamp::planning
 
             float *start_state = state_index(start_index);
             start.to_array(start_state);
-            parents.emplace_back(std::numeric_limits<unsigned int>::max());
+            // recover_path convention: the root is its own parent.
+            parents.emplace_back(start_index);
             nodes.emplace_back(start_index, 0.0);
-            roadmap.insert(NNNode<dimension>{start_index, {start_state}});
+            roadmap.insert(start_index, start_state);
             auto &start_node = nodes[start_index];
             start_node.neighbor_iterator = start_node.neighbors.begin();
 
@@ -126,12 +146,16 @@ namespace vamp::planning
                 goal.to_array(goal_state);
                 parents.emplace_back(std::numeric_limits<unsigned int>::max());
                 nodes.emplace_back(index);
-                roadmap.insert(NNNode<dimension>{index, {goal_state}});
+                roadmap.insert(index, goal_state);
             }
 
             Configuration temp_config;
             Configuration temp_config_self;
             std::vector<QueueEdge> open_set;
+
+            // Goal nodes occupy indices [1, goals.size()]; reached ones have a parent.
+            const auto reached = [&parents](unsigned int goal_index) -> bool
+            { return parents[goal_index] != std::numeric_limits<unsigned int>::max(); };
 
             // Search until Initial Solution
             while (nodes.size() < settings.max_samples and iter++ < settings.max_iterations)
@@ -152,14 +176,14 @@ namespace vamp::planning
 
                         const auto neighbor_index = it->index;
                         temp_config = state_index(neighbor_index);
-                        const auto neighbor_distance = start.distance(temp_config);
+                        const auto neighbor_distance = Robot::distance(start, temp_config);
                         start_node.sampleIdx = std::max(neighbor_index, start_node.sampleIdx);
 
                         // g(p) + c^(p,c) < g(c)
                         if (neighbor_distance < it->g)
                         {
                             // f^(c) = g(p) + c^(p,c) + h^(c)
-                            const auto cost = neighbor_distance + goal.distance(temp_config);
+                            const auto cost = neighbor_distance + Robot::distance(goal, temp_config);
                             start_node.neighbors.emplace_back(
                                 typename FCITRoadmapNode::Neighbor{neighbor_index, cost});
                         }
@@ -202,7 +226,7 @@ namespace vamp::planning
                             const auto &node = nodes[(*parent_node.neighbor_iterator).index];
 
                             if ((*parent_node.neighbor_iterator).distance <
-                                node.g + goal.distance(state_index(node.index)))
+                                node.g + Robot::distance(goal, state_index(node.index)))
                             {
                                 open_set.emplace_back(
                                     QueueEdge{
@@ -220,7 +244,7 @@ namespace vamp::planning
                         if (parents[current_index] != current_p)
                         {
                             temp_config_self = state_index(current_index);
-                            const auto dist_to_goal = goal.distance(temp_config_self);
+                            const auto dist_to_goal = Robot::distance(goal, temp_config_self);
 
                             if (current.cost <= goal_node.g)
                             {
@@ -245,7 +269,7 @@ namespace vamp::planning
                                             // Update the node's parent and g value
                                             parents[current_index] = current_p;
                                             current_g =
-                                                parent_node.g + temp_config.distance(temp_config_self);
+                                                parent_node.g + Robot::distance(temp_config, temp_config_self);
                                             current_node.g = current_g;
                                         }
                                         else
@@ -281,11 +305,11 @@ namespace vamp::planning
 
                             const auto neighbor_index = it->index;
                             temp_config = state_index(neighbor_index);
-                            const auto neighbor_distance = temp_config_self.distance(temp_config);
+                            const auto neighbor_distance = Robot::distance(temp_config_self, temp_config);
                             current_node.sampleIdx = std::max(neighbor_index, current_node.sampleIdx);
 
                             // f^(c) = g(p) + c^(p,c) + h^(c)
-                            auto cost = current_g + neighbor_distance + goal.distance(temp_config);
+                            auto cost = current_g + neighbor_distance + Robot::distance(goal, temp_config);
 
                             current_node.neighbors.emplace_back(
                                 typename FCITRoadmapNode::Neighbor{neighbor_index, cost});
@@ -314,7 +338,19 @@ namespace vamp::planning
                 }
 
                 // If we have a solution and just want an initial solution, break
-                if (not settings.optimize and parents[1] != std::numeric_limits<unsigned int>::max())
+                const auto any_reached = [&]() -> bool
+                {
+                    for (auto i = 1U; i <= goals.size(); ++i)
+                    {
+                        if (reached(i))
+                        {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+
+                if (not settings.optimize and any_reached())
                 {
                     break;
                 }
@@ -323,14 +359,7 @@ namespace vamp::planning
                      new_samples < settings.batch_size and nodes.size() < settings.max_samples;)
                 {
                     auto rng_temp = rng->next();
-
-                    // Check sample validity
-                    for (auto i = 0U; i < dimension; ++i)
-                    {
-                        temp_block[i] = rng_temp.broadcast(i);
-                    }
-
-                    if (not Robot::template fkcc<rake>(environment, temp_block))
+                    if (not validate_configuration<Robot, rake>(rng_temp, environment))
                     {
                         continue;
                     }
@@ -342,14 +371,28 @@ namespace vamp::planning
                     parents.emplace_back(std::numeric_limits<unsigned int>::max());
                     auto &node = nodes.emplace_back(nodes.size());
 
-                    auto road_node = NNNode<dimension>{node.index, {state}};
-                    roadmap.insert(road_node);
+                    roadmap.insert(node.index, state);
                     new_samples++;
                 }
             }
 
-            utils::recover_path<Robot>(parents, state_index, result.path);
-            result.cost = nodes[1].g;
+            // Recover from the cheapest reached goal, if any.
+            unsigned int best_goal = 0;
+            for (auto i = 1U; i <= goals.size(); ++i)
+            {
+                if (reached(i) and (best_goal == 0 or nodes[i].g < nodes[best_goal].g))
+                {
+                    best_goal = i;
+                }
+            }
+
+            if (best_goal != 0)
+            {
+                utils::recover_path<Robot>(parents.data(), state_index, result.path, best_goal);
+                result.solved = true;
+                result.cost = nodes[best_goal].g;
+            }
+
             result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
             result.iterations = iter;
             result.size.emplace_back(roadmap.size());

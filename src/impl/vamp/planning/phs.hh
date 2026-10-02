@@ -8,7 +8,7 @@
 
 #include <vamp/random/distribution.hh>
 #include <vamp/random/rng.hh>
-#include <vamp/planning/roadmap.hh>
+#include <vamp/planning/planners/roadmap.hh>
 #include <vamp/vector/eigen.hh>
 #include <vamp/vector.hh>
 
@@ -72,12 +72,12 @@ namespace vamp::planning
 
         inline auto measure() const noexcept -> float
         {
-            return phs_measure;
+            return measure_;
         }
 
         inline auto measure(float transverse_diameter_in) const noexcept -> float
         {
-            return phs_measure<dimension>(min_transverse_diameter, transverse_diameter_in);
+            return utils::phs_measure<dimension>(min_transverse_diameter, transverse_diameter_in);
         }
 
         inline auto get_min_transverse_diameter() const noexcept -> float
@@ -97,7 +97,7 @@ namespace vamp::planning
 
         float transverse_diameter{0.};
         float min_transverse_diameter;
-        float phs_measure;
+        float measure_;
 
         using EigenVector = Eigen::Vector<float, dimension>;
         using EigenMatrix = Eigen::Matrix<float, dimension, dimension>;
@@ -130,17 +130,16 @@ namespace vamp::planning
         }
 
         void update_transformation()
-
         {
-            const float conjugate_diamater = std::sqrt(
+            const float conjugate_diameter = std::sqrt(
                 transverse_diameter * transverse_diameter -
                 min_transverse_diameter * min_transverse_diameter);
 
-            EigenVector diag = EigenVector::Constant(0.5 * conjugate_diamater);
+            EigenVector diag = EigenVector::Constant(0.5 * conjugate_diameter);
             diag(0) = 0.5 * transverse_diameter;
 
             tf_world_from_ellipse = rot_world_from_ellipse * diag.asDiagonal();
-            phs_measure = utils::phs_measure<dimension>(min_transverse_diameter, transverse_diameter);
+            measure_ = utils::phs_measure<dimension>(min_transverse_diameter, transverse_diameter);
         }
     };
 
@@ -162,20 +161,29 @@ namespace vamp::planning
 
         inline auto next() noexcept -> FloatVector<Robot::dimension> override
         {
-            auto x = phs.transform(uniform_in_ball());
-
-            // Clamp values
-            Robot::descale_configuration(x);
-            x = x.clamp(0.F, 1.F);
-            Robot::scale_configuration(x);
-
-            return x;
+            if constexpr (Robot::euclidean)
+            {
+                auto x = phs.transform(uniform_in_ball());
+                // Clamp to joint bounds via descale → [0,1] → scale
+                Robot::descale_configuration(x);
+                x = x.clamp(0.F, 1.F);
+                Robot::scale_configuration(x);
+                return x;
+            }
+            else
+            {
+                // Informed (PHS) sampling assumes a Euclidean L2 metric.
+                return rng->next();
+            }
         }
 
         inline auto logit() noexcept -> vamp::FloatVector<Robot::dimension>
         {
             auto U1 = rng->next();
-            Robot::descale_configuration(U1);
+            if constexpr (Robot::euclidean)
+            {
+                Robot::descale_configuration(U1);
+            }
             return (U1 * (1 - U1).rcp()).log() * std::sqrt(vamp::utils::constants::pi / 8.F);
         }
 

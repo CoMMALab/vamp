@@ -69,7 +69,14 @@ def png_to_heightfield(
 
 
 def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, **kwargs):
-    robot_module = getattr(_core, robot_name)
+    # Dotted names address nested submodules.
+    robot_module: Any = _core
+    try:
+        for part in robot_name.split("."):
+            robot_module = getattr(robot_module, part)
+    except AttributeError:
+        raise ValueError(f"Robot {robot_name} does not exist!")
+
     try:
         planner_func = getattr(robot_module, planner_name)
     except AttributeError:
@@ -118,7 +125,6 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
                 setattr(plan_settings.rrtc, sk, v)
 
     simp_settings = SimplifySettings()
-
     for k, v in kwargs.items():
         if "simplification_" in k:
             sk = k.replace("simplification_", "")

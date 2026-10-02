@@ -20,6 +20,7 @@ def main(
     skip_rng_iterations: int = 0,          # Skip a number of RNG iterations
     print_failures: bool = False,          # Print out failures and invalid problems
     pointcloud: bool = False,              # Use pointcloud rather than primitive geometry
+    structure: str = "capt",               # Pointcloud collision structure to use (capt or mvt)
     samples_per_object: int = 10000,       # If pointcloud, samples per object to use
     filter_radius: float = 0.02,           # Filter radius for pointcloud filtering
     filter_cull: bool = True,              # Cull pointcloud around robot by maximum distance
@@ -68,6 +69,7 @@ def main(
                     samples_per_object,
                     filter_radius,
                     filter_cull,
+                    structure,
                     )
 
                 pointcloud_results = {
@@ -146,7 +148,7 @@ def main(
         mbm.print_stats_table(
             df, {
                 'filter_time': '  Filter Time (ms)',
-                'build_time': '    CAPT Build Time (ms)',
+                'build_time': f'    {structure.upper()} Build Time (ms)',
                 'total_build_and_plan_time': 'Total Time (ms)',
                 }
             )

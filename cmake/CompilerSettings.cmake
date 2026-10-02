@@ -24,15 +24,17 @@ set(VAMP_FAST_ARGS "-fno-math-errno -fno-signed-zeros -fno-trapping-math -fno-ro
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64") # x86 supports additional flags
 	string(APPEND VAMP_FAST_ARGS " -fassociative-math")
 	if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang") # Clang supports additional fine-grained flags over GCC
-		string(APPEND VAMP_FAST_ARGS " -fno-honor-infinities -fno-honor-nans")
+		# -fno-honor-nans is deliberately NOT set: the manifold constraint code relies on NaN handling
+		# (the log map is NaN exactly at satisfied orientations; the min/max hinge zeroes it), which
+		# that flag lets the compiler optimize away, making projection never converge. Infinities
+		# are still assumed absent.
+		string(APPEND VAMP_FAST_ARGS " -fno-honor-infinities")
 		if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 11.0.0) # clang 11 does not support -fapprox-func
 			string(APPEND VAMP_FAST_ARGS " -fapprox-func")
 		endif()
 	endif()
 endif()
 
-# Vector types have their alignment hints ignored all over the place, so ignore these warnings.
-# Should be fine on any modern PC.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${VAMP_ARCH} -Wall -Wextra -Wno-ignored-attributes -fno-strict-aliasing")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -g")

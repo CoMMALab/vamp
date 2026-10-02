@@ -81,6 +81,9 @@ def test_problem(vamp_module, problem):
     goals = problem['goals']
     env = vamp.problem_dict_to_vamp(problem)
 
+    start = np.asarray(start, dtype=np.float32)
+    goals = [np.asarray(goal, dtype=np.float32) for goal in goals]
+
     return vamp_module.validate(start, env) and any(vamp_module.validate(goal, env) for goal in goals)
 
 

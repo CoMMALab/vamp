@@ -252,24 +252,29 @@ namespace vamp
     inline constexpr auto attachment_environment_collision(const collision::Environment<DataT> &e) noexcept
         -> bool
     {
-        for (const auto &s : e.attachments->posed_spheres)
+        for (const auto &attachment : e.attachments)
         {
-            // HACK: The radius needs to be a float, and unfortunately the spheres assume homogeneous
-            // DataT for storage
-            // TODO: Fix the sphere representation to allow to store float radii even with vector
-            // centers
-            if (sphere_environment_in_collision(e, s.x, s.y, s.z, s.r[{0, 0}]))
+            for (const auto &s : attachment.posed_spheres)
             {
-                return true;
+                // HACK: The radius needs to be a float, and unfortunately the spheres assume
+                // homogeneous DataT for storage
+                // TODO: Fix the sphere representation to allow to store float radii even with vector
+                // centers
+                if (sphere_environment_in_collision(e, s.x, s.y, s.z, s.r[{0, 0}]))
+                {
+                    return true;
+                }
             }
         }
 
         return false;
     }
 
+    // Checks a robot sphere against every attachment riding on end-effector `end_effector`.
     template <typename DataT, typename ArgT1, typename ArgT2, typename ArgT3, typename ArgT4>
     inline constexpr auto attachment_sphere_collision(
         const collision::Environment<DataT> &e,
+        std::size_t end_effector,
         ArgT1 sx_,
         ArgT2 sy_,
         ArgT3 sz_,
@@ -280,12 +285,55 @@ namespace vamp
         auto sy = static_cast<DataT>(sy_);
         auto sz = static_cast<DataT>(sz_);
         auto sr = static_cast<DataT>(sr_);
-        for (const auto &att_s : e.attachments->posed_spheres)
+        for (const auto &attachment : e.attachments)
         {
-            if (not collision::sphere_sphere_sql2(sx, sy, sz, sr, att_s.x, att_s.y, att_s.z, att_s.r)
-                        .test_zero())
+            if (attachment.end_effector != end_effector)
             {
-                return true;
+                continue;
+            }
+
+            for (const auto &att_s : attachment.posed_spheres)
+            {
+                if (not collision::sphere_sphere_sql2(sx, sy, sz, sr, att_s.x, att_s.y, att_s.z, att_s.r)
+                            .test_zero())
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Checks attachments on different end-effectors against each other; attachments riding
+    // on the same end-effector move rigidly together and are never tested.
+    template <typename DataT>
+    inline constexpr auto attachment_attachment_collision(const collision::Environment<DataT> &e) noexcept
+        -> bool
+    {
+        for (auto i = 0U; i < e.attachments.size(); ++i)
+        {
+            const auto &a = e.attachments[i];
+            for (auto j = i + 1; j < e.attachments.size(); ++j)
+            {
+                const auto &b = e.attachments[j];
+                if (a.end_effector == b.end_effector)
+                {
+                    continue;
+                }
+
+                for (const auto &sa : a.posed_spheres)
+                {
+                    for (const auto &sb : b.posed_spheres)
+                    {
+                        if (not collision::sphere_sphere_sql2(
+                                    sa.x, sa.y, sa.z, sa.r, sb.x, sb.y, sb.z, sb.r)
+                                    .test_zero())
+                        {
+                            return true;
+                        }
+                    }
+                }
             }
         }
 

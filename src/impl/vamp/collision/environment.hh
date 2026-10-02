@@ -40,6 +40,47 @@ namespace vamp::collision
         {
         }
 
+        inline auto add_sphere(const Sphere<DataT> &sphere)
+        {
+            spheres.emplace_back(sphere);
+            sort();
+        }
+
+        // Z-aligned shapes are classified here so they dispatch to the specialized
+        // collision routines.
+        inline auto add_cuboid(const Cuboid<DataT> &cuboid)
+        {
+            if (cuboid.axis_3_z == 1.)
+            {
+                z_aligned_cuboids.emplace_back(cuboid);
+            }
+            else
+            {
+                cuboids.emplace_back(cuboid);
+            }
+
+            sort();
+        }
+
+        inline auto add_capsule(const Capsule<DataT> &capsule)
+        {
+            if (capsule.xv == 0. and capsule.yv == 0.)
+            {
+                z_aligned_capsules.emplace_back(capsule);
+            }
+            else
+            {
+                capsules.emplace_back(capsule);
+            }
+
+            sort();
+        }
+
+        inline auto add_heightfield(const HeightField<DataT> &heightfield)
+        {
+            heightfields.emplace_back(heightfield);
+        }
+
         inline auto sort()
         {
             std::sort(

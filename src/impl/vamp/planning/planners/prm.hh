@@ -3,13 +3,15 @@
 #include <chrono>
 #include <limits>
 #include <memory>
+#include <type_traits>
 
 #include <utility>
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/nn.hh>
+#include <vamp/planning/local_planner.hh>
+#include <vamp/planning/nn/nn.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/utils.hh>
-#include <vamp/planning/roadmap.hh>
+#include <vamp/planning/planners/roadmap.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
@@ -27,7 +29,6 @@ namespace vamp::planning
     struct PRM
     {
         using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
 
         inline static auto solve(
@@ -40,6 +41,25 @@ namespace vamp::planning
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
         }
 
+        // Roadmap edges are straight lines: only the unconstrained local planner is
+        // supported. Constrained, phase, and chart planning require RRTC, AORRTC, or
+        // GRRTStar.
+        template <typename Goal, typename LocalPlanner>
+        inline static auto solve(
+            const Configuration &start,
+            const Goal &goal,
+            const collision::Environment<FloatVector<rake>> &environment,
+            const RoadmapSettings<NeighborParamsT> &settings,
+            typename RNG::Ptr rng,
+            const LocalPlanner &) noexcept -> PlanningResult<Robot>
+        {
+            static_assert(
+                std::is_same_v<LocalPlanner, UnconstrainedLocalPlanner<Robot, rake, resolution>>,
+                "PRM only supports the unconstrained local planner: constrained, phase, and "
+                "chart planning require RRTC, AORRTC, or GRRTStar");
+            return solve(start, goal, environment, settings, rng);
+        }
+
         inline static auto solve(
             const Configuration &start,
             const std::vector<Configuration> &goals,
@@ -49,7 +69,9 @@ namespace vamp::planning
         {
             PlanningResult<Robot> result;
 
-            NN<dimension> roadmap;
+            NN<Robot> roadmap;
+            roadmap.reserve(settings.max_samples);
+            roadmap.set_epsilon(settings.nn_epsilon);
 
             auto start_time = std::chrono::steady_clock::now();
 
@@ -60,6 +82,8 @@ namespace vamp::planning
                 {
                     result.path.emplace_back(start);
                     result.path.emplace_back(goal);
+                    result.solved = true;
+                    result.cost = result.path.cost();
                     result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
                     result.iterations = 0;
                     result.size.emplace_back(1);
@@ -70,11 +94,9 @@ namespace vamp::planning
             }
 
             std::size_t iter = 0;
-            std::vector<std::pair<NNNode<dimension>, float>> neighbors;
-            typename Robot::template ConfigurationBlock<rake> temp_block;
-            auto states = std::unique_ptr<float>(
-                vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
-                    settings.max_samples * Configuration::num_scalars_rounded));
+            std::vector<std::pair<std::size_t, float>> neighbors;
+            auto states = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(
+                settings.max_samples * Configuration::num_scalars_rounded);
             // TODO: Is it better to just use arrays for these since we're reserving full capacity
             // anyway? Test it!
             std::vector<RoadmapNode> nodes;
@@ -91,7 +113,7 @@ namespace vamp::planning
             auto *start_state = state_index(start_index);
             start.to_array(start_state);
             nodes.emplace_back(start_index, start_index, 0.0);
-            roadmap.insert(NNNode<dimension>{start_index, {start_state}});
+            roadmap.insert(start_index, start_state);
             components.emplace_back(utils::ConnectedComponent{start_index, 1});
 
             for (const auto &goal : goals)
@@ -100,7 +122,7 @@ namespace vamp::planning
                 auto *goal_state = state_index(index);
                 goal.to_array(goal_state);
                 nodes.emplace_back(index, index);
-                roadmap.insert(NNNode<dimension>{index, {goal_state}});
+                roadmap.insert(index, goal_state);
                 components.emplace_back(utils::ConnectedComponent{index, 1});
             }
 
@@ -109,17 +131,7 @@ namespace vamp::planning
             while (iter++ < settings.max_iterations and nodes.size() < settings.max_samples)
             {
                 auto temp = rng->next();
-                // TODO: This is a gross hack to get around the instruction cache issue...I realized
-                // that edge sampling, while valid, wastes too much effort with our current
-                // validation API
-
-                // Check sample validity
-                for (auto i = 0U; i < dimension; ++i)
-                {
-                    temp_block[i] = temp.broadcast(i);
-                }
-
-                if (not Robot::template fkcc<rake>(environment, temp_block))
+                if (not validate_configuration<Robot, rake>(temp, environment))
                 {
                     continue;
                 }
@@ -132,22 +144,22 @@ namespace vamp::planning
                 // Add valid edges
                 const auto k = settings.neighbor_params.max_neighbors(roadmap.size());
                 const auto r = settings.neighbor_params.neighbor_radius(roadmap.size());
-                roadmap.nearest(neighbors, NNFloatArray<dimension>{state}, k, r);
+                roadmap.nearest(neighbors, state, k, r);
                 for (const auto &[neighbor, distance] : neighbors)
                 {
-                    if (validate_motion<Robot, rake, resolution>(neighbor.as_vector(), temp, environment))
+                    if (validate_motion<Robot, rake, resolution>(Configuration(state_index(neighbor)), temp, environment))
                     {
                         node.neighbors.emplace_back(
                             typename RoadmapNode::Neighbor{
-                                static_cast<unsigned int>(neighbor.index), distance});
-                        nodes[neighbor.index].neighbors.emplace_back(
+                                static_cast<unsigned int>(neighbor), distance});
+                        nodes[neighbor].neighbors.emplace_back(
                             typename RoadmapNode::Neighbor{node.index, distance});
                     }
                 }
 
                 // Insert valid state into roadmap - after query to prevent returning self as
                 // neighbor
-                roadmap.insert(NNNode<dimension>{node.index, {state}});
+                roadmap.insert(node.index, state);
 
                 // Unify connected components
                 if (node.neighbors.empty())
@@ -161,7 +173,8 @@ namespace vamp::planning
                     node.component = nodes[node.neighbors.front().index].component;
                     for (const auto &neighbor : node.neighbors)
                     {
-                        utils::merge_components(components, node.component, nodes[neighbor.index].component);
+                        utils::merge_components(
+                            components, node.component, nodes[neighbor.index].component);
                     }
                 }
 
@@ -175,10 +188,11 @@ namespace vamp::planning
                     }
 
                     const auto &goal = goals[i - 1];
-                    auto parents = utils::astar(nodes, start, goal, state_index);
+                    auto parents = utils::astar<Robot>(nodes, start, goal, state_index, i);
                     // NOTE: If the connected component check is correct, we can assume that a solution
                     // was found by A* when we've reached this point
-                    utils::recover_path<Robot>(std::move(parents), state_index, result.path);
+                    utils::recover_path<Robot>(parents.get(), state_index, result.path, i);
+                    result.solved = true;
                     result.cost = nodes[i].g;
                     result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
                     result.iterations = iter;
@@ -202,7 +216,9 @@ namespace vamp::planning
             const RoadmapSettings<NeighborParamsT> &settings,
             typename RNG::Ptr rng) noexcept -> Roadmap<Robot>
         {
-            NN<dimension> roadmap;
+            NN<Robot> roadmap;
+            roadmap.reserve(settings.max_samples);
+            roadmap.set_epsilon(settings.nn_epsilon);
 
             constexpr const unsigned int start_index = 0;
             constexpr const unsigned int goal_index = 1;
@@ -210,12 +226,9 @@ namespace vamp::planning
             auto start_time = std::chrono::steady_clock::now();
 
             std::size_t iter = 0;
-            std::vector<std::pair<NNNode<dimension>, float>> neighbors;
-            typename Robot::template ConfigurationBlock<rake> temp_block;
-            auto states = std::unique_ptr<float, decltype(&free)>(
-                vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
-                    settings.max_samples * Configuration::num_scalars_rounded),
-                &free);
+            std::vector<std::pair<std::size_t, float>> neighbors;
+            auto states = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(
+                settings.max_samples * Configuration::num_scalars_rounded);
             // TODO: Is it better to just use arrays for these since we're reserving full capacity
             // anyway? Test it!
             std::vector<RoadmapNode> nodes;
@@ -230,24 +243,13 @@ namespace vamp::planning
             goal.to_array(goal_state);
             nodes.emplace_back(start_index, start_index, 0.0);
             nodes.emplace_back(goal_index, goal_index);
-            roadmap.insert(NNNode<dimension>{start_index, {state_index(start_index)}});
-            roadmap.insert(NNNode<dimension>{goal_index, {goal_state}});
+            roadmap.insert(start_index, state_index(start_index));
+            roadmap.insert(goal_index, goal_state);
 
             while (iter++ < settings.max_iterations and nodes.size() < settings.max_samples)
             {
                 auto temp = rng->next();
-
-                // TODO: This is a gross hack to get around the instruction cache issue...I realized
-                // that edge sampling, while valid, wastes too much effort with our current
-                // validation API
-
-                // Check sample validity
-                for (auto i = 0U; i < dimension; ++i)
-                {
-                    temp_block[i] = temp.broadcast(i);
-                }
-
-                if (not Robot::template fkcc<rake>(environment, temp_block))
+                if (not validate_configuration<Robot, rake>(temp, environment))
                 {
                     continue;
                 }
@@ -260,22 +262,22 @@ namespace vamp::planning
                 // Add valid edges
                 const auto k = settings.neighbor_params.max_neighbors(roadmap.size());
                 const auto r = settings.neighbor_params.neighbor_radius(roadmap.size());
-                roadmap.nearest(neighbors, NNFloatArray<dimension>{state}, k, r);
+                roadmap.nearest(neighbors, state, k, r);
                 for (const auto &[neighbor, distance] : neighbors)
                 {
-                    if (validate_motion<Robot, rake, resolution>(neighbor.as_vector(), temp, environment))
+                    if (validate_motion<Robot, rake, resolution>(Configuration(state_index(neighbor)), temp, environment))
                     {
                         node.neighbors.emplace_back(
                             typename RoadmapNode::Neighbor{
-                                static_cast<unsigned int>(neighbor.index), distance});
-                        nodes[neighbor.index].neighbors.emplace_back(
+                                static_cast<unsigned int>(neighbor), distance});
+                        nodes[neighbor].neighbors.emplace_back(
                             typename RoadmapNode::Neighbor{node.index, distance});
                     }
                 }
 
                 // Insert valid state into roadmap - after query to prevent returning self as
                 // neighbor
-                roadmap.insert(NNNode<dimension>{node.index, {state}});
+                roadmap.insert(node.index, state);
             }
 
             Roadmap<Robot> result;

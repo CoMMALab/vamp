@@ -15,10 +15,10 @@ import vamp.pointcloud
 from fire import Fire
 
 # Starting configuration
-a = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+a = np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785], dtype=np.float32)
 
 # Goal configuration
-b = [2.35, 1.0, 0.0, -0.8, 0, 2.5, 0.785]
+b = np.array([2.35, 1.0, 0.0, -0.8, 0, 2.5, 0.785], dtype=np.float32)
 
 # Problem specification: a list of sphere centers
 problem = [

@@ -3,9 +3,10 @@ DEFAULT_ITERATIONS = 1000000
 ROBOT_RRT_RANGES = {
     "sphere": 1,
     "ur5": 1.5,
-    "panda": 1.0,
+    "panda": 1.25,
     "fetch": 1.0,
     "baxter": 0.5,
+    "digit": 0.75,
     }
 
 ROBOT_FIRST_JOINT_LOCATIONS = {

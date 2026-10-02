@@ -110,45 +110,10 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
 
     nb::class_<vc::Environment<float>>(pymodule, "Environment")
         .def(nb::init<>())
-        .def(
-            "add_sphere",
-            [](vc::Environment<float> &e, const vc::Sphere<float> &s)
-            {
-                e.spheres.emplace_back(s);
-                e.sort();
-            })
-        .def(
-            "add_cuboid",
-            [](vc::Environment<float> &e, const vc::Cuboid<float> &s)
-            {
-                if (s.axis_3_z == 1.)
-                {
-                    e.z_aligned_cuboids.emplace_back(s);
-                }
-                else
-                {
-                    e.cuboids.emplace_back(s);
-                }
-                e.sort();
-            })
-        .def(
-            "add_capsule",
-            [](vc::Environment<float> &e, const vc::Cylinder<float> &s)
-            {
-                if (s.xv == 0. and s.yv == 0.)
-                {
-                    e.z_aligned_capsules.emplace_back(s);
-                }
-                else
-                {
-                    e.capsules.emplace_back(s);
-                }
-                e.sort();
-            })
-        .def(
-            "add_heightfield",
-            [](vc::Environment<float> &e, const vc::HeightField<float> &s)
-            { e.heightfields.emplace_back(s); })
+        .def("add_sphere", &vc::Environment<float>::add_sphere)
+        .def("add_cuboid", &vc::Environment<float>::add_cuboid)
+        .def("add_capsule", &vc::Environment<float>::add_capsule)
+        .def("add_heightfield", &vc::Environment<float>::add_heightfield)
         .def(
             "add_pointcloud",
             [](vc::Environment<float> &e,
@@ -163,8 +128,11 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
             })
         .def(
             "attach",
-            [](vc::Environment<float> &e, const vc::Attachment<float> &a) { e.attachments.emplace(a); })
-        .def("detach", [](vc::Environment<float> &e) { e.attachments.reset(); })
+            [](vc::Environment<float> &e, const vc::Attachment<float> &a)
+            { e.attachments.emplace_back(a); },
+            "Adds an attachment; multiple attachments (across end-effectors) may coexist.")
+        .def("detach", [](vc::Environment<float> &e) { e.attachments.clear(); })
+        .def_ro("attachments", &vc::Environment<float>::attachments)
         .def_ro("spheres", &vc::Environment<float>::spheres)
         .def_ro("cuboids", &vc::Environment<float>::cuboids)
         .def_ro("z_aligned_cuboids", &vc::Environment<float>::z_aligned_cuboids)
@@ -208,13 +176,18 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
     nb::class_<vc::Attachment<float>>(pymodule, "Attachment")
         .def(
             "__init__",
-            [](vc::Attachment<float> *q, Eigen::Matrix4f &tf) noexcept
+            [](vc::Attachment<float> *q, Eigen::Matrix4f &tf, std::size_t end_effector) noexcept
             {
                 Eigen::Isometry3f iso;
                 iso.matrix() = tf;
                 new (q) vc::Attachment<float>(iso);
+                q->end_effector = end_effector;
             },
-            "Constructor for an attachment centered at a relative transform from the end-effector.")
+            "tf"_a,
+            "end_effector"_a = 0,
+            "Constructor for an attachment centered at a relative transform from the given "
+            "end-effector (by index into the robot's end-effector list).")
+        .def_rw("end_effector", &vc::Attachment<float>::end_effector)
         .def_prop_ro("relative_frame", [](vc::Attachment<float> &a) { return a.tf; })
         .def(
             "add_sphere",

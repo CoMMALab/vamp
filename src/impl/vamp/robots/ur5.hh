@@ -27248,10 +27248,15 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
         return to_isometry(y.data() + 12 * eef_index);
     }
 
+    
 
+    
 
+    
 
+    
 
+    
 
     
 

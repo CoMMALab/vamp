@@ -13,7 +13,7 @@ namespace vamp::robots
 {
 struct G1Unitree
 {
-    static constexpr const char *name = "g1unitree";
+    static constexpr const char *name = "g1_unitree";
     static constexpr std::size_t dimension = 35;
     static constexpr std::size_t sample_dimension = 35;
     static constexpr std::size_t n_spheres = 133;

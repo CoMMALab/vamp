@@ -100,18 +100,18 @@ namespace vamp::planning
         // require more steps than ceil(distance / range).
         static constexpr float connect_slack = 1.F;
 
-        // Validity of the local path a -> b in execution order; `forward` is false when the
-        // caller's a precedes b in tree order but follows it in execution order (goal trees).
+        // Validity of the local path a -> b. `a` is the configuration already known to be valid and
+        // `b` the new one: validate_motion does not check its start, so the path is always checked
+        // in this order. The straight-line path is the same in either direction, so `forward` does
+        // not matter here (swapping the endpoints for goal trees would leave the new node, and so
+        // every goal-tree node, unchecked).
         inline auto validate(
             const Configuration &a,
             const Configuration &b,
             const Environment &e,
-            bool forward = true) const noexcept -> bool
+            bool /* forward */ = true) const noexcept -> bool
         {
-            const Configuration &start = (forward) ? a : b;
-            const Configuration &goal = (forward) ? b : a;
-
-            return validate_motion<Robot, rake, resolution>(start, goal, e);
+            return validate_motion<Robot, rake, resolution>(a, b, e);
         }
 
         // Admit the local path a -> b only if it is valid, has fewer interior waypoints than

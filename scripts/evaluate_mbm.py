@@ -109,6 +109,10 @@ def main(
 
     tock = time.perf_counter()
 
+    if not results:
+        print(f"No problems solved ({failed_problems} failed); nothing to report.")
+        return
+
     df = pd.DataFrame.from_dict(results)
 
     # Convert to microseconds

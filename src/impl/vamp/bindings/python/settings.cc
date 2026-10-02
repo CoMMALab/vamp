@@ -1,5 +1,6 @@
 #include <vamp_python_init.hh>
 
+#include <vamp/planning/constraints/settings.hh>
 #include <vamp/planning/planners/roadmap.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/planning/planners/aorrtc_settings.hh>
@@ -10,6 +11,7 @@
 
 namespace nb = nanobind;
 namespace vp = vamp::planning;
+namespace vc = vamp::planning::constraint;
 
 void vamp::binding::init_settings(nanobind::module_ &pymodule)
 {
@@ -132,6 +134,24 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_empty_steps", &vp::PerturbSettings::max_empty_steps)
         .def_rw("perturbation_attempts", &vp::PerturbSettings::perturbation_attempts)
         .def_rw("range_ratio", &vp::PerturbSettings::range);
+
+    nb::enum_<vc::ProjMethod>(pymodule, "ProjMethod")
+        .value("InnerLM", vc::ProjMethod::InnerLM)
+        .value("OuterLM", vc::ProjMethod::OuterLM)
+        .value("GradDesc", vc::ProjMethod::GradDesc);
+
+    nb::class_<vc::ConstraintSettings>(pymodule, "ConstraintSettings")
+        .def(nb::init<>())
+        .def_rw("method", &vc::ConstraintSettings::method)
+        .def_rw("descend_rate", &vc::ConstraintSettings::descend_rate)
+        .def_rw("tolerance", &vc::ConstraintSettings::tolerance)
+        .def_rw("max_iterations", &vc::ConstraintSettings::max_iterations)
+        .def_rw("perturbation_scale", &vc::ConstraintSettings::perturbation_scale)
+        .def_rw("emit_all_waypoints", &vc::ConstraintSettings::emit_all_waypoints)
+        .def_rw("connect_slack", &vc::ConstraintSettings::connect_slack)
+        .def_rw("reached_radius2", &vc::ConstraintSettings::reached_radius2)
+        .def_rw("endpoint_tolerance2", &vc::ConstraintSettings::endpoint_tolerance2)
+        .def_rw("hold_satisfied_rows", &vc::ConstraintSettings::hold_satisfied_rows);
 
     nb::class_<vp::SimplifySettings>(pymodule, "SimplifySettings")
         .def(nb::init<>())

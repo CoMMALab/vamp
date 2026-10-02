@@ -11,6 +11,16 @@
 #include <vamp/collision/sphere_sphere.hh>
 #include <vamp/collision/validity.hh>
 #include <vamp/planning/planners/aorrtc.hh>
+#include <vamp/planning/constraints/manifold/bimanual_task_space_constraint.hh>
+#include <vamp/planning/constraints/manifold/closed_loop_constraint.hh>
+#include <vamp/planning/constraints/manifold/com_constraint.hh>
+#include <vamp/planning/constraints/manifold/constraint.hh>
+#include <vamp/planning/constraints/manifold/constraint_set.hh>
+#include <vamp/planning/constraints/manifold/lead_screw_constraint.hh>
+#include <vamp/planning/constraints/manifold/twist_constraint.hh>
+#include <vamp/planning/constraints/local_planner.hh>
+#include <vamp/planning/constraints/settings.hh>
+#include <vamp/planning/constraints/manifold/task_space_constraint.hh>
 #include <vamp/planning/planners/fcit.hh>
 #include <vamp/planning/planners/grrtstar.hh>
 #include <vamp/planning/local_planner.hh>
@@ -53,6 +63,28 @@
 VAMP_DEFINE_HAS_METHOD(set_lows)
 VAMP_DEFINE_HAS_METHOD(set_highs)
 VAMP_DEFINE_HAS_METHOD(set_radius)
+VAMP_DEFINE_HAS_METHOD(n_eef)
+VAMP_DEFINE_HAS_METHOD(n_closed_loops)
+
+// Robots with generated optional kinematics (center-of-mass, lead-screw, twist-Jacobian)
+// declare `static constexpr bool has_<kernel>`.
+#define VAMP_DEFINE_ROBOT_FLAG(flag)                                                                         \
+    template <typename T, typename = void>                                                                   \
+    struct robot_##flag : std::false_type                                                                    \
+    {                                                                                                        \
+    };                                                                                                       \
+                                                                                                             \
+    template <typename T>                                                                                    \
+    struct robot_##flag<T, std::void_t<decltype(T::flag)>> : std::true_type                                  \
+    {                                                                                                        \
+    };                                                                                                       \
+                                                                                                             \
+    template <typename T>                                                                                    \
+    constexpr bool robot_##flag##_v = robot_##flag<T>::value;
+
+VAMP_DEFINE_ROBOT_FLAG(has_com)
+VAMP_DEFINE_ROBOT_FLAG(has_lead_screw)
+VAMP_DEFINE_ROBOT_FLAG(has_twist)
 
 namespace vamp::binding
 {
@@ -291,6 +323,143 @@ namespace vamp::binding
                 p, EnvVec(env), settings, rng, lp);
         }
 
+        // Constraint-aware variants. These members are only instantiated when referenced,
+        // so robots without generated constraint support never touch them.
+        using ConstraintT = vamp::planning::constraint::Constraint<Robot, rake>;
+        using ConstraintVec = std::vector<std::shared_ptr<const ConstraintT>>;
+        using ConstraintSetT = vamp::planning::constraint::ConstraintSet<Robot, rake>;
+        using ConstrainedLP =
+            vamp::planning::constraint::ConstrainedLocalPlanner<Robot, rake, Robot::resolution>;
+        using ConstraintSettings = vamp::planning::constraint::ConstraintSettings;
+
+        static constexpr const char *manifold_message =
+            " configuration violates the constraints; project it first with project()";
+        static constexpr const char *manifold_simplify_message =
+            " violates the constraints; simplify requires an on-manifold path";
+
+        // Forward a PinnedRNG's pinned dimensions into a constraint set so projection
+        // holds them exactly (their Jacobian columns are zeroed before every descent step).
+        static void apply_pins(ConstraintSetT &set, const std::shared_ptr<Sampler> &rng)
+        {
+            if (auto pinned = std::dynamic_pointer_cast<vamp::rng::PinnedRNG<Robot>>(rng))
+            {
+                set.set_pinned(pinned->pinned_dims());
+            }
+        }
+
+        template <vamp::planning::Planner P, typename Settings>
+        static auto solve_single_constrained(
+            const Cfg &start,
+            const Cfg &goal,
+            const Env &env,
+            const Settings &s,
+            std::shared_ptr<Sampler> rng,
+            ConstraintVec constraints,
+            const ConstraintSettings &cs) -> PlanningResult
+        {
+            if (constraints.empty())
+            {
+                return solve_single<P, Settings>(start, goal, env, s, rng);
+            }
+
+            check_pins(rng, Input::to(start), "Start");
+            check_pins(rng, Input::to(goal), "Goal");
+
+            ConstraintSetT set(std::move(constraints), cs);
+            apply_pins(set, rng);
+            return solve_single_lp<P>(
+                start, goal, env, s, rng, ConstrainedLP(std::move(set)), manifold_message);
+        }
+
+        template <vamp::planning::Planner P, typename Settings>
+        static auto solve_multi_constrained(
+            const Cfg &start,
+            const Pth &goals,
+            const Env &env,
+            const Settings &s,
+            std::shared_ptr<Sampler> rng,
+            ConstraintVec constraints,
+            const ConstraintSettings &cs) -> PlanningResult
+        {
+            if (constraints.empty())
+            {
+                return solve_multi<P, Settings>(start, goals, env, s, rng);
+            }
+
+            check_pins(rng, Input::to(start), "Start");
+            for (const auto &g : goals)
+            {
+                check_pins(rng, Input::to(g), "Goal");
+            }
+
+            ConstraintSetT set(std::move(constraints), cs);
+            apply_pins(set, rng);
+            return solve_multi_lp<P>(
+                start, goals, env, s, rng, ConstrainedLP(std::move(set)), manifold_message);
+        }
+
+        static auto simplify_constrained(
+            const Path &p,
+            const Env &env,
+            const vamp::planning::SimplifySettings &settings,
+            std::shared_ptr<Sampler> rng,
+            ConstraintVec constraints,
+            const ConstraintSettings &cs) -> PlanningResult
+        {
+            if (constraints.empty())
+            {
+                return simplify(p, env, settings, rng);
+            }
+
+            ConstraintSetT set(std::move(constraints), cs);
+            apply_pins(set, rng);
+            return simplify_lp(
+                p, env, settings, rng, ConstrainedLP(std::move(set)), manifold_simplify_message);
+        }
+
+        static auto constraint_project(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs)
+            -> Cfg
+        {
+            const ConstraintSetT set(std::move(constraints), cs);
+            auto q = Input::to(c);
+            if (not set.project(q))
+            {
+                throw std::invalid_argument("projection onto the constraint manifold did not converge");
+            }
+
+            return Input::from(q);
+        }
+
+        // Projection within a pinned sampler's slice: snap the pinned joints to their
+        // pinned values, then hold them exactly while the active joints descend.
+        static auto constraint_project_pinned(
+            const Cfg &c,
+            ConstraintVec constraints,
+            std::shared_ptr<Sampler> rng,
+            const ConstraintSettings &cs) -> Cfg
+        {
+            ConstraintSetT set(std::move(constraints), cs);
+            auto q = Input::to(c);
+            if (auto pinned = std::dynamic_pointer_cast<vamp::rng::PinnedRNG<Robot>>(rng))
+            {
+                q = q * pinned->unmask + pinned->pinned;
+                set.set_pinned(pinned->pinned_dims());
+            }
+
+            if (not set.project(q))
+            {
+                throw std::invalid_argument("projection onto the constraint manifold did not converge");
+            }
+
+            return Input::from(q);
+        }
+
+        static auto
+        constraint_satisfied(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs) -> bool
+        {
+            return ConstraintSetT(std::move(constraints), cs).satisfied(Input::to(c));
+        }
+
         static auto fk(const Cfg &c) -> std::vector<vamp::collision::Sphere<float>>
         {
             typename Robot::template Spheres<1> out;
@@ -517,6 +686,193 @@ namespace vamp::binding
 
         bind_robot_methods<TA>(submodule);
         bind_robot_methods<TC>(submodule);
+
+        if constexpr (
+            has_n_eef_v<Robot> or has_n_closed_loops_v<Robot> or robot_has_com_v<Robot> or
+            robot_has_lead_screw_v<Robot> or robot_has_twist_v<Robot>)
+        {
+            namespace vc = vamp::planning::constraint;
+            using ConstraintT = vc::Constraint<Robot, rake>;
+
+            nb::class_<ConstraintT>(
+                submodule,
+                "Constraint",
+                "Manifold constraint over robot configurations. Constraints cache per-evaluation "
+                "state and are not thread-safe: do not share one instance across concurrent "
+                "planning calls.");
+
+            if constexpr (has_n_eef_v<Robot>)
+            {
+                using TSC = vc::TaskSpaceConstraint<Robot, rake>;
+                using Transform = typename TSC::Transform;
+                using Bound = typename TSC::Bound;
+
+                submodule.def("n_eef", []() { return Robot::n_eef; });
+
+                auto tsc_k =
+                    nb::class_<TSC, ConstraintT>(
+                        submodule,
+                        "TaskSpaceConstraint",
+                        "Task Space Region constraint: for each end-effector, the pose of an "
+                        "offset frame (eef_to_offset, in the end-effector frame) must lie within "
+                        "[lower, upper] se(3) bounds of a reference frame (world_to_reference, in "
+                        "the world frame). Transforms are (qw, qx, qy, qz, x, y, z).")
+                        .def(
+                            nb::init<
+                                const std::array<Transform, Robot::n_eef> &,
+                                const std::array<Transform, Robot::n_eef> &,
+                                const std::array<Bound, Robot::n_eef> &,
+                                const std::array<Bound, Robot::n_eef> &>(),
+                            "eef_to_offset"_a,
+                            "world_to_reference"_a,
+                            "lower"_a,
+                            "upper"_a);
+
+                if constexpr (Robot::n_eef == 1)
+                {
+                    tsc_k.def(
+                        "__init__",
+                        [](TSC *t,
+                           const Transform &eef_to_offset,
+                           const Transform &world_to_reference,
+                           const Bound &lower,
+                           const Bound &upper) {
+                            new (t) TSC(
+                                std::array<Transform, 1>{eef_to_offset},
+                                std::array<Transform, 1>{world_to_reference},
+                                std::array<Bound, 1>{lower},
+                                std::array<Bound, 1>{upper});
+                        },
+                        "eef_to_offset"_a,
+                        "world_to_reference"_a,
+                        "lower"_a,
+                        "upper"_a,
+                        "Single end-effector convenience constructor: unwrapped transforms and "
+                        "bounds.");
+                }
+
+                if constexpr (Robot::n_eef >= 2)
+                {
+                    using BTSC = vc::BimanualTaskSpaceConstraint<Robot, rake>;
+                    nb::class_<BTSC, ConstraintT>(
+                        submodule,
+                        "BimanualTaskSpaceConstraint",
+                        "Relative pose constraint between two end-effectors: the pose of "
+                        "end-effector 1 in the frame of end-effector 0 must lie within "
+                        "[lower, upper] se(3) bounds of right_in_left. Transforms are "
+                        "(qw, qx, qy, qz, x, y, z).")
+                        .def(
+                            nb::init<const Transform &, const Bound &, const Bound &>(),
+                            "right_in_left"_a,
+                            "lower"_a,
+                            "upper"_a);
+                }
+            }
+
+            if constexpr (has_n_closed_loops_v<Robot>)
+            {
+                using CLC = vc::ClosedLoopConstraint<Robot, rake>;
+
+                submodule.def("n_closed_loops", []() { return Robot::n_closed_loops; });
+
+                nb::class_<CLC, ConstraintT>(
+                    submodule,
+                    "ClosedLoopConstraint",
+                    "Loop-closure constraint: each cut kinematic loop of the robot contributes "
+                    "one equality row keeping the distance between its cut frames at the "
+                    "loop's fixed length.")
+                    .def(nb::init<>());
+            }
+
+            if constexpr (robot_has_com_v<Robot>)
+            {
+                using CMC = vc::CoMConstraint<Robot, rake>;
+
+                nb::class_<CMC, ConstraintT>(
+                    submodule,
+                    "CoMConstraint",
+                    "Support-polygon constraint on the center of mass: the xy projection of "
+                    "the CoM (in the robot's CoM reference frame) must lie inside the convex "
+                    "polygon given by its vertices in counterclockwise order.")
+                    .def(
+                        nb::init<const std::vector<typename CMC::Vertex> &>(),
+                        "polygon"_a);
+            }
+
+            if constexpr (robot_has_twist_v<Robot>)
+            {
+                using TWC = vc::TwistConstraint<Robot, rake, 1>;
+                using LSC = vc::LeadScrewConstraint<Robot, rake>;
+                using Transform = typename TWC::Transform;
+                using CoefficientRow = std::array<float, 6>;
+
+                nb::class_<TWC, ConstraintT>(
+                    submodule,
+                    "TwistConstraint",
+                    "Constant-coefficient Pfaffian velocity constraint over the end-effector "
+                    "twist: reference_coefficients . twist_ref + body_coefficients . "
+                    "twist_loc = 0, where twist_ref and twist_loc are the [linear; angular] "
+                    "twist of the offset end-effector frame (eef_to_offset, in the "
+                    "end-effector frame) expressed in the reference frame's axes "
+                    "(world_to_reference, in the world frame) and in the frame's own body "
+                    "axes. Transforms are (qw, qx, qy, qz, x, y, z). Contributes no position "
+                    "error, and is smooth for unbounded rotation.")
+                    .def(
+                        "__init__",
+                        [](TWC *t,
+                           const Transform &eef_to_offset,
+                           const Transform &world_to_reference,
+                           const CoefficientRow &reference_coefficients,
+                           const CoefficientRow &body_coefficients) {
+                            new (t) TWC(
+                                eef_to_offset,
+                                world_to_reference,
+                                typename TWC::Coefficients{reference_coefficients},
+                                typename TWC::Coefficients{body_coefficients});
+                        },
+                        "eef_to_offset"_a,
+                        "world_to_reference"_a,
+                        "reference_coefficients"_a,
+                        "body_coefficients"_a);
+
+                nb::class_<LSC, TWC>(
+                    submodule,
+                    "LeadScrewConstraint",
+                    "Pfaffian lead-screw coupling: velocities of an offset end-effector frame "
+                    "(eef_to_offset, in the end-effector frame) are restricted so translation "
+                    "along the reference frame's z-axis (world_to_reference, in the world "
+                    "frame) advances by pitch per full turn about it. Transforms are "
+                    "(qw, qx, qy, qz, x, y, z). Contributes no position error.")
+                    .def(
+                        nb::init<const Transform &, const Transform &, float>(),
+                        "eef_to_offset"_a,
+                        "world_to_reference"_a,
+                        "pitch"_a);
+            }
+
+            if constexpr (robot_has_lead_screw_v<Robot>)
+            {
+                using LSL = vc::LeadScrewLevelConstraint<Robot, rake>;
+                using Transform = typename LSL::Transform;
+
+                nb::class_<LSL, ConstraintT>(
+                    submodule,
+                    "LeadScrewLevelConstraint",
+                    "Holonomic form of the lead-screw coupling: pins the screw invariant "
+                    "h(q) = z-advance - (pitch / 2 pi) * rotation of the offset end-effector "
+                    "frame in the reference frame to a target level. Transforms are "
+                    "(qw, qx, qy, qz, x, y, z).")
+                    .def(
+                        nb::init<const Transform &, const Transform &, float, float>(),
+                        "eef_to_offset"_a,
+                        "world_to_reference"_a,
+                        "pitch"_a,
+                        "target"_a);
+            }
+
+            bind_constraint_methods<TA>(submodule);
+            bind_constraint_methods<TC>(submodule);
+        }
 
         if constexpr (has_set_lows_v<Robot>)
         {

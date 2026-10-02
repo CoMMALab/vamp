@@ -24,8 +24,11 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     sphere=Sphere
     ur5=UR5
     panda=Panda
+    bimanual_panda=BimanualPanda
     fetch=Fetch
     baxter=Baxter
+    digit=Digit
+    r2c6=R2c6
   )
 
   if(NOT VAMP_ROBOT_MODULES)

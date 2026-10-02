@@ -1,155 +1,159 @@
 #pragma once
 
 #include <limits>
+#include <vamp/planning/cost.hh>
 #include <vamp/planning/validate.hh>
-#include <vamp/planning/nn.hh>
+#include <vamp/planning/nn/nn.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning
 {
-    template <typename Robot>
-    struct Path : public std::vector<FloatVector<Robot::dimension>>
+    namespace path_helpers
     {
-        [[nodiscard]] inline auto cost() const noexcept -> float
+        template <typename Robot, typename Container>
+        [[nodiscard]] inline auto cost_robot(const Container &wps) noexcept -> float
         {
-            if (this->size() > 2)
+            const auto n = wps.size();
+            if (n > 2)
             {
-                float distance = 0;
-                for (auto i = 0U; i < this->size() - 1; ++i)
+                float total = 0;
+                for (auto i = 0U; i + 1 < n; ++i)
                 {
-                    distance += this->operator[](i).distance(this->operator[](i + 1));
+                    total += planning::cost<Robot>(wps[i], wps[i + 1]);
                 }
-
-                return distance;
+                return total;
             }
-
-            if (this->size() == 2)
+            if (n == 2)
             {
-                return this->front().distance(this->back());
+                return planning::cost<Robot>(wps.front(), wps.back());
             }
-
             return std::numeric_limits<float>::infinity();
         }
 
-        inline auto subdivide() noexcept
+        template <typename Robot, typename Container>
+        inline auto subdivide_robot(Container &wps) noexcept
         {
-            Path<Robot> new_path;
-            new_path.reserve(this->size() * 2);
-
-            for (auto i = 0U; i < this->size() - 1; ++i)
-            {
-                const auto &current = this->operator[](i);
-                const auto &next = this->operator[](i + 1);
-                new_path.emplace_back(current);
-                new_path.emplace_back(current.interpolate(next, 0.5));
-            }
-
-            new_path.emplace_back(this->back());
-            this->swap(new_path);
-        }
-
-        inline auto interpolate_to_n_states(std::size_t n) noexcept
-        {
-            const std::size_t n_p = this->size();
-            if (this->size() < 2 or n < n_p)
+            const auto n = wps.size();
+            if (n < 2)
             {
                 return;
             }
-
-            Path<Robot> new_path;
-            new_path.reserve(n);
-
-            std::vector<float> segment_lengths(n_p - 1);
-            float remaining_length = 0.;
-
-            for (auto i = 0U; i < n_p - 1; ++i)
+            Container next;
+            next.reserve(n * 2);
+            for (auto i = 0U; i + 1 < n; ++i)
             {
-                remaining_length += segment_lengths[i] =
-                    this->operator[](i).distance(this->operator[](i + 1));
+                next.emplace_back(wps[i]);
+                next.emplace_back(Robot::interpolate(wps[i], wps[i + 1], 0.5F));
             }
+            next.emplace_back(wps.back());
+            wps = std::move(next);
+        }
 
+        template <typename Robot, typename Container>
+        inline auto interpolate_to_n_states_robot(Container &wps, std::size_t n) noexcept
+        {
+            const auto n_p = wps.size();
+            if (n_p < 2 or n < n_p)
+            {
+                return;
+            }
+            std::vector<float> seg_lengths(n_p - 1);
+            float remaining_length = 0.;
+            for (auto i = 0U; i + 1 < n_p; ++i)
+            {
+                seg_lengths[i] = Robot::distance(wps[i], wps[i + 1]);
+                remaining_length += seg_lengths[i];
+            }
             if (remaining_length < std::numeric_limits<float>::epsilon())
             {
                 return;
             }
-
+            Container next;
+            next.reserve(n);
             const auto n1 = n_p - 1;
             for (auto i = 0U; i < n1; ++i)
             {
-                const auto &a = this->operator[](i);
-                const auto &b = this->operator[](i + 1);
-
-                new_path.emplace_back(a);
+                const auto &a = wps[i];
+                const auto &b = wps[i + 1];
+                next.emplace_back(a);
                 const auto max_n_states = n + i - n_p;
-
                 if (max_n_states > 0)
                 {
-                    auto ns =
-                        (i + 1 == n1) ?
-                            (max_n_states + 2) :
-                            (static_cast<int>(std::floor(0.5 + n * segment_lengths[i] / remaining_length)) +
-                             1);
-
-                    // more than endpoints needed
+                    auto ns = (i + 1 == n1) ? (max_n_states + 2) :
+                                              (static_cast<std::size_t>(
+                                                   std::floor(0.5 + n * seg_lengths[i] / remaining_length)) +
+                                               1);
                     ns = (ns > 2) ? std::min(ns - 2, max_n_states) : 0;
-
-                    const auto &v = b - a;
                     for (auto k = 1U; k <= ns; ++k)
                     {
-                        new_path.emplace_back(a + (static_cast<float>(k) / ns) * v);
+                        next.emplace_back(
+                            Robot::interpolate(a, b, static_cast<float>(k) / static_cast<float>(ns)));
                     }
-
                     n -= ns + 1;
-                    remaining_length -= segment_lengths[i];
+                    remaining_length -= seg_lengths[i];
                 }
                 else
                 {
                     n -= 1;
                 }
             }
-
-            new_path.emplace_back(this->back());
-            this->swap(new_path);
+            next.emplace_back(wps.back());
+            wps = std::move(next);
         }
 
-        inline auto interpolate_to_resolution(std::size_t resolution) noexcept
+        template <typename Robot, typename Container>
+        inline auto interpolate_to_resolution_robot(Container &wps, std::size_t resolution) noexcept
         {
-            if (this->size() < 2)
+            const auto n_p = wps.size();
+            if (n_p < 2)
             {
                 return;
             }
-
-            const float path_cost = cost();
-            const auto n_states = static_cast<std::size_t>(path_cost * static_cast<float>(resolution));
-
-            Path<Robot> new_path;
-            new_path.reserve(n_states);
-
-            for (auto i = 0U; i < this->size() - 1; ++i)
+            Container next;
+            for (auto i = 0U; i + 1 < n_p; ++i)
             {
-                const auto &current = this->operator[](i);
-                const auto &next = this->operator[](i + 1);
-
-                const float segment_cost = current.distance(next);
+                const auto &a = wps[i];
+                const auto &b = wps[i + 1];
+                const float segment_cost = Robot::distance(a, b);
                 const auto segment_states =
                     static_cast<std::size_t>(segment_cost * static_cast<float>(resolution));
-
-                new_path.emplace_back(current);
-
+                next.emplace_back(a);
                 if (segment_cost < 1.F / static_cast<float>(resolution))
                 {
                     continue;
                 }
-
-                for (auto i = 1U; i < segment_states; ++i)
+                for (auto k = 1U; k < segment_states; ++k)
                 {
-                    new_path.emplace_back(current.interpolate(
-                        next, static_cast<float>(i) / static_cast<float>(segment_states)));
+                    next.emplace_back(
+                        Robot::interpolate(a, b, static_cast<float>(k) / static_cast<float>(segment_states)));
                 }
             }
+            next.emplace_back(wps.back());
+            wps = std::move(next);
+        }
+    }  // namespace path_helpers
 
-            new_path.emplace_back(this->back());
-            this->swap(new_path);
+    template <typename Robot>
+    struct Path : public std::vector<FloatVector<Robot::dimension>>
+    {
+        [[nodiscard]] inline auto cost() const noexcept -> float
+        {
+            return path_helpers::cost_robot<Robot>(*this);
+        }
+
+        inline auto subdivide() noexcept
+        {
+            path_helpers::subdivide_robot<Robot>(*this);
+        }
+
+        inline auto interpolate_to_n_states(std::size_t n) noexcept
+        {
+            path_helpers::interpolate_to_n_states_robot<Robot>(*this, n);
+        }
+
+        inline auto interpolate_to_resolution(std::size_t resolution) noexcept
+        {
+            path_helpers::interpolate_to_resolution_robot<Robot>(*this, resolution);
         }
 
         template <std::size_t rake>
@@ -172,6 +176,7 @@ namespace vamp::planning
     struct PlanningResult
     {
         Path<Robot> path;
+        bool solved{false};
         float cost{0.};
         std::size_t nanoseconds{0};
         std::size_t iterations{0};

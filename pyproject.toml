@@ -36,7 +36,7 @@ cmake.build-type = "Release"
 VAMP_LTO = "OFF"
 # Robots compiled into the Python module. Each robot adds a large header to the build, so the default is small.
 # Choose others at install time, for example:
-#   pip install . -C cmake.define.VAMP_ROBOTS="ur5;panda;fetch;baxter;sphere"
+#   pip install . -C cmake.define.VAMP_ROBOTS="ur5;panda;fetch;baxter;bimanual_panda;digit"
 #   pip install . -C cmake.define.VAMP_ROBOTS=all
-# Known names: sphere, ur5, panda, fetch, baxter.
+# Known names: sphere, ur5, panda, bimanual_panda, fetch, baxter, digit, r2c6.
 VAMP_ROBOTS = "ur5;panda;fetch;baxter"

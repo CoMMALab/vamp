@@ -123677,9 +123677,10 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
 
 
 
-        // Single-attachment API: attachments ride on the first end-effector.
+        
         // attaching at right_gripper
-        set_attachment_pose(environment, to_isometry(&y[432]));
+        set_attachment_pose(environment, 0, to_isometry(&y[432]));
+        
 
         //
         // attachment vs. environment collisions
@@ -123688,6 +123689,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             return false;
         }
+        
 
         //
         // attachment vs. robot collisions
@@ -123698,9 +123700,10 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
         
+        
 
-        // Attachment vs. torso
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. torso
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[300],
                                                         y[301],
                                                         y[302],
@@ -123708,7 +123711,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[0],
                                                             y[1],
                                                             y[2],
@@ -123718,7 +123721,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[4],
                                                             y[5],
                                                             y[6],
@@ -123728,7 +123731,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[8],
                                                             y[9],
                                                             y[10],
@@ -123743,8 +123746,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. head
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. head
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[304],
                                                         y[305],
                                                         y[306],
@@ -123752,7 +123755,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[12],
                                                             y[13],
                                                             y[14],
@@ -123767,8 +123770,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. left_upper_shoulder
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. left_upper_shoulder
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[308],
                                                         y[309],
                                                         y[310],
@@ -123776,7 +123779,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[16],
                                                             y[17],
                                                             y[18],
@@ -123786,7 +123789,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[20],
                                                             y[21],
                                                             y[22],
@@ -123801,8 +123804,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. left_lower_shoulder
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. left_lower_shoulder
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[312],
                                                         y[313],
                                                         y[314],
@@ -123810,7 +123813,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[24],
                                                             y[25],
                                                             y[26],
@@ -123825,8 +123828,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. left_upper_elbow
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. left_upper_elbow
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[316],
                                                         y[317],
                                                         y[318],
@@ -123834,7 +123837,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[28],
                                                             y[29],
                                                             y[30],
@@ -123844,7 +123847,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[32],
                                                             y[33],
                                                             y[34],
@@ -123854,7 +123857,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[36],
                                                             y[37],
                                                             y[38],
@@ -123869,8 +123872,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. left_lower_elbow
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. left_lower_elbow
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[320],
                                                         y[321],
                                                         y[322],
@@ -123878,7 +123881,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[40],
                                                             y[41],
                                                             y[42],
@@ -123893,8 +123896,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. left_upper_forearm
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. left_upper_forearm
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[324],
                                                         y[325],
                                                         y[326],
@@ -123902,7 +123905,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[44],
                                                             y[45],
                                                             y[46],
@@ -123912,7 +123915,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[48],
                                                             y[49],
                                                             y[50],
@@ -123922,7 +123925,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[52],
                                                             y[53],
                                                             y[54],
@@ -123937,8 +123940,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. left_lower_forearm
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. left_lower_forearm
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[328],
                                                         y[329],
                                                         y[330],
@@ -123946,7 +123949,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[56],
                                                             y[57],
                                                             y[58],
@@ -123956,7 +123959,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[60],
                                                             y[61],
                                                             y[62],
@@ -123971,8 +123974,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. left_wrist
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. left_wrist
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[332],
                                                         y[333],
                                                         y[334],
@@ -123980,7 +123983,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[64],
                                                             y[65],
                                                             y[66],
@@ -123990,7 +123993,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[68],
                                                             y[69],
                                                             y[70],
@@ -124005,8 +124008,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. left_hand
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. left_hand
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[336],
                                                         y[337],
                                                         y[338],
@@ -124014,7 +124017,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[72],
                                                             y[73],
                                                             y[74],
@@ -124029,8 +124032,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. left_gripper_base
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. left_gripper_base
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[340],
                                                         y[341],
                                                         y[342],
@@ -124038,7 +124041,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[76],
                                                             y[77],
                                                             y[78],
@@ -124048,7 +124051,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[80],
                                                             y[81],
                                                             y[82],
@@ -124063,8 +124066,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. l_gripper_l_finger
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. l_gripper_l_finger
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[344],
                                                         y[345],
                                                         y[346],
@@ -124072,7 +124075,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[84],
                                                             y[85],
                                                             y[86],
@@ -124082,7 +124085,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[88],
                                                             y[89],
                                                             y[90],
@@ -124097,8 +124100,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. l_gripper_l_finger_2
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. l_gripper_l_finger_2
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[348],
                                                         y[349],
                                                         y[350],
@@ -124106,7 +124109,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[92],
                                                             y[93],
                                                             y[94],
@@ -124116,7 +124119,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[96],
                                                             y[97],
                                                             y[98],
@@ -124126,7 +124129,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[100],
                                                             y[101],
                                                             y[102],
@@ -124141,8 +124144,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. l_gripper_l_finger_tip
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. l_gripper_l_finger_tip
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[352],
                                                         y[353],
                                                         y[354],
@@ -124150,7 +124153,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[104],
                                                             y[105],
                                                             y[106],
@@ -124160,7 +124163,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[108],
                                                             y[109],
                                                             y[110],
@@ -124170,7 +124173,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[112],
                                                             y[113],
                                                             y[114],
@@ -124180,7 +124183,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[116],
                                                             y[117],
                                                             y[118],
@@ -124195,8 +124198,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. l_gripper_r_finger
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. l_gripper_r_finger
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[356],
                                                         y[357],
                                                         y[358],
@@ -124204,7 +124207,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[120],
                                                             y[121],
                                                             y[122],
@@ -124214,7 +124217,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[124],
                                                             y[125],
                                                             y[126],
@@ -124229,8 +124232,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. l_gripper_r_finger_2
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. l_gripper_r_finger_2
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[360],
                                                         y[361],
                                                         y[362],
@@ -124238,7 +124241,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[128],
                                                             y[129],
                                                             y[130],
@@ -124248,7 +124251,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[132],
                                                             y[133],
                                                             y[134],
@@ -124258,7 +124261,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[136],
                                                             y[137],
                                                             y[138],
@@ -124273,8 +124276,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. l_gripper_r_finger_tip
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. l_gripper_r_finger_tip
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[364],
                                                         y[365],
                                                         y[366],
@@ -124282,7 +124285,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[140],
                                                             y[141],
                                                             y[142],
@@ -124292,7 +124295,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[144],
                                                             y[145],
                                                             y[146],
@@ -124302,7 +124305,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[148],
                                                             y[149],
                                                             y[150],
@@ -124312,7 +124315,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[152],
                                                             y[153],
                                                             y[154],
@@ -124327,8 +124330,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. pedestal
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. pedestal
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[368],
                                                         y[369],
                                                         y[370],
@@ -124336,7 +124339,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[156],
                                                             y[157],
                                                             y[158],
@@ -124351,8 +124354,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. right_upper_shoulder
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. right_upper_shoulder
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[372],
                                                         y[373],
                                                         y[374],
@@ -124360,7 +124363,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[160],
                                                             y[161],
                                                             y[162],
@@ -124370,7 +124373,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[164],
                                                             y[165],
                                                             y[166],
@@ -124385,8 +124388,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. right_lower_shoulder
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. right_lower_shoulder
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[376],
                                                         y[377],
                                                         y[378],
@@ -124394,7 +124397,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[168],
                                                             y[169],
                                                             y[170],
@@ -124409,8 +124412,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. right_upper_elbow
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. right_upper_elbow
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[380],
                                                         y[381],
                                                         y[382],
@@ -124418,7 +124421,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[172],
                                                             y[173],
                                                             y[174],
@@ -124428,7 +124431,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[176],
                                                             y[177],
                                                             y[178],
@@ -124438,7 +124441,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[180],
                                                             y[181],
                                                             y[182],
@@ -124453,8 +124456,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. right_lower_elbow
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. right_lower_elbow
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[384],
                                                         y[385],
                                                         y[386],
@@ -124462,7 +124465,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[184],
                                                             y[185],
                                                             y[186],
@@ -124477,8 +124480,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. right_upper_forearm
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. right_upper_forearm
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[388],
                                                         y[389],
                                                         y[390],
@@ -124486,7 +124489,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[188],
                                                             y[189],
                                                             y[190],
@@ -124496,7 +124499,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[192],
                                                             y[193],
                                                             y[194],
@@ -124506,7 +124509,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[196],
                                                             y[197],
                                                             y[198],
@@ -124521,8 +124524,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         
         
 
-        // Attachment vs. right_lower_forearm
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // right_gripper attachments vs. right_lower_forearm
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[392],
                                                         y[393],
                                                         y[394],
@@ -124530,7 +124533,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[200],
                                                             y[201],
                                                             y[202],
@@ -124540,7 +124543,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[204],
                                                             y[205],
                                                             y[206],
@@ -124550,6 +124553,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[392],
             }
             
         }
+        
         
 
         return true;

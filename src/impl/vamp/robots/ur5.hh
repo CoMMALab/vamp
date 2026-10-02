@@ -26888,9 +26888,10 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
 
 
 
-        // Single-attachment API: attachments ride on the first end-effector.
+        
         // attaching at robotiq_85_base_link
-        set_attachment_pose(environment, to_isometry(&y[228]));
+        set_attachment_pose(environment, 0, to_isometry(&y[228]));
+        
 
         //
         // attachment vs. environment collisions
@@ -26899,6 +26900,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
         {
             return false;
         }
+        
 
         //
         // attachment vs. robot collisions
@@ -26909,9 +26911,10 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
         
         
         
+        
 
-        // Attachment vs. base_link
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // robotiq_85_base_link attachments vs. base_link
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[160],
                                                         y[161],
                                                         y[162],
@@ -26919,7 +26922,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[0],
                                                             y[1],
                                                             y[2],
@@ -26934,8 +26937,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
         
         
 
-        // Attachment vs. shoulder_link
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // robotiq_85_base_link attachments vs. shoulder_link
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[164],
                                                         y[165],
                                                         y[166],
@@ -26943,7 +26946,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[4],
                                                             y[5],
                                                             y[6],
@@ -26958,8 +26961,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
         
         
 
-        // Attachment vs. upper_arm_link
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // robotiq_85_base_link attachments vs. upper_arm_link
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[168],
                                                         y[169],
                                                         y[170],
@@ -26967,7 +26970,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[8],
                                                             y[9],
                                                             y[10],
@@ -26977,7 +26980,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[12],
                                                             y[13],
                                                             y[14],
@@ -26987,7 +26990,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[16],
                                                             y[17],
                                                             y[18],
@@ -26997,7 +27000,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[20],
                                                             y[21],
                                                             y[22],
@@ -27007,7 +27010,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[24],
                                                             y[25],
                                                             y[26],
@@ -27022,8 +27025,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
         
         
 
-        // Attachment vs. forearm_link
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // robotiq_85_base_link attachments vs. forearm_link
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[172],
                                                         y[173],
                                                         y[174],
@@ -27031,7 +27034,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[28],
                                                             y[29],
                                                             y[30],
@@ -27041,7 +27044,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[32],
                                                             y[33],
                                                             y[34],
@@ -27051,7 +27054,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[36],
                                                             y[37],
                                                             y[38],
@@ -27061,7 +27064,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[40],
                                                             y[41],
                                                             y[42],
@@ -27071,7 +27074,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[44],
                                                             y[45],
                                                             y[46],
@@ -27081,7 +27084,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[48],
                                                             y[49],
                                                             y[50],
@@ -27091,7 +27094,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[52],
                                                             y[53],
                                                             y[54],
@@ -27101,7 +27104,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[56],
                                                             y[57],
                                                             y[58],
@@ -27111,7 +27114,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[60],
                                                             y[61],
                                                             y[62],
@@ -27126,8 +27129,8 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
         
         
 
-        // Attachment vs. wrist_1_link
-        if (attachment_sphere_collision<decltype(x[0])>(environment,
+        // robotiq_85_base_link attachments vs. wrist_1_link
+        if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                         y[176],
                                                         y[177],
                                                         y[178],
@@ -27135,7 +27138,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
         {
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[64],
                                                             y[65],
                                                             y[66],
@@ -27145,7 +27148,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[68],
                                                             y[69],
                                                             y[70],
@@ -27155,7 +27158,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
             
-            if (attachment_sphere_collision<decltype(x[0])>(environment,
+            if (attachment_sphere_collision<decltype(x[0])>(environment, 0,
                                                             y[72],
                                                             y[73],
                                                             y[74],
@@ -27165,6 +27168,7 @@ if (sphere_sphere_self_collision<decltype(x[0])>(y[176],
             }
             
         }
+        
         
 
         return true;

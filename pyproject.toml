@@ -1,25 +1,39 @@
 [build-system]
-requires = ["scikit-build-core >=0.4.3", "nanobind >=2.0.0", "cmake >=3.1", "typing_extensions"]
-build-backend = "scikit_build_core.build"
+requires = [
+    "scikit-build-core >=0.4.3",
+    "nanobind >=2.0.0",
+    "cmake >=3.1",
+    "typing_extensions",
+]
+build-backend = "_build_backend"
+backend-path = ["."]
 
 [project]
 name = "vamp-planner"
-version = "0.6.4"
+version = "0.7.0"
 description = "Vector-Accelerated Motion Planner"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [
     { name = "Zachary Kingston", email = "zkingston@purdue.edu" },
     { name = "Wil Thomason", email = "wil.thomason@gmail.com" },
-    { name = "Clayton Ramsey", email = "claytonwramsey@gmail.com" }
+    { name = "Clayton Ramsey", email = "claytonwramsey@gmail.com" },
 ]
-classifiers = [
-]
+classifiers = []
 dependencies = ["numpy"]
 
 [project.optional-dependencies]
-examples = ["fire", "pybullet", "pyyaml", "tqdm", "pandas", "tabulate", "xmltodict"]
+examples = [
+    "fire",
+    "pybullet",
+    "pyyaml",
+    "tqdm",
+    "pandas",
+    "tabulate",
+    "xmltodict",
+]
 heightmaps = ["pillow"]
+jit = ["cricket"]
 
 [project.urls]
 Homepage = "https://github.com/KavrakiLab/vamp"
@@ -34,9 +48,15 @@ cmake.build-type = "Release"
 
 [tool.scikit-build.cmake.define]
 VAMP_LTO = "OFF"
+VAMP_BUILD_JIT = "OFF"
 # Robots compiled into the Python module. Each robot adds a large header to the build, so the default is small.
 # Choose others at install time, for example:
 #   pip install . -C cmake.define.VAMP_ROBOTS="ur5;panda;fetch;baxter;bimanual_panda;digit"
 #   pip install . -C cmake.define.VAMP_ROBOTS=all
 # Known names: sphere, ur5, panda, bimanual_panda, fetch, baxter, digit, r2c6.
 VAMP_ROBOTS = "ur5;panda;fetch;baxter"
+
+[[tool.scikit-build.overrides]]
+if.env.VAMP_BUILD_JIT = "ON"
+inherit.cmake.define = "append"
+cmake.define.VAMP_BUILD_JIT = "ON"

@@ -90,6 +90,11 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     ${CMAKE_CURRENT_BINARY_DIR}/python.cc
   )
 
+  if(VAMP_BUILD_JIT)
+    list(APPEND VAMP_EXT_SOURCES
+      src/impl/vamp/bindings/python/dynamic.cc
+    )
+  endif()
 
   foreach(robot_name robot_struct IN ZIP_LISTS VAMP_ROBOT_MODULES VAMP_ROBOT_STRUCTS)
   configure_file(
@@ -121,6 +126,28 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     Eigen3::Eigen
   )
 
+  if(VAMP_BUILD_JIT)
+    target_link_libraries(_core_ext PRIVATE
+        vamp::jit
+        cricket::cricket
+    )
+    target_compile_definitions(_core_ext PRIVATE VAMP_HAVE_JIT=1)
+
+    set_property(TARGET _core_ext APPEND PROPERTY INSTALL_RPATH
+        "$<TARGET_FILE_DIR:cricket::cricket>"
+        "$<TARGET_FILE_DIR:cricket::cricket_jit>"
+        "$ORIGIN/../../cricket/lib"
+    )
+
+    # simdxorshift symbols need exported so dynamic symbol search finds them
+    if(TARGET simdxorshift)
+      target_link_options(_core_ext PRIVATE
+          "LINKER:--whole-archive,$<TARGET_FILE:simdxorshift>,--no-whole-archive"
+          "LINKER:--export-dynamic"
+      )
+      add_dependencies(_core_ext simdxorshift)
+    endif()
+  endif()
 
   if($ENV{GITHUB_ACTIONS})
     set(STUB_PREFIX "")

@@ -16,10 +16,7 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     CPMAddPackage("gh:wjakob/nanobind#9a25aed8a7edfe60ef9ad1c911e57667bc4916c4")
   endif()
 
-  # Robots compiled into the Python module. VAMP_ROBOTS is a ;-separated list of robot names, or "all".
-  # Every robot adds a large header to the build, so pip builds (pyproject.toml) only ask for a few;
-  # a direct CMake build with neither variable set gets everything. Setting VAMP_ROBOT_MODULES together
-  # with VAMP_ROBOT_STRUCTS still works and takes precedence.
+  # By defaul, build bindings only for known robots and not all
   set(VAMP_KNOWN_ROBOTS
     sphere=Sphere
     ur5=UR5

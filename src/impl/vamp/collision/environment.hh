@@ -46,8 +46,6 @@ namespace vamp::collision
             sort();
         }
 
-        // Z-aligned shapes are classified here so they dispatch to the specialized
-        // collision routines.
         inline auto add_cuboid(const Cuboid<DataT> &cuboid)
         {
             if (cuboid.axis_3_z == 1.)

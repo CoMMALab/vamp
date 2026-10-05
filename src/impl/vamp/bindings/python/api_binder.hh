@@ -27,9 +27,6 @@ namespace vamp::binding
 
     VAMP_DEFINE_HAS_METHOD(make_pinned_sampler)
 
-    // Every planner entry point is a single-goal/multi-goal overload pair on the same
-    // name, sharing the leading arguments and docstring; the family-specific trailing
-    // nanobind args (constraints etc.) select the overload family.
     template <typename Target, typename Single, typename Multi, typename... Extra>
     inline void register_planner_pair(
         Target &t,

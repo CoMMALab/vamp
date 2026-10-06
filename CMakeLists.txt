@@ -151,6 +151,15 @@ if(VAMP_BUILD_CPP_DEMO)
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_rrtc_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
   endif()
+
+  # Smoke test for EnvironmentCollisionConstraint -- only builds once panda.hh has been
+  # regenerated from cricket with "env_collision": true (see scripts/cpp/env_collision_example.cc).
+  add_executable(vamp_env_collision_example scripts/cpp/env_collision_example.cc)
+  target_link_libraries(vamp_env_collision_example PRIVATE vamp_cpp)
+
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(vamp_env_collision_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+  endif()
 endif()
 
 # OMPL integration demo

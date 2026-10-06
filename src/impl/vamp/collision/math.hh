@@ -64,4 +64,19 @@ namespace vamp::collision
     {
         return std::sqrt(v);
     }
+
+    // Signed distance (true distance, not squared) from a query sphere to a shape's
+    // surface, plus the (unit, outward-pointing) gradient of that distance w.r.t. the
+    // query sphere's center -- what a `sphere_*` distance kernel's `_gradient` sibling
+    // (sphere_sphere.hh, sphere_cuboid.hh, sphere_capsule.hh, sphere_heightfield.hh)
+    // returns, and what `sphere_environment_min_distance_gradient` (validity.hh)
+    // minimizes over every primitive in an Environment.
+    template <typename DataT>
+    struct DistanceGradient
+    {
+        DataT distance;
+        DataT gx;
+        DataT gy;
+        DataT gz;
+    };
 }  // namespace vamp::collision

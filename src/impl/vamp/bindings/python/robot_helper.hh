@@ -16,6 +16,7 @@
 #include <vamp/planning/constraints/manifold/com_constraint.hh>
 #include <vamp/planning/constraints/manifold/constraint.hh>
 #include <vamp/planning/constraints/manifold/constraint_set.hh>
+#include <vamp/planning/constraints/manifold/env_collision_constraint.hh>
 #include <vamp/planning/constraints/manifold/lead_screw_constraint.hh>
 #include <vamp/planning/constraints/manifold/twist_constraint.hh>
 #include <vamp/planning/constraints/local_planner.hh>
@@ -460,6 +461,16 @@ namespace vamp::binding
             return ConstraintSetT(std::move(constraints), cs).satisfied(Input::to(c));
         }
 
+        // Summed squared violation across every constraint's rows (0 if every row is
+        // already satisfied) -- reports how far off the manifold a configuration is, e.g.
+        // to explain why project() failed to converge instead of just raising.
+        static auto
+        constraint_squared_error(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs)
+            -> float
+        {
+            return ConstraintSetT(std::move(constraints), cs).squared_error(Input::to(c));
+        }
+
         static auto fk(const Cfg &c) -> std::vector<vamp::collision::Sphere<float>>
         {
             typename Robot::template Spheres<1> out;
@@ -689,7 +700,8 @@ namespace vamp::binding
 
         if constexpr (
             has_n_eef_v<Robot> or has_n_closed_loops_v<Robot> or robot_has_com_v<Robot> or
-            robot_has_lead_screw_v<Robot> or robot_has_twist_v<Robot>)
+            robot_has_lead_screw_v<Robot> or robot_has_twist_v<Robot> or
+            vamp::planning::constraint::robot_has_env_collision_v<Robot>)
         {
             namespace vc = vamp::planning::constraint;
             using ConstraintT = vc::Constraint<Robot, rake>;
@@ -700,6 +712,24 @@ namespace vamp::binding
                 "Manifold constraint over robot configurations. Constraints cache per-evaluation "
                 "state and are not thread-safe: do not share one instance across concurrent "
                 "planning calls.");
+
+            using ConstrainedLP = vc::ConstrainedLocalPlanner<Robot, rake, Robot::resolution>;
+            submodule.def(
+                "constrained_edge_stats",
+                []() {
+                    return std::make_tuple(
+                        ConstrainedLP::edge_stats.sdf_project_successes,
+                        ConstrainedLP::edge_stats.sdf_project_failures,
+                        ConstrainedLP::edge_stats.fkcc_failures_after_project);
+                },
+                "Cumulative (sdf_project_successes, sdf_project_failures, "
+                "fkcc_failures_after_project) edge-check counters from every constrained "
+                "steer/connect since the last reset_constrained_edge_stats(). Process-wide "
+                "for this robot, not thread-safe.");
+            submodule.def(
+                "reset_constrained_edge_stats",
+                []() { ConstrainedLP::reset_edge_stats(); },
+                "Zero the constrained_edge_stats() counters.");
 
             if constexpr (has_n_eef_v<Robot>)
             {
@@ -797,6 +827,27 @@ namespace vamp::binding
                     .def(
                         nb::init<const std::vector<typename CMC::Vertex> &>(),
                         "polygon"_a);
+            }
+
+            if constexpr (vc::robot_has_env_collision_v<Robot>)
+            {
+                using ECC = vc::EnvironmentCollisionConstraint<Robot, rake>;
+
+                submodule.def(
+                    "n_env_collision_spheres", []() { return Robot::n_env_collision_spheres; });
+
+                nb::class_<ECC, ConstraintT>(
+                    submodule,
+                    "EnvironmentCollisionConstraint",
+                    "Push the robot out of environment collision using one representative "
+                    "sphere per link (the middle sphere of that link's collision-sphere "
+                    "list). Each sphere contributes a row that is zero once it is at least "
+                    "`margin` away from every obstacle in `environment`, and the amount of "
+                    "violation otherwise.")
+                    .def(
+                        nb::init<const vamp::collision::Environment<float> &, float>(),
+                        "environment"_a,
+                        "margin"_a = 0.05F);
             }
 
             if constexpr (robot_has_twist_v<Robot>)

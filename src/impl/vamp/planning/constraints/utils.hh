@@ -4,6 +4,23 @@
 
 namespace vamp::planning::constraint
 {
+    // Detects robots generated with an "env_collision" recipe (see cricket's
+    // derive_constraint_traces): they declare `n_env_collision_spheres` and the matching
+    // env_collision_jacobian/solve_env_collision_error_* kernels. Robots that don't declare
+    // it are treated as not supporting EnvironmentCollisionConstraint.
+    template <typename Robot, typename = void>
+    struct HasEnvCollision : std::false_type
+    {
+    };
+
+    template <typename Robot>
+    struct HasEnvCollision<Robot, std::void_t<decltype(Robot::n_env_collision_spheres)>> : std::true_type
+    {
+    };
+
+    template <typename Robot>
+    inline constexpr bool robot_has_env_collision_v = HasEnvCollision<Robot>::value;
+
     // Renormalize the quaternion segments of quaternion-parameterized joints back onto S^3.
     // Additive updates (gradient steps, chord interpolation) leave the sphere; dividing by
     // the norm is a valid retraction, so linear-then-renormalize is nlerp.

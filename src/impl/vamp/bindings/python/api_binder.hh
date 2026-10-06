@@ -126,6 +126,15 @@ namespace vamp::binding
             "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "Whether a configuration satisfies every constraint within tolerance.");
         t.def(
+            "squared_error",
+            &Traits::constraint_squared_error,
+            "configuration"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "Summed squared violation across every constraint's rows (0 if already "
+            "satisfied). Reports how far a configuration is from the manifold, e.g. to "
+            "explain why project() failed to converge.");
+        t.def(
             "simplify",
             &Traits::simplify_constrained,
             "path"_a,

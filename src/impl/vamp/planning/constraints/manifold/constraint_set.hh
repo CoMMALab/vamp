@@ -225,14 +225,23 @@ namespace vamp::planning::constraint
         // Whether a configuration satisfies every constraint within tolerance.
         auto satisfied(const Configuration &q) const noexcept -> bool
         {
+            return squared_error(q) <= settings_.tolerance;
+        }
+
+        // Per-lane squared_error(Block) above, but for a single (broadcast) configuration --
+        // e.g. to report how far a rejected seed is from the manifold (an empty set, or a
+        // hinge with every row satisfied, is exactly 0; how that number decomposes per
+        // constraint or per row isn't available here, only the summed violation).
+        auto squared_error(const Configuration &q) const noexcept -> float
+        {
             if (empty())
             {
-                return true;
+                return 0.F;
             }
 
             Block block;
             broadcast(q, block);
-            return squared_error(block)[{0, 0}] <= settings_.tolerance;
+            return squared_error(block)[{0, 0}];
         }
 
         static auto squared_distance(const Block &a, const Block &b) noexcept -> Row

@@ -45,4 +45,26 @@ namespace vamp::collision
         auto sum = sql2_3(a.x, a.y, a.z, b.x, b.y, b.z).sqrt();
         return sum - (a.r + b.r);
     }
+
+    // Signed distance + gradient (see DistanceGradient) from the query sphere (x, y, z, r)
+    // to fixed sphere `a`, w.r.t. the query's center. The gradient is exact everywhere
+    // except at the query's exact center coincidence with `a`'s, where `eps` keeps the
+    // normalization finite (direction is arbitrary in that degenerate case).
+    template <typename DataT>
+    inline constexpr auto sphere_sphere_gradient(
+        const Sphere<DataT> &a,
+        const DataT &x,
+        const DataT &y,
+        const DataT &z,
+        const DataT &r,
+        DataT eps = DataT(1e-6F)) noexcept -> DistanceGradient<DataT>
+    {
+        auto dx = x - a.x;
+        auto dy = y - a.y;
+        auto dz = z - a.z;
+        auto norm = sqrt(dot_3(dx, dy, dz, dx, dy, dz));
+        auto safe_norm = norm.max(eps);
+
+        return DistanceGradient<DataT>{norm - (a.r + r), dx / safe_norm, dy / safe_norm, dz / safe_norm};
+    }
 }  // namespace vamp::collision

@@ -8,6 +8,9 @@
 #include <vamp/collision/sphere_heightfield.hh>
 #include <vamp/collision/math.hh>
 
+#include <limits>
+#include <optional>
+
 namespace vamp
 {
     template <
@@ -147,6 +150,81 @@ namespace vamp
         }
 
         return false;
+    }
+
+    // Signed distance from the query sphere (sx, sy, sz, sr) to its nearest primitive in
+    // `e`, plus the (unit) gradient of that distance w.r.t. the query's center -- the
+    // differentiable counterpart of sphere_environment_in_collision above, used to push a
+    // representative link sphere out of collision (see
+    // vamp::planning::constraint::EnvironmentCollisionConstraint). Point clouds and
+    // attachments aren't included (no gradient-producing kernel exists for them yet); a
+    // query with no primitives at all, or only point clouds/attachments, returns a distance
+    // of +infinity with an arbitrary (straight up) gradient.
+    //
+    // Unlike sphere_environment_in_collision, this does not early-exit via each shape's
+    // sorted `min_distance` broad-phase: pruning would need to be sound per-SIMD-lane
+    // (different lanes can have different nearest primitives), which the existing
+    // broad-phase early-`break` was never designed to guarantee, so every primitive is
+    // checked to keep this exact.
+    template <typename DataT, typename ArgT1, typename ArgT2, typename ArgT3, typename ArgT4>
+    inline auto sphere_environment_min_distance_gradient(
+        const collision::Environment<DataT> &e,  //
+        ArgT1 sx_,
+        ArgT2 sy_,
+        ArgT3 sz_,
+        ArgT4 sr_,
+        DataT eps = DataT(1e-6F)) noexcept -> collision::DistanceGradient<DataT>
+    {
+        auto sx = static_cast<DataT>(sx_);
+        auto sy = static_cast<DataT>(sy_);
+        auto sz = static_cast<DataT>(sz_);
+        auto sr = static_cast<DataT>(sr_);
+
+        DataT best_distance(std::numeric_limits<float>::max());
+        DataT best_gx(0.F);
+        DataT best_gy(0.F);
+        DataT best_gz(1.F);
+
+        const auto consider = [&](const collision::DistanceGradient<DataT> &cand)
+        {
+            const auto better = cand.distance < best_distance;
+            best_gx = best_gx.blend(cand.gx, better);
+            best_gy = best_gy.blend(cand.gy, better);
+            best_gz = best_gz.blend(cand.gz, better);
+            best_distance = best_distance.blend(cand.distance, better);
+        };
+
+        for (const auto &es : e.spheres)
+        {
+            consider(collision::sphere_sphere_gradient(es, sx, sy, sz, sr, eps));
+        }
+
+        for (const auto &ec : e.capsules)
+        {
+            consider(collision::sphere_capsule_gradient(ec, sx, sy, sz, sr, eps));
+        }
+
+        for (const auto &ec : e.z_aligned_capsules)
+        {
+            consider(collision::sphere_z_aligned_capsule_gradient(ec, sx, sy, sz, sr, eps));
+        }
+
+        for (const auto &ec : e.cuboids)
+        {
+            consider(collision::sphere_cuboid_gradient(ec, sx, sy, sz, sr, eps));
+        }
+
+        for (const auto &ec : e.z_aligned_cuboids)
+        {
+            consider(collision::sphere_z_aligned_cuboid_gradient(ec, sx, sy, sz, sr, eps));
+        }
+
+        for (const auto &eh : e.heightfields)
+        {
+            consider(collision::sphere_heightfield_gradient(eh, sx, sy, sz, sr));
+        }
+
+        return collision::DistanceGradient<DataT>{best_distance, best_gx, best_gy, best_gz};
     }
 
     template <typename DataT, typename ArgT1, typename ArgT2, typename ArgT3, typename ArgT4>

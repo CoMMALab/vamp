@@ -63,6 +63,7 @@ auto main(int, char **) -> int
 
     auto result =
         RRTC::solve(Robot::Configuration(start), Robot::Configuration(goal), env_v, rrtc_settings, rng);
+	std::cout << "Solved in " << result.iterations << " iterations, " << result.path.size() << " states, cost " << result.path.cost() << " time : " << result.nanoseconds / 1e3 << "\n";
 
     // If successful
     if (result.path.size() > 0)

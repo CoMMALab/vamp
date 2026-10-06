@@ -1,0 +1,53 @@
+# Ridgeback base with two Pandas, matching robosuite's RidgebackDualPanda
+# (robosuite/models/assets/robots/ridgeback_dual_panda/robot.xml with RidgebackSimpleBase and two
+# PandaGrippers). Build with: python ../compose.py ridgeback_dual_panda
+
+name = "ridgeback_dual_panda"
+base = "ridgeback"
+
+# Arm names follow robosuite's (panda_joint1 -> robot0_right_joint1) so configurations map onto
+# robosuite joints by name. Mount poses are robot.xml's right_link0/left_link0 on the support.
+[[arms]]
+model = "panda"
+strip_prefix = "panda_"
+prefix = "robot0_right_"
+parent = "mobilebase0_support"
+xyz = [0.21, -0.2, 0.0]
+
+[[arms]]
+model = "panda"
+strip_prefix = "panda_"
+prefix = "robot0_left_"
+parent = "mobilebase0_support"
+xyz = [0.21, 0.2, 0.0]
+
+# Where VAMP's Panda differs from robosuite's. Joint names are the Panda URDF's own.
+[overrides.panda.joint_limits]
+# robosuite's ranges, about 4 degrees tighter than VAMP's panda.urdf.
+panda_joint1 = [-2.8973, 2.8973]
+panda_joint2 = [-1.7628, 1.7628]
+panda_joint3 = [-2.8973, 2.8973]
+panda_joint4 = [-3.0718, -0.0698]
+panda_joint5 = [-2.8973, 2.8973]
+panda_joint6 = [-0.0175, 3.7525]
+panda_joint7 = [-2.8973, 2.8973]
+
+[overrides.panda.joint_origins]
+# robosuite mounts the hand 0.1065 m past link7 (VAMP: 0.107) and fixes the fingers fully open
+# (0.04 m) 0.0524 m above the hand (VAMP: 0.065 m, 0.0584 m). Same hand and finger meshes.
+panda_joint8 = { xyz = [0, 0, 0.1065] }
+panda_finger_joint1 = { xyz = [0, 0.04, 0.0524] }
+panda_finger_joint2 = { xyz = [0, -0.04, 0.0524] }
+
+# robosuite's end-effector frames (gripper{side}_0_eef), relative to each hand.
+[[frames]]
+name = "gripperright_0_eef"
+parent = "robot0_right_hand"
+xyz = [0, 0, 0.097]
+rpy = [0, 0, -1.57079633]
+
+[[frames]]
+name = "gripperleft_0_eef"
+parent = "robot0_left_hand"
+xyz = [0, 0, 0.097]
+rpy = [0, 0, -1.57079633]

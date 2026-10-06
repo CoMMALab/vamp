@@ -12,10 +12,10 @@ These decompositions are conservative estimations of the robot's mesh geometry.
 
 ## Composite robots
 
-Mobile manipulators are composed from a base and one or more arms already in this directory, so their URDFs and meshes are not duplicated.
+Mobile manipulators are composed from a base and one or more arms already in this directory, so their URDFs, SRDFs, and meshes are not duplicated.
 For example, `ridgeback_dual_panda/` combines `ridgeback/` with two copies of `panda/`.
-URDF has no include mechanism, so `compose.py` writes a single flat URDF per composite: links, joints, and collision spheres are copied in, while mesh paths point back into the source folders.
-Treat the generated URDFs as build outputs: edit the sources or the spec and rerun `compose.py`, never the generated files.
+URDF and SRDF have no include mechanism, so `compose.py` writes a single flat URDF and SRDF per composite: links, joints, collision spheres, and SRDF entries are copied in, while mesh paths point back into the source folders.
+Treat the generated files as build outputs: edit the sources or the spec and rerun `compose.py`, never the generated files.
 
 ### Usage
 
@@ -23,30 +23,37 @@ Treat the generated URDFs as build outputs: edit the sources or the spec and rer
 python compose.py                       # compose every */compose.toml
 python compose.py ridgeback_dual_panda  # compose one composite
 python compose.py path/to/compose.toml  # a spec anywhere, written next to the spec
-python compose.py --check               # exit 1 if any generated URDF is out of date
+python compose.py --check               # exit 1 if any generated file is out of date
 ```
 
-Each run writes both `<name>.urdf` and `<name>_spherized.urdf` next to the spec, built from the `<model>.urdf` and `<model>_spherized.urdf` of the base and every arm.
+Each run writes `<name>.urdf`, `<name>_spherized.urdf`, and `<name>.srdf` next to the spec, built from the `<model>.urdf`, `<model>_spherized.urdf`, and `<model>.srdf` of the base and every arm.
 To add a composite, create `<name>/compose.toml`:
 
 ```toml
 name = "ridgeback_dual_panda"  # output file stem and URDF robot name
-base = "ridgeback"             # folder under resources/ containing ridgeback.urdf and ridgeback_spherized.urdf
+base = "ridgeback"             # folder under resources/ with ridgeback.urdf, ridgeback_spherized.urdf, ridgeback.srdf
 
 [[arms]]                       # one table per arm; the same model can appear several times
-model = "panda"                # folder under resources/ containing panda.urdf and panda_spherized.urdf
+model = "panda"                # folder under resources/ with panda.urdf, panda_spherized.urdf, panda.srdf
 strip_prefix = "panda_"        # optional: removed from the arm's link, joint, and material names...
 prefix = "robot0_right_"       # ...before this is added (panda_joint1 -> robot0_right_joint1)
 parent = "mobilebase0_support" # base link the arm's root link is attached to
 xyz = [0.21, -0.2, 0.0]        # optional: pose of the arm root relative to parent
 rpy = [0.0, 0.0, 0.0]
 # joint = "..."                # optional: mount joint name, default "<prefix>mount_joint"
+disable_with_base = ["panda_link0", "panda_link1"]  # optional: arm links (own names) never checked
+                               # against any base link with collision geometry
 
 [overrides.panda.joint_limits]  # optional, per model, applied to every instance of it;
 panda_joint1 = [-2.8973, 2.8973] # keys are the model's own (unprefixed) joint names
 
 [overrides.panda.joint_origins]
 panda_joint8 = { xyz = [0, 0, 0.1065] }  # xyz and/or rpy
+
+[[disable_collisions]]         # optional extra SRDF pairs, using final (prefixed) names
+link1 = "robot0_right_link0"
+link2 = "robot0_left_link0"
+reason = "Never"               # optional, default "Never"
 
 [[frames]]                     # optional extra fixed frames, using final (prefixed) names
 name = "gripperright_0_eef"
@@ -55,14 +62,28 @@ xyz = [0, 0, 0.097]
 rpy = [0, 0, -1.57079633]
 ```
 
-`compose.py` stops with an error if a model is missing either URDF variant, a parent link or overridden joint does not exist, an arm has more than one root link, or two arms produce the same link or joint name.
+`compose.py` stops with an error if a model is missing either URDF variant or its SRDF, a parent link or overridden joint does not exist, an arm has more than one root link, two arms produce the same link or joint name, or an SRDF entry names a link or joint that is not in the composed URDF.
 The composite's joint order is whatever the URDF parser produces (Pinocchio sorts sibling links by name), so map configurations to other models by joint name.
 Mesh paths in the output are relative to the output file; Pinocchio only resolves them if the output's folder is passed in `package_dirs`.
+
+### How the SRDF is composed
+
+The composite SRDF contains, in order:
+1. The base's SRDF, unchanged.
+2. Each arm's SRDF with link, joint, group, and end-effector names renamed by the arm's `prefix` and `strip_prefix` (`panda_arm` -> `robot0_right_arm`). Arm `virtual_joint`s are dropped, since a mounted arm is not floating.
+3. For each arm, a `disable_collisions` pair (reason `Mount`) between every link in `disable_with_base` and every base link with collision geometry.
+4. The spec's `[[disable_collisions]]` pairs.
+
+No component SRDF can know which arm and base links touch, since that depends on the mount pose, so those pairs come from the spec.
+List the arm links that are in collision with the base at every configuration (typically the arm's root link and the link above it), and nothing that can actually hit the base: a disabled pair is never checked.
+Pairs between different arms are not disabled unless listed in `[[disable_collisions]]`.
+To find always- and never-colliding pairs, sample random configurations of the spherized composite with Pinocchio (`addAllCollisionPairs`, `computeCollisions`) and count collisions per link pair.
 
 ### Base URDF format
 
 A base (e.g. `ridgeback/`) must follow these conventions to be composable:
-- **Two variants.** `<base>/<base>.urdf` and `<base>/<base>_spherized.urdf`, identical except that the spherized collision geometry is spheres only.
+- **Two variants and an SRDF.** `<base>/<base>.urdf` and `<base>/<base>_spherized.urdf`, identical except that the spherized collision geometry is spheres only, and `<base>/<base>.srdf`.
+- **SRDF covers the base itself.** Disable collisions between the base's own collision links (they are rigidly attached, so they always collide), and optionally define a group for the base joints. Leave arm-related pairs to the composite spec.
 - **Root link is the world frame.** The single root link is the frame the base moves in (for robosuite models, the spawn frame `robot0_base`).
 - **Bounded 1-DoF motion joints.** Base motion is a chain of `prismatic` and `revolute` joints with finite limits from the root to the base body (the Ridgeback uses prismatic x, prismatic y, revolute yaw, with massless intermediate links). Do not use `planar`, `floating`, or `continuous` joints; VAMP samples each joint within its limits.
 - **Mount links.** Expose a link for arms to attach to (`mobilebase0_support` on the Ridgeback), usually an empty link at the mounting surface. Arm placement on the mount belongs in each composite's spec, not in the base.
@@ -71,8 +92,8 @@ A base (e.g. `ridgeback/`) must follow these conventions to be composable:
 
 ### Arm URDF format
 
-An arm needs the same two variants, a single root link (attached to the base's mount), and names that are unique once `prefix` is applied.
-Existing robots such as `panda/` and `ur5/` work as arms without changes.
+An arm needs the same two URDF variants and an SRDF, a single root link (attached to the base's mount), and names that are unique once `prefix` is applied.
+Existing robots such as `panda/` and `ur5/` (including their SRDFs) work as arms without changes.
 
 ## Attachments
 

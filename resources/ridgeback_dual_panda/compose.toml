@@ -7,12 +7,17 @@ base = "ridgeback"
 
 # Arm names follow robosuite's (panda_joint1 -> robot0_right_joint1) so configurations map onto
 # robosuite joints by name. Mount poses are robot.xml's right_link0/left_link0 on the support.
+# disable_with_base: arm links that touch the base at every configuration and are excluded from
+# self-collision checks against all of its collision links. link0 and link1 sit on the mount; link2
+# is only needed while foam's chassis spheres (radius ~0.47 m) reach the shoulder. Sampling showed
+# each of these pairs colliding in either all or none of 4000 random configurations.
 [[arms]]
 model = "panda"
 strip_prefix = "panda_"
 prefix = "robot0_right_"
 parent = "mobilebase0_support"
 xyz = [0.21, -0.2, 0.0]
+disable_with_base = ["panda_link0", "panda_link1", "panda_link2"]
 
 [[arms]]
 model = "panda"
@@ -20,6 +25,7 @@ strip_prefix = "panda_"
 prefix = "robot0_left_"
 parent = "mobilebase0_support"
 xyz = [0.21, 0.2, 0.0]
+disable_with_base = ["panda_link0", "panda_link1", "panda_link2"]
 
 # Where VAMP's Panda differs from robosuite's. Joint names are the Panda URDF's own.
 [overrides.panda.joint_limits]

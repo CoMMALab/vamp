@@ -35,7 +35,6 @@ def main(
      simp_settings) = vamp.configure_robot_and_planner_with_kwargs(robot, planner, **kwargs)
 
     sampler = getattr(vamp_module, sampler)()
-    plan_settings.range=1.25
 
     total_problems = 0
     valid_problems = 0

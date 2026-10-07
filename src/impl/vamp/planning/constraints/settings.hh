@@ -37,6 +37,15 @@ namespace vamp::planning::constraint
         // constrained connects wander, so allow extra steps before giving up.
         float connect_slack = 2.F;
 
+        // steer() rejects a projected endpoint more than `drift_factor` * step length from the
+        // node it started from (the original, hard-coded value was 2).
+        float drift_factor = 2.F;
+
+        // If set, steer() replaces the drift test with a progress test: accept the projected
+        // endpoint only if it is closer to the sampled target than the node it started from
+        // was, however far projection moved it.
+        bool progress_test = false;
+
         // Squared radius around the steer target within which the endpoint counts as
         // Reached: projection rarely lands exactly on the target.
         float reached_radius2 = 1e-2F;

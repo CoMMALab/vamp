@@ -145,15 +145,15 @@ namespace vamp::planning::constraint
         {
             chain_.clear();
 
-            const bool reach = distance < range;
-            const float step_length = (reach) ? distance : range;
-            const auto vector = (target - from) * ((reach) ? 1.F : range / distance);
-
             // Perturb the step length per lane so projection has fallbacks when the exact
             // candidate projects poorly; lane 0 aims exactly at the candidate.
             const auto perturb = FloatVector<rake>::fill(1.F) +
                                  FloatVector<rake>(StdDevSamples<rake>::samples) *
                                      constraints.settings().perturbation_scale;
+
+            const bool reach = distance < range;
+            const float step_length = (reach) ? distance : range;
+            const auto vector = (target - from) * ((reach) ? 1.F : range / distance);
 
             Block block;
             for (auto i = 0U; i < Robot::dimension; ++i)
@@ -179,7 +179,29 @@ namespace vamp::planning::constraint
                 drift2 += diff * diff;
             }
 
-            if (drift2 > 4.F * step_length * step_length)
+            bool reject_endpoint;
+            if (constraints.settings().progress_test)
+            {
+                const auto target_arr = target.to_array();
+                float before2 = 0.F;
+                float after2 = 0.F;
+                for (auto j = 0U; j < Robot::dimension; ++j)
+                {
+                    const float b = from_arr[j] - target_arr[j];
+                    const float a = next_arr[j] - target_arr[j];
+                    before2 += b * b;
+                    after2 += a * a;
+                }
+
+                reject_endpoint = not (after2 < before2);
+            }
+            else
+            {
+                const float factor = constraints.settings().drift_factor;
+                reject_endpoint = drift2 > factor * factor * step_length * step_length;
+            }
+
+            if (reject_endpoint)
             {
                 return {SteerStatus::Trapped, chain_};
             }

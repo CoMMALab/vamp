@@ -151,7 +151,9 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("connect_slack", &vc::ConstraintSettings::connect_slack)
         .def_rw("reached_radius2", &vc::ConstraintSettings::reached_radius2)
         .def_rw("endpoint_tolerance2", &vc::ConstraintSettings::endpoint_tolerance2)
-        .def_rw("hold_satisfied_rows", &vc::ConstraintSettings::hold_satisfied_rows);
+        .def_rw("hold_satisfied_rows", &vc::ConstraintSettings::hold_satisfied_rows)
+        .def_rw("drift_factor", &vc::ConstraintSettings::drift_factor)
+        .def_rw("progress_test", &vc::ConstraintSettings::progress_test);
 
     nb::class_<vp::SimplifySettings>(pymodule, "SimplifySettings")
         .def(nb::init<>())

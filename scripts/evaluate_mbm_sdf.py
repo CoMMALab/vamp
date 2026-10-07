@@ -79,7 +79,7 @@ def main(
     # Disable steer()'s per-lane perturbation (default 0.1): every extend attempt uses only
     # the unperturbed direct-line target (lane 0), same single-candidate behavior as the
     # unconstrained local planner, instead of trying rake-1 additional perturbed fallbacks.
-    constraint_settings.perturbation_scale = 0.0
+    constraint_settings.perturbation_scale = 0.1
     constraint_settings.connect_slack = connect_slack
 
     # Seed projection (start/goal) gets its own, more generous iteration budget, same
@@ -90,7 +90,7 @@ def main(
     seed_settings.descend_rate = descend_rate
 
 
-    plan_settings.range=1.25
+    # plan_settings.range=1.25
 
     sampler = getattr(vamp_module, sampler)()
 

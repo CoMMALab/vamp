@@ -154,7 +154,7 @@ extern "C" vamp::jit::ffi::PlanResultHandle *VAMP_JIT_FN_SOLVE_PHASE(
     auto env_rake = {{robot_ns}}::raked_env(env_ptr);
     const auto &settings = *static_cast<const SettingsT *>(settings_ptr);
     auto rng = {{robot_ns}}::deref_sampler(sampler);
-    auto lp = vamp_jit_flask::make_phase_lp(phase, n_phase);
+    auto lp = vamp_jit_flask::make_phase_lp(phase, n_phase, env_ptr);
 
     auto *wrapped = new {{robot_ns}}::WrappedResult{
         PlannerT::solve(start, goal, env_rake, settings, rng, lp)};
@@ -184,7 +184,7 @@ extern "C" vamp::jit::ffi::PlanResultHandle *VAMP_JIT_FN_SOLVE_MULTI_PHASE(
     auto env_rake = {{robot_ns}}::raked_env(env_ptr);
     const auto &settings = *static_cast<const SettingsT *>(settings_ptr);
     auto rng = {{robot_ns}}::deref_sampler(sampler);
-    auto lp = vamp_jit_flask::make_phase_lp(phase, n_phase);
+    auto lp = vamp_jit_flask::make_phase_lp(phase, n_phase, env_ptr);
 
     auto *wrapped = new {{robot_ns}}::WrappedResult{
         PlannerT::solve(start, goals, env_rake, settings, rng, lp)};
@@ -214,7 +214,7 @@ extern "C" vamp::jit::ffi::PlanResultHandle *VAMP_JIT_FN_SOLVE_CHART(
     const auto &settings = *static_cast<const SettingsT *>(settings_ptr);
     auto rng = {{robot_ns}}::deref_sampler(sampler);
     auto lp = vamp_jit_flask::make_chart_lp(
-        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, phase, n_phase);
+        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, phase, n_phase, env_ptr);
 
     auto *wrapped = new {{robot_ns}}::WrappedResult{
         PlannerT::solve(start, goal, env_rake, settings, rng, lp)};
@@ -249,7 +249,7 @@ extern "C" vamp::jit::ffi::PlanResultHandle *VAMP_JIT_FN_SOLVE_MULTI_CHART(
     const auto &settings = *static_cast<const SettingsT *>(settings_ptr);
     auto rng = {{robot_ns}}::deref_sampler(sampler);
     auto lp = vamp_jit_flask::make_chart_lp(
-        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, phase, n_phase);
+        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, phase, n_phase, env_ptr);
 
     auto *wrapped = new {{robot_ns}}::WrappedResult{
         PlannerT::solve(start, goals, env_rake, settings, rng, lp)};

@@ -99,6 +99,7 @@ def densify(
     robot_module: Any,
     path: Any,
     samples_per_segment: int = 32,
+    environment: Optional[Any] = None,
 ) -> Tuple[
     NDArray[np.float64],
     NDArray[np.float64],
@@ -110,6 +111,7 @@ def densify(
 
     Returns (t, q, qd, qdd, tau): times are cumulative across segments,
     each segment sampled at samples_per_segment points plus the final state.
+    Torques include the payloads of `environment`'s attachments when given.
     """
     waypoints = [np.asarray(path[i], dtype=np.float32) for i in range(len(path))]
     if len(waypoints) < 2:
@@ -119,7 +121,8 @@ def densify(
 
     def emit(t: float, a: NDArray[np.float32], b: NDArray[np.float32], T: float, frac: float) -> None:
         y, yd, ydd = robot_module.eval(a, b, T, frac)
-        tau = robot_module.torques(np.concatenate([y, yd, ydd]).astype(np.float32))
+        x = np.concatenate([y, yd, ydd]).astype(np.float32)
+        tau = robot_module.torques(x) if environment is None else robot_module.torques(x, environment)
         ts.append(t)
         qs.append(y)
         qds.append(yd)
@@ -210,3 +213,136 @@ def path_cost(robot_module: Any, path: Any) -> float:
     """Total LQMT cost of a flask path (sum of segment costs C(z_i -> z_{i+1}))."""
     waypoints = [np.asarray(path[i], dtype=np.float32) for i in range(len(path))]
     return float(sum(robot_module.cost(a, b) for a, b in zip(waypoints[:-1], waypoints[1:])))
+
+
+def _lp2_extreme(A: NDArray, b: NDArray, objective: NDArray, maximize: bool) -> Optional[NDArray]:
+    """Optimum of objective . (u, x) over {A (u, x) <= b} by vertex enumeration (2 variables)."""
+    i, j = np.triu_indices(len(b), 1)
+    det = A[i, 0] * A[j, 1] - A[i, 1] * A[j, 0]
+    ok = np.abs(det) > 1e-12
+    i, j, det = i[ok], j[ok], det[ok]
+    u = (b[i] * A[j, 1] - A[i, 1] * b[j]) / det
+    x = (A[i, 0] * b[j] - b[i] * A[j, 0]) / det
+    pts = np.stack([u, x], axis=1)
+    feasible = np.all(pts @ A.T <= b + 1e-9 * (1.0 + np.abs(b)), axis=1)
+    if not np.any(feasible):
+        return None
+    values = pts[feasible] @ objective
+    return pts[feasible][np.argmax(values) if maximize else np.argmin(values)]
+
+
+def topp_retime(
+    robot_module: Any,
+    q: Any,
+    environment: Optional[Any] = None,
+    grid: int = 800,
+    effort_fraction: float = 0.98,
+    end_speed: float = 0.0,
+    substeps: int = 4,
+) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+    """Time-optimal retiming of a dense joint path under torque and joint-velocity limits.
+
+    Time-optimal path parameterization by reachability analysis (Pham & Pham, "A new approach
+    to time-optimal path parameterization based on reachability analysis", T-RO 2018). The path
+    q(s) is a chord-length natural cubic spline through `q` (e.g. a densified executed trajectory, so
+    constraint manifolds and collision clearance are those of the given geometry), sampled at
+    `grid` points. Torques are affine in (sdd, sd^2), tau = a sdd + b sd^2 + c, with a, b, c
+    from the robot's payload-aware RNEA (`environment`'s attachments); they must stay within
+    effort_fraction of the (scaled) effort limits at both ends of every grid interval (the
+    first-order interpolation discretization), and joint speeds within their limits. The path starts at rest and ends with path speed at most `end_speed` (path
+    parameter units per second; 0 arrives at rest). Statically infeasible stretches are kept
+    when the velocity terms make them feasible. Constraints hold at the grid points; between them
+    (constant sdd per grid interval, sd^2 linear in s) effort_fraction is the margin. Returns
+    (t, q, qd, qdd) of that executed motion at `substeps` points per grid interval; raises
+    ValueError if no feasible timing exists.
+    """
+    from scipy.interpolate import CubicSpline
+
+    # Densified trajectories repeat (nearly) the junction states of consecutive edges; such
+    # near-duplicates put spikes in the interpolating spline's curvature, so keep only points at
+    # least a quarter of the median spacing from the previous kept one.
+    q = np.asarray(q, dtype=np.float64)
+    gap = 0.25 * np.median(np.linalg.norm(np.diff(q, axis=0), axis=1))
+    kept = [q[0]]
+    for point in q[1:-1]:
+        if np.linalg.norm(point - kept[-1]) >= gap:
+            kept.append(point)
+    if np.linalg.norm(q[-1] - kept[-1]) < gap and len(kept) > 1:
+        kept.pop()
+    kept.append(q[-1])
+    q = np.array(kept)
+    chord = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(q, axis=0), axis=1))])
+    spline = CubicSpline(chord / chord[-1], q, axis=0, bc_type="natural")
+    s = np.linspace(0.0, 1.0, grid)
+    qs, dq, ddq = spline(s), spline(s, 1), spline(s, 2)
+    step = s[1] - s[0]
+    n = q.shape[1]
+
+    limit = effort_fraction * np.asarray(robot_module.effort_limits()) * robot_module.effort_scale()
+    vmax = np.asarray(robot_module.velocity_limits())
+    zero = np.zeros(n)
+
+    def tau(x: NDArray) -> NDArray:
+        x = x.astype(np.float32)
+        t = robot_module.torques(x) if environment is None else robot_module.torques(x, environment)
+        return np.asarray(t, dtype=np.float64)
+
+    c = np.array([tau(np.concatenate([qi, zero, zero])) for qi in qs])
+    a = np.array([tau(np.concatenate([qi, zero, di])) for qi, di in zip(qs, dq)]) - c
+    b = np.array([tau(np.concatenate([qi, di, ddi])) for qi, di, ddi in zip(qs, dq, ddq)]) - c
+    with np.errstate(divide="ignore"):
+        x_cap = np.min(np.where(np.abs(dq) > 1e-12, (vmax / np.abs(dq)) ** 2, np.inf), axis=1)
+
+    def rows(i: int) -> Tuple[NDArray, NDArray]:
+        # Interpolation discretization: interval i's (u, x) satisfies a u + b x + c within +-limit at
+        # its start, and at its end with sd^2 = x + 2 step u; 0 <= x <= x_cap at both. A (u, x) <= rhs.
+        j = min(i + 1, grid - 1)
+        ends = [np.stack([a[i], b[i]], 1), np.stack([a[j] + 2 * step * b[j], b[j]], 1)]
+        A = np.vstack([ends[0], -ends[0], ends[1], -ends[1], [[0.0, -1.0]], [[0.0, 1.0]], [[2 * step, 1.0]]])
+        rhs = np.concatenate([limit - c[i], limit + c[i], limit - c[j], limit + c[j], [0.0], [x_cap[i]], [x_cap[j]]])
+        return A, rhs
+
+    # Backward pass: controllable sets K_i = [lo_i, hi_i] of sd^2.
+    lo, hi = np.zeros(grid), np.zeros(grid)
+    hi[-1] = min(end_speed**2, x_cap[-1])
+    for i in range(grid - 2, -1, -1):
+        A, rhs = rows(i)
+        A = np.vstack([A, [[2 * step, 1.0]], [[-2 * step, -1.0]]])
+        rhs = np.concatenate([rhs, [hi[i + 1]], [-lo[i + 1]]])
+        top = _lp2_extreme(A, rhs, np.array([0.0, 1.0]), True)
+        bottom = _lp2_extreme(A, rhs, np.array([0.0, 1.0]), False)
+        if top is None or bottom is None:
+            raise ValueError(f"no feasible timing: the path is uncontrollable at grid point {i}")
+        lo[i], hi[i] = max(bottom[1], 0.0), top[1]
+    if lo[0] > 1e-12:
+        raise ValueError("no feasible timing from rest at the start")
+
+    # Forward pass: greedy maximum sdd within the controllable sets.
+    x = np.zeros(grid)
+    u = np.zeros(grid)
+    for i in range(grid - 1):
+        A, rhs = rows(i)
+        A = np.vstack([A, [[2 * step, 1.0]], [[-2 * step, -1.0]]])
+        rhs = np.concatenate([rhs, [hi[i + 1]], [-lo[i + 1]]])
+        upper = np.inf
+        lower = -np.inf
+        for coeff, bound in zip(A[:, 0], rhs - A[:, 1] * x[i]):
+            if coeff > 1e-12:
+                upper = min(upper, bound / coeff)
+            elif coeff < -1e-12:
+                lower = max(lower, bound / coeff)
+        u[i] = upper if upper >= lower else lower
+        x[i + 1] = min(max(x[i] + 2 * step * u[i], lo[i + 1]), hi[i + 1])
+        u[i] = (x[i + 1] - x[i]) / (2 * step)
+
+    # Executed motion: within grid interval i, sdd = u_i and sd^2 = x_i + 2 u_i (s - s_i).
+    frac = np.arange(substeps) / substeps
+    ss = (s[:-1, None] + step * frac[None, :]).ravel()
+    xs = np.maximum((x[:-1, None] + 2 * u[:-1, None] * step * frac[None, :]).ravel(), 0.0)
+    us = np.repeat(u[:-1], substeps)
+    ss, xs, us = np.append(ss, 1.0), np.append(xs, x[-1]), np.append(us, u[-2])
+    sd = np.sqrt(xs)
+    dt = 2 * np.diff(ss) / np.maximum(sd[:-1] + sd[1:], 1e-12)
+    t = np.concatenate([[0.0], np.cumsum(dt)])
+    dqs, ddqs = spline(ss, 1), spline(ss, 2)
+    return t, spline(ss), dqs * sd[:, None], dqs * us[:, None] + ddqs * xs[:, None]

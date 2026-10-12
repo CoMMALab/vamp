@@ -253,5 +253,33 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
                 a.pose(iso);
             },
             "tf"_a)
+        .def(
+            "set_inertia",
+            [](vc::Attachment<float> &a,
+               float mass,
+               const Eigen::Vector3f &com,
+               const Eigen::Matrix3f &inertia)
+            {
+                // Rigid-body inertia given in the attachment frame (CoM position, inertia about
+                // the CoM), stored as dynamic parameters about the end-effector frame.
+                const Eigen::Matrix3f R = a.tf.linear();
+                const Eigen::Vector3f c = a.tf * com;
+                const Eigen::Matrix3f cx = (Eigen::Matrix3f() << 0.F, -c[2], c[1], c[2], 0.F, -c[0], -c[1], c[0], 0.F)
+                                               .finished();
+                const Eigen::Matrix3f I = R * inertia * R.transpose() - mass * cx * cx;
+                a.inertia = {mass, mass * c[0], mass * c[1], mass * c[2],
+                             I(0, 0), I(0, 1), I(1, 1), I(0, 2), I(1, 2), I(2, 2)};
+            },
+            "mass"_a,
+            "com"_a,
+            "inertia"_a,
+            "Set the attachment's payload: mass (kg), center of mass in the attachment frame, and "
+            "the 3x3 inertia about the center of mass in the attachment frame's axes. Flask robots "
+            "include it in torque checks and kinetic-energy kernels.")
+        .def_ro(
+            "inertia",
+            &vc::Attachment<float>::inertia,
+            "Payload dynamic parameters about the end-effector frame (m, m c, Ixx, Ixy, Iyy, Ixz, "
+            "Iyz, Izz about the frame origin); all zeros for a massless attachment.")
         .def_ro("posed_spheres", &vc::Attachment<float>::posed_spheres);
 }

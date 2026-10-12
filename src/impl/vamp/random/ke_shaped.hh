@@ -24,8 +24,13 @@ namespace vamp::rng
         using Configuration = FloatVector<Robot::dimension>;
         static constexpr std::size_t n_q = Robot::flat_dimension;
 
-        KineticEnergyShaped(typename RNG<Robot>::Ptr inner, float max_energy) noexcept
-          : inner_(std::move(inner)), max_energy_(max_energy)
+        // `payload`: end-effector payload dynamic parameters included in the energy (e.g.
+        // the planning environment's attachment_payload); zeros for the bare robot.
+        KineticEnergyShaped(
+            typename RNG<Robot>::Ptr inner,
+            float max_energy,
+            const typename Robot::Payload &payload = {}) noexcept
+          : inner_(std::move(inner)), max_energy_(max_energy), payload_(payload)
         {
         }
 
@@ -47,7 +52,7 @@ namespace vamp::rng
 
             std::array<float, Robot::dimension> x;
             std::copy_n(buf.begin(), Robot::dimension, x.begin());
-            const float energy = Robot::kinetic_energy(x);
+            const float energy = Robot::kinetic_energy(x, payload_);
             if (energy <= 0.F)
             {
                 return z;
@@ -93,6 +98,7 @@ namespace vamp::rng
 
         typename RNG<Robot>::Ptr inner_;
         float max_energy_;
+        typename Robot::Payload payload_;
         std::size_t index_ = 0;
     };
 }  // namespace vamp::rng

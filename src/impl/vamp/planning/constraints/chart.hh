@@ -22,6 +22,10 @@ namespace vamp::planning::constraint
         // basis[c][j]: c-th orthonormal tangent vector, ambient component j
         std::array<std::array<float, d>, d> basis{};
         std::size_t nc = 0;
+        // normal[i][j]: i-th orthonormal normal vector (range J^T), ambient component j;
+        // the exact chart lifts along these (q = q0 + B u + N w).
+        std::array<std::array<float, d>, d> normal{};
+        std::size_t nk = 0;
         bool valid = false;
     };
 
@@ -102,8 +106,11 @@ namespace vamp::planning::constraint
         using AmbientConfiguration = typename Ambient::Configuration;
         using AmbientBlock = typename Ambient::template ConfigurationBlock<rake>;
 
-        ChartBuilder(const ConstraintSet<Ambient, rake> &constraints, float rank_tolerance) noexcept
+        // `exact`: build charts from the constraints' smooth equality form (exact charts, see
+        // ChartSettings::exact_chart) instead of the hinged error Jacobian.
+        ChartBuilder(const ConstraintSet<Ambient, rake> &constraints, float rank_tolerance, bool exact = false) noexcept
           : rank_tolerance_(rank_tolerance)
+          , exact_(exact)
           , m_rows_(constraints.total_rows())
           , active_(std::make_unique<bool[]>(m_rows_))
           , pfaffian_(std::make_unique<bool[]>(m_rows_))
@@ -123,6 +130,28 @@ namespace vamp::planning::constraint
                 jat_.resize(d, static_cast<Eigen::Index>(n_active_));
                 q_.resize(d, d);
             }
+
+            if (exact_)
+            {
+                e_rows_ = constraints.equality_rows();
+                eq_F_.resize(e_rows_);
+                eq_J_.resize(e_rows_ * d);
+                eq_gamma_.resize(e_rows_);
+                eq_jat_.resize(d, static_cast<Eigen::Index>(e_rows_));
+                q_.resize(d, d);
+            }
+        }
+
+        // Whether charts come from the equality form (exact charts).
+        auto exact() const noexcept -> bool
+        {
+            return exact_;
+        }
+
+        // Stacked equality-form rows (exact charts only).
+        auto equality_rows() const noexcept -> std::size_t
+        {
+            return e_rows_;
         }
 
         // Total stacked constraint rows (the error/Jacobian row count).
@@ -203,6 +232,13 @@ namespace vamp::planning::constraint
             const ConstraintSet<Ambient, rake> &constraints,
             const std::array<float, d> &q0) const noexcept -> Chart<d>
         {
+            if (exact_)
+            {
+                constraints.evaluate_equality_position(broadcast(q0));
+                constraints.extract_equality(0, eq_F_.data(), eq_J_.data(), eq_gamma_.data());
+                return chart_from_equality(q0, eq_J_.data());
+            }
+
             if (n_active_ == 0)
             {
                 Chart<d> chart;
@@ -274,28 +310,30 @@ namespace vamp::planning::constraint
             // magnitude, so it stands in for the singular values in the rank cutoff at a
             // fraction of the cost, and the preallocated decomposition avoids per-call
             // heap traffic.
-            qr_.compute(jat_);
-            const auto &QR = qr_.matrixQR();
+            return chart_from_transpose(chart, jat_, n_active_);
+        }
 
-            std::size_t rank = 0;
-            const float tol = rank_tolerance_ * std::max(std::abs(QR(0, 0)), 1e-6F);
-            const auto n_diag = std::min<std::size_t>(d, n_active_);
-            for (auto i = 0U; i < n_diag; ++i)
+        // Exact chart at q0 from the stacked equality-form Jacobian (equality_rows() x d,
+        // row-major) evaluated there. Requires full row rank, so the normal-space Newton
+        // system J N is square and invertible at the center.
+        auto chart_from_equality(const std::array<float, d> &q0, const float *jac) const noexcept -> Chart<d>
+        {
+            Chart<d> chart;
+            chart.q0 = q0;
+            for (auto r = 0U; r < e_rows_; ++r)
             {
-                rank += std::abs(QR(i, i)) > tol;
-            }
-
-            chart.nc = d - rank;
-            q_ = qr_.householderQ();  // d x d
-            for (auto c = 0U; c < chart.nc; ++c)
-            {
-                for (auto j = 0U; j < d; ++j)
+                for (auto c = 0U; c < d; ++c)
                 {
-                    chart.basis[c][j] = q_(j, rank + c);
+                    eq_jat_(c, r) = jac[r * d + c];
+                    if (not std::isfinite(jac[r * d + c]))
+                    {
+                        return chart;
+                    }
                 }
             }
 
-            chart.valid = chart.nc > 0;
+            chart = chart_from_transpose(chart, eq_jat_, e_rows_);
+            chart.valid = chart.valid and chart.nk == e_rows_;
             return chart;
         }
 
@@ -319,6 +357,49 @@ namespace vamp::planning::constraint
         }
 
     private:
+        // Column-pivoted QR of a transposed Jacobian (d x rows): the leading rank columns of
+        // Q span range(J^T) -- the normal space -- and the trailing d - rank columns its
+        // orthogonal complement, ker J -- the tangent basis. Pivoting keeps the R diagonal
+        // non-increasing in magnitude, so it stands in for the singular values in the rank
+        // cutoff at a fraction of the cost, and the preallocated decomposition avoids
+        // per-call heap traffic.
+        auto chart_from_transpose(Chart<d> chart, const Eigen::MatrixXf &jt, std::size_t rows) const noexcept
+            -> Chart<d>
+        {
+            qr_.compute(jt);
+            const auto &QR = qr_.matrixQR();
+
+            std::size_t rank = 0;
+            const float tol = rank_tolerance_ * std::max(std::abs(QR(0, 0)), 1e-6F);
+            const auto n_diag = std::min<std::size_t>(d, rows);
+            for (auto i = 0U; i < n_diag; ++i)
+            {
+                rank += std::abs(QR(i, i)) > tol;
+            }
+
+            chart.nc = d - rank;
+            chart.nk = rank;
+            q_ = qr_.householderQ();  // d x d
+            for (auto c = 0U; c < chart.nc; ++c)
+            {
+                for (auto j = 0U; j < d; ++j)
+                {
+                    chart.basis[c][j] = q_(j, rank + c);
+                }
+            }
+
+            for (auto i = 0U; i < rank; ++i)
+            {
+                for (auto j = 0U; j < d; ++j)
+                {
+                    chart.normal[i][j] = q_(j, i);
+                }
+            }
+
+            chart.valid = chart.nc > 0;
+            return chart;
+        }
+
         inline static auto broadcast(const std::array<float, d> &q) noexcept -> AmbientBlock
         {
             AmbientConfiguration cfg(q);
@@ -332,6 +413,12 @@ namespace vamp::planning::constraint
         }
 
         float rank_tolerance_;
+        bool exact_;
+        std::size_t e_rows_ = 0;
+        mutable std::vector<float> eq_F_;
+        mutable std::vector<float> eq_J_;
+        mutable std::vector<float> eq_gamma_;
+        mutable Eigen::MatrixXf eq_jat_;  // stacked equality Jacobian, transposed (d x e_rows)
         std::size_t m_rows_;
         std::size_t n_active_ = 0;
         std::size_t n_pfaffian_ = 0;

@@ -10,11 +10,14 @@ __all__ = [
     "Cuboid",
     "Cylinder",
     "RRTCSettings",
+    "RRTSettings",
     "PRMSettings",
     "PRMNeighborParams",
     "FCITSettings",
     "FCITNeighborParams",
     "AORRTCSettings",
+    "BKPIECESettings",
+    "AVPSettings",
     "GRRTStarSettings",
     "SimplifySettings",
     "SimplifyRoutine",
@@ -42,9 +45,12 @@ from ._core import Environment as Environment
 from ._core import PRMNeighborParams as PRMNeighborParams
 from ._core import PRMSettings as PRMSettings
 from ._core import RRTCSettings as RRTCSettings
+from ._core import RRTSettings as RRTSettings
 from ._core import FCITNeighborParams as FCITNeighborParams
 from ._core import FCITSettings as FCITSettings
 from ._core import AORRTCSettings as AORRTCSettings
+from ._core import BKPIECESettings as BKPIECESettings
+from ._core import AVPSettings as AVPSettings
 from ._core import GRRTStarSettings as GRRTStarSettings
 from ._core import SimplifyRoutine as SimplifyRoutine
 from ._core import SimplifySettings as SimplifySettings
@@ -122,6 +128,11 @@ def configure_robot_and_planner_with_kwargs(robot_name: str, planner_name: str, 
             plan_settings.range = ROBOT_RRT_RANGES[robot_name]
         if robot_name in ROBOT_RRTC_DD_RADIUS:
             plan_settings.dd_radius = ROBOT_RRTC_DD_RADIUS[robot_name]
+
+    elif planner_name == "bkpiece":
+        plan_settings = BKPIECESettings()
+        if robot_name in ROBOT_RRT_RANGES:
+            plan_settings.range = ROBOT_RRT_RANGES[robot_name]
 
     else:
         raise NotImplementedError(f"Automatic setup for planner {planner_name} is not implemented yet!")

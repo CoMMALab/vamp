@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -59,6 +60,7 @@ namespace vamp::planning::constraint
         using AmbientConfiguration = typename Ambient::Configuration;
         using AmbientBlock = typename Ambient::template ConfigurationBlock<rake>;
         using ZBlock = typename ZRobot::template ConfigurationBlock<rake>;  // (y, yd, ydd)
+        using Row = FloatVector<rake, 1>;
 
         // Configurations synthesized by flat z-space interpolation (simplify's B-spline
         // subdivision midpoints, interpolants) leave the manifold and must be projected.
@@ -75,10 +77,35 @@ namespace vamp::planning::constraint
           : constraints(std::move(constraint_set))
           , phase_constraints(std::move(phase_constraint_set))
           , settings(chart_settings)
-          , builder_(constraints, settings.rank_tolerance)
+          , exact_(settings.exact_chart and constraints.exact_form())
+          , builder_(constraints, settings.rank_tolerance, exact_)
           , err_(builder_.rows())
           , jac_batch_(rake * builder_.rows() * d)
+          , eq_F_(builder_.equality_rows())
+          , eq_gamma_(builder_.equality_rows())
+          , eq_J_(rake * builder_.equality_rows() * d)
+          , rF_(builder_.equality_rows())
+          , rG_(builder_.equality_rows())
+          , rJ_(builder_.equality_rows() * d)
+          , rM_(builder_.equality_rows() * builder_.equality_rows())
+          , rA_(builder_.equality_rows() * builder_.equality_rows())
+          , rB_(builder_.equality_rows())
+          , rX_(builder_.equality_rows())
+          , rN_(builder_.equality_rows() * d)
+          , rD_(d + builder_.equality_rows())
         {
+            const auto k = static_cast<Eigen::Index>(builder_.equality_rows());
+            M_.resize(k, k);
+            lu_ = Eigen::PartialPivLU<Eigen::MatrixXf>(k);
+            rhs_.resize(k);
+            sol_.resize(k);
+        }
+
+        // Whether edges use exact charts (ChartSettings::exact_chart on a constraint set with
+        // an equality form).
+        auto exact() const noexcept -> bool
+        {
+            return exact_;
         }
 
         // Validity of the exact local path a -> b in execution order. The chart lives at
@@ -197,7 +224,10 @@ namespace vamp::planning::constraint
             std::array<float, d> q, v;
             split(z, q, v);
 
-            if (not lift_point(q, q))
+            // Exact charts project onto the equality form's zero set jointly across all
+            // constraints (the per-constraint projector composes stacked constraints by summing
+            // independent steps, which can fail to converge), as tight as their edges land.
+            if (exact_ ? not exact_project(q) : not lift_point(q, q))
             {
                 return false;
             }
@@ -212,6 +242,193 @@ namespace vamp::planning::constraint
             phase_clamp(q, vt);
             z = join(q, vt);
             return true;
+        }
+
+        // Exact projection (exact charts only) of up to rake positions at once: lane i starts at q[i]
+        // for i < n (lanes past n replicate lane n - 1). The damped Gauss-Newton steps of the scalar
+        // projection run on every lane as SIMD rows -- one equality-kernel evaluation and one
+        // batched Cholesky solve of J J^T per iteration for the whole batch; a lane stops once it
+        // converges or diverges. As project(), a converged lane counts only where its equality rows
+        // have full rank. ok[i] reports success; returns the number of successes.
+        auto exact_project_batch(std::array<std::array<float, d>, rake> &q, std::size_t n, std::array<bool, rake> &ok)
+            const noexcept -> std::size_t
+        {
+            ok.fill(false);
+            const std::size_t e = builder_.equality_rows();
+            if (not exact_ or e == 0 or n == 0)
+            {
+                return 0;
+            }
+
+            n = std::min(n, rake);
+            for (auto lane = n; lane < rake; ++lane)
+            {
+                q[lane] = q[n - 1];
+            }
+
+            const std::size_t cap = std::max(settings.exact_iterations, constraints.settings().max_iterations);
+            std::array<bool, rake> active{};
+            std::fill_n(active.begin(), n, true);
+            std::size_t remaining = n, converged = 0;
+            alignas(FloatVectorAlignment) std::array<FloatT, d * rake> qarr;
+            auto &L = rM_;  // e x e, lower Cholesky factor of J J^T + damping I
+            auto &y = rX_;
+            std::array<Row, d> step;
+
+            // Factor J J^T + damping I in place for every lane; the extreme pivots (the diagonal of L,
+            // the R diagonal of an unpivoted QR of J^T) return per lane.
+            const auto factor = [&](float damping) -> std::pair<Row, Row>
+            {
+                for (auto r = 0U; r < e; ++r)
+                {
+                    for (auto c = 0U; c <= r; ++c)
+                    {
+                        Row sum = Row::fill((r == c) ? damping : 0.F);
+                        for (auto j = 0U; j < d; ++j)
+                        {
+                            sum = sum + rJ_[r * d + j] * rJ_[c * d + j];
+                        }
+
+                        L[r * e + c] = sum;
+                    }
+                }
+
+                Row lo = Row::fill(std::numeric_limits<float>::infinity());
+                Row hi = Row::fill(0.F);
+                for (auto p = 0U; p < e; ++p)
+                {
+                    for (auto c = 0U; c < p; ++c)
+                    {
+                        L[p * e + p] = L[p * e + p] - L[p * e + c] * L[p * e + c];
+                    }
+
+                    L[p * e + p] = L[p * e + p].max(0.F).sqrt();
+                    lo = lo.min(L[p * e + p]);
+                    hi = hi.max(L[p * e + p]);
+                    const Row inv = Row::fill(1.F) / L[p * e + p];
+                    for (auto r = p + 1; r < e; ++r)
+                    {
+                        for (auto c = 0U; c < p; ++c)
+                        {
+                            L[r * e + p] = L[r * e + p] - L[r * e + c] * L[p * e + c];
+                        }
+
+                        L[r * e + p] = L[r * e + p] * inv;
+                    }
+                }
+
+                return {lo, hi};
+            };
+
+            for (std::size_t it = 0; remaining > 0; ++it)
+            {
+                constraints.evaluate_equality_position(load_block(q, qarr));
+                constraints.extract_equality_rows(rF_.data(), rJ_.data(), rG_.data());
+
+                Row err2 = Row::fill(0.F);
+                for (auto r = 0U; r < e; ++r)
+                {
+                    err2 = err2 + rF_[r] * rF_[r];
+                }
+
+                const auto err = err2.to_array();
+                bool landed = false;
+                for (auto lane = 0U; lane < n; ++lane)
+                {
+                    landed = landed or (active[lane] and err[lane] <= settings.exact_tolerance);
+                }
+
+                // As project(): a converged lane counts only where its equality rows have full rank
+                // (the chart's rank test, on the undamped factor).
+                std::array<float, rake> pivot_lo{}, pivot_hi{};
+                if (landed)
+                {
+                    const auto [lo, hi] = factor(0.F);
+                    pivot_lo = lo.to_array();
+                    pivot_hi = hi.to_array();
+                }
+
+                for (auto lane = 0U; lane < n; ++lane)
+                {
+                    if (not active[lane])
+                    {
+                        continue;
+                    }
+
+                    if (err[lane] <= settings.exact_tolerance)
+                    {
+                        ok[lane] = pivot_lo[lane] > settings.rank_tolerance * std::max(pivot_hi[lane], 1e-6F);
+                        converged += ok[lane];
+                    }
+                    else if (it < cap and std::isfinite(err[lane]))
+                    {
+                        continue;
+                    }
+
+                    active[lane] = false;
+                    --remaining;
+                }
+
+                if (remaining == 0)
+                {
+                    break;
+                }
+
+                factor(1e-6F);
+
+                for (auto r = 0U; r < e; ++r)
+                {
+                    y[r] = rF_[r];
+                    for (auto c = 0U; c < r; ++c)
+                    {
+                        y[r] = y[r] - L[r * e + c] * y[c];
+                    }
+
+                    y[r] = y[r] / L[r * e + r];
+                }
+
+                for (auto r = e; r-- > 0;)
+                {
+                    for (auto c = r + 1; c < e; ++c)
+                    {
+                        y[r] = y[r] - L[c * e + r] * y[c];
+                    }
+
+                    y[r] = y[r] / L[r * e + r];
+                }
+
+                Row norm2 = Row::fill(0.F);
+                for (auto j = 0U; j < d; ++j)
+                {
+                    Row s = Row::fill(0.F);
+                    for (auto r = 0U; r < e; ++r)
+                    {
+                        s = s + rJ_[r * d + j] * y[r];
+                    }
+
+                    step[j] = s;
+                    norm2 = norm2 + s * s;
+                }
+
+                // Trust region: clip long steps so far seeds descend instead of overshooting.
+                const auto n2 = norm2.to_array();
+                for (auto j = 0U; j < d; ++j)
+                {
+                    const auto sj = step[j].to_array();
+                    for (auto lane = 0U; lane < n; ++lane)
+                    {
+                        if (active[lane])
+                        {
+                            const float norm = std::sqrt(n2[lane]);
+                            const float scale = (norm > max_projection_step) ? max_projection_step / norm : 1.F;
+                            q[lane][j] = std::clamp(
+                                q[lane][j] - scale * sj[lane], Ambient::lower_bound[j], Ambient::upper_bound[j]);
+                        }
+                    }
+                }
+            }
+
+            return converged;
         }
 
         // Whether a state's position satisfies every manifold constraint within tolerance
@@ -258,10 +475,16 @@ namespace vamp::planning::constraint
             std::vector<Configuration> &states,
             std::vector<float> &errors,
             float &duration,
-            float &cost) const noexcept -> bool
+            float &cost,
+            std::vector<std::array<float, d>> *accelerations = nullptr) const noexcept -> bool
         {
             states.clear();
             errors.clear();
+            if (accelerations != nullptr)
+            {
+                accelerations->clear();
+            }
+
             duration = 0.F;
             cost = 0.F;
 
@@ -304,6 +527,11 @@ namespace vamp::planning::constraint
             if (es.trivial)
             {
                 emit(q0, v0);
+                if (accelerations != nullptr)
+                {
+                    accelerations->emplace_back();
+                }
+
                 return true;
             }
 
@@ -314,12 +542,56 @@ namespace vamp::planning::constraint
             states.reserve(n);
             errors.reserve(n);
 
+            if (exact_)
+            {
+                // Exact charts: the executed states and accelerations themselves, in chunks
+                // of SIMD width.
+                Lanes u, ud, udd, q, qd, qdd;
+                std::array<float, rake> w2;
+                for (std::size_t j0 = 0; j0 < n; j0 += rake)
+                {
+                    const std::size_t m = std::min<std::size_t>(rake, n - j0);
+                    for (std::size_t l = 0; l < m; ++l)
+                    {
+                        const float t = es.T * static_cast<float>(j0 + l) / static_cast<float>(n - 1);
+                        eval_cubic(es, t, u[l], ud[l], udd[l]);
+                    }
+
+                    if (not exact_samples(es.chart, m, u, ud, udd, q, qd, qdd, w2))
+                    {
+                        return false;
+                    }
+
+                    for (std::size_t l = 0; l < m; ++l)
+                    {
+                        for (auto dim = 0U; dim < d; ++dim)
+                        {
+                            qd[l][dim] *= sign;
+                        }
+
+                        states.emplace_back(join(q[l], qd[l]));
+                        errors.emplace_back(builder_.error_norm(constraints, q[l]));
+                        if (accelerations != nullptr)
+                        {
+                            accelerations->emplace_back(qdd[l]);
+                        }
+                    }
+                }
+
+                return true;
+            }
+
             std::array<float, d> u{}, ud{}, udd{};
             for (std::size_t j = 0; j < n; ++j)
             {
                 const float t = es.T * static_cast<float>(j) / static_cast<float>(n - 1);
                 eval_cubic(es, t, u, ud, udd);
                 emit(chart_point(es.chart, u), from_chart(es.chart, ud));
+                if (accelerations != nullptr)
+                {
+                    // What make_edge validates: the chart-frame acceleration B udd.
+                    accelerations->emplace_back(from_chart(es.chart, udd));
+                }
             }
 
             return true;
@@ -345,6 +617,9 @@ namespace vamp::planning::constraint
     private:
         // Effectively unbounded chart radius: exact edges never clip.
         static constexpr float no_range = 1e9F;
+
+        // Joint-space trust radius of one exact-projection Gauss-Newton step.
+        static constexpr float max_projection_step = 0.3F;
 
         enum struct EdgeStatus : std::uint8_t
         {
@@ -454,6 +729,711 @@ namespace vamp::planning::constraint
                 q_out[i] = arr[i];
             }
 
+            return true;
+        }
+
+        using Lanes = std::array<std::array<float, d>, rake>;
+
+        inline static auto load_block(const Lanes &x, std::array<FloatT, d * rake> &arr) noexcept
+            -> AmbientBlock
+        {
+            for (auto lane = 0U; lane < rake; ++lane)
+            {
+                for (auto dim = 0U; dim < d; ++dim)
+                {
+                    arr[lane + dim * rake] = x[lane][dim];
+                }
+            }
+
+            return AmbientBlock(arr);
+        }
+
+        // LU-factor the normal-space Newton system M = J N of a (rows x d, row-major)
+        // equality Jacobian; false if M is singular (the chart's normal directions no longer
+        // cross the manifold transversally).
+        inline auto factor_normal_system(const Chart<d> &chart, const float *J) const noexcept -> bool
+        {
+            const std::size_t k = chart.nk;
+            for (auto r = 0U; r < k; ++r)
+            {
+                for (auto i = 0U; i < k; ++i)
+                {
+                    float dot = 0.F;
+                    for (auto j = 0U; j < d; ++j)
+                    {
+                        dot += J[r * d + j] * chart.normal[i][j];
+                    }
+
+                    M_(r, i) = dot;
+                }
+            }
+
+            lu_.compute(M_);
+            const auto diag = lu_.matrixLU().diagonal().cwiseAbs();
+            const float hi = diag.maxCoeff();
+            return std::isfinite(hi) and diag.minCoeff() > 1e-6F * std::max(hi, 1e-6F);
+        }
+
+        // Solve M x = rhs_ with the last factorization and accumulate N x into `out`.
+        inline void add_normal_solution(const Chart<d> &chart, std::array<float, d> &out) const noexcept
+        {
+            sol_ = lu_.solve(rhs_);
+            for (auto i = 0U; i < chart.nk; ++i)
+            {
+                for (auto j = 0U; j < d; ++j)
+                {
+                    out[j] += chart.normal[i][j] * sol_[i];
+                }
+            }
+        }
+
+        // Exact-chart samples (ChartSettings::exact_chart) for the first n lanes: chart
+        // coordinates u lift to sigma = q0 + B u + N w with F(sigma) = 0 by Newton steps along
+        // the chart's normal space (M = J N), and differentiating F(sigma(t)) = 0 gives the
+        // executed derivatives exactly:
+        //   M wd  = -J B ud,                    qd  = B ud  + N wd,
+        //   M wdd = -(J B udd + gamma(q, qd)),  qdd = B udd + N wdd,
+        // where gamma = d²F/dq²[qd, qd] is the curvature (centripetal) term. w2 reports the
+        // lift displacement |N w|^2. Lanes past n replicate lane n - 1. With `derivatives`
+        // false only q is computed. False if a lane fails to converge or M is singular.
+        // Exact-chart samples: positions sigma(u) = q0 + B u + N w with F(sigma) = 0 by Newton in w,
+        // and (with `derivatives`) the executed velocity and acceleration by implicit
+        // differentiation. ChartSettings::batched_exact selects the SIMD-batched path.
+        auto exact_samples(
+            const Chart<d> &chart,
+            std::size_t n,
+            const Lanes &u,
+            const Lanes &ud,
+            const Lanes &udd,
+            Lanes &q,
+            Lanes &qd,
+            Lanes &qdd,
+            std::array<float, rake> &w2,
+            bool derivatives = true) const noexcept -> bool
+        {
+            return settings.batched_exact ? exact_samples_batched(chart, n, u, ud, udd, q, qd, qdd, w2, derivatives) :
+                                            exact_samples_scalar(chart, n, u, ud, udd, q, qd, qdd, w2, derivatives);
+        }
+
+        // The batched path: every Newton iteration and both implicit differentiations run on all rake
+        // lanes at once as SIMD rows -- one equality-kernel evaluation, one normal-space system
+        // M = J N, one LU and one solve per step for the whole batch. Each lane's M is solved by LU
+        // without pivoting after preconditioning with P = M^-1 of lane 0 at the first iteration
+        // (one scalar inverse per batch): a batch's samples lie close together on the edge, so P M
+        // stays near the identity, where elimination without pivoting is stable; a lane whose pivot
+        // collapses rejects the batch, as a singular M does in the scalar path.
+        auto exact_samples_batched(
+            const Chart<d> &chart,
+            std::size_t n,
+            const Lanes &u,
+            const Lanes &ud,
+            const Lanes &udd,
+            Lanes &q,
+            Lanes &qd,
+            Lanes &qdd,
+            std::array<float, rake> &w2,
+            bool derivatives) const noexcept -> bool
+        {
+            const std::size_t e = builder_.equality_rows();
+            if (chart.nk != e or e == 0 or n == 0)
+            {
+                return false;
+            }
+
+            const auto rows_of = [&](const auto &lane_value, std::array<Row, d> &out)
+            {
+                alignas(FloatVectorAlignment) std::array<FloatT, d * rake> arr;
+                for (auto lane = 0U; lane < rake; ++lane)
+                {
+                    const auto v = lane_value(std::min<std::size_t>(lane, n - 1));
+                    for (auto dim = 0U; dim < d; ++dim)
+                    {
+                        arr[lane + dim * rake] = v[dim];
+                    }
+                }
+
+                for (auto dim = 0U; dim < d; ++dim)
+                {
+                    out[dim] = Row(arr.data() + dim * rake);
+                }
+            };
+            const auto store = [&](const std::array<Row, d> &rows, Lanes &out)
+            {
+                for (auto dim = 0U; dim < d; ++dim)
+                {
+                    const auto a = rows[dim].to_array();
+                    for (auto lane = 0U; lane < rake; ++lane)
+                    {
+                        out[lane][dim] = a[lane];
+                    }
+                }
+            };
+
+            std::array<Row, d> pre, qr;
+            rows_of([&](std::size_t lane) { return chart_point(chart, u[lane]); }, pre);
+            qr = pre;
+
+            AmbientBlock qb, vb;
+            const auto evaluate = [&](const std::array<Row, d> &qq, const std::array<Row, d> *vv)
+            {
+                for (auto dim = 0U; dim < d; ++dim)
+                {
+                    qb[dim] = qq[dim];
+                }
+
+                if (vv)
+                {
+                    for (auto dim = 0U; dim < d; ++dim)
+                    {
+                        vb[dim] = (*vv)[dim];
+                    }
+
+                    constraints.evaluate_equality(qb, vb);
+                }
+                else
+                {
+                    constraints.evaluate_equality_position(qb);  // Newton: no drift needed
+                }
+
+                constraints.extract_equality_rows(rF_.data(), rJ_.data(), rG_.data());
+            };
+
+            bool have_p = false;
+            std::array<Row, d> step;
+            for (std::size_t it = 0;; ++it)
+            {
+                evaluate(qr, nullptr);
+                ++stats_.newton_iterations;
+                Row err2 = Row::fill(0.F);
+                for (auto r = 0U; r < e; ++r)
+                {
+                    err2 = err2 + rF_[r] * rF_[r];
+                }
+
+                const Row done = err2 <= settings.exact_tolerance;
+                if (done.all())
+                {
+                    break;
+                }
+
+                if (it >= settings.exact_iterations)
+                {
+                    return false;
+                }
+
+                for (auto r = 0U; r < e; ++r)
+                {
+                    rB_[r] = Row::fill(0.F) - rF_[r];
+                }
+
+                if (not normal_step(chart, have_p, true, step))
+                {
+                    return false;
+                }
+
+                for (auto dim = 0U; dim < d; ++dim)
+                {
+                    qr[dim] = (qr[dim] + step[dim]).blend(qr[dim], done);
+                }
+            }
+
+            Row m2 = Row::fill(0.F);
+            for (auto dim = 0U; dim < d; ++dim)
+            {
+                const Row dw = qr[dim] - pre[dim];
+                m2 = m2 + dw * dw;
+            }
+
+            const auto m2a = m2.to_array();
+            for (auto lane = 0U; lane < rake; ++lane)
+            {
+                w2[lane] = m2a[lane];
+            }
+
+            store(qr, q);
+            if (not derivatives)
+            {
+                return true;
+            }
+
+            // J is current at sigma; one factorization serves both differentiations.
+            const auto tangent = [&](const Lanes &x, std::array<Row, d> &out)
+            { rows_of([&](std::size_t lane) { return from_chart(chart, x[lane]); }, out); };
+            const auto correct = [&](std::array<Row, d> &x, const Row *offset, bool refactor)
+            {
+                // x <- x + N w with M w = -(J x + offset)
+                for (auto r = 0U; r < e; ++r)
+                {
+                    Row dot = (offset) ? offset[r] : Row::fill(0.F);
+                    for (auto dim = 0U; dim < d; ++dim)
+                    {
+                        dot = dot + rJ_[r * d + dim] * x[dim];
+                    }
+
+                    rB_[r] = Row::fill(0.F) - dot;
+                }
+
+                if (not normal_step(chart, have_p, refactor, step))
+                {
+                    return false;
+                }
+
+                for (auto dim = 0U; dim < d; ++dim)
+                {
+                    x[dim] = x[dim] + step[dim];
+                }
+
+                return true;
+            };
+
+            std::array<Row, d> qdr, qddr;
+            tangent(ud, qdr);
+            if (not correct(qdr, nullptr, true))
+            {
+                return false;
+            }
+
+            evaluate(qr, &qdr);  // gamma = d2F[qd, qd] at sigma (J unchanged)
+            tangent(udd, qddr);
+            if (not correct(qddr, rG_.data(), false))
+            {
+                return false;
+            }
+
+            store(qdr, qd);
+            store(qddr, qdd);
+            return true;
+        }
+
+        // P = M^-1 of lane 0 (M = J N from the current rows of J): the batch's preconditioner. False
+        // if lane 0's M is singular.
+        auto compute_preconditioner(const Chart<d> &chart) const noexcept -> bool
+        {
+            const std::size_t e = builder_.equality_rows();
+            for (auto r = 0U; r < e; ++r)
+            {
+                for (auto c = 0U; c < e; ++c)
+                {
+                    float m = 0.F;
+                    for (auto j = 0U; j < d; ++j)
+                    {
+                        m += rJ_[r * d + j][{0, 0}] * chart.normal[c][j];
+                    }
+
+                    M_(r, c) = m;
+                }
+            }
+
+            lu_.compute(M_);
+            const auto diag = lu_.matrixLU().diagonal().cwiseAbs();
+            const float hi = diag.maxCoeff();
+            if (not (std::isfinite(hi) and diag.minCoeff() > 1e-6F * std::max(hi, 1e-6F)))
+            {
+                return false;
+            }
+
+            P_ = lu_.inverse();
+            return true;
+        }
+
+        // Joint-space normal step delta = N M^-1 rB_ for every lane (M = J N from the current rows of
+        // J). A single constraint with a generated step kernel runs it on N' = N P (P = lane 0's
+        // M^-1, built at the batch's first step, so J N' stays near the identity and the kernel's
+        // pivot-free LU is stable); otherwise the batched generic LU, refactored when J changed.
+        auto normal_step(const Chart<d> &chart, bool &have_p, bool refactor, std::array<Row, d> &delta)
+            const noexcept -> bool
+        {
+            const std::size_t e = builder_.equality_rows();
+            if (settings.step_kernel and constraints.has_normal_kernel())
+            {
+                if (not have_p)
+                {
+                    if (not compute_preconditioner(chart))
+                    {
+                        return false;
+                    }
+
+                    for (auto c = 0U; c < e; ++c)
+                    {
+                        for (auto j = 0U; j < d; ++j)
+                        {
+                            float v = 0.F;
+                            for (auto m = 0U; m < e; ++m)
+                            {
+                                v += chart.normal[m][j] * P_(m, c);
+                            }
+
+                            rN_[c * d + j] = Row::fill(v);
+                        }
+                    }
+
+                    have_p = true;
+                }
+
+                if (not constraints.solve_normal_rows(rJ_.data(), rB_.data(), rN_.data(), rD_.data()))
+                {
+                    return false;
+                }
+
+                Row lo = Row::fill(std::numeric_limits<float>::infinity());
+                Row hi = Row::fill(0.F);
+                for (auto r = 0U; r < e; ++r)
+                {
+                    const Row mag = rD_[d + r].abs();
+                    lo = lo.min(mag);
+                    hi = hi.max(mag);
+                }
+
+                if (not (lo > hi * 1e-6F).all())
+                {
+                    return false;
+                }
+
+                for (auto j = 0U; j < d; ++j)
+                {
+                    delta[j] = rD_[j];
+                }
+
+                return true;
+            }
+
+            if (refactor and not factor_rows(chart, have_p))
+            {
+                return false;
+            }
+
+            solve_rows();
+            for (auto j = 0U; j < d; ++j)
+            {
+                Row v = Row::fill(0.F);
+                for (auto c = 0U; c < e; ++c)
+                {
+                    v = v + rX_[c] * chart.normal[c][j];
+                }
+
+                delta[j] = v;
+            }
+
+            return true;
+        }
+
+        // Form M = J N for every lane from the current rows of J, precondition it with P (lane 0's
+        // M^-1, computed on the first call of a batch), and LU-factor A = P M in place without
+        // pivoting. False if lane 0's M is singular or any lane's pivots collapse.
+        auto factor_rows(const Chart<d> &chart, bool &have_p) const noexcept -> bool
+        {
+            const std::size_t e = builder_.equality_rows();
+            for (auto r = 0U; r < e; ++r)
+            {
+                for (auto c = 0U; c < e; ++c)
+                {
+                    Row m = Row::fill(0.F);
+                    for (auto j = 0U; j < d; ++j)
+                    {
+                        m = m + rJ_[r * d + j] * chart.normal[c][j];
+                    }
+
+                    rM_[r * e + c] = m;
+                }
+            }
+
+            if (not have_p)
+            {
+                if (not compute_preconditioner(chart))
+                {
+                    return false;
+                }
+
+                have_p = true;
+            }
+
+            for (auto r = 0U; r < e; ++r)
+            {
+                for (auto c = 0U; c < e; ++c)
+                {
+                    Row a = Row::fill(0.F);
+                    for (auto m = 0U; m < e; ++m)
+                    {
+                        a = a + rM_[m * e + c] * P_(r, m);
+                    }
+
+                    rA_[r * e + c] = a;
+                }
+            }
+
+            Row lo = Row::fill(std::numeric_limits<float>::infinity());
+            Row hi = Row::fill(0.F);
+            for (auto p = 0U; p < e; ++p)
+            {
+                const Row pivot = rA_[p * e + p];
+                const Row mag = pivot.abs();
+                lo = lo.min(mag);
+                hi = hi.max(mag);
+                const Row inv = Row::fill(1.F) / pivot;
+                for (auto r = p + 1; r < e; ++r)
+                {
+                    const Row l = rA_[r * e + p] * inv;
+                    rA_[r * e + p] = l;
+                    for (auto c = p + 1; c < e; ++c)
+                    {
+                        rA_[r * e + c] = rA_[r * e + c] - l * rA_[p * e + c];
+                    }
+                }
+            }
+
+            return (lo > hi * 1e-6F).all();
+        }
+
+        // rX_ = M^-1 rB_ for every lane, with the factorization of the last factor_rows: precondition
+        // (P rB_), then unit-lower forward and upper back substitution.
+        void solve_rows() const noexcept
+        {
+            const std::size_t e = builder_.equality_rows();
+            for (auto r = 0U; r < e; ++r)
+            {
+                Row y = Row::fill(0.F);
+                for (auto m = 0U; m < e; ++m)
+                {
+                    y = y + rB_[m] * P_(r, m);
+                }
+
+                rX_[r] = y;
+            }
+
+            for (auto r = 1U; r < e; ++r)
+            {
+                for (auto c = 0U; c < r; ++c)
+                {
+                    rX_[r] = rX_[r] - rA_[r * e + c] * rX_[c];
+                }
+            }
+
+            for (auto r = e; r-- > 0;)
+            {
+                for (auto c = r + 1; c < e; ++c)
+                {
+                    rX_[r] = rX_[r] - rA_[r * e + c] * rX_[c];
+                }
+
+                rX_[r] = rX_[r] / rA_[r * e + r];
+            }
+        }
+
+        auto exact_samples_scalar(
+            const Chart<d> &chart,
+            std::size_t n,
+            const Lanes &u,
+            const Lanes &ud,
+            const Lanes &udd,
+            Lanes &q,
+            Lanes &qd,
+            Lanes &qdd,
+            std::array<float, rake> &w2,
+            bool derivatives = true) const noexcept -> bool
+        {
+            const std::size_t e = builder_.equality_rows();
+            if (chart.nk != e or e == 0 or n == 0)
+            {
+                return false;
+            }
+
+            alignas(FloatVectorAlignment) std::array<FloatT, d * rake> qarr, varr;
+            Lanes pre;
+            for (auto lane = 0U; lane < rake; ++lane)
+            {
+                pre[lane] = chart_point(chart, u[std::min<std::size_t>(lane, n - 1)]);
+                q[lane] = pre[lane];
+            }
+
+            // Newton on F(pre + N w) = 0; lanes that converged keep refreshing their Jacobian at
+            // the converged point, so on exit every J in eq_J_ is evaluated at sigma.
+            for (std::size_t it = 0;; ++it)
+            {
+                constraints.evaluate_equality_position(load_block(q, qarr));
+                ++stats_.newton_iterations;
+                bool all = true;
+                for (auto lane = 0U; lane < n; ++lane)
+                {
+                    float *J = eq_J_.data() + lane * e * d;
+                    constraints.extract_equality(lane, eq_F_.data(), J, eq_gamma_.data());
+
+                    float err2 = 0.F;
+                    for (auto r = 0U; r < e; ++r)
+                    {
+                        err2 += eq_F_[r] * eq_F_[r];
+                    }
+
+                    if (err2 <= settings.exact_tolerance)
+                    {
+                        continue;
+                    }
+
+                    all = false;
+                    if (it >= settings.exact_iterations or not factor_normal_system(chart, J))
+                    {
+                        return false;
+                    }
+
+                    for (auto r = 0U; r < e; ++r)
+                    {
+                        rhs_[r] = -eq_F_[r];
+                    }
+
+                    add_normal_solution(chart, q[lane]);
+                }
+
+                if (all)
+                {
+                    break;
+                }
+
+                for (auto lane = n; lane < rake; ++lane)
+                {
+                    q[lane] = q[n - 1];
+                }
+            }
+
+            for (auto lane = 0U; lane < n; ++lane)
+            {
+                float m2 = 0.F;
+                for (auto j = 0U; j < d; ++j)
+                {
+                    const float dw = q[lane][j] - pre[lane][j];
+                    m2 += dw * dw;
+                }
+
+                w2[lane] = m2;
+            }
+
+            if (not derivatives)
+            {
+                return true;
+            }
+
+            for (auto lane = 0U; lane < n; ++lane)
+            {
+                const float *J = eq_J_.data() + lane * e * d;
+                if (not factor_normal_system(chart, J))
+                {
+                    return false;
+                }
+
+                qd[lane] = from_chart(chart, ud[lane]);
+                for (auto r = 0U; r < e; ++r)
+                {
+                    float dot = 0.F;
+                    for (auto j = 0U; j < d; ++j)
+                    {
+                        dot += J[r * d + j] * qd[lane][j];
+                    }
+
+                    rhs_[r] = -dot;
+                }
+
+                add_normal_solution(chart, qd[lane]);
+            }
+
+            for (auto lane = n; lane < rake; ++lane)
+            {
+                qd[lane] = qd[n - 1];
+            }
+
+            constraints.evaluate_equality(load_block(q, qarr), load_block(qd, varr));
+            for (auto lane = 0U; lane < n; ++lane)
+            {
+                float *J = eq_J_.data() + lane * e * d;
+                constraints.extract_equality(lane, eq_F_.data(), J, eq_gamma_.data());
+                if (not factor_normal_system(chart, J))
+                {
+                    return false;
+                }
+
+                qdd[lane] = from_chart(chart, udd[lane]);
+                for (auto r = 0U; r < e; ++r)
+                {
+                    float dot = 0.F;
+                    for (auto j = 0U; j < d; ++j)
+                    {
+                        dot += J[r * d + j] * qdd[lane][j];
+                    }
+
+                    rhs_[r] = -(dot + eq_gamma_[r]);
+                }
+
+                add_normal_solution(chart, qdd[lane]);
+            }
+
+            return true;
+        }
+
+        // Damped Gauss-Newton on the stacked equality form from q: q <- q - J^T (J J^T + mu I)^-1 F,
+        // trust-region clipped and clamped to the joint bounds, until |F|^2 <= exact_tolerance,
+        // within the constraint settings' iteration cap.
+        auto exact_project(std::array<float, d> &q) const noexcept -> bool
+        {
+            const std::size_t e = builder_.equality_rows();
+            const std::size_t cap = std::max(settings.exact_iterations, constraints.settings().max_iterations);
+            alignas(FloatVectorAlignment) std::array<FloatT, d * rake> qarr;
+            Lanes lanes;
+            Eigen::MatrixXf JJt(e, e);
+            Eigen::VectorXf F(e);
+            for (std::size_t it = 0; it <= cap; ++it)
+            {
+                lanes.fill(q);
+                constraints.evaluate_equality_position(load_block(lanes, qarr));
+                constraints.extract_equality(0, eq_F_.data(), eq_J_.data(), eq_gamma_.data());
+
+                float err2 = 0.F;
+                for (auto r = 0U; r < e; ++r)
+                {
+                    err2 += eq_F_[r] * eq_F_[r];
+                    F[r] = eq_F_[r];
+                }
+
+                if (err2 <= settings.exact_tolerance)
+                {
+                    return true;
+                }
+
+                if (it == cap or not std::isfinite(err2))
+                {
+                    return false;
+                }
+
+                const Eigen::Map<const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> J(
+                    eq_J_.data(), e, d);
+                JJt.noalias() = J * J.transpose();
+                JJt.diagonal().array() += 1e-6F;
+                // Trust region: clip long steps so far seeds descend instead of overshooting.
+                Eigen::VectorXf step = J.transpose() * JJt.ldlt().solve(F);
+                const float norm = step.norm();
+                if (norm > max_projection_step)
+                {
+                    step *= max_projection_step / norm;
+                }
+
+                for (auto j = 0U; j < d; ++j)
+                {
+                    q[j] = std::clamp(q[j] - step[j], Ambient::lower_bound[j], Ambient::upper_bound[j]);
+                }
+            }
+
+            return false;
+        }
+
+        // Exact-chart lift of a single chart point u (no derivatives).
+        inline auto exact_point(const Chart<d> &chart, const std::array<float, d> &u, std::array<float, d> &q_out)
+            const noexcept -> bool
+        {
+            Lanes uu{}, q, qd, qdd;
+            std::array<float, rake> w2;
+            uu[0] = u;
+            if (not exact_samples(chart, 1, uu, uu, uu, q, qd, qdd, w2, false))
+            {
+                return false;
+            }
+
+            q_out = q[0];
             return true;
         }
 
@@ -597,8 +1577,10 @@ namespace vamp::planning::constraint
                 }
             }
 
+            // Exact charts need no shooting: B^T (psi(u_f) - q0) = u_f = B^T (q_t - q0), so
+            // psi(u_f) is the on-manifold target itself.
             es.q_pre = q0;
-            if (es.reach and
+            if (es.reach and not exact_ and
                 not shoot<best_effort>(es.chart, qt, es.uf, es.q_pre, es.lifted))
             {
                 return false;
@@ -792,7 +1774,10 @@ namespace vamp::planning::constraint
             // validation.
             if constexpr (not std::is_same_v<std::decay_t<Accept>, AlwaysTrue>)
             {
-                if (not es.lifted and not lift_point(chart_point(es.chart, es.uf), es.q_pre))
+                const bool lifted = es.lifted or
+                                    ((exact_) ? exact_point(es.chart, es.uf, es.q_pre) :
+                                                lift_point(chart_point(es.chart, es.uf), es.q_pre));
+                if (not lifted)
                 {
                     return EdgeStatus::Invalid;
                 }
@@ -800,6 +1785,37 @@ namespace vamp::planning::constraint
                 if (not accept(join(es.q_pre, v_T)))
                 {
                     return EdgeStatus::Pruned;
+                }
+            }
+
+            // Pre-screen: one SIMD batch spread over the whole edge, on the tangent-plane approximation
+            // (chart point, chart-frame velocity and acceleration -- no lift), against the effort
+            // limits inflated by prescreen_margin. Rejects most doomed edges before any lift.
+            if (settings.prescreen_margin > 0.F)
+            {
+                alignas(FloatVectorAlignment) std::array<FloatT, 3 * d * rake> pz;
+                std::array<float, d> up{}, udp{}, uddp{};
+                for (auto lane = 0U; lane < rake; ++lane)
+                {
+                    eval_cubic(es, T * static_cast<float>(lane + 1) / static_cast<float>(rake), up, udp, uddp);
+                    const auto qa = chart_point(es.chart, up);
+                    const auto va = from_chart(es.chart, udp);
+                    const auto aa = from_chart(es.chart, uddp);
+                    for (auto dim = 0U; dim < d; ++dim)
+                    {
+                        pz[lane + dim * rake] = qa[dim];
+                        pz[lane + (d + dim) * rake] = sign * va[dim];
+                        pz[lane + (2 * d + dim) * rake] = aa[dim];
+                    }
+                }
+
+                if (not ZRobot::template limits_check<rake>(
+                        ZBlock(pz),
+                        collision::attachment_payload<ZRobot::payload_dimension / 10>(environment),
+                        1.F + settings.prescreen_margin,
+                        false))
+                {
+                    return EdgeStatus::Invalid;
                 }
             }
 
@@ -831,6 +1847,11 @@ namespace vamp::planning::constraint
             alignas(FloatVectorAlignment) std::array<FloatT, d * rake> amb;
             alignas(FloatVectorAlignment) std::array<FloatT, 3 * d * rake> zarr;
 
+            // Exact charts: per-lane chart samples and the executed states they lift to.
+            Lanes ub, udb, uddb, ql, qdl, qddl;
+            std::array<float, rake> w2;
+            std::array<float, d> v_exact_T{};
+
             for (auto b = 0U; b < n_batches; ++b)
             {
                 for (auto lane = 0U; lane < rake; ++lane)
@@ -848,6 +1869,9 @@ namespace vamp::planning::constraint
                     }
 
                     du_step[lane] = std::sqrt(du2);
+                    ub[lane] = u_now;
+                    udb[lane] = ud_now;
+                    uddb[lane] = udd_now;
 
                     const auto q_amb = chart_point(es.chart, u_now);
                     const auto v_amb = from_chart(es.chart, ud_now);
@@ -864,8 +1888,36 @@ namespace vamp::planning::constraint
                     }
                 }
 
+                // Exact charts replace projection with the normal-space lift and give the
+                // executed velocity and acceleration exactly (execution frame by construction).
+                if (exact_)
+                {
+                    if (not exact_samples(es.chart, rake, ub, udb, uddb, ql, qdl, qddl, w2))
+                    {
+                        return EdgeStatus::Invalid;
+                    }
+
+                    for (auto lane = 0U; lane < rake; ++lane)
+                    {
+                        for (auto dim = 0U; dim < d; ++dim)
+                        {
+                            amb[lane + dim * rake] = ql[lane][dim];
+                            zarr[lane + (d + dim) * rake] = sign * qdl[lane][dim];
+                            zarr[lane + (2 * d + dim) * rake] = qddl[lane][dim];
+                        }
+                    }
+
+                    if (b + 1 == n_batches)
+                    {
+                        for (auto dim = 0U; dim < d; ++dim)
+                        {
+                            v_exact_T[dim] = sign * qdl[rake - 1][dim];
+                        }
+                    }
+                }
+
                 AmbientBlock ablock(amb);
-                if (not constraints.project_all(ablock))
+                if (not exact_ and not constraints.project_all(ablock))
                 {
                     return EdgeStatus::Invalid;
                 }
@@ -873,7 +1925,7 @@ namespace vamp::planning::constraint
                 // One constraint-kernel evaluation covers the whole batch of lifted
                 // samples; extract every lane's Jacobian up front, since the NaN-fallback
                 // make_chart below overwrites the kernel caches.
-                if (builder_.n_active() != 0)
+                if (builder_.n_active() != 0 and not exact_)
                 {
                     constraints.evaluate_error_jacobian(ablock);
                     for (auto lane = 0U; lane < rake; ++lane)
@@ -927,9 +1979,9 @@ namespace vamp::planning::constraint
                     // components can exceed their chart-center-frame values by a
                     // curvature-order amount, so the limit check must see the executed
                     // values. Accelerations keep the chart frame: the executed correction
-                    // is the same order but needs the second fundamental form, which is not
-                    // economically available here.
-                    if (builder_.n_active() != 0)
+                    // is the same order but needs the second fundamental form -- which
+                    // exact charts supply (exact_samples), so they skip this block.
+                    if (builder_.n_active() != 0 and not exact_)
                     {
                         const float *jac_lane = jac_batch_.data() + lane * jac_stride;
                         const auto chart_t = builder_.active_rows_finite(jac_lane) ?
@@ -981,14 +2033,30 @@ namespace vamp::planning::constraint
             out.T = T;
             out.cost = es.cost;
             out.qf = prev_q;  // last lifted sample, t = T
-            out.vf = v_T;
+            out.vf = (exact_) ? v_exact_T : v_T;
             return EdgeStatus::Valid;
         }
 
+        bool exact_;
         ChartBuilder<Ambient, rake> builder_;
         mutable std::vector<float> err_;
         mutable std::vector<float> jac_batch_;
+        mutable std::vector<float> eq_F_;
+        mutable std::vector<float> eq_gamma_;
+        mutable std::vector<float> eq_J_;  // per-lane equality Jacobians (rake x rows x d)
+        mutable Eigen::MatrixXf M_;        // J N, the normal-space Newton system
+        mutable Eigen::PartialPivLU<Eigen::MatrixXf> lu_;
+        mutable Eigen::VectorXf rhs_;
+        mutable Eigen::VectorXf sol_;
         mutable std::vector<Configuration> chain_;
         mutable PlanningStats stats_;
+        // Batched exact-chart buffers (SIMD rows over the rake lanes): equality F, gamma, J
+        // (row-major), the normal-space system M = J N, its preconditioned LU A = P M, and the
+        // right-hand side / solution; P is the scalar preconditioner of the current batch.
+        mutable std::vector<Row> rF_, rG_, rJ_, rM_, rA_, rB_, rX_;
+        // Generated-kernel path: preconditioned normals N P (broadcast rows) and the kernel output
+        // (joint-space step, then LU pivots).
+        mutable std::vector<Row> rN_, rD_;
+        mutable Eigen::MatrixXf P_;
     };
 }  // namespace vamp::planning::constraint

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <type_traits>
+#include <utility>
 
 #include <vamp/planning/constraints/manifold/constraint.hh>
 #include <vamp/planning/constraints/utils.hh>
@@ -48,10 +50,122 @@ namespace vamp::planning::constraint
                     this->tight_rows[i * 6 + j] = (upper[i][j] - lower[i][j]) < tight_row_width;
                 }
             }
+
+            eq_input.rTe = input.rTe;
+            eq_input.wTr = input.wTr;
+        }
+
+        // Re-target end-effector `eef`'s reference frame (wTr); bounds and offsets are unchanged.
+        void set_reference(std::size_t eef, const Transform &world_to_reference) noexcept
+        {
+            for (auto j = 0U; j < 7; ++j)
+            {
+                input.wTr[eef * 7 + j] = Row::fill(world_to_reference[j]);
+            }
+
+            eq_input.wTr = input.wTr;
+        }
+
+        // Equality form of the tight rows: the offset frame pinned to the reference frame (bound
+        // centre) along each tight row, via the smooth error [p; vee(R - R^T) / 2] of the
+        // generated tsr_equality kernel. Near the pin, each row changes at the rate of the
+        // offset frame's twist expressed in the reference frame (linear velocity first).
+        auto equality_rows() const noexcept -> std::size_t final
+        {
+            if constexpr (has_equality_kernel())
+            {
+                std::size_t n = 0;
+                for (auto i = 0U; i < 6 * n_eef; ++i)
+                {
+                    n += this->tight_rows[i];
+                }
+
+                return n;
+            }
+
+            return 0;
+        }
+
+        void evaluate_equality(const Block &q, const Block &qd) const noexcept final
+        {
+            if constexpr (has_equality_kernel())
+            {
+                eq_input.q = q;
+                eq_input.qd = qd;
+                Robot::template tsr_equality<rake>(eq_input, eq_out);
+            }
+        }
+
+        void extract_equality(std::size_t lane, float *F, float *J, float *gamma) const noexcept final
+        {
+            constexpr std::size_t rows = 6 * n_eef;
+            constexpr std::size_t n_jac = rows * Robot::dimension;
+            std::size_t k = 0;
+            for (auto r = 0U; r < rows; ++r)
+            {
+                if (not this->tight_rows[r])
+                {
+                    continue;
+                }
+
+                for (auto j = 0U; j < Robot::dimension; ++j)
+                {
+                    J[k * Robot::dimension + j] = eq_out[r * Robot::dimension + j][{0, lane}];
+                }
+
+                F[k] = eq_out[n_jac + r][{0, lane}];
+                gamma[k] = eq_out[n_jac + rows + r][{0, lane}];
+                ++k;
+            }
+        }
+
+        void extract_equality_rows(Row *F, Row *J, Row *gamma) const noexcept final
+        {
+            constexpr std::size_t rows = 6 * n_eef;
+            constexpr std::size_t n_jac = rows * Robot::dimension;
+            std::size_t k = 0;
+            for (auto r = 0U; r < rows; ++r)
+            {
+                if (not this->tight_rows[r])
+                {
+                    continue;
+                }
+
+                for (auto j = 0U; j < Robot::dimension; ++j)
+                {
+                    J[k * Robot::dimension + j] = eq_out[r * Robot::dimension + j];
+                }
+
+                F[k] = eq_out[n_jac + r];
+                gamma[k] = eq_out[n_jac + rows + r];
+                ++k;
+            }
         }
 
     private:
         friend Base;
+
+        using EqualityOutput = std::array<Row, 6 * n_eef * Robot::dimension + 12 * n_eef>;
+
+        // Robots generated before the equality kernel existed have no equality form.
+        template <typename R, typename In, typename = void>
+        struct equality_kernel : std::false_type
+        {
+        };
+
+        template <typename R, typename In>
+        struct equality_kernel<
+            R,
+            In,
+            std::void_t<decltype(R::template tsr_equality<rake>(
+                std::declval<const In &>(), std::declval<EqualityOutput &>()))>> : std::true_type
+        {
+        };
+
+        static constexpr auto has_equality_kernel() noexcept -> bool
+        {
+            return equality_kernel<Robot, EqualityInput>::value;
+        }
 
         void run_kernel() const noexcept
         {
@@ -115,6 +229,34 @@ namespace vamp::planning::constraint
             }
         };
 
+        // Input layout of the generated tsr_equality: q, qd, then per end-effector rTe (7), wTr (7).
+        struct EqualityInput
+        {
+            Block q;
+            Block qd;
+            FloatVector<rake, 7 * n_eef> rTe;
+            FloatVector<rake, 7 * n_eef> wTr;
+
+            auto operator[](std::size_t index) const noexcept -> Row
+            {
+                if (index < Robot::dimension)
+                {
+                    return q[index];
+                }
+
+                if (index < 2 * Robot::dimension)
+                {
+                    return qd[index - Robot::dimension];
+                }
+
+                const std::size_t eef = (index - 2 * Robot::dimension) / 14;
+                const std::size_t i = (index - 2 * Robot::dimension) % 14;
+                return (i < 7) ? rTe[eef * 7 + i] : wTr[eef * 7 + i - 7];
+            }
+        };
+
         mutable Input input;
+        mutable EqualityInput eq_input;
+        mutable EqualityOutput eq_out;
     };
 }  // namespace vamp::planning::constraint

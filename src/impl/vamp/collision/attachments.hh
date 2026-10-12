@@ -3,6 +3,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
 
+#include <array>
 #include <type_traits>
 #include <vamp/collision/shapes.hh>
 #include <vector>
@@ -28,6 +29,11 @@ namespace vamp::collision
         Attachment(const Attachment<float> &o) noexcept : Attachment(o.tf)
         {
             end_effector = o.end_effector;
+            for (auto i = 0U; i < inertia.size(); ++i)
+            {
+                inertia[i] = DataT::fill(o.inertia[i]);
+            }
+
             spheres.reserve(o.spheres.size());
             for (const auto &sphere : o.spheres)
             {
@@ -37,6 +43,11 @@ namespace vamp::collision
 
         // Index into the robot's end-effector list this attachment rides on.
         std::size_t end_effector = 0;
+
+        // Payload dynamic parameters about the end-effector frame (pinocchio order: m, m c,
+        // then Ixx, Ixy, Iyy, Ixz, Iyz, Izz about the frame origin), read by the flask robots'
+        // torque and kinetic-energy kernels. All zeros (the default) is a massless attachment.
+        std::array<DataT, 10> inertia{};
         std::vector<Sphere<DataT>> spheres;
         // HACK: To get around passing the environment as const but needing to re-pose the
         // attachments

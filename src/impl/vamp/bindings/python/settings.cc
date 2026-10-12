@@ -1,13 +1,16 @@
 #include <vamp_python_init.hh>
 
+#include <vamp/planning/planners/rrt.hh>
 #include <vamp/planning/constraints/settings.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/planners/roadmap.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/planning/planners/aorrtc_settings.hh>
+#include <vamp/planning/planners/bkpiece_settings.hh>
 #include <vamp/planning/planners/grrtstar_settings.hh>
 #include <vamp/planning/simplify_settings.hh>
 
+#include <nanobind/stl/array.h>
 #include <nanobind/stl/vector.h>
 
 namespace nb = nanobind;
@@ -31,7 +34,11 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_ro(
             "rake_calls",
             &vp::PlanningStats::rake_calls,
-            "Rake-wide FK + collision-check batch evaluations.");
+            "Rake-wide FK + collision-check batch evaluations.")
+        .def_ro(
+            "newton_iterations",
+            &vp::PlanningStats::newton_iterations,
+            "Exact-chart Newton iterations (rake-wide equality-kernel evaluations).");
 
     nb::class_<vp::RRTCSettings>(pymodule, "RRTCSettings")
         .def(nb::init<>())
@@ -46,6 +53,40 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_samples", &vp::RRTCSettings::max_samples)
         .def_rw("start_tree_first", &vp::RRTCSettings::start_tree_first)
         .def_rw("nn_epsilon", &vp::RRTCSettings::nn_epsilon);
+
+    nb::class_<vp::BKPIECESettings>(pymodule, "BKPIECESettings")
+        .def(nb::init<>())
+        .def_rw("components", &vp::BKPIECESettings::components)
+        .def_rw("cell_size", &vp::BKPIECESettings::cell_size)
+        .def_rw("object_projection", &vp::BKPIECESettings::object_projection)
+        .def_rw("object_in_eef", &vp::BKPIECESettings::object_in_eef)
+        .def_rw("range", &vp::BKPIECESettings::range)
+        .def_rw("local_targets", &vp::BKPIECESettings::local_targets)
+        .def_rw("extension_candidates", &vp::BKPIECESettings::extension_candidates)
+        .def_rw("border_fraction", &vp::BKPIECESettings::border_fraction)
+        .def_rw("failed_expansion_score_factor", &vp::BKPIECESettings::failed_expansion_score_factor)
+        .def_rw("connect_attempts", &vp::BKPIECESettings::connect_attempts)
+        .def_rw("start_tree_first", &vp::BKPIECESettings::start_tree_first)
+        .def_rw("max_iterations", &vp::BKPIECESettings::max_iterations)
+        .def_rw("max_samples", &vp::BKPIECESettings::max_samples);
+
+    nb::class_<vp::AVPSettings, vp::BKPIECESettings>(pymodule, "AVPSettings")
+        .def(nb::init<>())
+        .def_rw("edge_samples", &vp::AVPSettings::edge_samples)
+        .def_rw("effort_fraction", &vp::AVPSettings::effort_fraction);
+
+    nb::class_<vp::RRTSettings>(pymodule, "RRTSettings")
+        .def(nb::init<>())
+        .def_rw("range", &vp::RRTSettings::range)
+        .def_rw("goal_bias", &vp::RRTSettings::goal_bias)
+        .def_rw("goal_candidates", &vp::RRTSettings::goal_candidates)
+        .def_rw("dynamic_domain", &vp::RRTSettings::dynamic_domain)
+        .def_rw("radius", &vp::RRTSettings::radius)
+        .def_rw("alpha", &vp::RRTSettings::alpha)
+        .def_rw("min_radius", &vp::RRTSettings::min_radius)
+        .def_rw("max_iterations", &vp::RRTSettings::max_iterations)
+        .def_rw("max_samples", &vp::RRTSettings::max_samples)
+        .def_rw("nn_epsilon", &vp::RRTSettings::nn_epsilon);
 
     nb::class_<vp::AORRTCSettings>(pymodule, "AORRTCSettings")
         .def(nb::init<>())
@@ -187,7 +228,13 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("shoot_iters", &vc::ChartSettings::shoot_iters)
         .def_rw("max_edge_samples", &vc::ChartSettings::max_edge_samples)
         .def_rw("rank_tolerance", &vc::ChartSettings::rank_tolerance)
-        .def_rw("max_slip_fraction", &vc::ChartSettings::max_slip_fraction);
+        .def_rw("max_slip_fraction", &vc::ChartSettings::max_slip_fraction)
+        .def_rw("exact_chart", &vc::ChartSettings::exact_chart)
+        .def_rw("exact_tolerance", &vc::ChartSettings::exact_tolerance)
+        .def_rw("exact_iterations", &vc::ChartSettings::exact_iterations)
+        .def_rw("batched_exact", &vc::ChartSettings::batched_exact)
+        .def_rw("step_kernel", &vc::ChartSettings::step_kernel)
+        .def_rw("prescreen_margin", &vc::ChartSettings::prescreen_margin);
 
     nb::class_<vp::SimplifySettings>(pymodule, "SimplifySettings")
         .def(nb::init<>())

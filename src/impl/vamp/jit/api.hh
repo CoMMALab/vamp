@@ -926,10 +926,13 @@ namespace vamp::jit
     }
 
     inline auto
-    make_ke_shaped_sampler(std::shared_ptr<DynamicRobot> robot, DynamicSampler &inner, float max_energy)
-        -> std::shared_ptr<DynamicSampler>
+    make_ke_shaped_sampler(
+        std::shared_ptr<DynamicRobot> robot,
+        DynamicSampler &inner,
+        float max_energy,
+        const vamp::collision::Environment<float> *env = nullptr) -> std::shared_ptr<DynamicSampler>
     {
-        auto *h = flask_ops_checked(*robot).sampler_ke_shaped(inner.handle, max_energy);
+        auto *h = flask_ops_checked(*robot).sampler_ke_shaped(inner.handle, max_energy, env);
         return std::make_shared<DynamicSampler>(std::move(robot), h);
     }
 
@@ -970,17 +973,19 @@ namespace vamp::jit
         return out;
     }
 
-    inline auto flask_torques(DynamicRobot &robot, const float *x) -> std::vector<float>
+    // env (nullable) supplies end-effector payloads from its attachments.
+    inline auto flask_torques(DynamicRobot &robot, const float *x, const vamp::collision::Environment<float> *env = nullptr)
+        -> std::vector<float>
     {
         const auto &fops = flask_ops_checked(robot);
         std::vector<float> out(fops.flat_dimension());
-        fops.torques(x, out.data());
+        fops.torques(x, out.data(), env);
         return out;
     }
 
-    inline auto flask_kinetic_energy(DynamicRobot &robot, const float *x) -> float
+    inline auto flask_kinetic_energy(DynamicRobot &robot, const float *x, const vamp::collision::Environment<float> *env = nullptr) -> float
     {
-        return flask_ops_checked(robot).kinetic_energy(x);
+        return flask_ops_checked(robot).kinetic_energy(x, env);
     }
 
     inline auto flask_eef_velocity(DynamicRobot &robot, const float *x) -> std::vector<float>
@@ -1011,6 +1016,16 @@ namespace vamp::jit
         flask_ops_checked(robot).rho_set(rho);
     }
 
+    inline auto flask_effort_scale(DynamicRobot &robot) -> float
+    {
+        return flask_ops_checked(robot).effort_scale_get();
+    }
+
+    inline auto flask_set_effort_scale(DynamicRobot &robot, float scale) -> void
+    {
+        flask_ops_checked(robot).effort_scale_set(scale);
+    }
+
     inline auto flask_velocity_limits(DynamicRobot &robot) -> std::vector<float>
     {
         const auto &fops = flask_ops_checked(robot);
@@ -1030,21 +1045,23 @@ namespace vamp::jit
     inline auto phase_satisfied(
         std::shared_ptr<DynamicRobot> robot,
         const float *config,
-        const DynamicPhaseConstraintVec &phase) -> bool
+        const DynamicPhaseConstraintVec &phase,
+        const vamp::collision::Environment<float> *env = nullptr) -> bool
     {
         const auto &fops = flask_ops_checked(*robot);
         auto handles = phase_handles(*robot, phase);
-        return fops.phase_satisfied(config, handles.data(), handles.size()) != 0;
+        return fops.phase_satisfied(config, handles.data(), handles.size(), env) != 0;
     }
 
     inline auto phase_velocity_scale(
         std::shared_ptr<DynamicRobot> robot,
         const float *config,
-        const DynamicPhaseConstraintVec &phase) -> float
+        const DynamicPhaseConstraintVec &phase,
+        const vamp::collision::Environment<float> *env = nullptr) -> float
     {
         const auto &fops = flask_ops_checked(*robot);
         auto handles = phase_handles(*robot, phase);
-        return fops.phase_velocity_scale(config, handles.data(), handles.size());
+        return fops.phase_velocity_scale(config, handles.data(), handles.size(), env);
     }
 
     namespace detail
@@ -1092,9 +1109,10 @@ namespace vamp::jit
             const std::vector<ffi::PhaseConstraintHandle *> &handles,
             const float *q,
             const char *what,
-            const char *message) -> void
+            const char *message,
+            const vamp::collision::Environment<float> &env) -> void
         {
-            if (fops.phase_satisfied(q, handles.data(), handles.size()) == 0)
+            if (fops.phase_satisfied(q, handles.data(), handles.size(), &env) == 0)
             {
                 throw std::invalid_argument(std::string(what) + message);
             }
@@ -1110,7 +1128,8 @@ namespace vamp::jit
             const ChartSettings &chs,
             const std::vector<ffi::PhaseConstraintHandle *> &phase,
             const char *what,
-            const char *message) -> void
+            const char *message,
+            const vamp::collision::Environment<float> &env) -> void
         {
             if (fops.chart_satisfied(
                     q,
@@ -1119,7 +1138,8 @@ namespace vamp::jit
                     static_cast<const void *>(&cs),
                     static_cast<const void *>(&chs),
                     phase.data(),
-                    phase.size()) == 0)
+                    phase.size(),
+                    &env) == 0)
             {
                 throw std::invalid_argument(std::string(what) + message);
             }
@@ -1146,8 +1166,8 @@ namespace vamp::jit
         const auto &p = detail::phase_planner_entry(*robot, planner);
         auto handles = phase_handles(*robot, phase);
 
-        detail::check_phase_feasible(fops, handles, start, "start", phase_message);
-        detail::check_phase_feasible(fops, handles, goal, "goal", phase_message);
+        detail::check_phase_feasible(fops, handles, start, "start", phase_message, env);
+        detail::check_phase_feasible(fops, handles, goal, "goal", phase_message, env);
 
         auto *handle = p.solve_phase(
             start,
@@ -1182,11 +1202,11 @@ namespace vamp::jit
         const auto &p = detail::phase_planner_entry(*robot, planner);
         auto handles = phase_handles(*robot, phase);
 
-        detail::check_phase_feasible(fops, handles, start, "start", phase_message);
+        detail::check_phase_feasible(fops, handles, start, "start", phase_message, env);
         const auto dim = robot->dimension();
         for (std::uint64_t i = 0; i < n_goals; ++i)
         {
-            detail::check_phase_feasible(fops, handles, goals + i * dim, "goal", phase_message);
+            detail::check_phase_feasible(fops, handles, goals + i * dim, "goal", phase_message, env);
         }
 
         auto *handle = p.solve_multi_phase(
@@ -1222,7 +1242,7 @@ namespace vamp::jit
         const auto dim = robot->dimension();
         for (std::uint64_t i = 0; i < n_waypoints; ++i)
         {
-            if (fops.phase_satisfied(path + i * dim, handles.data(), handles.size()) == 0)
+            if (fops.phase_satisfied(path + i * dim, handles.data(), handles.size(), &env) == 0)
             {
                 throw std::invalid_argument("path state " + std::to_string(i) + phase_simplify_message);
             }
@@ -1249,7 +1269,8 @@ namespace vamp::jit
         const DynamicConstraintVec &constraints,
         const ConstraintSettings &cs,
         const ChartSettings &chs,
-        const DynamicPhaseConstraintVec &phase) -> std::vector<float>
+        const DynamicPhaseConstraintVec &phase,
+        const vamp::collision::Environment<float> *env = nullptr) -> std::vector<float>
     {
         const auto &fops = chart_ops_checked(*robot);
         auto handles = constraint_handles(*robot->ambient(), constraints);
@@ -1264,6 +1285,7 @@ namespace vamp::jit
                 static_cast<const void *>(&chs),
                 ph.data(),
                 ph.size(),
+                env,
                 out.data()) == 0)
         {
             throw std::invalid_argument("projection onto the constraint manifold did not converge");
@@ -1272,12 +1294,137 @@ namespace vamp::jit
         return out;
     }
 
+    // Impact goal region (vamp::planning::constraint::ImpactGoalRegion) on a flask sibling.
+    struct DynamicGoalRegion
+    {
+        std::shared_ptr<DynamicRobot> robot;
+        ffi::GoalRegionHandle *handle{nullptr};
+        std::uint64_t rows{0};
+
+        DynamicGoalRegion(std::shared_ptr<DynamicRobot> r, ffi::GoalRegionHandle *h, std::uint64_t n)
+          : robot(std::move(r)), handle(h), rows(n)
+        {
+        }
+
+        ~DynamicGoalRegion()
+        {
+            if (handle != nullptr and robot)
+            {
+                robot->ops().flask.goal_region_destroy(handle);
+            }
+        }
+
+        DynamicGoalRegion(const DynamicGoalRegion &) = delete;
+        DynamicGoalRegion &operator=(const DynamicGoalRegion &) = delete;
+    };
+
+    inline auto make_goal_region(
+        std::shared_ptr<DynamicRobot> robot,
+        const DynamicConstraintVec &constraints,
+        const std::vector<float> &rate,
+        float min_speed,
+        float max_speed,
+        const ConstraintSettings &cs,
+        const ChartSettings &chs,
+        const vamp::collision::Environment<float> &env,
+        const DynamicPhaseConstraintVec &phase,
+        const std::vector<float> &seed = {},
+        float spread = 0.1F) -> std::shared_ptr<DynamicGoalRegion>
+    {
+        if (not (0.F <= min_speed and min_speed <= max_speed))
+        {
+            throw std::invalid_argument("need 0 <= min_speed <= max_speed");
+        }
+
+        const auto &fops = chart_ops_checked(*robot);
+        auto handles = constraint_handles(*robot->ambient(), constraints);
+        auto ph = phase_handles(*robot, phase);
+        std::uint64_t rows = 0;
+        auto *h = fops.goal_region_new(
+            handles.data(),
+            handles.size(),
+            rate.data(),
+            rate.size(),
+            min_speed,
+            max_speed,
+            static_cast<const void *>(&cs),
+            static_cast<const void *>(&chs),
+            static_cast<const void *>(&env),
+            ph.data(),
+            ph.size(),
+            &rows);
+        if (h == nullptr)
+        {
+            if (rows == 0)
+            {
+                throw std::invalid_argument(
+                    "ImpactGoalRegion requires every constraint to provide an equality form (all "
+                    "manifold rows tight) and no Pfaffian rows");
+            }
+
+            throw std::invalid_argument(
+                "rate needs one entry per equality row (" + std::to_string(rows) + ")");
+        }
+
+        if (not seed.empty())
+        {
+            if (seed.size() != robot->dimension() / 2)
+            {
+                fops.goal_region_destroy(h);
+                throw std::invalid_argument("seed has the wrong dimension");
+            }
+
+            fops.goal_region_set_seed(h, seed.data(), spread);
+        }
+
+        return std::make_shared<DynamicGoalRegion>(std::move(robot), h, rows);
+    }
+
+    inline auto goal_region_sample(
+        DynamicGoalRegion &region,
+        DynamicSampler &sampler,
+        std::uint64_t n,
+        std::uint64_t max_attempts) -> std::vector<std::vector<float>>
+    {
+        const auto &fops = region.robot->ops().flask;
+        std::vector<std::vector<float>> out;
+        std::vector<float> z(region.robot->dimension());
+        for (std::uint64_t a = 0; a < max_attempts and out.size() < n; ++a)
+        {
+            if (fops.goal_region_sample(region.handle, sampler.handle, z.data()) != 0)
+            {
+                out.emplace_back(z);
+            }
+        }
+
+        return out;
+    }
+
+    inline auto goal_region_velocity(DynamicGoalRegion &region, const float *q, float speed) -> std::vector<float>
+    {
+        std::vector<float> out(region.robot->dimension() / 2);
+        if (region.robot->ops().flask.goal_region_velocity(region.handle, q, speed, out.data()) == 0)
+        {
+            throw std::invalid_argument("the equality rows are singular at this configuration");
+        }
+
+        return out;
+    }
+
+    inline auto goal_region_impulse(DynamicGoalRegion &region, const float *state) -> std::vector<float>
+    {
+        std::vector<float> out(region.rows);
+        region.robot->ops().flask.goal_region_impulse(region.handle, state, out.data());
+        return out;
+    }
+
     inline auto chart_satisfied(
         std::shared_ptr<DynamicRobot> robot,
         const float *config,
         const DynamicConstraintVec &constraints,
         const ConstraintSettings &cs,
-        const DynamicPhaseConstraintVec &phase) -> bool
+        const DynamicPhaseConstraintVec &phase,
+        const vamp::collision::Environment<float> *env = nullptr) -> bool
     {
         const auto &fops = chart_ops_checked(*robot);
         auto handles = constraint_handles(*robot->ambient(), constraints);
@@ -1292,7 +1439,8 @@ namespace vamp::jit
                    static_cast<const void *>(&cs),
                    static_cast<const void *>(&chs),
                    ph.data(),
-                   ph.size()) != 0;
+                   ph.size(),
+                   env) != 0;
     }
 
     inline auto chart_debug(
@@ -1330,6 +1478,7 @@ namespace vamp::jit
         std::vector<float> errors;
         float duration{0.0F};
         float cost{0.0F};
+        std::vector<std::vector<float>> accelerations;  // only when requested
     };
 
     inline auto chart_lift_edge(
@@ -1340,12 +1489,13 @@ namespace vamp::jit
         bool forward,
         std::uint64_t n_samples,
         const ConstraintSettings &cs,
-        const ChartSettings &chs) -> DynamicLiftedEdge
+        const ChartSettings &chs,
+        bool with_accelerations = false) -> DynamicLiftedEdge
     {
         const auto &fops = chart_ops_checked(*robot);
         auto handles = constraint_handles(*robot->ambient(), constraints);
 
-        std::vector<float> flat_states;
+        std::vector<float> flat_states, flat_acc;
         DynamicLiftedEdge out;
         if (fops.chart_lift_edge(
                 from,
@@ -1359,7 +1509,8 @@ namespace vamp::jit
                 &flat_states,
                 &out.errors,
                 &out.duration,
-                &out.cost) == 0)
+                &out.cost,
+                with_accelerations ? &flat_acc : nullptr) == 0)
         {
             throw std::invalid_argument(
                 "edge lift failed: no chart at the from state, a lift diverged, or the "
@@ -1371,6 +1522,12 @@ namespace vamp::jit
         for (std::size_t i = 0; i + width <= flat_states.size(); i += width)
         {
             out.states.emplace_back(flat_states.begin() + i, flat_states.begin() + i + width);
+        }
+
+        const auto n_q = width / 2;
+        for (std::size_t i = 0; i + n_q <= flat_acc.size(); i += n_q)
+        {
+            out.accelerations.emplace_back(flat_acc.begin() + i, flat_acc.begin() + i + n_q);
         }
         return out;
     }
@@ -1399,8 +1556,8 @@ namespace vamp::jit
         auto handles = constraint_handles(*robot->ambient(), constraints);
         auto ph = phase_handles(*robot, phase);
 
-        detail::check_chart_feasible(fops, start, handles, cs, chs, ph, "start", chart_message);
-        detail::check_chart_feasible(fops, goal, handles, cs, chs, ph, "goal", chart_message);
+        detail::check_chart_feasible(fops, start, handles, cs, chs, ph, "start", chart_message, env);
+        detail::check_chart_feasible(fops, goal, handles, cs, chs, ph, "goal", chart_message, env);
 
         auto *handle = p.solve_chart(
             start,
@@ -1444,12 +1601,12 @@ namespace vamp::jit
         auto handles = constraint_handles(*robot->ambient(), constraints);
         auto ph = phase_handles(*robot, phase);
 
-        detail::check_chart_feasible(fops, start, handles, cs, chs, ph, "start", chart_message);
+        detail::check_chart_feasible(fops, start, handles, cs, chs, ph, "start", chart_message, env);
         const auto dim = robot->dimension();
         for (std::uint64_t i = 0; i < n_goals; ++i)
         {
             detail::check_chart_feasible(
-                fops, goals + i * dim, handles, cs, chs, ph, "goal", chart_message);
+                fops, goals + i * dim, handles, cs, chs, ph, "goal", chart_message, env);
         }
 
         auto *handle = p.solve_multi_chart(
@@ -1500,7 +1657,8 @@ namespace vamp::jit
                     static_cast<const void *>(&cs),
                     static_cast<const void *>(&chs),
                     ph.data(),
-                    ph.size()) == 0)
+                    ph.size(),
+                    &env) == 0)
             {
                 throw std::invalid_argument(
                     "path state " + std::to_string(i) + manifold_simplify_message);

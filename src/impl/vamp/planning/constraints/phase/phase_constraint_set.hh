@@ -19,12 +19,22 @@ namespace vamp::planning::constraint
         using Block = typename Robot::template ConfigurationBlock<rake>;
         using Configuration = typename Robot::Configuration;
         using Ptr = std::shared_ptr<const PhaseConstraint<Robot, rake>>;
+        using Payload = PayloadOf<Robot>;
 
-        PhaseConstraintSet() = default;
-
-        explicit PhaseConstraintSet(std::vector<Ptr> constraints) noexcept
-          : constraints_(std::move(constraints))
+        PhaseConstraintSet() noexcept : PhaseConstraintSet(std::vector<Ptr>{})
         {
+        }
+
+        // `payload`: end-effector payload dynamic parameters every constraint is judged with
+        // (the planning environment's attachment_payload); zeros for the bare robot.
+        explicit PhaseConstraintSet(std::vector<Ptr> constraints, const Payload &payload = {}) noexcept
+          : constraints_(std::move(constraints))
+          , payload_(payload)
+        {
+            for (auto i = 0U; i < payload_.size(); ++i)
+            {
+                payload_block_[i] = FloatVector<rake, 1>::fill(payload_[i]);
+            }
         }
 
         auto empty() const noexcept -> bool
@@ -37,7 +47,7 @@ namespace vamp::planning::constraint
         {
             for (const auto &c : constraints_)
             {
-                c->evaluate(x);
+                c->evaluate(x, payload_block_);
             }
         }
 
@@ -78,7 +88,7 @@ namespace vamp::planning::constraint
             float s = 1.0F;
             for (const auto &c : constraints_)
             {
-                s = std::min(s, c->velocity_scale(z));
+                s = std::min(s, c->velocity_scale(z, payload_));
             }
 
             // The closed-form scales are exact in real arithmetic but can land a hair
@@ -109,5 +119,7 @@ namespace vamp::planning::constraint
 
     private:
         std::vector<Ptr> constraints_;
+        Payload payload_;
+        PayloadBlockOf<Robot, rake> payload_block_;
     };
 }  // namespace vamp::planning::constraint

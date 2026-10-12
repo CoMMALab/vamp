@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <vector>
 
 #include <vamp/planning/constraints/settings.hh>
 #include <vamp/planning/constraints/utils.hh>
@@ -74,6 +75,97 @@ namespace vamp::planning::constraint
         // violation error vanishes, so masking would zero every row.
         virtual void extract_error_jacobian(std::size_t lane, float *err, float *jac)
             const noexcept = 0;
+
+        // Smooth equality form of the manifold-defining rows, for exact charts
+        // (ChartSettings::exact_chart): F(q) = 0 cuts out the same manifold as the tight rows
+        // but without hinges or log maps, so its Jacobian J = dF/dq and drift
+        // gamma = d²F/dq²[qd, qd] are exact everywhere, and implicit differentiation of
+        // F(sigma(t)) = 0 yields an edge's executed velocity and acceleration. Constraints
+        // without one report 0 rows.
+        virtual auto equality_rows() const noexcept -> std::size_t
+        {
+            return 0;
+        }
+
+        // Run the equality kernel on positions q and velocities qd (whole block), caching every
+        // lane for extract_equality().
+        virtual void evaluate_equality(const Block & /*q*/, const Block & /*qd*/) const noexcept
+        {
+        }
+
+        // Positions-only evaluate_equality (qd = 0): F and J, with gamma zero -- all a Newton step on
+        // F needs. The default runs evaluate_equality with zero velocities; constraints with a
+        // cheaper drift-free kernel override it.
+        virtual void evaluate_equality_position(const Block &q) const noexcept
+        {
+            evaluate_equality(q, Block::zero_vector());
+        }
+
+        // F (equality_rows()), J (equality_rows() x Robot::dimension, row-major), and gamma
+        // (equality_rows()) of one lane of the last evaluate_equality() block.
+        virtual void extract_equality(std::size_t /*lane*/, float * /*F*/, float * /*J*/, float * /*gamma*/)
+            const noexcept
+        {
+        }
+
+        // Whether solve_normal_rows has a generated kernel for this constraint's equality rows.
+        virtual auto has_normal_kernel() const noexcept -> bool
+        {
+            return false;
+        }
+
+        // Exact-chart normal-space step for every lane with a generated kernel: given J (rows x
+        // dimension), rhs (rows) and normal directions N (rows x dimension, preconditioned so J N^T
+        // is near the identity), writes the joint-space step N^T (J N^T)^-1 rhs (dimension) and the
+        // LU pivots (rows) to `out`. False without a kernel.
+        virtual auto solve_normal_rows(
+            const FloatVector<rake, 1> * /*J*/,
+            const FloatVector<rake, 1> * /*rhs*/,
+            const FloatVector<rake, 1> * /*N*/,
+            FloatVector<rake, 1> * /*out*/) const noexcept -> bool
+        {
+            return false;
+        }
+
+        // All lanes of the last evaluate_equality() block at once, as SIMD rows: F
+        // (equality_rows()), J (equality_rows() x Robot::dimension, row-major), gamma
+        // (equality_rows()). The default gathers extract_equality() lane by lane; constraints
+        // whose kernels already hold SIMD rows override it with copies.
+        virtual void extract_equality_rows(
+            FloatVector<rake, 1> *F,
+            FloatVector<rake, 1> *J,
+            FloatVector<rake, 1> *gamma) const noexcept
+        {
+            constexpr std::size_t d = Robot::dimension;
+            const std::size_t e = equality_rows();
+            std::vector<float> f(e), j(e * d), g(e);
+            std::vector<std::array<float, rake>> fl(e), jl(e * d), gl(e);
+            for (std::size_t lane = 0; lane < rake; ++lane)
+            {
+                extract_equality(lane, f.data(), j.data(), g.data());
+                for (std::size_t r = 0; r < e; ++r)
+                {
+                    fl[r][lane] = f[r];
+                    gl[r][lane] = g[r];
+                }
+
+                for (std::size_t i = 0; i < e * d; ++i)
+                {
+                    jl[i][lane] = j[i];
+                }
+            }
+
+            for (std::size_t r = 0; r < e; ++r)
+            {
+                F[r] = FloatVector<rake, 1>(fl[r].data());
+                gamma[r] = FloatVector<rake, 1>(gl[r].data());
+            }
+
+            for (std::size_t i = 0; i < e * d; ++i)
+            {
+                J[i] = FloatVector<rake, 1>(jl[i].data());
+            }
+        }
 
         // Error and Jacobian of one lane of q; batch callers should evaluate once and
         // extract per lane instead.

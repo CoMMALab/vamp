@@ -216,6 +216,8 @@ namespace vamp::jit
         f.flat_dimension = resolve<ffi::FlaskFlatDimensionFn>(*session_, r, "flat_dimension");
         f.rho_get = resolve<ffi::FlaskRhoGetFn>(*session_, r, "rho_get");
         f.rho_set = resolve<ffi::FlaskRhoSetFn>(*session_, r, "rho_set");
+        f.effort_scale_get = resolve<ffi::FlaskEffortScaleGetFn>(*session_, r, "effort_scale_get");
+        f.effort_scale_set = resolve<ffi::FlaskEffortScaleSetFn>(*session_, r, "effort_scale_set");
         f.velocity_limits = resolve<ffi::FlaskLimitsFn>(*session_, r, "velocity_limits");
         f.effort_limits = resolve<ffi::FlaskLimitsFn>(*session_, r, "effort_limits");
 
@@ -226,6 +228,12 @@ namespace vamp::jit
             f.chart_debug = resolve<ffi::ChartDebugFn>(*session_, r, "chart_debug");
             f.chart_lift_edge = resolve<ffi::ChartLiftEdgeFn>(*session_, r, "chart_lift_edge");
             f.simplify_chart = resolve<ffi::SimplifyChartFn>(*session_, r, "simplify_chart");
+            f.goal_region_new = resolve<ffi::GoalRegionNewFn>(*session_, r, "goal_region_new");
+            f.goal_region_destroy = resolve<ffi::GoalRegionDestroyFn>(*session_, r, "goal_region_destroy");
+            f.goal_region_set_seed = resolve<ffi::GoalRegionSetSeedFn>(*session_, r, "goal_region_set_seed");
+            f.goal_region_sample = resolve<ffi::GoalRegionSampleFn>(*session_, r, "goal_region_sample");
+            f.goal_region_velocity = resolve<ffi::GoalRegionVelocityFn>(*session_, r, "goal_region_velocity");
+            f.goal_region_impulse = resolve<ffi::GoalRegionImpulseFn>(*session_, r, "goal_region_impulse");
         }
     }
 

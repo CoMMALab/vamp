@@ -437,21 +437,23 @@ namespace vamp::binding
         static auto phase_satisfied(
             std::shared_ptr<vj::DynamicRobot> self,
             const Cfg &state,
-            const PhaseConstraintVec &phase_constraints) -> bool
+            const PhaseConstraintVec &phase_constraints,
+            const Env &env) -> bool
         {
             std::vector<float> scratch;
             return vj::phase_satisfied(
-                self, ConfigInput::as_ptr(state, self->dimension(), scratch, "state"), phase_constraints);
+                self, ConfigInput::as_ptr(state, self->dimension(), scratch, "state"), phase_constraints, &env);
         }
 
         static auto phase_velocity_scale(
             std::shared_ptr<vj::DynamicRobot> self,
             const Cfg &state,
-            const PhaseConstraintVec &phase_constraints) -> float
+            const PhaseConstraintVec &phase_constraints,
+            const Env &env) -> float
         {
             std::vector<float> scratch;
             return vj::phase_velocity_scale(
-                self, ConfigInput::as_ptr(state, self->dimension(), scratch, "state"), phase_constraints);
+                self, ConfigInput::as_ptr(state, self->dimension(), scratch, "state"), phase_constraints, &env);
         }
 
         template <vp::Planner P, typename Settings>
@@ -546,7 +548,8 @@ namespace vamp::binding
             const vj::DynamicConstraintVec &constraints,
             const vj::ConstraintSettings &constraint_settings,
             const vj::ChartSettings &chart_settings,
-            const PhaseConstraintVec &phase_constraints)
+            const PhaseConstraintVec &phase_constraints,
+            const Env &env)
         {
             std::vector<float> scratch;
             auto out = vj::chart_project(
@@ -555,7 +558,8 @@ namespace vamp::binding
                 constraints,
                 constraint_settings,
                 chart_settings,
-                phase_constraints);
+                phase_constraints,
+                &env);
             return make_ndarray<1>(out.data(), {out.size()});
         }
 
@@ -564,7 +568,8 @@ namespace vamp::binding
             const Cfg &state,
             const vj::DynamicConstraintVec &constraints,
             const vj::ConstraintSettings &constraint_settings,
-            const PhaseConstraintVec &phase_constraints) -> bool
+            const PhaseConstraintVec &phase_constraints,
+            const Env &env) -> bool
         {
             std::vector<float> scratch;
             return vj::chart_satisfied(
@@ -572,7 +577,8 @@ namespace vamp::binding
                 ConfigInput::as_ptr(state, self->dimension(), scratch, "state"),
                 constraints,
                 constraint_settings,
-                phase_constraints);
+                phase_constraints,
+                &env);
         }
 
         static auto debug_chart(
@@ -599,8 +605,8 @@ namespace vamp::binding
             bool forward,
             std::size_t n_samples,
             const vj::ConstraintSettings &constraint_settings,
-            const vj::ChartSettings &chart_settings)
-            -> std::tuple<std::vector<std::vector<float>>, std::vector<float>, float, float>
+            const vj::ChartSettings &chart_settings,
+            bool with_accelerations) -> nb::tuple
         {
             const auto d = self->dimension();
             std::vector<float> sf, st;
@@ -612,8 +618,15 @@ namespace vamp::binding
                 forward,
                 n_samples,
                 constraint_settings,
-                chart_settings);
-            return {std::move(out.states), std::move(out.errors), out.duration, out.cost};
+                chart_settings,
+                with_accelerations);
+            if (with_accelerations)
+            {
+                return nb::make_tuple(
+                    std::move(out.states), std::move(out.errors), out.duration, out.cost, std::move(out.accelerations));
+            }
+
+            return nb::make_tuple(std::move(out.states), std::move(out.errors), out.duration, out.cost);
         }
 
         // The gating check precedes input validation so that ambient robots (whose
@@ -661,19 +674,19 @@ namespace vamp::binding
                 std::vector<float>(x.begin() + 2 * n_q, x.end()));
         }
 
-        static auto flask_torques(vj::DynamicRobot &self, const Cfg &x) -> std::vector<float>
+        static auto flask_torques(vj::DynamicRobot &self, const Cfg &x, const Env &env) -> std::vector<float>
         {
             const auto dx = 3 * static_cast<std::size_t>(vj::flask_flat_dimension(self));
             std::vector<float> scratch;
-            return vj::flask_torques(self, ConfigInput::as_ptr(x, dx, scratch, "flat state"));
+            return vj::flask_torques(self, ConfigInput::as_ptr(x, dx, scratch, "flat state"), &env);
         }
 
-        static auto flask_kinetic_energy(vj::DynamicRobot &self, const Cfg &state) -> float
+        static auto flask_kinetic_energy(vj::DynamicRobot &self, const Cfg &state, const Env &env) -> float
         {
             vj::flask_ops_checked(self);
             std::vector<float> scratch;
             return vj::flask_kinetic_energy(
-                self, ConfigInput::as_ptr(state, self.dimension(), scratch, "state"));
+                self, ConfigInput::as_ptr(state, self.dimension(), scratch, "state"), &env);
         }
 
         static auto flask_eef_velocity(vj::DynamicRobot &self, const Cfg &state) -> std::vector<float>
@@ -887,7 +900,9 @@ namespace vamp::binding
             "kinetic_energy",
             &Traits::flask_kinetic_energy,
             "state"_a,
-            "Total kinetic energy (1/2) qdot^T M(q) qdot of a flat state (q, qdot).");
+            "environment"_a = typename Traits::Env{},
+            "Total kinetic energy (1/2) qdot^T M(q) qdot of a flat state (q, qdot), including the "
+            "payloads of the environment's attachments.");
         klass.def(
             "eef_velocity",
             &Traits::flask_eef_velocity,
@@ -897,7 +912,9 @@ namespace vamp::binding
             "torques",
             &Traits::flask_torques,
             "x"_a,
-            "Joint torques for a flat state stack x = [q; qd; qdd].");
+            "environment"_a = typename Traits::Env{},
+            "Joint torques for a flat state stack x = [q; qd; qdd], including the payloads of the "
+            "environment's attachments.");
     }
 
     void init_dynamic(nb::module_ &pymodule)
@@ -929,6 +946,53 @@ namespace vamp::binding
             "Manifold constraint over robot configurations. Constraints cache per-evaluation "
             "state and are not thread-safe: do not share one instance across concurrent "
             "planning calls.");
+
+        nb::class_<vj::DynamicGoalRegion>(
+            pymodule,
+            "DynamicGoalRegion",
+            "Impact goal region on a JIT flask robot (see the static ImpactGoalRegion).")
+            .def_prop_ro("rows", [](const vj::DynamicGoalRegion &g) { return g.rows; })
+            .def(
+                "sample",
+                [](vj::DynamicGoalRegion &g, std::shared_ptr<vj::DynamicSampler> sampler, std::uint64_t n,
+                   std::uint64_t max_attempts)
+                {
+                    std::vector<nb::ndarray<nb::numpy, float, nb::device::cpu>> out;
+                    for (auto &z : vj::goal_region_sample(g, *sampler, n, max_attempts))
+                    {
+                        out.emplace_back(make_ndarray<1>(z.data(), {z.size()}));
+                    }
+
+                    return out;
+                },
+                "sampler"_a,
+                "n"_a = 1,
+                "max_attempts"_a = 1000)
+            .def(
+                "velocity",
+                [](vj::DynamicGoalRegion &g, const std::vector<float> &q, float speed)
+                {
+                    if (q.size() != g.robot->dimension() / 2)
+                    {
+                        throw std::invalid_argument("configuration has the wrong dimension");
+                    }
+
+                    return vj::goal_region_velocity(g, q.data(), speed);
+                },
+                "configuration"_a,
+                "speed"_a)
+            .def(
+                "impulse",
+                [](vj::DynamicGoalRegion &g, const std::vector<float> &state)
+                {
+                    if (state.size() != g.robot->dimension())
+                    {
+                        throw std::invalid_argument("state has the wrong dimension");
+                    }
+
+                    return vj::goal_region_impulse(g, state.data());
+                },
+                "state"_a);
 
         nb::class_<vj::DynamicPhaseConstraint>(
             pymodule,
@@ -1280,6 +1344,12 @@ namespace vamp::binding
             "set_rho",
             [](vj::DynamicRobot &self, float rho) { vj::flask_set_rho(self, rho); },
             "rho"_a);
+        klass.def("effort_scale", [](vj::DynamicRobot &self) { return vj::flask_effort_scale(self); });
+        klass.def(
+            "set_effort_scale",
+            [](vj::DynamicRobot &self, float scale) { vj::flask_set_effort_scale(self, scale); },
+            "scale"_a,
+            "Uniformly derate (scale < 1) the effort limits the torque check enforces.");
         klass.def(
             "velocity_limits",
             [](vj::DynamicRobot &self) { return vj::flask_velocity_limits(self); });
@@ -1293,13 +1363,45 @@ namespace vamp::binding
             "ke_shaped",
             [](std::shared_ptr<vj::DynamicRobot> self,
                std::shared_ptr<vj::DynamicSampler> sampler,
-               float max_energy)
-            { return vj::make_ke_shaped_sampler(std::move(self), *sampler, max_energy); },
+               float max_energy,
+               const vamp::collision::Environment<float> &env)
+            { return vj::make_ke_shaped_sampler(std::move(self), *sampler, max_energy, &env); },
             "sampler"_a,
             "max_energy"_a,
+            "environment"_a = vamp::collision::Environment<float>{},
             "Wrap a sampler so sample kinetic energy is uniform on [0, max_energy] instead of "
             "concentrated near the velocity-box maximum; rescales each sample's velocity block "
             "by the scalar kinetic-energy kernel.");
+
+        klass.def(
+            "ImpactGoalRegion",
+            [](std::shared_ptr<vj::DynamicRobot> self,
+               const vj::DynamicConstraintVec &constraints,
+               const std::vector<float> &rate,
+               float min_speed,
+               float max_speed,
+               const vj::ConstraintSettings &cs,
+               const vj::ChartSettings &chs,
+               const vamp::collision::Environment<float> &env,
+               const vj::DynamicPhaseConstraintVec &phase,
+               std::optional<std::vector<float>> seed,
+               float spread)
+            {
+                return vj::make_goal_region(
+                    std::move(self), constraints, rate, min_speed, max_speed, cs, chs, env, phase,
+                    seed.value_or(std::vector<float>{}), spread);
+            },
+            "constraints"_a,
+            "rate"_a,
+            "min_speed"_a,
+            "max_speed"_a,
+            "constraint_settings"_a = vj::ConstraintSettings{},
+            "chart_settings"_a = vj::ChartSettings{},
+            "environment"_a = vamp::collision::Environment<float>{},
+            "phase_constraints"_a = vj::DynamicPhaseConstraintVec{},
+            "seed"_a = nb::none(),
+            "spread"_a = 0.1F,
+            "Impact goal region on the constraint manifold (see the static ImpactGoalRegion).");
 
         klass.def(
             "KineticEnergyConstraint",

@@ -111,7 +111,8 @@ def lift_path(module, path, constraints, constraint_settings, chart_settings):
     are executed in reverse). The reconstruction shoots toward the recorded endpoint
     and stops once attained, so misses up to ~reached_pos_tol are inherent; beyond 2x
     the edge is considered unreconstructible. Returns (dense states, per-state times,
-    max constraint error, duration, per-edge endpoint misses, per-edge sample counts)."""
+    max constraint error, duration, per-edge endpoint misses, per-edge sample counts,
+    dense accelerations -- executed under exact charts, chart-frame otherwise)."""
     n_q = len(path[0]) // 2
     dense = []
     times = []
@@ -119,32 +120,36 @@ def lift_path(module, path, constraints, constraint_settings, chart_settings):
     total_T = 0.0
     misses = []
     counts = []
+    accels = []
     for i in range(len(path) - 1):
         a, b = np.asarray(path[i]), np.asarray(path[i + 1])
         best = None
         for frm, tgt, fwd, endpoint in ((a, b, True, b), (b, a, False, a)):
             try:
-                states, errs, T, _ = module.lift_edge(
+                states, errs, T, _, acc = module.lift_edge(
                     frm, tgt, constraints, forward=fwd, n_samples=32,
-                    constraint_settings=constraint_settings, chart_settings=chart_settings)
+                    constraint_settings=constraint_settings, chart_settings=chart_settings,
+                    with_accelerations=True)
             except ValueError:
                 continue
             miss = float(np.linalg.norm(np.asarray(states[-1])[:n_q] - endpoint[:n_q]))
             if best is None or miss < best[0]:
-                best = (miss, states, errs, T, fwd)
+                best = (miss, states, errs, T, fwd, acc)
         if best is None:
             raise RuntimeError(f"edge {i} of the path could not be lifted")
-        miss, states, errs, T, fwd = best
+        miss, states, errs, T, fwd, acc = best
         if miss > 2.0 * chart_settings.reached_pos_tol:
             raise RuntimeError(f"lifted edge {i} misses its endpoint by {miss:.2e}")
         dense.extend(np.asarray(s) for s in (states if fwd else states[::-1]))
+        accels.extend(np.asarray(a) for a in (acc if fwd else acc[::-1]))
         # lift_edge samples at uniform times in [0, T], so timestamps are recoverable.
         times.extend(total_T + np.linspace(0.0, float(T), len(states)))
         max_err = max(max_err, float(max(errs)))
         total_T += float(T)
         misses.append(miss)
         counts.append(len(states))
-    return np.array(dense, dtype=np.float32), np.array(times), max_err, total_T, misses, counts
+    return (np.array(dense, dtype=np.float32), np.array(times), max_err, total_T, misses, counts,
+            np.array(accels, dtype=np.float32))
 
 
 def heal_path(module, path, environment, constraints, constraint_settings, chart_settings):
@@ -401,10 +406,120 @@ def bimanual_problem(module):
     return start_seed, goal_seed, [relative], e
 
 
+# Heavy lift: both hands grip a tote from above by the handles on its end walls (end effectors
+# facing down, fingers closing across the handles) and lift it off the floor, at the arms' base
+# height, onto a stand in front of the robot. Tote spheres sit 1 mm above both resting surfaces.
+# (center, half extents)
+HEAVY_LIFT_FLOOR_TOP, HEAVY_LIFT_STAND_TOP = -0.035, 0.424  # floor just clears the base spheres (z >= -0.03)
+HEAVY_LIFT_SCENE = [
+    ([0.0, 0.0, HEAVY_LIFT_FLOOR_TOP - 0.1], [2.5, 2.5, 0.1]),                    # floor
+    ([0.55, 0.0, (HEAVY_LIFT_STAND_TOP + HEAVY_LIFT_FLOOR_TOP) / 2],
+     [0.10, 0.15, (HEAVY_LIFT_STAND_TOP - HEAVY_LIFT_FLOOR_TOP) / 2]),            # stand
+    ([0.625, 0.0, 1.11], [0.175, 0.50, 0.01]),                                    # ceiling board, bottom 1.10
+]
+# Tote extents along its frame's x (forward), y (handle to handle) and z (down); the tote frame
+# is the left grasp frame moved to the tote centre. Fingertips close on the handles 2 cm below
+# the rim; the centre rests HEAVY_LIFT_REST above a support (spheres reach 0.075 below it).
+HEAVY_LIFT_TOTE = (0.24, 0.36, 0.15)
+HEAVY_LIFT_HANDLE_DEPTH = 0.02
+HEAVY_LIFT_REST = 0.076
+HEAVY_LIFT_START_BOX = [0.32, 0.0, HEAVY_LIFT_FLOOR_TOP + HEAVY_LIFT_REST]
+HEAVY_LIFT_GOAL_BOX = [0.53, 0.0, HEAVY_LIFT_STAND_TOP + HEAVY_LIFT_REST]
+# The right fingertips sit one tote length along the left grasp frame's y (with this sign),
+# yawed by HEAVY_LIFT_RIGHT_YAW about the shared downward z.
+HEAVY_LIFT_HANDLE_SIGN, HEAVY_LIFT_RIGHT_YAW = 1.0, np.pi
+# Tote spheres in the tote frame. They stop ~3 cm short of the handles, since attachment vs.
+# robot checks would otherwise always flag the gripping fingers.
+HEAVY_LIFT_BOX = [
+    ([x, y, z], 0.06) for x in (-0.06, 0.06) for y in (-0.09, -0.03, 0.03, 0.09) for z in (-0.015, 0.015)
+]
+# Seeds: the strongest resting start found among postures with bent elbows, wrists clear of
+# their singularities and 0.15 rad joint-limit margin (static tote capacity 19.7 kg, equal
+# split), and a connected resting goal (17.5 kg).
+HEAVY_LIFT_START_SEED = np.array(
+    [-0.940571, -0.666787, 1.588270, -2.850008, 1.235393, 2.427595, -2.761586,
+     1.020797, -1.419033, -1.650223, -2.741665, -1.584373, 1.741412, 1.482178], dtype=np.float32)
+HEAVY_LIFT_GOAL_SEED = np.array(
+    [-2.064609, -1.376502, 0.676420, -1.513033, 1.333459, 0.684056, -2.759170,
+     -1.238333, 0.686057, 1.702768, -1.249418, -0.725714, 1.241370, 1.247867], dtype=np.float32)
+
+
+# Swing layout: the same tote and floor start pulled out a little (x 0.36), the stand farther out and
+# lower (x 0.55-0.75, top 0.25) so the lift can arc up and forward instead of rising vertically in
+# front of the bases. The default ("floor") layout above stays the reference.
+HEAVY_LIFT_SWING_STAND_TOP = 0.25
+HEAVY_LIFT_SWING_SCENE = [
+    HEAVY_LIFT_SCENE[0],                                                          # floor
+    ([0.65, 0.0, (HEAVY_LIFT_SWING_STAND_TOP + HEAVY_LIFT_FLOOR_TOP) / 2],
+     [0.10, 0.15, (HEAVY_LIFT_SWING_STAND_TOP - HEAVY_LIFT_FLOOR_TOP) / 2]),      # stand
+    HEAVY_LIFT_SCENE[2],                                                          # ceiling board
+]
+HEAVY_LIFT_SWING_START_BOX = [0.36, 0.0, HEAVY_LIFT_FLOOR_TOP + HEAVY_LIFT_REST]
+HEAVY_LIFT_SWING_GOAL_BOX = [0.65, 0.0, HEAVY_LIFT_SWING_STAND_TOP + HEAVY_LIFT_REST]
+# Seeds (same posture filter as the floor layout, null-space refined): start capacity 27.3 kg, goal 16.8 kg.
+HEAVY_LIFT_SWING_START_SEED = np.array(
+    [-1.216305, -0.419949, 1.714215, -2.752228, 0.943249, 2.619714, -2.676220,
+     1.299275, -0.448510, -1.771262, -2.705103, -0.951842, 2.592718, 1.209852], dtype=np.float32)
+HEAVY_LIFT_SWING_GOAL_SEED = np.array(
+    [-2.157705, -1.640040, 0.899805, -1.548563, 1.676579, 0.903861, -2.669782,
+     -0.963871, 1.113508, 1.647320, -1.223313, -1.158038, 1.354263, 1.298422], dtype=np.float32)
+
+
+def heavy_lift_right_in_left():
+    """Right grasp frame in the left one (wxyz + xyz)."""
+    half = HEAVY_LIFT_RIGHT_YAW / 2
+    return [np.cos(half), 0.0, 0.0, np.sin(half), 0.0, HEAVY_LIFT_HANDLE_SIGN * HEAVY_LIFT_TOTE[1], 0.0]
+
+
+def heavy_lift_tote_in_grasp(k=0):
+    """Tote frame in grasp frame k (0 left, 1 right), 4x4."""
+    left = np.eye(4)
+    left[1, 3] = HEAVY_LIFT_HANDLE_SIGN * HEAVY_LIFT_TOTE[1] / 2
+    left[2, 3] = HEAVY_LIFT_TOTE[2] / 2 - HEAVY_LIFT_HANDLE_DEPTH
+    if k == 0:
+        return left
+    c, s = np.cos(HEAVY_LIFT_RIGHT_YAW), np.sin(HEAVY_LIFT_RIGHT_YAW)
+    right = np.eye(4)
+    right[:3, :3] = [[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]]
+    right[:3, 3] = heavy_lift_right_in_left()[4:]
+    return np.linalg.inv(right) @ left
+
+
+def heavy_lift_environment(box_mass=0.0, layout="floor"):
+    e = vamp.Environment()
+    for center, half in (HEAVY_LIFT_SWING_SCENE if layout == "swing" else HEAVY_LIFT_SCENE):
+        e.add_cuboid(vamp.Cuboid(center, [0.0, 0.0, 0.0], half))
+
+    # The tote's inertia is split equally between the hands: each carries half its wrench, a
+    # valid (if not torque-optimal) load distribution for a rigid grasp.
+    a, b, c = HEAVY_LIFT_TOTE
+    inertia = box_mass / 12.0 * np.diag([b * b + c * c, a * a + c * c, a * a + b * b])
+    for k in range(2):
+        half = vamp.Attachment(heavy_lift_tote_in_grasp(k).astype(np.float32), k)
+        if k == 0:
+            half.add_spheres([vamp.Sphere(c, r) for c, r in HEAVY_LIFT_BOX])
+        half.set_inertia(box_mass / 2, np.zeros(3, np.float32), (inertia / 2).astype(np.float32))
+        e.attach(half)
+
+    return e
+
+
+def heavy_lift_problem(module, box_mass=0.0, layout="floor"):
+    # Tote resting on the floor (HEAVY_LIFT_START_BOX) -> resting on the stand (HEAVY_LIFT_GOAL_BOX), or the
+    # swing layout's HEAVY_LIFT_SWING_START_BOX -> HEAVY_LIFT_SWING_GOAL_BOX.
+    if layout not in ("floor", "swing"):
+        raise ValueError(f"unknown heavy_lift layout {layout!r} (floor or swing)")
+    relative = module.BimanualTaskSpaceConstraint(heavy_lift_right_in_left(), [0.0] * 6, [0.0] * 6)
+    start, goal = ((HEAVY_LIFT_SWING_START_SEED, HEAVY_LIFT_SWING_GOAL_SEED) if layout == "swing"
+                   else (HEAVY_LIFT_START_SEED, HEAVY_LIFT_GOAL_SEED))
+    return start.copy(), goal.copy(), [relative], heavy_lift_environment(box_mass, layout)
+
+
 PROBLEMS = {
     "line": ("panda", line_problem, "panda_spherized.urdf"),
     "plane": ("panda", plane_problem, "panda_spherized.urdf"),
     "bimanual": ("bimanual_panda", bimanual_problem, "bipanda_spherized.urdf"),
+    "heavy_lift": ("bimanual_panda", heavy_lift_problem, "bipanda_spherized.urdf"),
     "screw": ("panda", screw_problem, "panda_spherized.urdf"),
     "knife": ("panda", knife_problem, "panda_spherized.urdf"),
 }
@@ -423,6 +538,11 @@ def main(
     heal: bool = False,  # Close interior connection gaps by chaining executed arrivals (flask/retime).
     holonomic: bool = False,  # Swap the screw's Pfaffian row for its holonomic representation (screw only).
     turn: float = 5.0,  # Total screw rotation in rad (screw only).
+    exact: bool = False,  # Exact charts: executed velocities/accelerations by implicit differentiation (flask/retime).
+    box_mass: float = 0.0,  # Box payload in kg, split equally between the hands (heavy_lift only).
+    effort_scale: float | None = None,  # Derate the effort limits the torque check enforces (flask/retime).
+    land: float | None = None,  # Touchdown goal set: set the box down at up to this speed in m/s (heavy_lift, --flask --exact).
+    layout: str = "floor",  # heavy_lift scene: floor (tote lifted onto a stand right in front) or swing (stand farther out and lower).
     visualize: bool = False,
     **kwargs,
 ):
@@ -435,6 +555,10 @@ def main(
         range_ = 0.1 if mode == "knife" else 0.5
     if mode == "screw":
         problem = partial(screw_problem, turn=turn)
+    if mode == "heavy_lift":
+        problem = partial(heavy_lift_problem, box_mass=box_mass, layout=layout)
+    elif box_mass:
+        raise ValueError("--box_mass only applies to heavy_lift mode")
     if flask and retime:
         raise ValueError("--flask already plans kinodynamically; --retime retimes a geometric plan")
     kinodynamic = flask or retime
@@ -444,6 +568,8 @@ def main(
         raise ValueError("phase constraints only apply to the chart-LQMT machinery; pass --flask or --retime")
     if sample_energy is not None and not flask:
         raise ValueError("--sample_energy only applies to the chart-LQMT planner; pass --flask")
+    if (exact or effort_scale is not None) and not kinodynamic:
+        raise ValueError("--exact and --effort_scale apply to the chart-LQMT machinery; pass --flask or --retime")
     if heal and not kinodynamic:
         raise ValueError("--heal only applies to the chart-LQMT machinery; pass --flask or --retime")
     if mode in ("screw", "knife") and not flask:
@@ -478,6 +604,8 @@ def main(
         flask_simp_settings.operations = vf.RETIME_OPERATIONS
     if kinodynamic and rho is not None:
         path_module.set_rho(rho)
+    if kinodynamic:
+        path_module.set_effort_scale(1.0 if effort_scale is None else effort_scale)
 
     if planner == "rrtc" or planner == "grrtstar":
         plan_settings.range = range_
@@ -572,6 +700,7 @@ def main(
         chart_settings = vamp.ChartSettings()
         if mode in ("screw", "knife"):
             chart_settings.reached_pos_tol = 0.05
+        chart_settings.exact_chart = exact
         chart_kwargs["chart_settings"] = chart_settings
         gates = vf.phase_constraints(path_module, max_kinetic_energy, max_eef_speed)
         if gates:
@@ -599,9 +728,34 @@ def main(
         if not module.validate(q, e):
             raise RuntimeError(f"projected {name} configuration is in collision")
 
+    if land is not None:
+        if not (mode == "heavy_lift" and flask and exact):
+            raise ValueError("--land needs --mode heavy_lift --flask --exact")
+        # Touchdown goal set: the box pinned at its ledge pose (the left grasp frame expressed
+        # in the box frame; left rows tight, right rows free), descending at up to `land` m/s.
+        # Goal velocities are minimum-energy, so the impact with the ledge leaves the robot at
+        # rest: reaching any goal is setting the box down. One planner call, many goal roots.
+        offset = heavy_lift_tote_in_grasp()
+        box_pose = np.array(ambient.eefk(np.asarray(goal)[:n_q])) @ offset
+        xyzw = tr.quaternion_from_matrix(box_pose)
+        identity = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        box_pin = ambient.TaskSpaceConstraint(
+            [[1.0, 0.0, 0.0, 0.0, *(-offset[:3, 3])], identity],
+            [[xyzw[3], xyzw[0], xyzw[1], xyzw[2], *box_pose[:3, 3]], identity],
+            [[0.0] * 6, [-10.0] * 6], [[0.0] * 6, [10.0] * 6])
+        goal_settings = vamp.ConstraintSettings()
+        goal_settings.max_iterations = 500
+        # The tote frame's z points down, so descending is +z on the pin's third row.
+        region = module.ImpactGoalRegion(
+            [*constraints, box_pin], [0.0] * 6 + [0.0, 0.0, 1.0, 0.0, 0.0, 0.0], 0.0, land,
+            goal_settings, chart_kwargs["chart_settings"], e, seed=np.asarray(goal)[:n_q], spread=0.1)
+        goal = region.sample(module.halton(), 16, 100000)
+        impulses = [float(np.linalg.norm(region.impulse(g))) for g in goal]
+        print(f"touchdown goal set: {len(goal)} goals, impulse {min(impulses):.1f}-{max(impulses):.1f} N s")
+
     sampler = module.halton()
     if sample_energy is not None:
-        sampler = module.ke_shaped(sampler, float(sample_energy))
+        sampler = module.ke_shaped(sampler, float(sample_energy), e)
     elapsed = time.perf_counter()
     result = planner_func(
         start, goal, e, plan_settings, sampler,
@@ -621,6 +775,10 @@ def main(
     print(f"{mode} with {planner}{tag}: solved in {elapsed * 1e3:.1f} ms")
     print(f"path: {len(result.path)} -> {len(path)} states, "
           f"cost {result.path.cost():.4f} -> {path.cost():.4f}")
+    if land is not None:
+        touchdown = np.asarray(path[len(path) - 1])
+        print(f"touchdown: impact impulse {np.linalg.norm(region.impulse(touchdown)):.1f} N s, "
+              f"robot at rest after impact")
 
     if retime:
         # Retime on the flask sibling: lift the geometric waypoints to rest states and
@@ -640,7 +798,7 @@ def main(
 
     if heal:
         cs = chart_kwargs["chart_settings"]
-        _, _, _, _, misses_before, _ = lift_path(
+        _, _, _, _, misses_before, _, _ = lift_path(
             path_module, path, constraints, constraint_settings, cs)
         heal_elapsed = time.perf_counter()
         path, n_forward, n_backward, reasons = heal_path(
@@ -659,13 +817,18 @@ def main(
 
     dense = dense_t = None
     if kinodynamic:
-        dense, dense_t, max_err, total_T, misses, counts = lift_path(
+        dense, dense_t, max_err, total_T, misses, counts, dense_acc = lift_path(
             path_module, path, constraints, constraint_settings, chart_kwargs["chart_settings"])
         vmax = np.abs(dense[:, n_q:]).max(axis=0)
         vel_ratio = float((vmax / np.array(path_module.velocity_limits())).max())
+        tau = np.array([path_module.torques(np.concatenate([z, a]).astype(np.float32), e)
+                        for z, a in zip(dense, dense_acc)])
+        limits = np.array(path_module.effort_limits()) * path_module.effort_scale()
+        effort_ratio = float((np.abs(tau) / limits).max())
         print(f"trajectory: {total_T:.2f} s over {len(path) - 1} segments, "
               f"max constraint dist^2 {max_err ** 2:.2e}, max velocity ratio {vel_ratio:.2f}, "
-              f"max endpoint miss {max(misses):.2e}")
+              f"max effort ratio {effort_ratio:.2f} ({'executed' if exact else 'chart-frame'} "
+              f"accelerations), max endpoint miss {max(misses):.2e}")
         if heal:
             print("  per-edge miss after:  " + " ".join(f"{m:.1e}" for m in misses))
         if mode == "screw":
@@ -708,7 +871,7 @@ def main(
         if "phase_constraints" in chart_kwargs:
             # Enforcement is at the planner's validation samples, so uniformly-resampled
             # lift samples may peak slightly between them.
-            max_ke = max(float(path_module.kinetic_energy(z)) for z in dense)
+            max_ke = max(float(path_module.kinetic_energy(z, e)) for z in dense)
             max_ee = max(vf.max_eef_speed(path_module, z) for z in dense)
             ke_cap = f" (cap {max_kinetic_energy:g} J)" if max_kinetic_energy is not None else ""
             ee_cap = f" (cap {max_eef_speed:g} m/s)" if max_eef_speed is not None else ""
@@ -819,6 +982,20 @@ def main(
 
         slider = add_trajectory(server, waypoints, robot, [], [[]])
         play = server.gui.add_checkbox("Play", initial_value=True)
+
+        if mode == "heavy_lift":
+            # The held tote rides the left grasp frame, centred between the handles.
+            offset = heavy_lift_tote_in_grasp()
+            box = server.scene.add_box(
+                "/payload/box", color=(200, 120, 40), dimensions=HEAVY_LIFT_TOTE)
+
+            def pose_box(q):
+                pose = np.array(ambient.eefk(np.asarray(q, dtype=np.float32))) @ offset
+                box.wxyz = tf.SO3.from_matrix(pose[:3, :3]).wxyz
+                box.position = pose[:3, 3]
+
+            pose_box(waypoints[0])
+            slider.on_update(lambda _: pose_box(waypoints[int(slider.value)]))
 
         # Playback schedule: flask trajectories replay on the lifted wall-clock timing;
         # geometric paths carry no timing, so they step at a constant rate.

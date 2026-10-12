@@ -11,6 +11,7 @@ namespace vamp::jit::ffi
     struct PhsHandle;
     struct ConstraintHandle;
     struct PhaseConstraintHandle;
+    struct GoalRegionHandle;
 
     struct PlanResultMeta
     {
@@ -160,13 +161,17 @@ namespace vamp::jit::ffi
     using PhaseKineticEnergyNewFn = PhaseConstraintHandle *(*)(float max_energy);
     using PhaseEEFSpeedNewFn = PhaseConstraintHandle *(*)(float max_speed);
     using PhaseDestroyFn = void (*)(PhaseConstraintHandle *);
+    // env_ptr (host-side Environment<float>, or nullptr) supplies end-effector payloads
+    // from its attachments to dynamics-dependent kernels.
     using PhaseSatisfiedFn = std::int32_t (*)(const float *config,
                                               PhaseConstraintHandle *const *phase,
-                                              std::uint64_t n_phase);
+                                              std::uint64_t n_phase,
+                                              const void *env_ptr);
     using PhaseVelocityScaleFn = float (*)(const float *config,
                                            PhaseConstraintHandle *const *phase,
-                                           std::uint64_t n_phase);
-    using SamplerKeShapedFn = SamplerHandle *(*)(SamplerHandle *inner, float max_energy);
+                                           std::uint64_t n_phase,
+                                           const void *env_ptr);
+    using SamplerKeShapedFn = SamplerHandle *(*)(SamplerHandle *inner, float max_energy, const void *env_ptr);
 
     using SolvePhaseFn = PlanResultHandle *(*)(const float *start,
                                                const float *goal,
@@ -204,13 +209,15 @@ namespace vamp::jit::ffi
                                      float *out_grad_a,
                                      float *out_grad_b);
     using FlaskEvalFn = void (*)(const float *a, const float *b, float T, float t, float *out);
-    using FlaskTorquesFn = void (*)(const float *x, float *out);
-    using FlaskKineticEnergyFn = float (*)(const float *x);
+    using FlaskTorquesFn = void (*)(const float *x, float *out, const void *env_ptr);
+    using FlaskKineticEnergyFn = float (*)(const float *x, const void *env_ptr);
     using FlaskEEFVelocityFn = void (*)(const float *x, float *out);
     using FlaskNEndEffectorsFn = std::uint64_t (*)();
     using FlaskFlatDimensionFn = std::uint64_t (*)();
     using FlaskRhoGetFn = float (*)();
     using FlaskRhoSetFn = void (*)(float rho);
+    using FlaskEffortScaleGetFn = float (*)();
+    using FlaskEffortScaleSetFn = void (*)(float scale);
     using FlaskLimitsFn = void (*)(float *out);
 
     // Chart-based constrained planning on the flask sibling: manifold constraints are
@@ -223,6 +230,7 @@ namespace vamp::jit::ffi
                                             const void *chart_settings_ptr,
                                             PhaseConstraintHandle *const *phase,
                                             std::uint64_t n_phase,
+                                            const void *env_ptr,
                                             float *out);
     using ChartSatisfiedFn = std::int32_t (*)(const float *config,
                                               ConstraintHandle *const *constraints,
@@ -230,7 +238,8 @@ namespace vamp::jit::ffi
                                               const void *constraint_settings_ptr,
                                               const void *chart_settings_ptr,
                                               PhaseConstraintHandle *const *phase,
-                                              std::uint64_t n_phase);
+                                              std::uint64_t n_phase,
+                                              const void *env_ptr);
     using ChartDebugFn = void (*)(const float *config,
                                   ConstraintHandle *const *constraints,
                                   std::uint64_t n_constraints,
@@ -248,7 +257,8 @@ namespace vamp::jit::ffi
                                              void *out_states_vec,
                                              void *out_errors_vec,
                                              float *out_duration,
-                                             float *out_cost);
+                                             float *out_cost,
+                                             void *out_accelerations_vec);
 
     using SolveChartFn = PlanResultHandle *(*)(const float *start,
                                                const float *goal,
@@ -286,4 +296,25 @@ namespace vamp::jit::ffi
                                                   const void *chart_settings_ptr,
                                                   PhaseConstraintHandle *const *phase,
                                                   std::uint64_t n_phase);
+
+    // Impact goal regions on the flask sibling (vamp::planning::constraint::ImpactGoalRegion).
+    // New returns nullptr when the constraint set has no equality form (out_rows 0) or rate does
+    // not have one entry per equality row (out_rows the row count).
+    using GoalRegionNewFn = GoalRegionHandle *(*)(ConstraintHandle *const *constraints,
+                                                  std::uint64_t n_constraints,
+                                                  const float *rate,
+                                                  std::uint64_t n_rate,
+                                                  float min_speed,
+                                                  float max_speed,
+                                                  const void *constraint_settings_ptr,
+                                                  const void *chart_settings_ptr,
+                                                  const void *env_ptr,
+                                                  PhaseConstraintHandle *const *phase,
+                                                  std::uint64_t n_phase,
+                                                  std::uint64_t *out_rows);
+    using GoalRegionDestroyFn = void (*)(GoalRegionHandle *);
+    using GoalRegionSetSeedFn = void (*)(GoalRegionHandle *, const float *seed, float spread);
+    using GoalRegionSampleFn = std::int32_t (*)(GoalRegionHandle *, SamplerHandle *sampler, float *out_state);
+    using GoalRegionVelocityFn = std::int32_t (*)(GoalRegionHandle *, const float *q, float speed, float *out);
+    using GoalRegionImpulseFn = void (*)(GoalRegionHandle *, const float *state, float *out);
 }  // namespace vamp::jit::ffi

@@ -140,6 +140,109 @@ namespace vamp::planning::constraint
             }
         }
 
+        // Stacked equality-form rows (see Constraint::equality_rows).
+        auto equality_rows() const noexcept -> std::size_t
+        {
+            std::size_t n = 0;
+            for (const auto &c : constraints_)
+            {
+                n += c->equality_rows();
+            }
+
+            return n;
+        }
+
+        // Whether the set supports exact charts: every constraint's manifold-defining rows have
+        // an equality form and none are Pfaffian (velocity-only rows have no position-level F).
+        auto exact_form() const noexcept -> bool
+        {
+            if (empty())
+            {
+                return false;
+            }
+
+            for (const auto &c : constraints_)
+            {
+                const auto n = c->n_rows();
+                auto active = std::make_unique<bool[]>(n);
+                auto pfaffian = std::make_unique<bool[]>(n);
+                c->active_rows(active.get());
+                c->pfaffian_rows(pfaffian.get());
+
+                std::size_t n_active = 0;
+                for (auto i = 0U; i < n; ++i)
+                {
+                    if (pfaffian[i])
+                    {
+                        return false;
+                    }
+
+                    n_active += active[i];
+                }
+
+                if (n_active == 0 or c->equality_rows() != n_active)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        void evaluate_equality(const Block &q, const Block &qd) const noexcept
+        {
+            for (const auto &c : constraints_)
+            {
+                c->evaluate_equality(q, qd);
+            }
+        }
+
+        // Positions-only evaluate_equality (qd = 0) of every constraint.
+        void evaluate_equality_position(const Block &q) const noexcept
+        {
+            for (const auto &c : constraints_)
+            {
+                c->evaluate_equality_position(q);
+            }
+        }
+
+        // Stacked F, J (row-major), gamma of one lane, in constraint order.
+        void extract_equality(std::size_t lane, float *F, float *J, float *gamma) const noexcept
+        {
+            for (const auto &c : constraints_)
+            {
+                c->extract_equality(lane, F, J, gamma);
+                const auto n = c->equality_rows();
+                F += n;
+                J += n * Robot::dimension;
+                gamma += n;
+            }
+        }
+
+        // A generated exact-chart step kernel applies to a set of one constraint that has one.
+        auto has_normal_kernel() const noexcept -> bool
+        {
+            return constraints_.size() == 1 and constraints_.front()->has_normal_kernel();
+        }
+
+        auto solve_normal_rows(const Row *J, const Row *rhs, const Row *N, Row *out) const noexcept -> bool
+        {
+            return has_normal_kernel() and constraints_.front()->solve_normal_rows(J, rhs, N, out);
+        }
+
+        // Stacked F, J (row-major), gamma of all lanes as SIMD rows, in constraint order.
+        void extract_equality_rows(Row *F, Row *J, Row *gamma) const noexcept
+        {
+            for (const auto &c : constraints_)
+            {
+                c->extract_equality_rows(F, J, gamma);
+                const auto n = c->equality_rows();
+                F += n;
+                J += n * Robot::dimension;
+                gamma += n;
+            }
+        }
+
         // One simultaneous (Jacobi-style) descent step across all constraints, consuming the
         // caches of the last squared_error() call on the same q.
         void step_in_place(Block &q) const noexcept

@@ -10,7 +10,7 @@
 namespace vamp::planning::constraint
 {
     // Phase constraint bounding total kinetic energy: (1/2) qd^T M(q) qd <= max_energy,
-    // via the robot-generated kinetic_energy kernels. KE is homogeneous of degree 2 in qd,
+    // via the robot-generated kinetic_energy kernels, including end-effector payloads. KE is homogeneous of degree 2 in qd,
     // so velocity_scale is sqrt(max_energy / KE).
     template <typename Robot, std::size_t rake>
     struct KineticEnergyConstraint final : PhaseConstraint<Robot, rake>
@@ -18,15 +18,17 @@ namespace vamp::planning::constraint
         using Base = PhaseConstraint<Robot, rake>;
         using Block = typename Base::Block;
         using Configuration = typename Base::Configuration;
+        using Payload = typename Base::Payload;
+        using PayloadBlock = typename Base::PayloadBlock;
         using Row = FloatVector<rake, 1>;
 
         explicit KineticEnergyConstraint(float max_energy) noexcept : max_energy_(max_energy)
         {
         }
 
-        void evaluate(const Block &x) const noexcept final
+        void evaluate(const Block &x, const PayloadBlock &payload) const noexcept final
         {
-            energy_ = Robot::template kinetic_energy_block<rake>(x);
+            energy_ = Robot::template kinetic_energy_block<rake>(x, payload);
         }
 
         auto extract(std::size_t lane) const noexcept -> bool final
@@ -34,13 +36,13 @@ namespace vamp::planning::constraint
             return energy_[{0, lane}] <= max_energy_;
         }
 
-        auto velocity_scale(const Configuration &z) const noexcept -> float final
+        auto velocity_scale(const Configuration &z, const Payload &payload) const noexcept -> float final
         {
             std::array<float, Robot::dimension> x;
             const auto buf = z.to_array();
             std::copy_n(buf.begin(), Robot::dimension, x.begin());
 
-            const float energy = Robot::kinetic_energy(x);
+            const float energy = Robot::kinetic_energy(x, payload);
             if (energy <= max_energy_)
             {
                 return 1.0F;

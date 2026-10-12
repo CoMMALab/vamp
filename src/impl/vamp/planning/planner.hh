@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vamp/planning/planners/aorrtc.hh>
+#include <vamp/planning/planners/bkpiece.hh>
 #include <vamp/planning/planners/fcit.hh>
 #include <vamp/planning/planners/grrtstar.hh>
 #include <vamp/planning/planners/prm.hh>
@@ -22,6 +23,7 @@ namespace vamp::planning
         FCIT,
         AORRTC,
         GRRTSTAR,
+        BKPIECE,
     };
 
     struct PlannerDescriptor
@@ -34,7 +36,7 @@ namespace vamp::planning
         bool local_planner;
     };
 
-    inline constexpr std::array<PlannerDescriptor, 5> PLANNERS = {{
+    inline constexpr std::array<PlannerDescriptor, 6> PLANNERS = {{
         {"rrtc", "RRTC", "RRTCSettings", "rrtc.hh", "rrtc_settings.hh", true},
         {"prm",
          "PRM",
@@ -50,6 +52,7 @@ namespace vamp::planning
          false},
         {"aorrtc", "AORRTC", "AORRTCSettings", "aorrtc.hh", "aorrtc_settings.hh", true},
         {"grrtstar", "GRRTStar", "GRRTStarSettings", "grrtstar.hh", "grrtstar_settings.hh", true},
+        {"bkpiece", "BKPIECE", "BKPIECESettings", "bkpiece.hh", "bkpiece_settings.hh", true},
     }};
 
     inline constexpr std::size_t N_PLANNERS = PLANNERS.size();
@@ -100,6 +103,10 @@ namespace vamp::planning
             else if constexpr (P == Planner::GRRTSTAR)
             {
                 return static_cast<GRRTStar<Robot, rake, resolution> *>(nullptr);
+            }
+            else if constexpr (P == Planner::BKPIECE)
+            {
+                return static_cast<BKPIECE<Robot, rake, resolution> *>(nullptr);
             }
         }
     }  // namespace detail

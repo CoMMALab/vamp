@@ -19,6 +19,8 @@ namespace vamp::planning::constraint
         using Base = PhaseConstraint<Robot, rake>;
         using Block = typename Base::Block;
         using Configuration = typename Base::Configuration;
+        using Payload = typename Base::Payload;
+        using PayloadBlock = typename Base::PayloadBlock;
         using Row = FloatVector<rake, 1>;
 
         static constexpr std::size_t n_eef = Robot::n_end_effectors;
@@ -28,7 +30,8 @@ namespace vamp::planning::constraint
         {
         }
 
-        void evaluate(const Block &x) const noexcept final
+        // End-effector frame velocities are kinematic: payloads do not change them.
+        void evaluate(const Block &x, const PayloadBlock &) const noexcept final
         {
             std::array<Row, 3 * n_eef> eev;
             Robot::template eef_velocity_block<rake>(x, eev);
@@ -47,7 +50,7 @@ namespace vamp::planning::constraint
             return speed2_[{0, lane}] <= max_speed2_;
         }
 
-        auto velocity_scale(const Configuration &z) const noexcept -> float final
+        auto velocity_scale(const Configuration &z, const Payload &) const noexcept -> float final
         {
             std::array<float, Robot::dimension> x;
             const auto buf = z.to_array();

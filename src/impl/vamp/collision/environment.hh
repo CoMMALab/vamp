@@ -3,6 +3,8 @@
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
 
+#include <array>
+#include <type_traits>
 #include <vector>
 #include <vamp/collision/shapes.hh>
 #include <vamp/collision/capt.hh>
@@ -128,6 +130,39 @@ namespace vamp::collision
             return result;
         }
     };
+
+    // Payload dynamic parameters per end-effector (Attachment::inertia), summed over the
+    // attachments riding on it: dynamic parameters are linear, so co-mounted payloads add.
+    template <std::size_t n_end_effectors, typename DataT>
+    inline auto attachment_payload(const Environment<DataT> &e) noexcept
+        -> std::array<DataT, 10 * n_end_effectors>
+    {
+        std::array<DataT, 10 * n_end_effectors> out;
+        if constexpr (std::is_floating_point_v<DataT>)
+        {
+            out.fill(0.F);
+        }
+        else
+        {
+            out.fill(DataT::fill(0.F));
+        }
+
+        for (const auto &attachment : e.attachments)
+        {
+            if (attachment.end_effector >= n_end_effectors)
+            {
+                continue;
+            }
+
+            for (auto i = 0U; i < 10; ++i)
+            {
+                auto &slot = out[10 * attachment.end_effector + i];
+                slot = slot + attachment.inertia[i];
+            }
+        }
+
+        return out;
+    }
 
     // Poses every attachment riding on end-effector `end_effector`.
     template <typename DataT>

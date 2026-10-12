@@ -89,5 +89,40 @@ namespace vamp::planning::constraint
         // drops to projection-noise level while planning still connects; looser values
         // leave shortcutting a proportional budget to cheat with.
         float max_slip_fraction = 0.02F;
+
+        // Exact charts: lift chart samples along the chart's normal space onto the zero set
+        // of the constraints' smooth equality form, q = q0 + B u + N w with F(q) = 0 (the
+        // tangent-space parametrization of atlas methods), instead of projecting q0 + B u.
+        // The executed velocity and acceleration then follow exactly by implicit
+        // differentiation of F(sigma(t)) = 0 -- including the curvature (centripetal) term the
+        // projection chart's chart-frame accelerations omit -- so torque and velocity checks
+        // judge the executed trajectory, and an edge lands exactly on an on-manifold target
+        // with no shooting. Requires every constraint to provide an equality form (e.g. a
+        // rigid bimanual grasp: all relative-pose rows tight) and no Pfaffian rows.
+        bool exact_chart = false;
+
+        // Exact-chart Newton convergence threshold on the squared equality error, and the
+        // per-sample iteration cap. Newton converges quadratically, so the tight default
+        // (|F| <= 1e-6, near the float evaluation floor) costs about one extra iteration and
+        // keeps sample positions smooth enough that finite differences of the executed
+        // trajectory agree with the exact velocities.
+        float exact_tolerance = 1e-12F;
+        std::size_t exact_iterations = 8;
+
+        // Exact-chart lifts run all rake lanes through SIMD rows: one kernel evaluation, normal-space
+        // system, LU and solve per Newton iteration for the whole batch (false: the per-lane scalar
+        // path, kept for comparison).
+        bool batched_exact = true;
+
+        // Batched lifts use a constraint's generated exact-chart step kernel (straight-line SIMD
+        // normal-space solve) when the set is a single constraint that has one (false: the batched
+        // generic LU).
+        bool step_kernel = true;
+
+        // Before lifting an edge, one SIMD batch of samples spread over the whole edge is checked on
+        // the tangent-plane approximation (chart point q0 + B u, chart-frame velocity and
+        // acceleration, no lift) against the effort limits inflated by this margin; edges that fail
+        // are rejected without lifting. Most rejected edges fail on torque. <= 0 disables.
+        float prescreen_margin = 0.15F;
     };
 }  // namespace vamp::planning::constraint

@@ -94,6 +94,8 @@ namespace vamp::jit
             ffi::FlaskFlatDimensionFn flat_dimension{nullptr};
             ffi::FlaskRhoGetFn rho_get{nullptr};
             ffi::FlaskRhoSetFn rho_set{nullptr};
+            ffi::FlaskEffortScaleGetFn effort_scale_get{nullptr};
+            ffi::FlaskEffortScaleSetFn effort_scale_set{nullptr};
             ffi::FlaskLimitsFn velocity_limits{nullptr};
             ffi::FlaskLimitsFn effort_limits{nullptr};
 
@@ -102,6 +104,12 @@ namespace vamp::jit
             ffi::ChartDebugFn chart_debug{nullptr};
             ffi::ChartLiftEdgeFn chart_lift_edge{nullptr};
             ffi::SimplifyChartFn simplify_chart{nullptr};
+            ffi::GoalRegionNewFn goal_region_new{nullptr};
+            ffi::GoalRegionDestroyFn goal_region_destroy{nullptr};
+            ffi::GoalRegionSetSeedFn goal_region_set_seed{nullptr};
+            ffi::GoalRegionSampleFn goal_region_sample{nullptr};
+            ffi::GoalRegionVelocityFn goal_region_velocity{nullptr};
+            ffi::GoalRegionImpulseFn goal_region_impulse{nullptr};
         };
 
         FlaskOps flask{};

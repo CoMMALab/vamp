@@ -41,6 +41,11 @@
 #include <vamp/planning/validate.hh>
 #include <vamp/random/halton.hh>
 #include <vamp/random/ke_shaped.hh>
+#include <vamp/planning/constraints/goal_region.hh>
+#include <vamp/planning/constraints/task_space_sampler.hh>
+#include <vamp/planning/planners/avp.hh>
+#include <vamp/planning/trajectory.hh>
+#include <vamp/planning/planners/rrt.hh>
 #include <vamp/random/pinned.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
@@ -55,6 +60,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
 
+#include <nanobind/stl/optional.h>
 #include <nanobind/eigen/dense.h>
 #include <nanobind/make_iterator.h>
 #include <nanobind/nanobind.h>
@@ -495,6 +501,15 @@ namespace vamp::binding
         using PhaseSetT = vamp::planning::constraint::PhaseConstraintSet<Robot, rake>;
         using PhaseLP = vamp::planning::UnconstrainedLocalPlanner<Robot, rake, Robot::resolution>;
 
+        // End-effector payloads (Robot::Payload) carried by an environment's attachments: the
+        // torque check reads them from the environment directly; phase constraints and
+        // samplers get them here.
+        template <typename R = Robot>
+        static auto payload_of(const Env &env)
+        {
+            return vamp::collision::attachment_payload<R::payload_dimension / 10>(env);
+        }
+
         static constexpr const char *phase_message =
             " state violates the phase constraints; scale its velocity by velocity_scale() first";
         static constexpr const char *phase_simplify_message =
@@ -515,7 +530,7 @@ namespace vamp::binding
             }
 
             return solve_single_lp<P>(
-                start, goal, env, s, rng, PhaseLP(PhaseSetT(std::move(phase_constraints))), phase_message);
+                start, goal, env, s, rng, PhaseLP(PhaseSetT(std::move(phase_constraints), payload_of(env))), phase_message);
         }
 
         template <vamp::planning::Planner P, typename Settings>
@@ -533,7 +548,7 @@ namespace vamp::binding
             }
 
             return solve_multi_lp<P>(
-                start, goals, env, s, rng, PhaseLP(PhaseSetT(std::move(phase_constraints))), phase_message);
+                start, goals, env, s, rng, PhaseLP(PhaseSetT(std::move(phase_constraints), payload_of(env))), phase_message);
         }
 
         static auto simplify_phase(
@@ -549,17 +564,18 @@ namespace vamp::binding
             }
 
             return simplify_lp(
-                p, env, settings, rng, PhaseLP(PhaseSetT(std::move(phase_constraints))), phase_simplify_message);
+                p, env, settings, rng, PhaseLP(PhaseSetT(std::move(phase_constraints), payload_of(env))), phase_simplify_message);
         }
 
-        static auto phase_satisfied(const Cfg &c, PhaseConstraintVec phase_constraints) -> bool
+        static auto phase_satisfied(const Cfg &c, PhaseConstraintVec phase_constraints, const Env &env) -> bool
         {
-            return PhaseSetT(std::move(phase_constraints)).satisfied(Input::to(c));
+            return PhaseSetT(std::move(phase_constraints), payload_of(env)).satisfied(Input::to(c));
         }
 
-        static auto phase_velocity_scale(const Cfg &c, PhaseConstraintVec phase_constraints) -> float
+        static auto phase_velocity_scale(const Cfg &c, PhaseConstraintVec phase_constraints, const Env &env)
+            -> float
         {
-            return PhaseSetT(std::move(phase_constraints)).velocity_scale(Input::to(c));
+            return PhaseSetT(std::move(phase_constraints), payload_of(env)).velocity_scale(Input::to(c));
         }
 
         static auto fk(const Cfg &c) -> std::vector<vamp::collision::Sphere<float>>
@@ -778,12 +794,18 @@ namespace vamp::binding
             AmbientConstraintVec constraints,
             const ConstraintSettings &cs,
             const ChartSettings &chs,
-            PhaseConstraintVec phase_constraints = {}) -> ChartLP
+            PhaseConstraintVec phase_constraints = {},
+            const typename Robot::Payload &payload = {}) -> ChartLP
         {
-            return ChartLP(
-                AmbientConstraintSetT(std::move(constraints), cs),
-                chs,
-                PhaseSetT(std::move(phase_constraints)));
+            AmbientConstraintSetT set(std::move(constraints), cs);
+            if (chs.exact_chart and not set.exact_form())
+            {
+                throw std::invalid_argument(
+                    "exact_chart requires every constraint to provide an equality form (e.g. a "
+                    "bimanual relative pose with all rows tight) and no Pfaffian rows");
+            }
+
+            return ChartLP(std::move(set), chs, PhaseSetT(std::move(phase_constraints), payload));
         }
 
         static constexpr const char *chart_message =
@@ -813,7 +835,7 @@ namespace vamp::binding
                 env,
                 s,
                 rng,
-                make_lp(std::move(constraints), cs, chs, std::move(phase_constraints)),
+                make_lp(std::move(constraints), cs, chs, std::move(phase_constraints), Base::payload_of(env)),
                 chart_message);
         }
 
@@ -841,7 +863,7 @@ namespace vamp::binding
                 env,
                 s,
                 rng,
-                make_lp(std::move(constraints), cs, chs, std::move(phase_constraints)),
+                make_lp(std::move(constraints), cs, chs, std::move(phase_constraints), Base::payload_of(env)),
                 chart_message);
         }
 
@@ -865,7 +887,7 @@ namespace vamp::binding
                 env,
                 settings,
                 rng,
-                make_lp(std::move(constraints), cs, chs, std::move(phase_constraints)),
+                make_lp(std::move(constraints), cs, chs, std::move(phase_constraints), Base::payload_of(env)),
                 Base::manifold_simplify_message);
         }
 
@@ -874,9 +896,11 @@ namespace vamp::binding
             AmbientConstraintVec constraints,
             const ConstraintSettings &cs,
             const ChartSettings &chs,
-            PhaseConstraintVec phase_constraints) -> Cfg
+            PhaseConstraintVec phase_constraints,
+            const Env &env) -> Cfg
         {
-            const auto lp = make_lp(std::move(constraints), cs, chs, std::move(phase_constraints));
+            const auto lp =
+                make_lp(std::move(constraints), cs, chs, std::move(phase_constraints), Base::payload_of(env));
             auto z = Input::to(c);
             if (not lp.project(z))
             {
@@ -890,9 +914,10 @@ namespace vamp::binding
             const Cfg &c,
             AmbientConstraintVec constraints,
             const ConstraintSettings &cs,
-            PhaseConstraintVec phase_constraints) -> bool
+            PhaseConstraintVec phase_constraints,
+            const Env &env) -> bool
         {
-            return make_lp(std::move(constraints), cs, {}, std::move(phase_constraints))
+            return make_lp(std::move(constraints), cs, {}, std::move(phase_constraints), Base::payload_of(env))
                 .satisfied(Input::to(c));
         }
 
@@ -912,16 +937,25 @@ namespace vamp::binding
             bool forward,
             std::size_t n_samples,
             const ConstraintSettings &cs,
-            const ChartSettings &chs)
-            -> std::tuple<std::vector<Cfg>, std::vector<float>, float, float>
+            const ChartSettings &chs,
+            bool with_accelerations) -> nanobind::tuple
         {
             const auto lp = make_lp(std::move(constraints), cs, chs);
 
             std::vector<Configuration> states;
             std::vector<float> errors;
+            std::vector<std::array<float, Ambient::dimension>> accelerations;
             float duration = 0.F, cost = 0.F;
             if (not lp.lift_edge(
-                    Input::to(from), Input::to(target), forward, n_samples, states, errors, duration, cost))
+                    Input::to(from),
+                    Input::to(target),
+                    forward,
+                    n_samples,
+                    states,
+                    errors,
+                    duration,
+                    cost,
+                    with_accelerations ? &accelerations : nullptr))
             {
                 throw std::invalid_argument(
                     "edge lift failed: no chart at the from state, a lift diverged, or the "
@@ -935,7 +969,13 @@ namespace vamp::binding
                 out.emplace_back(Input::from(s));
             }
 
-            return {std::move(out), std::move(errors), duration, cost};
+            if (with_accelerations)
+            {
+                return nanobind::make_tuple(
+                    std::move(out), std::move(errors), duration, cost, std::move(accelerations));
+            }
+
+            return nanobind::make_tuple(std::move(out), std::move(errors), duration, cost);
         }
     };
 
@@ -1234,9 +1274,143 @@ namespace vamp::binding
             submodule.def("set_rho", [](float r) { Robot::rho = r; }, "rho"_a);
             submodule.def("velocity_limits", []() { return Robot::velocity_limits; });
             submodule.def("effort_limits", []() { return Robot::effort_limits; });
+            submodule.def("effort_scale", []() { return Robot::effort_scale; });
+            submodule.def(
+                "set_effort_scale",
+                [](float s) { Robot::effort_scale = s; },
+                "scale"_a,
+                "Uniformly derate (scale < 1) the effort limits the torque check enforces.");
+
+            using Env = typename TA::Env;
 
             bind_flask_methods<Robot, NA>(submodule);
             bind_flask_methods<Robot, CA>(submodule);
+
+            // Time-parameterized trajectories: from flask paths (their own LQMT motion), or retimed
+            // time-optimally along any joint path (a trajectory's knots or raw positions, e.g. a
+            // geometric path) under the torque and joint-velocity limits.
+            {
+                namespace vp_ = vamp::planning;
+                using Traj = vp_::Trajectory<Robot>;
+                using Joints = typename Traj::Joints;
+                nb::class_<Traj>(
+                    submodule,
+                    "Trajectory",
+                    "Time-parameterized joint trajectory: knots (t, q, qd, qdd), queried at any time by "
+                    "quintic Hermite interpolation; torques from the payload-aware RNEA.")
+                    .def_prop_ro("duration", &Traj::duration, "Duration in seconds.")
+                    .def("__len__", &Traj::size)
+                    .def_prop_ro("times", [](const Traj &t) { return t.times; }, "Knot times.")
+                    .def_prop_ro(
+                        "knots",
+                        [](const Traj &t) { return nb::make_tuple(t.q, t.qd, t.qdd); },
+                        "Knot (q, qd, qdd) lists.")
+                    .def(
+                        "__call__",
+                        [](const Traj &t, float time)
+                        {
+                            Joints q, qd, qdd;
+                            t.state(time, q, qd, qdd);
+                            return nb::make_tuple(q, qd, qdd);
+                        },
+                        "time"_a,
+                        "(q, qd, qdd) at `time` (clamped to the trajectory's span).")
+                    .def(
+                        "sample",
+                        [](const Traj &t, const std::vector<float> &times)
+                        {
+                            std::vector<Joints> qs(times.size()), qds(times.size()), qdds(times.size());
+                            for (std::size_t k = 0; k < times.size(); ++k)
+                            {
+                                t.state(times[k], qs[k], qds[k], qdds[k]);
+                            }
+
+                            return nb::make_tuple(qs, qds, qdds);
+                        },
+                        "times"_a,
+                        "(q, qd, qdd) lists at each of `times`.")
+                    .def(
+                        "torques",
+                        [](const Traj &t, float time, const Env &env) { return t.torques(time, TA::payload_of(env)); },
+                        "time"_a,
+                        "environment"_a = Env{},
+                        "Joint torques at `time`, including the environment's attachment payloads.");
+
+                submodule.def(
+                    "trajectory",
+                    [](const vp_::Path<Robot> &path, std::size_t samples)
+                    {
+                        const auto traj = vp_::trajectory_from_path<Robot>(
+                            path, vp_::UnconstrainedLocalPlanner<Robot, rake, Robot::resolution>{},
+                            typename Robot::Payload{}, samples);
+                        if (not traj)
+                        {
+                            throw std::invalid_argument("empty path");
+                        }
+
+                        return *traj;
+                    },
+                    "path"_a,
+                    "samples"_a = 64,
+                    "The executed motion of an (unconstrained) flask path: each edge's LQMT cubic at its "
+                    "optimal duration, sampled at `samples` knots.");
+
+                const auto retime = [](const std::vector<Joints> &positions,
+                                       const Env &env,
+                                       std::size_t grid,
+                                       float effort_fraction,
+                                       float end_speed,
+                                       std::size_t substeps,
+                                       std::size_t repair_iterations)
+                {
+                    vp_::RetimeSettings settings;
+                    settings.repair_iterations = repair_iterations;
+                    settings.grid = grid;
+                    settings.effort_fraction = effort_fraction;
+                    settings.end_speed = end_speed;
+                    settings.substeps = substeps;
+                    std::string reason;
+                    const auto traj = vp_::topp_retime<Robot>(positions, TA::payload_of(env), settings, &reason);
+                    if (not traj)
+                    {
+                        throw std::invalid_argument(reason);
+                    }
+
+                    return *traj;
+                };
+                const char *retime_doc =
+                    "Time-optimal retiming (TOPP-RA, interpolation discretization) along a joint path -- a "
+                    "trajectory's knots, or positions such as a densified geometric path -- under the "
+                    "torque limits (effort_fraction of the scaled limits, with the environment's payloads) "
+                    "and joint-velocity limits; starts at rest, ends with path speed at most end_speed "
+                    "(chord-length parameter in [0, 1] per second). Constraints hold at the grid points; up "
+                    "to repair_iterations rounds tighten intervals whose executed knots overshoot the torque "
+                    "bound. Raises ValueError if no feasible timing exists.";
+                submodule.def(
+                    "retime",
+                    [retime](const Traj &t, const Env &env, std::size_t grid, float effort_fraction, float end_speed,
+                             std::size_t substeps, std::size_t repair_iterations)
+                    { return retime(t.q, env, grid, effort_fraction, end_speed, substeps, repair_iterations); },
+                    "trajectory"_a,
+                    "environment"_a = Env{},
+                    "grid"_a = 800,
+                    "effort_fraction"_a = 0.98F,
+                    "end_speed"_a = 0.F,
+                    "substeps"_a = 4,
+                    "repair_iterations"_a = 6,
+                    retime_doc);
+                submodule.def(
+                    "retime",
+                    retime,
+                    "positions"_a,
+                    "environment"_a = Env{},
+                    "grid"_a = 800,
+                    "effort_fraction"_a = 0.98F,
+                    "end_speed"_a = 0.F,
+                    "substeps"_a = 4,
+                    "repair_iterations"_a = 6,
+                    retime_doc);
+            }
 
             // Phase constraints need the robot's generated dynamics kernels; only
             // regenerated flask robots have them.
@@ -1264,24 +1438,28 @@ namespace vamp::binding
 
                     submodule.def(
                         "kinetic_energy",
-                        [](const std::array<float, Robot::dimension> &x)
-                        { return Robot::kinetic_energy(x); },
+                        [](const std::array<float, Robot::dimension> &x, const Env &env)
+                        { return Robot::kinetic_energy(x, TA::payload_of(env)); },
                         "state"_a,
-                        "Total kinetic energy (1/2) qdot^T M(q) qdot of a flat state (q, qdot).");
+                        "environment"_a = Env{},
+                        "Total kinetic energy (1/2) qdot^T M(q) qdot of a flat state (q, qdot), "
+                        "including the payloads of the environment's attachments.");
 
                     submodule.def(
                         "ke_shaped",
-                        [](std::shared_ptr<vamp::rng::RNG<Robot>> sampler, float max_energy)
+                        [](std::shared_ptr<vamp::rng::RNG<Robot>> sampler, float max_energy, const Env &env)
                             -> std::shared_ptr<vamp::rng::RNG<Robot>>
                         {
                             return std::make_shared<vamp::rng::KineticEnergyShaped<Robot>>(
-                                std::move(sampler), max_energy);
+                                std::move(sampler), max_energy, TA::payload_of(env));
                         },
                         "sampler"_a,
                         "max_energy"_a,
+                        "environment"_a = Env{},
                         "Wrap a sampler so sample kinetic energy is uniform on [0, max_energy] "
                         "instead of concentrated near the velocity-box maximum; rescales each "
-                        "sample's velocity block by the scalar kinetic-energy kernel.");
+                        "sample's velocity block by the scalar kinetic-energy kernel. The energy "
+                        "includes the payloads of the given environment's attachments.");
                 }
 
                 if constexpr (has_n_end_effectors_v<Robot>)
@@ -1326,28 +1504,605 @@ namespace vamp::binding
                 {
                     bind_chart_methods<ChartRobotTraits<Robot, NA>>(submodule);
                     bind_chart_methods<ChartRobotTraits<Robot, CA>>(submodule);
+
+                    namespace vc = vamp::planning::constraint;
+                    using CT = ChartRobotTraits<Robot, NA>;
+                    using GR = vc::ImpactGoalRegion<Robot, rake>;
+                    using Q = nanobind::ndarray<
+                        FloatT,
+                        nanobind::numpy,
+                        nanobind::shape<Ambient::dimension>,
+                        nanobind::device::cpu>;
+
+                    nb::class_<GR>(
+                        submodule,
+                        "ImpactGoalRegion",
+                        "Goal region for constrained flask planning: positions on the manifold of "
+                        "`constraints` (every constraint needs an equality form, e.g. all rows "
+                        "tight), velocities realizing equality-row rates speed * rate, speed in "
+                        "[min_speed, max_speed], at minimum kinetic energy under the environment's "
+                        "payloads. Such a velocity is M-orthogonal to the manifold's self-motion, so "
+                        "an inelastic impact enforcing the constraints brings the state exactly to "
+                        "rest: e.g. the planning constraints plus a pinned object pose, with the "
+                        "pin rows' rate the object's approach twist (TSR rows change at the rate of "
+                        "the offset frame's twist in the reference frame, linear first). Pass "
+                        "samples as goals to the chart planners.")
+                        .def(
+                            "__init__",
+                            [](GR *self,
+                               typename CT::AmbientConstraintVec constraints,
+                               std::vector<float> rate,
+                               float min_speed,
+                               float max_speed,
+                               const vc::ConstraintSettings &cs,
+                               const vc::ChartSettings &chs,
+                               const typename CT::Env &env,
+                               typename CT::PhaseConstraintVec phase,
+                               std::optional<Q> seed,
+                               float spread,
+                               std::size_t refine_steps,
+                               float refine_step)
+                            {
+                                typename CT::AmbientConstraintSetT set(std::move(constraints), cs);
+                                if (not set.exact_form())
+                                {
+                                    throw std::invalid_argument(
+                                        "ImpactGoalRegion requires every constraint to provide an "
+                                        "equality form (all manifold rows tight) and no Pfaffian rows");
+                                }
+
+                                if (rate.size() != set.equality_rows())
+                                {
+                                    throw std::invalid_argument(
+                                        "rate needs one entry per equality row (" +
+                                        std::to_string(set.equality_rows()) + ")");
+                                }
+
+                                if (not (0.F <= min_speed and min_speed <= max_speed))
+                                {
+                                    throw std::invalid_argument("need 0 <= min_speed <= max_speed");
+                                }
+
+                                new (self) GR(
+                                    std::move(set), std::move(rate), min_speed, max_speed, chs, env, std::move(phase));
+                                if (seed)
+                                {
+                                    std::array<float, Ambient::dimension> sa;
+                                    std::vector<float> scratch;
+                                    const auto *ptr = as_flat_1d(*seed, Ambient::dimension, scratch, "seed");
+                                    std::copy_n(ptr, Ambient::dimension, sa.begin());
+                                    self->set_seed(sa, spread);
+                                }
+
+                                self->set_refinement(refine_steps, refine_step);
+                            },
+                            "constraints"_a,
+                            "rate"_a,
+                            "min_speed"_a,
+                            "max_speed"_a,
+                            "constraint_settings"_a = vc::ConstraintSettings{},
+                            "chart_settings"_a = vc::ChartSettings{},
+                            "environment"_a = typename CT::Env{},
+                            "phase_constraints"_a = typename CT::PhaseConstraintVec{},
+                            "seed"_a = nb::none(),
+                            "spread"_a = 0.1F,
+                            "refine_steps"_a = 0,
+                            "refine_step"_a = 0.1F,
+                            "refine_steps > 0 refines each drawn posture by up to that many null-space steps "
+                            "(refine_step rad, the manifold's self-motion) lowering its static torque under the "
+                            "payloads. seed (optional configuration): draw positions around it, each joint within "
+                            "+- spread / 2 of its range, keeping goals on the seed's inverse-kinematics "
+                            "branch; without it positions cover the whole joint box.")
+                        .def_prop_ro("rows", &GR::rows, "Stacked equality rows (the length of rate).")
+                        .def(
+                            "sample",
+                            [](const GR &self, std::shared_ptr<vamp::rng::RNG<Robot>> rng, std::size_t n, std::size_t max_attempts)
+                            {
+                                std::vector<typename NA::Type> out;
+                                for (std::size_t a = 0; a < max_attempts and out.size() < n; ++a)
+                                {
+                                    if (const auto z = self.sample(*rng))
+                                    {
+                                        out.emplace_back(NA::from(*z));
+                                    }
+                                }
+
+                                return out;
+                            },
+                            "sampler"_a,
+                            "n"_a = 1,
+                            "max_attempts"_a = 1000,
+                            "Draw up to n members (fewer if max_attempts draws are exhausted): each "
+                            "draw projects a sampler position onto the manifold, rejects bound, "
+                            "collision, and phase-constraint violations, and takes a speed uniformly "
+                            "from the same sample.")
+                        .def(
+                            "velocity",
+                            [](const GR &self, const Q &q, float speed)
+                            {
+                                std::array<float, Ambient::dimension> qa;
+                                std::vector<float> scratch;
+                                const auto *ptr = as_flat_1d(q, Ambient::dimension, scratch, "configuration");
+                                std::copy_n(ptr, Ambient::dimension, qa.begin());
+                                const auto v = self.velocity(qa, speed);
+                                if (not v)
+                                {
+                                    throw std::invalid_argument("the equality rows are singular at this configuration");
+                                }
+
+                                return *v;
+                            },
+                            "configuration"_a,
+                            "speed"_a,
+                            "Minimum-kinetic-energy velocity realizing equality-row rates speed * rate.")
+                        .def(
+                            "impulse",
+                            [](const GR &self, const typename NA::Type &state) { return self.impulse(NA::to(state)); },
+                            "state"_a,
+                            "Constraint impulse (J M^-1 J^T)^-1 J qd of an inelastic impact stopping the "
+                            "equality rows at `state`.");
+
+                    submodule.def(
+                        "trajectory",
+                        [](const vamp::planning::Path<Robot> &path,
+                           typename CT::AmbientConstraintVec constraints,
+                           const vc::ConstraintSettings &cs,
+                           const vc::ChartSettings &chs,
+                           const typename CT::Env &env,
+                           std::size_t samples)
+                        {
+                            const auto payload = CT::Base::payload_of(env);
+                            const auto lp = CT::make_lp(
+                                std::move(constraints), cs, chs, typename CT::PhaseConstraintVec{}, payload);
+                            const auto traj = vamp::planning::trajectory_from_path<Robot>(path, lp, payload, samples);
+                            if (not traj)
+                            {
+                                throw std::invalid_argument("an edge of the path could not be lifted");
+                            }
+
+                            return *traj;
+                        },
+                        "path"_a,
+                        "constraints"_a,
+                        "constraint_settings"_a = vc::ConstraintSettings{},
+                        "chart_settings"_a = vc::ChartSettings{},
+                        "environment"_a = typename CT::Env{},
+                        "samples"_a = 64,
+                        "The executed motion of a constrained flask path: each edge's chart lift (of the two "
+                        "directions a planner may have built it in, the one with the lower peak torque ratio "
+                        "under the environment's payloads), sampled at `samples` knots.");
+
+                    // Forward-only goal-biased RRT on the constraint manifold: one tree from the
+                    // start, a goal_bias fraction of iterations steering toward a goal draw.
+                    using RRTP = vamp::planning::RRT<Robot, rake, Robot::resolution>;
+                    const auto rrt_doc =
+                        "Forward-only RRT on the constraint manifold (chart-local time-optimal "
+                        "steering, every edge in execution direction): a settings.goal_bias fraction "
+                        "of iterations steers toward a goal draw -- fresh members of `goal` (an "
+                        "ImpactGoalRegion, drawn with `goal_sampler`) or entries of a goal list, in "
+                        "turn -- from the best of the nearest nodes; reaching a goal solves. Raises "
+                        "ValueError if the start violates the constraints.";
+                    submodule.def(
+                        "rrt",
+                        [](const typename NA::Type &start,
+                           const GR &goal,
+                           std::shared_ptr<vamp::rng::RNG<Robot>> goal_sampler,
+                           const typename CT::Env &env,
+                           const vamp::planning::RRTSettings &settings,
+                           std::shared_ptr<vamp::rng::RNG<Robot>> sampler,
+                           typename CT::AmbientConstraintVec constraints,
+                           const vc::ConstraintSettings &cs,
+                           const vc::ChartSettings &chs,
+                           typename CT::PhaseConstraintVec phase)
+                        {
+                            const auto lp = CT::make_lp(std::move(constraints), cs, chs, std::move(phase), CT::Base::payload_of(env));
+                            const auto s = NA::to(start);
+                            CT::Base::check_feasible(lp, s, "start", CT::chart_message);
+                            const auto draw = [&]() -> std::optional<typename Robot::Configuration>
+                            {
+                                for (auto attempt = 0; attempt < 32; ++attempt)
+                                {
+                                    if (auto z = goal.sample(*goal_sampler))
+                                    {
+                                        return z;
+                                    }
+                                }
+
+                                return std::nullopt;
+                            };
+                            return RRTP::solve(s, draw, typename CT::EnvVec(env), settings, sampler, lp);
+                        },
+                        "start"_a,
+                        "goal"_a,
+                        "goal_sampler"_a,
+                        "environment"_a,
+                        "settings"_a,
+                        "sampler"_a,
+                        "constraints"_a,
+                        "constraint_settings"_a = vc::ConstraintSettings{},
+                        "chart_settings"_a = vc::ChartSettings{},
+                        "phase_constraints"_a = typename CT::PhaseConstraintVec{},
+                        rrt_doc);
+                    submodule.def(
+                        "rrt",
+                        [](const typename NA::Type &start,
+                           const std::vector<typename NA::Type> &goals,
+                           const typename CT::Env &env,
+                           const vamp::planning::RRTSettings &settings,
+                           std::shared_ptr<vamp::rng::RNG<Robot>> sampler,
+                           typename CT::AmbientConstraintVec constraints,
+                           const vc::ConstraintSettings &cs,
+                           const vc::ChartSettings &chs,
+                           typename CT::PhaseConstraintVec phase)
+                        {
+                            const auto lp = CT::make_lp(std::move(constraints), cs, chs, std::move(phase), CT::Base::payload_of(env));
+                            const auto s = NA::to(start);
+                            CT::Base::check_feasible(lp, s, "start", CT::chart_message);
+                            std::vector<typename Robot::Configuration> gs;
+                            for (const auto &g : goals)
+                            {
+                                gs.emplace_back(NA::to(g));
+                                CT::Base::check_feasible(lp, gs.back(), "goal", CT::chart_message);
+                            }
+
+                            if (gs.empty())
+                            {
+                                throw std::invalid_argument("rrt needs at least one goal");
+                            }
+
+                            std::size_t next = 0;
+                            const auto draw = [&]() -> std::optional<typename Robot::Configuration>
+                            { return gs[next++ % gs.size()]; };
+                            return RRTP::solve(s, draw, typename CT::EnvVec(env), settings, sampler, lp);
+                        },
+                        "start"_a,
+                        "goals"_a,
+                        "environment"_a,
+                        "settings"_a,
+                        "sampler"_a,
+                        "constraints"_a,
+                        "constraint_settings"_a = vc::ConstraintSettings{},
+                        "chart_settings"_a = vc::ChartSettings{},
+                        "phase_constraints"_a = typename CT::PhaseConstraintVec{},
+                        rrt_doc);
+
+                    submodule.def(
+                        "avp",
+                        [](const typename NA::Type &start,
+                           const std::vector<typename NA::Type> &goals,
+                           const typename CT::Env &env,
+                           const vamp::planning::AVPSettings &settings,
+                           std::shared_ptr<vamp::rng::RNG<Robot>> sampler,
+                           typename CT::AmbientConstraintVec constraints,
+                           const vc::ConstraintSettings &cs,
+                           const vc::ChartSettings &chs)
+                        {
+                            // Edges check geometry only (attachments keep their spheres but carry no
+                            // load); speeds propagate under the payload.
+                            const auto lp = CT::make_lp(std::move(constraints), cs, chs);
+                            auto geometry = env;
+                            for (auto &a : geometry.attachments)
+                            {
+                                a.inertia.fill(0.F);
+                            }
+
+                            const auto s = NA::to(start);
+                            CT::Base::check_feasible(lp, s, "start", CT::chart_message);
+                            std::vector<typename Robot::Configuration> gs;
+                            for (const auto &g : goals)
+                            {
+                                gs.emplace_back(NA::to(g));
+                                CT::Base::check_feasible(lp, gs.back(), "goal", CT::chart_message);
+                            }
+
+                            vamp::planning::AVPStats stats;
+                            std::optional<vamp::planning::Trajectory<Robot>> timed;
+                            auto result = vamp::planning::AVP<Robot, rake, Robot::resolution>::solve(
+                                s, gs, typename CT::EnvVec(geometry), CT::Base::payload_of(env), settings, sampler, lp,
+                                &stats, &timed);
+                            nb::dict st;
+                            st["propagations"] = stats.propagations;
+                            st["empty"] = stats.empty;
+                            return nb::make_tuple(std::move(result), std::move(timed), st);
+                        },
+                        "start"_a,
+                        "goals"_a,
+                        "environment"_a,
+                        "settings"_a,
+                        "sampler"_a,
+                        "constraints"_a,
+                        "constraint_settings"_a = vc::ConstraintSettings{},
+                        "chart_settings"_a = vc::ChartSettings{},
+                        "Admissible velocity propagation (Pham et al., RSS 2013) in BKPIECE's bidirectional "
+                        "grid search: edges check geometry only, each node carries an interval of path-speed "
+                        "scales sd^2 propagated TOPP-style along its edges under the environment's payloads "
+                        "(forward reachability on the start tree, backward controllability on the goal tree); "
+                        "trees connect where the intervals meet. Returns (result, trajectory, stats): the "
+                        "trajectory is the time-optimal timing of the solution along the edges as propagated "
+                        "(None if unsolved).");
+
+                    submodule.def(
+                        "avp_retime",
+                        [](const std::vector<typename NA::Type> &path,
+                           const typename CT::Env &env,
+                           typename CT::AmbientConstraintVec constraints,
+                           const vc::ConstraintSettings &cs,
+                           const vc::ChartSettings &chs,
+                           std::size_t edge_samples,
+                           float effort_fraction)
+                        {
+                            using AVPT = vamp::planning::AVP<Robot, rake, Robot::resolution>;
+                            const auto lp = CT::make_lp(std::move(constraints), cs, chs);
+                            if (path.size() < 2)
+                            {
+                                throw std::invalid_argument("avp_retime needs at least two states");
+                            }
+
+                            std::vector<typename AVPT::Segment> segments;
+                            for (std::size_t i = 0; i + 1 < path.size(); ++i)
+                            {
+                                segments.push_back({NA::to(path[i]), NA::to(path[i + 1]), true});
+                            }
+
+                            return AVPT::time(
+                                segments, AVPT::root_interval(NA::to(path.front()), false),
+                                AVPT::root_interval(NA::to(path.back()), true), lp, CT::Base::payload_of(env),
+                                edge_samples, effort_fraction);
+                        },
+                        "path"_a,
+                        "environment"_a,
+                        "constraints"_a,
+                        "constraint_settings"_a = vc::ConstraintSettings{},
+                        "chart_settings"_a = vc::ChartSettings{},
+                        "edge_samples"_a = 16,
+                        "effort_fraction"_a = 1.F,
+                        "Time-optimal timing (the avp planner's) of a flask path along its forward exact edges under "
+                        "the environment's payloads: the start at its velocity (any scale at rest), the end at "
+                        "most at its velocity. None if no timing exists.");
+
+                    submodule.def(
+                        "payload_shaped",
+                        [](std::shared_ptr<vamp::rng::RNG<Robot>> sampler,
+                           typename CT::AmbientConstraintVec constraints,
+                           const typename CT::Env &env,
+                           float slack,
+                           std::size_t max_attempts,
+                           bool project,
+                           const vc::ConstraintSettings &cs,
+                           const vc::ChartSettings &chs) -> std::shared_ptr<vamp::rng::RNG<Robot>>
+                        {
+                            typename CT::AmbientConstraintSetT set(std::move(constraints), cs);
+                            if (not set.exact_form())
+                            {
+                                throw std::invalid_argument(
+                                    "payload_shaped projects with the exact chart: every constraint "
+                                    "needs an equality form (all manifold rows tight)");
+                            }
+
+                            return std::make_shared<vc::PayloadShaped<Robot, rake>>(
+                                std::move(sampler), std::move(set), chs, env, slack, max_attempts, project);
+                        },
+                        "sampler"_a,
+                        "constraints"_a,
+                        "environment"_a,
+                        "slack"_a = 0.2F,
+                        "max_attempts"_a = 50,
+                        "project"_a = false,
+                        "constraint_settings"_a = vc::ConstraintSettings{},
+                        "chart_settings"_a = vc::ChartSettings{},
+                        "Wrap a sampler with payload awareness: keep a draw only if the robot could "
+                        "hold the environment's attachment payloads at its position at rest within "
+                        "(1 + slack) of its (scaled) effort limits (scored on the raw draw, or after "
+                        "projecting it onto the constraint manifold with project=True); after "
+                        "max_attempts rejections the last draw is returned. Velocities come from "
+                        "the inner sampler.");
+
+                    if constexpr (has_n_eef_v<Ambient>)
+                    {
+                        using TSS = vc::TaskSpaceSampler<Robot, rake>;
+                        nb::class_<TSS, vamp::rng::RNG<Robot>>(
+                            submodule, "TaskSpaceSampler", "Sampler returned by task_space_sampler.")
+                            .def_prop_ro(
+                                "stats",
+                                [](const TSS &self)
+                                {
+                                    const auto &st = self.stats();
+                                    nb::dict out;
+                                    out["draws"] = st.draws;
+                                    out["task_draws"] = st.task_draws;
+                                    out["attempts"] = st.attempts;
+                                    out["pose_collisions"] = st.pose_collisions;
+                                    out["projections"] = st.projections;
+                                    out["projected"] = st.projected;
+                                    out["refined"] = st.refined;
+                                    out["held"] = st.held;
+                                    out["fallbacks"] = st.fallbacks;
+                                    out["local_draws"] = st.local_draws;
+                                    out["local_held"] = st.local_held;
+                                    return out;
+                                },
+                                "Draw counters: next() calls, task-space draws, pose/twist attempts, candidate "
+                                "projections tried and succeeded, attempts whose best posture held the payload, "
+                                "and fallbacks to the inner sampler.");
+                        submodule.def(
+                            "task_space_sampler",
+                            [](std::shared_ptr<vamp::rng::RNG<Robot>> sampler,
+                               typename CT::AmbientConstraintVec constraints,
+                               const typename TSS::Transform &object_in_eef,
+                               const typename CT::Env &env,
+                               const std::array<float, 3> &lower,
+                               const std::array<float, 3> &upper,
+                               const std::array<float, 4> &orientation,
+                               float tilt,
+                               float yaw,
+                               float max_speed,
+                               float max_angular_speed,
+                               std::vector<std::array<float, 4>> directions,
+                               float direction_jitter,
+                               std::vector<std::vector<float>> seeds,
+                               float spread,
+                               std::size_t candidates,
+                               float slack,
+                               std::size_t max_attempts,
+                               float fraction,
+                               std::shared_ptr<vamp::rng::RNG<Robot>> mixture,
+                               std::size_t memory,
+                               float memory_spread,
+                               std::size_t refine_steps,
+                               float refine_step,
+                               int local_mode,
+                               float local_step,
+                               float local_angle,
+                               float local_speed,
+                               float rollout_min,
+                               float rollout_max,
+                               float max_acceleration,
+                               std::size_t eef,
+                               const vc::ConstraintSettings &cs,
+                               const vc::ChartSettings &chs) -> std::shared_ptr<TSS>
+                            {
+                                if (eef >= Ambient::n_eef)
+                                {
+                                    throw std::invalid_argument("eef out of range");
+                                }
+
+                                for (const auto &seed : seeds)
+                                {
+                                    if (seed.size() < Ambient::dimension)
+                                    {
+                                        throw std::invalid_argument("each seed needs one entry per joint");
+                                    }
+                                }
+
+                                if (not typename CT::AmbientConstraintSetT(constraints, cs).exact_form())
+                                {
+                                    throw std::invalid_argument(
+                                        "task_space_sampler projects with the exact chart: every constraint "
+                                        "needs an equality form (all manifold rows tight)");
+                                }
+
+                                vc::TaskSpaceSamplerSettings settings;
+                                settings.lower = lower;
+                                settings.upper = upper;
+                                settings.orientation = orientation;
+                                settings.tilt = tilt;
+                                settings.yaw = yaw;
+                                settings.max_speed = max_speed;
+                                settings.max_angular_speed = max_angular_speed;
+                                settings.directions = std::move(directions);
+                                settings.direction_jitter = direction_jitter;
+                                settings.seeds = std::move(seeds);
+                                settings.spread = spread;
+                                settings.candidates = std::max<std::size_t>(candidates, 1);
+                                settings.slack = slack;
+                                settings.max_attempts = std::max<std::size_t>(max_attempts, 1);
+                                settings.fraction = std::clamp(fraction, 0.F, 1.F);
+                                settings.memory = memory;
+                                settings.memory_spread = memory_spread;
+                                settings.refine_steps = refine_steps;
+                                settings.refine_step = refine_step;
+                                settings.local_mode = local_mode;
+                                settings.local_step = local_step;
+                                settings.local_angle = local_angle;
+                                settings.local_speed = local_speed;
+                                settings.rollout_min = rollout_min;
+                                settings.rollout_max = std::max(rollout_max, rollout_min);
+                                settings.max_acceleration = max_acceleration;
+                                auto out = std::make_shared<TSS>(
+                                    std::move(sampler), std::move(constraints), cs, eef, object_in_eef,
+                                    std::move(settings), chs, env, std::move(mixture));
+                                if (not out->valid())
+                                {
+                                    throw std::invalid_argument(
+                                        "this robot's task-space constraint has no equality kernel");
+                                }
+
+                                return out;
+                            },
+                            "sampler"_a,
+                            "constraints"_a,
+                            "object_in_eef"_a,
+                            "environment"_a,
+                            "lower"_a,
+                            "upper"_a,
+                            "orientation"_a,
+                            "tilt"_a = 0.2F,
+                            "yaw"_a = 0.5F,
+                            "max_speed"_a = 0.8F,
+                            "max_angular_speed"_a = 0.3F,
+                            "directions"_a = std::vector<std::array<float, 4>>{},
+                            "direction_jitter"_a = 0.3F,
+                            "seeds"_a = std::vector<std::vector<float>>{},
+                            "spread"_a = 0.3F,
+                            "candidates"_a = 4,
+                            "slack"_a = 0.2F,
+                            "max_attempts"_a = 20,
+                            "fraction"_a = 1.F,
+                            "mixture"_a = nb::none(),
+                            "memory"_a = 512,
+                            "memory_spread"_a = 0.05F,
+                            "refine_steps"_a = 3,
+                            "refine_step"_a = 0.1F,
+                            "local_mode"_a = 0,
+                            "local_step"_a = 0.05F,
+                            "local_angle"_a = 0.1F,
+                            "local_speed"_a = 0.2F,
+                            "rollout_min"_a = 0.1F,
+                            "rollout_max"_a = 0.3F,
+                            "max_acceleration"_a = 4.F,
+                            "eef"_a = 0,
+                            "constraint_settings"_a = vc::ConstraintSettings{},
+                            "chart_settings"_a = vc::ChartSettings{},
+                            "Task-space state sampler for a held object (end effector `eef`, object "
+                            "frame `object_in_eef`, wxyz + xyz): draws the object's pose (position in "
+                            "[lower, upper], orientation within +-yaw about its z and +-tilt about its x/y "
+                            "of `orientation`) and twist (linear speed up to max_speed along a weighted "
+                            "`directions` entry (x, y, z, weight) or a uniform direction; angular "
+                            "components up to max_angular_speed), projects `candidates` postures onto "
+                            "`constraints` plus the object pin (around random `seeds`, +-spread/2 of each "
+                            "joint range, or anywhere), keeps the lowest static torque ratio under the "
+                            "environment's payloads, and realizes the twist at minimum kinetic energy "
+                            "with the constraints' rows still. Velocities are scaled into the joint limits "
+                            "and halved until the zero-acceleration torque ratio is within 1 + slack; "
+                            "draws that cannot hold the payload at rest within it are redrawn, falling "
+                            "back to `sampler` after max_attempts. `sampler` supplies the uniform draws and "
+                            "should be uniform; with fraction < 1 the remaining draws come from `mixture` "
+                            "(default: `sampler`). Accepted postures are remembered by object position (up to "
+                            "`memory`); half the candidates start from the nearest remembered postures, jittered "
+                            "by +-memory_spread/2 of each joint range. The chosen posture is refined by up to "
+                            "refine_steps null-space steps (refine_step rad) that lower its static torque ratio. "
+                            "local_mode 1/2 enables local draws for planners that expand locally (BKPIECE): "
+                            "the object steps from the selected state's pose and twist (1: within local_step m, "
+                            "local_angle rad, local_speed m/s; 2: a rollout of rollout_min..rollout_max s under "
+                            "an acceleration within the torque limits, at most max_acceleration m/s^2) and the "
+                            "posture continues from the state's (object on end effector 0).");
+                    }
                 }
             }
 
             using XType = nanobind::
                 ndarray<FloatT, nanobind::numpy, nanobind::shape<3 * n_q>, nanobind::device::cpu>;
-            const char *torques_doc = "Joint torques for a flat state stack x = [q; qd; qdd].";
+            const char *torques_doc =
+                "Joint torques for a flat state stack x = [q; qd; qdd], including the payloads of "
+                "the environment's attachments.";
             submodule.def(
                 "torques",
-                [](const XType &x)
+                [](const XType &x, const Env &env)
                 {
                     std::array<float, 3 * n_q> xa;
                     std::vector<float> scratch;
                     const auto *ptr = as_flat_1d(x, 3 * n_q, scratch, "flat state");
                     std::memcpy(xa.data(), ptr, 3 * n_q * sizeof(float));
-                    return Robot::torques(xa);
+                    return Robot::torques(xa, TA::payload_of(env));
                 },
                 "x"_a,
+                "environment"_a = Env{},
                 torques_doc);
             submodule.def(
                 "torques",
-                [](const std::array<float, 3 * n_q> &x) { return Robot::torques(x); },
+                [](const std::array<float, 3 * n_q> &x, const Env &env) { return Robot::torques(x, TA::payload_of(env)); },
                 "x"_a,
+                "environment"_a = Env{},
                 torques_doc);
         }
 

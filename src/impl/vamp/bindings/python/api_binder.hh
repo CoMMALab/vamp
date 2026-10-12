@@ -3,6 +3,7 @@
 #include <vamp/collision/environment.hh>
 #include <vamp/collision/shapes.hh>
 #include <vamp/planning/planners/aorrtc_settings.hh>
+#include <vamp/planning/planners/bkpiece_settings.hh>
 #include <vamp/planning/constraints/settings.hh>
 #include <vamp/planning/planners/grrtstar_settings.hh>
 #include <vamp/planning/planner.hh>
@@ -139,6 +140,7 @@ namespace vamp::binding
 
         register_constrained_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
         register_constrained_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");
+        register_constrained_planner<Traits, vp_::Planner::BKPIECE, vp_::BKPIECESettings>(t, "bkpiece");
         register_constrained_planner<Traits, vp_::Planner::GRRTSTAR, vp_::GRRTStarSettings>(
             t, "grrtstar");
     }
@@ -168,12 +170,15 @@ namespace vamp::binding
             &Traits::phase_satisfied,
             "state"_a,
             "phase_constraints"_a,
-            "Whether a (q, qdot) state satisfies every phase constraint.");
+            "environment"_a = typename Traits::Env{},
+            "Whether a (q, qdot) state satisfies every phase constraint, judged with the payloads "
+            "of the environment's attachments.");
         t.def(
             "velocity_scale",
             &Traits::phase_velocity_scale,
             "state"_a,
             "phase_constraints"_a,
+            "environment"_a = typename Traits::Env{},
             "Largest s in (0, 1] such that scaling the state's velocity half by s satisfies "
             "every phase constraint; exactly 1 on feasible states.");
         t.def(
@@ -189,6 +194,7 @@ namespace vamp::binding
 
         register_phase_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
         register_phase_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");
+        register_phase_planner<Traits, vp_::Planner::BKPIECE, vp_::BKPIECESettings>(t, "bkpiece");
         register_phase_planner<Traits, vp_::Planner::GRRTSTAR, vp_::GRRTStarSettings>(t, "grrtstar");
     }
 
@@ -227,6 +233,7 @@ namespace vamp::binding
             "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "chart_settings"_a = vamp::planning::constraint::ChartSettings{},
             "phase_constraints"_a = typename Traits::PhaseConstraintVec{},
+            "environment"_a = typename Traits::Env{},
             "Project a (q, qdot) state onto the constraint manifold: position by constraint "
             "projection, velocity into the tangent space at the projected position (then "
             "scaled to satisfy any phase constraints). Raises ValueError if the projection "
@@ -238,8 +245,9 @@ namespace vamp::binding
             "constraints"_a,
             "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "phase_constraints"_a = typename Traits::PhaseConstraintVec{},
+            "environment"_a = typename Traits::Env{},
             "Whether a state's position satisfies every constraint within tolerance and its "
-            "velocity every phase constraint.");
+            "velocity every phase constraint (judged with the environment's attachment payloads).");
         t.def(
             "simplify",
             &Traits::simplify_chart,
@@ -272,14 +280,18 @@ namespace vamp::binding
             "n_samples"_a = 32,
             "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "chart_settings"_a = vamp::planning::constraint::ChartSettings{},
+            "with_accelerations"_a = false,
             "Debug: densify the exact edge from_state -> target through the chart/lift "
             "machinery, without validation. Returns (states, constraint error norms, duration, "
             "cost); states are sampled at uniform times in chart time from from_state, so "
-            "backward edges are executed by traversing them in reverse. Raises ValueError if "
-            "the edge cannot be constructed.");
+            "backward edges are executed by traversing them in reverse. With "
+            "with_accelerations, also returns the per-sample accelerations the edge validation "
+            "uses (exact executed accelerations under exact charts, chart-frame B udd "
+            "otherwise). Raises ValueError if the edge cannot be constructed.");
 
         register_chart_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
         register_chart_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");
+        register_chart_planner<Traits, vp_::Planner::BKPIECE, vp_::BKPIECESettings>(t, "bkpiece");
         register_chart_planner<Traits, vp_::Planner::GRRTSTAR, vp_::GRRTStarSettings>(t, "grrtstar");
     }
 
@@ -363,6 +375,7 @@ namespace vamp::binding
         register_planner<Traits, vp_::Planner::PRM, typename Traits::PRMSettings>(t, "prm");
         register_planner<Traits, vp_::Planner::FCIT, typename Traits::FCITSettings>(t, "fcit");
         register_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");
+        register_planner<Traits, vp_::Planner::BKPIECE, vp_::BKPIECESettings>(t, "bkpiece");
         register_planner<Traits, vp_::Planner::GRRTSTAR, vp_::GRRTStarSettings>(t, "grrtstar");
     }
 

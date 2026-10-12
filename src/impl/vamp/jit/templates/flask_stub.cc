@@ -6,6 +6,7 @@
 #include <vamp/random/ke_shaped.hh>
 {% if has_chart %}
 #include <vamp/planning/constraints/chart_local_planner.hh>
+#include <vamp/planning/constraints/goal_region.hh>
 #include <vamp/planning/constraints/settings.hh>
 {% endif %}
 
@@ -31,12 +32,20 @@
 #define VAMP_JIT_FN_FLASK_RHO_SET           vamp_jit_{{sym}}_rho_set
 #define VAMP_JIT_FN_FLASK_VELOCITY_LIMITS   vamp_jit_{{sym}}_velocity_limits
 #define VAMP_JIT_FN_FLASK_EFFORT_LIMITS     vamp_jit_{{sym}}_effort_limits
+#define VAMP_JIT_FN_FLASK_EFFORT_SCALE_GET  vamp_jit_{{sym}}_effort_scale_get
+#define VAMP_JIT_FN_FLASK_EFFORT_SCALE_SET  vamp_jit_{{sym}}_effort_scale_set
 {% if has_chart %}
 #define VAMP_JIT_FN_CHART_PROJECT           vamp_jit_{{sym}}_chart_project
 #define VAMP_JIT_FN_CHART_SATISFIED         vamp_jit_{{sym}}_chart_satisfied
 #define VAMP_JIT_FN_CHART_DEBUG             vamp_jit_{{sym}}_chart_debug
 #define VAMP_JIT_FN_CHART_LIFT_EDGE         vamp_jit_{{sym}}_chart_lift_edge
 #define VAMP_JIT_FN_SIMPLIFY_CHART          vamp_jit_{{sym}}_simplify_chart
+#define VAMP_JIT_FN_GOAL_REGION_NEW         vamp_jit_{{sym}}_goal_region_new
+#define VAMP_JIT_FN_GOAL_REGION_DESTROY     vamp_jit_{{sym}}_goal_region_destroy
+#define VAMP_JIT_FN_GOAL_REGION_SET_SEED    vamp_jit_{{sym}}_goal_region_set_seed
+#define VAMP_JIT_FN_GOAL_REGION_SAMPLE      vamp_jit_{{sym}}_goal_region_sample
+#define VAMP_JIT_FN_GOAL_REGION_VELOCITY    vamp_jit_{{sym}}_goal_region_velocity
+#define VAMP_JIT_FN_GOAL_REGION_IMPULSE     vamp_jit_{{sym}}_goal_region_impulse
 {% endif %}
 // clang-format on
 
@@ -68,10 +77,24 @@ namespace vamp_jit_flask
         return out;
     }
 
-    inline auto make_phase_lp(vamp::jit::ffi::PhaseConstraintHandle *const *handles, std::uint64_t n)
-        -> PhaseLP
+    // End-effector payloads of a host-side Environment<float> (nullptr: none).
+    inline auto payload_of(const void *env_ptr) -> F::Payload
     {
-        return PhaseLP(PhaseSetT(load_phase(handles, n)));
+        if (env_ptr == nullptr)
+        {
+            return {};
+        }
+
+        return vamp::collision::attachment_payload<F::payload_dimension / 10>(
+            *static_cast<const vamp::collision::Environment<float> *>(env_ptr));
+    }
+
+    inline auto make_phase_lp(
+        vamp::jit::ffi::PhaseConstraintHandle *const *handles,
+        std::uint64_t n,
+        const void *env_ptr) -> PhaseLP
+    {
+        return PhaseLP(PhaseSetT(load_phase(handles, n), payload_of(env_ptr)));
     }
 {% if has_chart %}
 
@@ -83,14 +106,15 @@ namespace vamp_jit_flask
         const void *constraint_settings_ptr,
         const void *chart_settings_ptr,
         vamp::jit::ffi::PhaseConstraintHandle *const *phase,
-        std::uint64_t n_phase) -> ChartLP
+        std::uint64_t n_phase,
+        const void *env_ptr) -> ChartLP
     {
         const auto &chs =
             *static_cast<const vamp::planning::constraint::ChartSettings *>(chart_settings_ptr);
         return ChartLP(
             vamp_jit_robot::load_constraint_set(constraints, n_constraints, constraint_settings_ptr),
             chs,
-            PhaseSetT(load_phase(phase, n_phase)));
+            PhaseSetT(load_phase(phase, n_phase), payload_of(env_ptr)));
     }
 {% endif %}
 }  // namespace vamp_jit_flask
@@ -115,27 +139,32 @@ extern "C" vamp::jit::ffi::PhaseConstraintHandle *VAMP_JIT_FN_PHASE_EEF_SPEED_NE
 extern "C" std::int32_t VAMP_JIT_FN_PHASE_SATISFIED(
     const float *config,
     vamp::jit::ffi::PhaseConstraintHandle *const *phase,
-    std::uint64_t n_phase)
+    std::uint64_t n_phase,
+    const void *env_ptr)
 {
-    auto set = vamp_jit_flask::PhaseSetT(vamp_jit_flask::load_phase(phase, n_phase));
+    auto set = vamp_jit_flask::PhaseSetT(
+        vamp_jit_flask::load_phase(phase, n_phase), vamp_jit_flask::payload_of(env_ptr));
     return set.satisfied(vamp_jit_flask_robot::load_config(config)) ? 1 : 0;
 }
 
 extern "C" float VAMP_JIT_FN_PHASE_VELOCITY_SCALE(
     const float *config,
     vamp::jit::ffi::PhaseConstraintHandle *const *phase,
-    std::uint64_t n_phase)
+    std::uint64_t n_phase,
+    const void *env_ptr)
 {
-    auto set = vamp_jit_flask::PhaseSetT(vamp_jit_flask::load_phase(phase, n_phase));
+    auto set = vamp_jit_flask::PhaseSetT(
+        vamp_jit_flask::load_phase(phase, n_phase), vamp_jit_flask::payload_of(env_ptr));
     return set.velocity_scale(vamp_jit_flask_robot::load_config(config));
 }
 
 extern "C" vamp::jit::ffi::SamplerHandle *
-VAMP_JIT_FN_SAMPLER_KE_SHAPED(vamp::jit::ffi::SamplerHandle *inner_h, float max_energy)
+VAMP_JIT_FN_SAMPLER_KE_SHAPED(vamp::jit::ffi::SamplerHandle *inner_h, float max_energy, const void *env_ptr)
 {
     auto inner = vamp_jit_flask_robot::deref_sampler(inner_h);
     auto *holder = new vamp_jit_flask_robot::SamplerPtr(
-        std::make_shared<vamp::rng::KineticEnergyShaped<vamp_jit_flask::F>>(inner, max_energy));
+        std::make_shared<vamp::rng::KineticEnergyShaped<vamp_jit_flask::F>>(
+            inner, max_energy, vamp_jit_flask::payload_of(env_ptr)));
     return reinterpret_cast<vamp::jit::ffi::SamplerHandle *>(holder);
 }
 
@@ -159,7 +188,7 @@ extern "C" vamp::jit::ffi::PlanResultHandle *VAMP_JIT_FN_SIMPLIFY_PHASE(
     auto env_rake = vamp_jit_flask_robot::raked_env(env_ptr);
     const auto &settings = *static_cast<const vamp::planning::SimplifySettings *>(settings_ptr);
     auto rng = vamp_jit_flask_robot::deref_sampler(sampler);
-    auto lp = vamp_jit_flask::make_phase_lp(phase, n_phase);
+    auto lp = vamp_jit_flask::make_phase_lp(phase, n_phase, env_ptr);
 
     auto *wrapped = new vamp_jit_flask_robot::WrappedResult{
         vamp::planning::simplify<F, {{rake}}, F::resolution>(path, env_rake, settings, rng, lp)};
@@ -204,21 +233,21 @@ VAMP_JIT_FN_FLASK_EVAL(const float *a, const float *b, float T, float t, float *
     std::memcpy(out, x.data(), 3 * F::flat_dimension * sizeof(float));
 }
 
-extern "C" void VAMP_JIT_FN_FLASK_TORQUES(const float *x, float *out)
+extern "C" void VAMP_JIT_FN_FLASK_TORQUES(const float *x, float *out, const void *env_ptr)
 {
     using F = vamp_jit_flask::F;
     std::array<float, 3 * F::flat_dimension> in;
     std::memcpy(in.data(), x, in.size() * sizeof(float));
-    const auto tau = F::torques(in);
+    const auto tau = F::torques(in, vamp_jit_flask::payload_of(env_ptr));
     std::memcpy(out, tau.data(), F::flat_dimension * sizeof(float));
 }
 
-extern "C" float VAMP_JIT_FN_FLASK_KINETIC_ENERGY(const float *x)
+extern "C" float VAMP_JIT_FN_FLASK_KINETIC_ENERGY(const float *x, const void *env_ptr)
 {
     using F = vamp_jit_flask::F;
     std::array<float, F::dimension> in;
     std::memcpy(in.data(), x, in.size() * sizeof(float));
-    return F::kinetic_energy(in);
+    return F::kinetic_energy(in, vamp_jit_flask::payload_of(env_ptr));
 }
 
 extern "C" void VAMP_JIT_FN_FLASK_EEF_VELOCITY(const float *x, float *out)
@@ -261,6 +290,16 @@ extern "C" void VAMP_JIT_FN_FLASK_EFFORT_LIMITS(float *out)
     using F = vamp_jit_flask::F;
     std::memcpy(out, F::effort_limits.data(), F::flat_dimension * sizeof(float));
 }
+
+extern "C" float VAMP_JIT_FN_FLASK_EFFORT_SCALE_GET()
+{
+    return vamp_jit_flask::F::effort_scale;
+}
+
+extern "C" void VAMP_JIT_FN_FLASK_EFFORT_SCALE_SET(float scale)
+{
+    vamp_jit_flask::F::effort_scale = scale;
+}
 {% if has_chart %}
 
 extern "C" std::int32_t VAMP_JIT_FN_CHART_PROJECT(
@@ -271,10 +310,11 @@ extern "C" std::int32_t VAMP_JIT_FN_CHART_PROJECT(
     const void *chart_settings_ptr,
     vamp::jit::ffi::PhaseConstraintHandle *const *phase,
     std::uint64_t n_phase,
+    const void *env_ptr,
     float *out)
 {
     const auto lp = vamp_jit_flask::make_chart_lp(
-        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, phase, n_phase);
+        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, phase, n_phase, env_ptr);
     auto z = vamp_jit_flask_robot::load_config(config);
     if (not lp.project(z))
     {
@@ -293,10 +333,11 @@ extern "C" std::int32_t VAMP_JIT_FN_CHART_SATISFIED(
     const void *constraint_settings_ptr,
     const void *chart_settings_ptr,
     vamp::jit::ffi::PhaseConstraintHandle *const *phase,
-    std::uint64_t n_phase)
+    std::uint64_t n_phase,
+    const void *env_ptr)
 {
     const auto lp = vamp_jit_flask::make_chart_lp(
-        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, phase, n_phase);
+        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, phase, n_phase, env_ptr);
     return lp.satisfied(vamp_jit_flask_robot::load_config(config)) ? 1 : 0;
 }
 
@@ -310,7 +351,7 @@ extern "C" void VAMP_JIT_FN_CHART_DEBUG(
 {
     using A = vamp_jit_flask::A;
     const auto lp = vamp_jit_flask::make_chart_lp(
-        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, nullptr, 0);
+        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, nullptr, 0, nullptr);
     const auto rows = lp.debug_chart(vamp_jit_flask_robot::load_config(config));
 
     auto *out = static_cast<std::vector<float> *>(out_rows_vec);
@@ -334,13 +375,15 @@ extern "C" std::int32_t VAMP_JIT_FN_CHART_LIFT_EDGE(
     void *out_states_vec,
     void *out_errors_vec,
     float *out_duration,
-    float *out_cost)
+    float *out_cost,
+    void *out_accelerations_vec)
 {
     using F = vamp_jit_flask::F;
     const auto lp = vamp_jit_flask::make_chart_lp(
-        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, nullptr, 0);
+        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, nullptr, 0, nullptr);
 
     std::vector<typename F::Configuration> states;
+    std::vector<std::array<float, F::flat_dimension>> accelerations;
     auto *errors = static_cast<std::vector<float> *>(out_errors_vec);
     errors->clear();
     float duration = 0.F, cost = 0.F;
@@ -352,9 +395,20 @@ extern "C" std::int32_t VAMP_JIT_FN_CHART_LIFT_EDGE(
             states,
             *errors,
             duration,
-            cost))
+            cost,
+            (out_accelerations_vec != nullptr) ? &accelerations : nullptr))
     {
         return 0;
+    }
+
+    if (out_accelerations_vec != nullptr)
+    {
+        auto *out_acc = static_cast<std::vector<float> *>(out_accelerations_vec);
+        out_acc->clear();
+        for (const auto &a : accelerations)
+        {
+            out_acc->insert(out_acc->end(), a.begin(), a.end());
+        }
     }
 
     auto *out_states = static_cast<std::vector<float> *>(out_states_vec);
@@ -396,10 +450,101 @@ extern "C" vamp::jit::ffi::PlanResultHandle *VAMP_JIT_FN_SIMPLIFY_CHART(
     const auto &settings = *static_cast<const vamp::planning::SimplifySettings *>(settings_ptr);
     auto rng = vamp_jit_flask_robot::deref_sampler(sampler);
     auto lp = vamp_jit_flask::make_chart_lp(
-        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, phase, n_phase);
+        constraints, n_constraints, constraint_settings_ptr, chart_settings_ptr, phase, n_phase, env_ptr);
 
     auto *wrapped = new vamp_jit_flask_robot::WrappedResult{
         vamp::planning::simplify<F, {{rake}}, F::resolution>(path, env_rake, settings, rng, lp)};
     return reinterpret_cast<vamp::jit::ffi::PlanResultHandle *>(wrapped);
+}
+
+using vamp_jit_goal_region = vamp::planning::constraint::ImpactGoalRegion<vamp_jit_flask::F, {{rake}}>;
+
+extern "C" vamp::jit::ffi::GoalRegionHandle *VAMP_JIT_FN_GOAL_REGION_NEW(
+    vamp::jit::ffi::ConstraintHandle *const *constraints,
+    std::uint64_t n_constraints,
+    const float *rate,
+    std::uint64_t n_rate,
+    float min_speed,
+    float max_speed,
+    const void *constraint_settings_ptr,
+    const void *chart_settings_ptr,
+    const void *env_ptr,
+    vamp::jit::ffi::PhaseConstraintHandle *const *phase,
+    std::uint64_t n_phase,
+    std::uint64_t *out_rows)
+{
+    auto set = vamp_jit_robot::load_constraint_set(constraints, n_constraints, constraint_settings_ptr);
+    *out_rows = set.exact_form() ? set.equality_rows() : 0;
+    if (not set.exact_form() or n_rate != set.equality_rows())
+    {
+        return nullptr;
+    }
+
+    const auto &chs = *static_cast<const vamp::planning::constraint::ChartSettings *>(chart_settings_ptr);
+    const auto &env = *static_cast<const vamp::collision::Environment<float> *>(env_ptr);
+    return reinterpret_cast<vamp::jit::ffi::GoalRegionHandle *>(new vamp_jit_goal_region(
+        std::move(set),
+        std::vector<float>(rate, rate + n_rate),
+        min_speed,
+        max_speed,
+        chs,
+        env,
+        vamp_jit_flask::load_phase(phase, n_phase)));
+}
+
+extern "C" void VAMP_JIT_FN_GOAL_REGION_DESTROY(vamp::jit::ffi::GoalRegionHandle *h)
+{
+    delete reinterpret_cast<vamp_jit_goal_region *>(h);
+}
+
+extern "C" void VAMP_JIT_FN_GOAL_REGION_SET_SEED(vamp::jit::ffi::GoalRegionHandle *h, const float *seed, float spread)
+{
+    std::array<float, vamp_jit_flask::F::flat_dimension> s;
+    std::memcpy(s.data(), seed, s.size() * sizeof(float));
+    reinterpret_cast<vamp_jit_goal_region *>(h)->set_seed(s, spread);
+}
+
+extern "C" std::int32_t VAMP_JIT_FN_GOAL_REGION_SAMPLE(
+    vamp::jit::ffi::GoalRegionHandle *h,
+    vamp::jit::ffi::SamplerHandle *sampler,
+    float *out_state)
+{
+    auto rng = vamp_jit_flask_robot::deref_sampler(sampler);
+    const auto z = reinterpret_cast<vamp_jit_goal_region *>(h)->sample(*rng);
+    if (not z)
+    {
+        return 0;
+    }
+
+    const auto arr = z->to_array();
+    std::memcpy(out_state, arr.data(), vamp_jit_flask::F::dimension * sizeof(float));
+    return 1;
+}
+
+extern "C" std::int32_t VAMP_JIT_FN_GOAL_REGION_VELOCITY(
+    vamp::jit::ffi::GoalRegionHandle *h,
+    const float *q,
+    float speed,
+    float *out)
+{
+    std::array<float, vamp_jit_flask::F::flat_dimension> qa;
+    std::memcpy(qa.data(), q, qa.size() * sizeof(float));
+    const auto v = reinterpret_cast<vamp_jit_goal_region *>(h)->velocity(qa, speed);
+    if (not v)
+    {
+        return 0;
+    }
+
+    std::memcpy(out, v->data(), v->size() * sizeof(float));
+    return 1;
+}
+
+extern "C" void VAMP_JIT_FN_GOAL_REGION_IMPULSE(
+    vamp::jit::ffi::GoalRegionHandle *h,
+    const float *state,
+    float *out)
+{
+    const auto lambda = reinterpret_cast<vamp_jit_goal_region *>(h)->impulse(vamp_jit_flask_robot::load_config(state));
+    std::copy(lambda.begin(), lambda.end(), out);
 }
 {% endif %}

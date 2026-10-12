@@ -185,6 +185,7 @@ namespace vamp::planning
         std::size_t motions_attempted{0};
         std::size_t motions_valid{0};
         std::size_t rake_calls{0};
+        std::size_t newton_iterations{0};
 
         inline auto operator+=(const PlanningStats &o) noexcept -> PlanningStats &
         {
@@ -193,6 +194,7 @@ namespace vamp::planning
             motions_attempted += o.motions_attempted;
             motions_valid += o.motions_valid;
             rake_calls += o.rake_calls;
+            newton_iterations += o.newton_iterations;
             return *this;
         }
     };

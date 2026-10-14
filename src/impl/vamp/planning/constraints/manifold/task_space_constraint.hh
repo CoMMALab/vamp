@@ -24,6 +24,9 @@ namespace vamp::planning::constraint
 
         static constexpr std::size_t n_eef = Robot::n_eef;
 
+        // This constraint has a generated bounded least-squares step (ProjMethod::BoundedLS).
+        static constexpr bool bounded_ls = true;
+
         using Transform = std::array<float, 7>;
         using Bound = std::array<float, 6>;
 
@@ -58,10 +61,18 @@ namespace vamp::planning::constraint
             Robot::template tsr_error<rake>(input, this->solve);
         }
 
+        // The step of ProjMethod::BoundedLS: `input` is a BoundedSolveInput (solve buffer + step limits).
+        template <typename Input>
+        void solve_step_bounded(Block &gradient, const Input &input) const noexcept
+        {
+            Robot::template solve_tsr_error_bounded_ls<rake>(input, gradient);
+        }
+
         void solve_step(Block &gradient, ProjMethod method) const noexcept
         {
             switch (method)
             {
+                case ProjMethod::BoundedLS:  // dispatched by step(), which has the joint limits
                 case ProjMethod::InnerLM:
                     Robot::template solve_tsr_error_lm_inner<rake>(this->solve, gradient);
                     break;

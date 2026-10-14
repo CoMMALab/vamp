@@ -56,6 +56,7 @@ namespace vamp::planning::constraint
         {
             switch (method)
             {
+                case ProjMethod::BoundedLS:  // no bounded solver for this constraint: InnerLM
                 case ProjMethod::InnerLM:
                     Robot::template solve_tsr_relative_error_lm_inner<rake>(this->solve, gradient);
                     break;

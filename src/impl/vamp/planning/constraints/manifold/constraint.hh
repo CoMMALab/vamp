@@ -1,5 +1,7 @@
 #pragma once
 
+#include <type_traits>
+
 #include <array>
 
 #include <vamp/planning/constraints/settings.hh>
@@ -119,6 +121,42 @@ namespace vamp::planning::constraint
         const bool *pinned) noexcept
     {
         for (auto j = 0U; j < Robot::dimension; ++j)
+    // Input layout of the generated bounded least-squares solvers: the solve buffer (Jacobian, then
+    // error), then the allowed step to the lower joint limit (lower - q) and to the upper limit
+    // (upper - q), one row per dimension.
+    template <typename Robot, std::size_t rake, std::size_t err_size, std::size_t jac_size>
+    struct BoundedSolveInput
+    {
+        using Block = typename Robot::template ConfigurationBlock<rake>;
+
+        const SolveBuffer<rake, err_size, jac_size> &solve;
+        Block lower;
+        Block upper;
+
+        auto operator[](std::size_t index) const noexcept -> FloatVector<rake, 1>
+        {
+            constexpr std::size_t solve_size = jac_size + err_size;
+            if (index < solve_size)
+            {
+                return solve[index];
+            }
+
+            index -= solve_size;
+            return (index < Robot::dimension) ? lower[index] : upper[index - Robot::dimension];
+        }
+    };
+
+    // Detects constraints that provide a bounded least-squares step (a public `bounded_ls` member).
+    template <typename T, typename = void>
+    struct has_bounded_solver : std::false_type
+    {
+    };
+
+    template <typename T>
+    struct has_bounded_solver<T, std::void_t<decltype(T::bounded_ls)>> : std::true_type
+    {
+    };
+
         {
             if (not pinned[j])
             {
@@ -204,6 +242,25 @@ namespace vamp::planning::constraint
 
         void set_hold_satisfied_rows(bool hold) const noexcept final
         {
+
+            if constexpr (has_bounded_solver<Derived>::value)
+            {
+                if (method == ProjMethod::BoundedLS)
+                {
+                    // The joint limits enter the solve as the allowed step: limit - q.
+                    BoundedSolveInput<Robot, rake, err_size, jac_size> input{solve};
+                    for (auto i = 0U; i < Robot::dimension; ++i)
+                    {
+                        input.lower[i] = Row::fill(Robot::lower_bound[i]) - q[i];
+                        input.upper[i] = Row::fill(Robot::upper_bound[i]) - q[i];
+                    }
+
+                    derived().solve_step_bounded(gradient, input);
+                    integrate_step<Robot, rake>(q, gradient, alpha);
+                    return;
+                }
+            }
+
             hold_satisfied_rows_ = hold;
         }
 

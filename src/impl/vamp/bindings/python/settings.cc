@@ -138,7 +138,8 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
     nb::enum_<vc::ProjMethod>(pymodule, "ProjMethod")
         .value("InnerLM", vc::ProjMethod::InnerLM)
         .value("OuterLM", vc::ProjMethod::OuterLM)
-        .value("GradDesc", vc::ProjMethod::GradDesc);
+        .value("GradDesc", vc::ProjMethod::GradDesc)
+        .value("BoundedLS", vc::ProjMethod::BoundedLS);
 
     nb::class_<vc::ConstraintSettings>(pymodule, "ConstraintSettings")
         .def(nb::init<>())

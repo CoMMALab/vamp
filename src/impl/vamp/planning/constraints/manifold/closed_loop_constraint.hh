@@ -40,6 +40,7 @@ namespace vamp::planning::constraint
             Block gradient;
             switch (method)
             {
+                case ProjMethod::BoundedLS:  // no bounded solver for this constraint: InnerLM
                 case ProjMethod::InnerLM:
                     Robot::template solve_closed_loop_error_lm_inner<rake>(solve, gradient);
                     break;

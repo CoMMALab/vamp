@@ -151,6 +151,12 @@ if(VAMP_BUILD_CPP_DEMO)
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_rrtc_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
   endif()
+
+  add_executable(vamp_task_space_rrtc_cage scripts/cpp/task_space_rrtc_cage.cc)
+  target_link_libraries(vamp_task_space_rrtc_cage PRIVATE vamp_cpp)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(vamp_task_space_rrtc_cage PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+  endif()
 endif()
 
 # OMPL integration demo

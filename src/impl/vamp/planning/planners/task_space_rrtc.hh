@@ -16,6 +16,7 @@
 #include <vamp/planning/nn/nn.hh>
 #include <vamp/planning/plan.hh>
 #include <vamp/planning/planners/task_space_rrtc_settings.hh>
+#include <vamp/planning/planners/task_space_trace.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
 #include <vamp/vector.hh>
@@ -53,7 +54,8 @@ namespace vamp::planning
             const collision::Environment<FloatVector<rake>> &environment,
             const TaskSpaceRRTCSettings &settings,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner(),
+            TaskSpaceTrace<Robot> *trace = nullptr) noexcept -> PlanningResult<Robot>
         {
             size_t extend_counter_failed = 0;
             size_t extend_counter_succeeded = 0;
@@ -104,6 +106,41 @@ namespace vamp::planning
                 return lane;
             };
 
+            const auto lane_of = [](const Configuration &c) -> Lane
+            {
+                Lane lane;
+                const auto array = c.to_array();
+                for (auto j = 0U; j < dimension; ++j)
+                {
+                    lane[j] = array[j];
+                }
+
+                return lane;
+            };
+
+            constexpr float nan = std::numeric_limits<float>::quiet_NaN();
+            const auto record = [&](TraceEvent event,
+                                    TraceOutcome outcome,
+                                    std::int32_t node,
+                                    std::int32_t parent,
+                                    float error,
+                                    float reference_error,
+                                    const Lane &configuration)
+            {
+                if (trace)
+                {
+                    trace->entries.push_back(
+                        {event,
+                         outcome,
+                         static_cast<std::uint32_t>(iter),
+                         node,
+                         parent,
+                         error,
+                         reference_error,
+                         configuration});
+                }
+            };
+
             // The constraint kernels evaluate `rake` lanes at once; the walk has a single
             // configuration, so every lane holds a copy of it.
             const auto broadcast = [](const Lane &q) -> Block
@@ -126,6 +163,7 @@ namespace vamp::planning
                 Lane q = load(current);
                 Block block = broadcast(q);
                 float error = region.squared_error(block)[{0, 0}];
+                record(TraceEvent::WalkStart, TraceOutcome::None, node, -1, error, nan, q);
 
                 for (std::size_t step = 0; step < settings.max_greedy_steps; ++step)
                 {
@@ -147,9 +185,21 @@ namespace vamp::planning
                         norm2 += next[j] * next[j];
                     }
 
+                    if (trace)
+                    {
+                        Lane lm;
+                        for (auto j = 0U; j < dimension; ++j)
+                        {
+                            lm[j] = proposed[{j, 0}];
+                        }
+
+                        record(TraceEvent::WalkLm, TraceOutcome::None, -1, current, nan, error, lm);
+                    }
+
                     const float norm = std::sqrt(norm2);
                     if (not(norm > 1e-9F))
                     {
+                        record(TraceEvent::WalkProposal, TraceOutcome::ZeroStep, -1, current, nan, error, q);
                         return;
                     }
 
@@ -162,29 +212,36 @@ namespace vamp::planning
                     Block candidate = broadcast(next);
                     constraint::renormalize_so3<Robot, rake>(candidate);
                     const float next_error = region.squared_error(candidate)[{0, 0}];
+                    const auto propose = [&](TraceOutcome outcome, std::int32_t node)
+                    { record(TraceEvent::WalkProposal, outcome, node, current, next_error, error, next); };
 
                     if (not(next_error < error))
                     {
+                        propose(TraceOutcome::NoImprovement, -1);
                         return;
                     }
 
                     const Configuration c(next);
                     if (not Robot::in_bounds(c))
                     {
+                        propose(TraceOutcome::OutOfBounds, -1);
                         return;
                     }
 
                     if (not lp.validate(Configuration(buffer_index(current)), c, environment))
                     {
+                        propose(TraceOutcome::Collision, -1);
                         return;
                     }
 
                     const auto added = add_node(c, current);
                     if (not added)
                     {
+                        propose(TraceOutcome::TreeFull, -1);
                         return;
                     }
 
+                    propose(TraceOutcome::Accepted, static_cast<std::int32_t>(*added));
                     current = *added;
                     q = next;
                     block = candidate;
@@ -202,6 +259,7 @@ namespace vamp::planning
             const auto explore = [&]() -> std::optional<std::size_t>
             {
                 const auto sample = rng->next();
+                record(TraceEvent::Sample, TraceOutcome::None, -1, -1, nan, nan, lane_of(sample));
 
                 typename Robot::ConfigurationBuffer sample_array;
                 sample.to_array(sample_array.data());
@@ -223,6 +281,14 @@ namespace vamp::planning
 
                 if (extension.status == SteerStatus::Trapped or extension.status == SteerStatus::Rejected)
                 {
+                    record(
+                        TraceEvent::ExtendFailed,
+                        TraceOutcome::Collision,
+                        -1,
+                        static_cast<std::int32_t>(nearest_index),
+                        nan,
+                        nan,
+                        lane_of(sample));
                     extend_counter_failed++;
                     // std::cout << extend_counter_failed << ": Steer failed: " << static_cast<int>(extension.status) << " for config "
                             //   << Configuration(buffer_index(nearest_index)) << " toward " << sample
@@ -237,7 +303,23 @@ namespace vamp::planning
                 const auto [last, truncated] = insert_chain<Robot>(
                     extension.waypoints,
                     nearest_index,
-                    [&](const Configuration &c, std::size_t parent) { return add_node(c, parent); });
+                    [&](const Configuration &c, std::size_t parent)
+                    {
+                        const auto added = add_node(c, parent);
+                        if (added)
+                        {
+                            record(
+                                TraceEvent::Extend,
+                                TraceOutcome::Accepted,
+                                static_cast<std::int32_t>(*added),
+                                static_cast<std::int32_t>(parent),
+                                nan,
+                                nan,
+                                lane_of(c));
+                        }
+
+                        return added;
+                    });
                 if (truncated or last == nearest_index)
                 {
                     return std::nullopt;
@@ -247,6 +329,7 @@ namespace vamp::planning
             };
 
             add_node(start, 0);
+            record(TraceEvent::Root, TraceOutcome::None, 0, -1, nan, nan, lane_of(start));
             walk(0);
 
             while (not solution and iter++ < settings.max_iterations and free_index < settings.max_samples)
@@ -259,6 +342,15 @@ namespace vamp::planning
 
             if (solution)
             {
+                record(
+                    TraceEvent::Solved,
+                    TraceOutcome::None,
+                    static_cast<std::int32_t>(*solution),
+                    -1,
+                    nan,
+                    nan,
+                    load(*solution));
+
                 auto current = *solution;
                 result.path.emplace_back(buffer_index(current));
                 while (parents[current] != current)

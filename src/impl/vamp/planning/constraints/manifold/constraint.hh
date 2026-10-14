@@ -113,14 +113,6 @@ namespace vamp::planning::constraint
         }
     };
 
-    // Zero the pinned columns of a cached solve buffer's Jacobian (mask_jacobian()
-    // implementations of constraints with generated solvers).
-    template <typename Robot, std::size_t rake, std::size_t err_size, std::size_t jac_size>
-    inline void mask_pinned_columns(
-        SolveBuffer<rake, err_size, jac_size> &solve,
-        const bool *pinned) noexcept
-    {
-        for (auto j = 0U; j < Robot::dimension; ++j)
     // Input layout of the generated bounded least-squares solvers: the solve buffer (Jacobian, then
     // error), then the allowed step to the lower joint limit (lower - q) and to the upper limit
     // (upper - q), one row per dimension.
@@ -157,6 +149,14 @@ namespace vamp::planning::constraint
     {
     };
 
+    // Zero the pinned columns of a cached solve buffer's Jacobian (mask_jacobian()
+    // implementations of constraints with generated solvers).
+    template <typename Robot, std::size_t rake, std::size_t err_size, std::size_t jac_size>
+    inline void mask_pinned_columns(
+        SolveBuffer<rake, err_size, jac_size> &solve,
+        const bool *pinned) noexcept
+    {
+        for (auto j = 0U; j < Robot::dimension; ++j)
         {
             if (not pinned[j])
             {
@@ -223,25 +223,6 @@ namespace vamp::planning::constraint
         void step(Block &q, ProjMethod method, float alpha) const noexcept final
         {
             Block gradient;
-            derived().solve_step(gradient, method);
-            integrate_step<Robot, rake>(q, gradient, alpha);
-        }
-
-        auto n_rows() const noexcept -> std::size_t final
-        {
-            return err_size;
-        }
-
-        void active_rows(bool *rows) const noexcept final
-        {
-            for (auto i = 0U; i < err_size; ++i)
-            {
-                rows[i] = equality_rows[i];
-            }
-        }
-
-        void set_hold_satisfied_rows(bool hold) const noexcept final
-        {
 
             if constexpr (has_bounded_solver<Derived>::value)
             {
@@ -261,6 +242,25 @@ namespace vamp::planning::constraint
                 }
             }
 
+            derived().solve_step(gradient, method);
+            integrate_step<Robot, rake>(q, gradient, alpha);
+        }
+
+        auto n_rows() const noexcept -> std::size_t final
+        {
+            return err_size;
+        }
+
+        void active_rows(bool *rows) const noexcept final
+        {
+            for (auto i = 0U; i < err_size; ++i)
+            {
+                rows[i] = equality_rows[i];
+            }
+        }
+
+        void set_hold_satisfied_rows(bool hold) const noexcept final
+        {
             hold_satisfied_rows_ = hold;
         }
 

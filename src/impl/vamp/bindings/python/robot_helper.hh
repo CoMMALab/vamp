@@ -30,6 +30,7 @@
 #include <vamp/planning/planners/prm.hh>
 #include <vamp/planning/planners/roadmap.hh>
 #include <vamp/planning/planners/rrtc.hh>
+#include <vamp/planning/planners/task_space_rrtc.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/planning/simplify.hh>
 #include <vamp/planning/simplify_settings.hh>
@@ -396,6 +397,29 @@ namespace vamp::binding
             apply_pins(set, rng);
             return solve_multi_lp<P>(
                 start, goals, env, s, rng, ConstrainedLP(std::move(set)), manifold_message);
+        }
+
+        // Plan from `start` to a task-space region (the constraints, e.g. a TSR) with no goal
+        // configuration: see TaskSpaceRRTC.
+        static auto solve_task_space(
+            const Cfg &start,
+            ConstraintVec constraints,
+            const Env &env,
+            const vamp::planning::TaskSpaceRRTCSettings &s,
+            std::shared_ptr<Sampler> rng,
+            const ConstraintSettings &cs) -> PlanningResult
+        {
+            if (constraints.empty())
+            {
+                throw std::invalid_argument("task-space planning needs at least one goal constraint");
+            }
+
+            check_pins(rng, Input::to(start), "Start");
+
+            ConstraintSetT region(std::move(constraints), cs);
+            apply_pins(region, rng);
+            return vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution>::solve(
+                Input::to(start), region, EnvVec(env), s, rng);
         }
 
         static auto simplify_constrained(

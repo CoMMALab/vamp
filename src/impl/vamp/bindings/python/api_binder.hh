@@ -7,6 +7,7 @@
 #include <vamp/planning/planners/grrtstar_settings.hh>
 #include <vamp/planning/planner.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
+#include <vamp/planning/planners/task_space_rrtc_settings.hh>
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/utils.hh>
 
@@ -136,6 +137,19 @@ namespace vamp::binding
             "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "Simplification heuristics restricted to the constraint manifold. Raises ValueError "
             "if any path state violates the constraints.");
+
+        t.def(
+            "task_space_rrtc",
+            &Traits::solve_task_space,
+            "start"_a,
+            "goal_constraints"_a,
+            "environment"_a,
+            "settings"_a,
+            "sampler"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "Plan from a start configuration to a task-space goal region (the constraints, "
+            "e.g. a TaskSpaceConstraint) without computing a goal configuration: RRT "
+            "exploration plus goal-directed Levenberg-Marquardt walks toward the region.");
 
         register_constrained_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
         register_constrained_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");

@@ -478,6 +478,34 @@ namespace vamp::binding
             return Input::from(q);
         }
 
+        // One raw descent step (the operation a projection iteration repeats), with no
+        // convergence requirement: the Jacobian is evaluated at `c` and the configuration
+        // after a single step is returned, whatever its error.
+        static auto
+        constraint_step(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs) -> Cfg
+        {
+            const ConstraintSetT set(std::move(constraints), cs);
+            auto block = Input::template block<rake>(c);
+            set.squared_error(block);  // fills the Jacobian cache that step_in_place consumes
+            set.step_in_place(block);
+
+            std::array<float, Robot::dimension> array;
+            for (auto i = 0U; i < Robot::dimension; ++i)
+            {
+                array[i] = block[{i, 0}];
+            }
+
+            return Input::from(Configuration(array));
+        }
+
+        // Summed squared violation across every constraint's rows (0 if every row is satisfied).
+        static auto
+        constraint_squared_error(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs) -> float
+        {
+            return ConstraintSetT(std::move(constraints), cs)
+                .squared_error(Input::template block<rake>(c))[{0, 0}];
+        }
+
         static auto
         constraint_satisfied(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs) -> bool
         {

@@ -120,6 +120,22 @@ namespace vamp::binding
                 "does not converge.");
         }
         t.def(
+            "step",
+            &Traits::constraint_step,
+            "configuration"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "A single raw descent step toward the constraint manifold from a configuration, with "
+            "no convergence check: returns the configuration after one step of the projection "
+            "method.");
+        t.def(
+            "squared_error",
+            &Traits::constraint_squared_error,
+            "configuration"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "Summed squared violation of the constraints at a configuration.");
+        t.def(
             "satisfied",
             &Traits::constraint_satisfied,
             "configuration"_a,

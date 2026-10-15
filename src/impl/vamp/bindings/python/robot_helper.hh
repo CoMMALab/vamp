@@ -486,7 +486,8 @@ namespace vamp::binding
         {
             const ConstraintSetT set(std::move(constraints), cs);
             auto block = Input::template block<rake>(c);
-            set.squared_error(block);  // fills the Jacobian cache that step_in_place consumes
+            set.begin_projection(block);  // constraints with hidden state (the spline's t) start from their seed
+            set.squared_error(block);     // fills the Jacobian cache that step_in_place consumes
             set.step_in_place(block);
 
             std::array<float, Robot::dimension> array;
@@ -503,7 +504,7 @@ namespace vamp::binding
         constraint_squared_error(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs) -> float
         {
             return ConstraintSetT(std::move(constraints), cs)
-                .squared_error(Input::template block<rake>(c))[{0, 0}];
+                .closest_squared_error(Input::template block<rake>(c))[{0, 0}];
         }
 
         static auto

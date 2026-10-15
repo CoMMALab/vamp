@@ -157,6 +157,13 @@ if(VAMP_BUILD_CPP_DEMO)
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_task_space_rrtc_cage PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
   endif()
+
+  # Checks the spline constraint on its own (needs a Panda header generated with "spline_constraint": true)
+  add_executable(vamp_spline_constraint_test scripts/cpp/spline_constraint_test.cc)
+  target_link_libraries(vamp_spline_constraint_test PRIVATE vamp_cpp)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(vamp_spline_constraint_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+  endif()
 endif()
 
 # OMPL integration demo

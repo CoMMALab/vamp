@@ -54,6 +54,31 @@ namespace vamp::planning::constraint
             }
         }
 
+        // Called with the block about to be projected (or checked), before any squared_error() or step() on it, so
+        // a constraint that keeps per-lane hidden state (e.g. SplineConstraint's curve parameter) can initialise
+        // it from q. ConstraintSet calls it at the start of every projection and of satisfied(). Default: nothing.
+        virtual void begin_projection(const Block & /*q*/) const noexcept
+        {
+        }
+
+        // Bring the hidden state to its best value for q (for the spline constraint: the closest point of the curve),
+        // so that the constraint's error is the violation of q alone and not of q at some leftover state. Also what
+        // seeds a projection (see begin_projection). Default: begin_projection(q).
+        virtual void closest_t(const Block &q) const noexcept
+        {
+            begin_projection(q);
+        }
+
+        // The squared constraint violation of q alone, with the hidden state at its best value for q: a configuration
+        // on the manifold gives zero. For one-off queries (ConstraintSet::closest_squared_error, satisfied). Unlike
+        // squared_error() it does not fill the Jacobian cache that step() consumes. Default: closest_t(q), then
+        // squared_error(q).
+        virtual auto closest_squared_error(const Block &q) const noexcept -> FloatVector<rake, 1>
+        {
+            closest_t(q);
+            return squared_error(q);
+        }
+
         // Whether projection keeps already-satisfied rows in the Jacobian (see
         // ConstraintSettings::hold_satisfied_rows). Set by ConstraintSet from its settings.
         // Default: no-op, for constraints without hinged rows.

@@ -14,21 +14,29 @@ namespace vamp::planning::constraint
     // P(t), t in [0, 1]. The manifold is {q : FK(q).translation = P(t) for some t}.
     //
     // The curve parameter t is a second unknown next to q, kept per lane inside the constraint (it is not part of
-    // the configuration). A projection therefore works on (q, t), with the error  FK(q).translation - P(t)  and
-    // a Jacobian with one more column than the robot has joints; t is bounded to [0, 1] by the bounded
-    // least-squares step, the joints by their limits.
+    // the configuration). A projection works on (q, t): the error is FK(q).translation - P(t), its Jacobian has one
+    // more column than the robot has joints, and each step solves for both. t is bounded to [0, 1] by the bounded
+    // least-squares step (for the other methods step() clamps it), the joints by their limits.
     //
-    // t has to start near the right place. begin_projection(q) seeds it, per lane, with the curve parameter of the
-    // fitted waypoint nearest to that lane's end-effector (the generated Robot::spline_seed); a projection then
-    // refines it. Every projection must be preceded by begin_projection on the same block (the constraint set's
-    // projection entry points do this once the hook is wired in), because squared_error()/step() work with the
-    // t left by the previous call.
+    // t has to start near the right place, and "the right place" is the closest point of the curve to the
+    // end-effector. closest_t(q) finds it, per lane, with the generated Robot::spline_closest_t: a seed (the
+    // distance-weighted parameter between the nearest fitted waypoint and its nearer neighbour) refined by a few
+    // Gauss-Newton steps on t with q fixed. The same kernel gives the squared distance from the end-effector to the
+    // curve, which is distance_to_spline(q), the constraint's error as a function of q alone.
     //
-    // Uses the generated Robot::spline_error, Robot::spline_seed and the four projection solves
+    //   * begin_projection(q) runs closest_t(q): ConstraintSet calls it once at the start of every projection, so
+    //     the iterations start from the closest point and carry t from step to step.
+    //   * satisfied() and other one-off queries use closest_squared_error(q) = distance_to_spline(q), which does not
+    //     depend on whatever t the last projection left.
+    //   * Code that drives squared_error()/step() itself must call begin_projection(q) first.
+    //
+    // What closest_t guarantees: a squared distance near zero proves q is on the curve (the t found is a witness).
+    // A larger one only says no nearby point was found, and for a curve that comes near itself it can be the
+    // distance to the wrong branch.
+    //
+    // Uses the generated Robot::spline_closest_t, Robot::spline_error and the four projection solves
     // Robot::solve_spline_error_{lm_inner,lm_outer,gradient_descent,bounded_ls} (cricket, recipe key
-    // "spline_constraint"); the spline has Robot::spline_control_points control points. As for the TSR constraint,
-    // step() runs the solve of the requested ProjMethod. t stays in [0, 1] either way: the bounded solve enforces it,
-    // and for the others step() clamps it.
+    // "spline_constraint"); the spline has Robot::spline_control_points control points.
     template <typename Robot, std::size_t rake>
     struct SplineConstraint final : Constraint<Robot, rake>
     {
@@ -46,7 +54,8 @@ namespace vamp::planning::constraint
         using Point = std::array<float, 3>;
 
         // The curve is given by its control points and knots (what spline_error evaluates). The waypoints it was
-        // fitted through, with the curve parameters at which it passes through each, are only used to seed t.
+        // fitted through, with the curve parameters at which it passes through each, are what the closest-t kernel
+        // seeds from.
         SplineConstraint(
             const std::array<Point, n_control> &control_points,
             const std::array<float, n_knots> &knots,
@@ -58,29 +67,58 @@ namespace vamp::planning::constraint
                 for (auto axis = 0U; axis < 3; ++axis)
                 {
                     error_input_.control_points[point * 3 + axis] = Row::fill(control_points[point][axis]);
-                    seed_input_.waypoints[point * 3 + axis] = Row::fill(waypoints[point][axis]);
+                    closest_input_.control_points[point * 3 + axis] = Row::fill(control_points[point][axis]);
+                    closest_input_.waypoints[point * 3 + axis] = Row::fill(waypoints[point][axis]);
                 }
 
-                seed_input_.parameters[point] = Row::fill(parameters[point]);
+                closest_input_.parameters[point] = Row::fill(parameters[point]);
             }
 
             for (auto i = 0U; i < n_knots; ++i)
             {
                 error_input_.knots[i] = Row::fill(knots[i]);
+                closest_input_.knots[i] = Row::fill(knots[i]);
             }
         }
 
-        // Seed t, per lane, from the end-effector position of each lane of q. See the class comment.
-        // (Becomes an override of Constraint::begin_projection once the hook exists.)
-        void begin_projection(const Block &q) const noexcept
+        // The closest point of the curve to the end-effector of each lane of q: sets the per-lane t to it, and keeps
+        // the squared distance (see distance_to_spline).
+        void closest_t(const Block &q) const noexcept override
         {
-            seed_input_.q = q;
+            closest_input_.q = q;
 
-            std::array<Row, 1> seed;
-            Robot::template spline_seed<rake>(seed_input_, seed);
-            t_ = seed[0];
+            std::array<Row, 2> out;
+            Robot::template spline_closest_t<rake>(closest_input_, out);
+            t_ = out[0];
+            distance2_ = out[1];
         }
 
+        // What starts a projection: t at the closest point.
+        void begin_projection(const Block &q) const noexcept override
+        {
+            closest_t(q);
+        }
+
+        // The squared distance from each lane's end-effector to the curve: the constraint's error as a function of
+        // q alone. Zero (to rounding) exactly when the closest point found is on the end-effector.
+        auto distance_to_spline(const Block &q) const noexcept -> Row
+        {
+            return closest_squared_error(q);
+        }
+
+        auto closest_squared_error(const Block &q) const noexcept -> Row override
+        {
+            closest_t(q);
+            return distance2_;
+        }
+
+        // The current per-lane t: the closest point after closest_t/begin_projection, then what the steps made of it.
+        auto current_t() const noexcept -> Row
+        {
+            return t_;
+        }
+
+        // The squared error at the current t, |FK(q) - P(t)|^2. Caches J and err for step().
         auto squared_error(const Block &q) const noexcept -> Row override
         {
             error_input_.q = q;
@@ -177,10 +215,10 @@ namespace vamp::planning::constraint
         }
 
         // For tangent-space (chart) construction. The configurations passed in are on or near the manifold, so t is
-        // seeded here and then taken as is.
+        // set to the closest point first: the Jacobian is then evaluated at the right point of the curve.
         void evaluate_error_jacobian(const Block &q) const noexcept override
         {
-            begin_projection(q);
+            closest_t(q);
             error_input_.q = q;
             error_input_.t = t_;
             Robot::template spline_error<rake>(error_input_, solve_);
@@ -283,10 +321,13 @@ namespace vamp::planning::constraint
             }
         };
 
-        // Input layout of the generated Robot::spline_seed: q, the waypoints (x y z per waypoint), their parameters.
-        struct SeedInput
+        // Input layout of the generated Robot::spline_closest_t: q, the control points (x y z per point), the knots,
+        // the waypoints (x y z per waypoint), their parameters.
+        struct ClosestInput
         {
             Block q;
+            FloatVector<rake, 3 * n_control> control_points;
+            FloatVector<rake, n_knots> knots;
             FloatVector<rake, 3 * n_control> waypoints;
             FloatVector<rake, n_control> parameters;
 
@@ -298,6 +339,18 @@ namespace vamp::planning::constraint
                 }
 
                 index -= Robot::dimension;
+                if (index < 3 * n_control)
+                {
+                    return control_points[index];
+                }
+
+                index -= 3 * n_control;
+                if (index < n_knots)
+                {
+                    return knots[index];
+                }
+
+                index -= n_knots;
                 if (index < 3 * n_control)
                 {
                     return waypoints[index];
@@ -330,8 +383,9 @@ namespace vamp::planning::constraint
 
         // Evaluation state, like the other constraints' caches: not thread-safe, one instance per thread.
         mutable ErrorInput error_input_;
-        mutable SeedInput seed_input_;
+        mutable ClosestInput closest_input_;
         mutable SolveBuffer<rake, err_size, jac_size> solve_;
         mutable Row t_ = Row::fill(0.5F);
+        mutable Row distance2_ = Row::fill(0.F);
     };
 }  // namespace vamp::planning::constraint

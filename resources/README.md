@@ -56,7 +56,7 @@ link2 = "robot0_left_link0"
 reason = "Never"               # optional, default "Never"
 
 [[frames]]                     # optional extra fixed frames, using final (prefixed) names
-name = "gripperright_0_eef"
+name = "gripper0_right_eef"
 parent = "robot0_right_hand"
 xyz = [0, 0, 0.097]
 rpy = [0, 0, -1.57079633]

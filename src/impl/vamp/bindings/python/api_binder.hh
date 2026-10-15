@@ -163,9 +163,13 @@ namespace vamp::binding
             "settings"_a,
             "sampler"_a,
             "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "manifold_constraints"_a = typename Traits::ConstraintVec{},
             "Plan from a start configuration to a task-space goal region (the constraints, "
             "e.g. a TaskSpaceConstraint) without computing a goal configuration: RRT "
-            "exploration plus goal-directed Levenberg-Marquardt walks toward the region.");
+            "exploration plus goal-directed Levenberg-Marquardt walks toward the region. With "
+            "manifold_constraints (e.g. a SplineConstraint) every state stays on the manifold they "
+            "define: extensions and the goal-directed steps are projected onto it, so the start "
+            "must be on it and the goal region should intersect it.");
 
         register_constrained_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
         register_constrained_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");

@@ -510,3 +510,43 @@ static auto load_trajectory(const std::string &path, std::size_t configuration_i
 
     return result;
 }
+
+// The spline problem the planner tests share: the spline fitted through the first N end-effector positions of the
+// first trajectory in a file written by evaluate_mbm.py --save_eef, with that trajectory's configuration
+// `configuration_index` as the start. Without a usable file: an arc near the Panda's start end-effector, and the
+// Panda's start configuration.
+struct SplineProblem
+{
+    std::array<float, Robot::dimension> start;
+    HostSpline spline;
+    SplineData data;
+    bool from_file;
+};
+
+static auto make_spline_problem(const std::string &trajectory_path, std::size_t configuration_index) -> SplineProblem
+{
+    SplineProblem problem;
+    if (const auto trajectory = load_trajectory(trajectory_path, configuration_index))
+    {
+        problem.start = trajectory->configuration;
+        const auto [fitted, parameters] = fit_spline(trajectory->positions);
+        problem.spline = fitted;
+        problem.data = make_spline_data_for_fit(fitted, trajectory->positions, parameters);
+        problem.from_file = true;
+        std::printf(
+            "spline: fitted through the first %zu end-effector positions of %s, start: its configuration %zu\n",
+            N,
+            trajectory_path.c_str(),
+            configuration_index);
+    }
+    else
+    {
+        problem.start = {0.F, -0.785F, 0.F, -2.356F, 0.F, 1.571F, 0.785F};
+        problem.spline = make_spline(end_effector(Configuration(problem.start)));
+        problem.data = make_spline_data(problem.spline);
+        problem.from_file = false;
+        std::printf("spline: an arc near the start end-effector (no usable trajectory file at %s)\n", trajectory_path.c_str());
+    }
+
+    return problem;
+}

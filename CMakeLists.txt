@@ -171,6 +171,13 @@ if(VAMP_BUILD_CPP_DEMO)
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_spline_local_planner_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
   endif()
+
+  # Plans along a spline with TaskSpaceRRTC: the tree stays on the curve, the goal is the end of the curve
+  add_executable(vamp_spline_task_space_rrtc_test scripts/cpp/spline_task_space_rrtc_test.cc)
+  target_link_libraries(vamp_spline_task_space_rrtc_test PRIVATE vamp_cpp)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(vamp_spline_task_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+  endif()
 endif()
 
 # OMPL integration demo

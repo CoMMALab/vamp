@@ -405,13 +405,18 @@ namespace vamp::binding
 
         // Plan from `start` to a task-space region (the constraints, e.g. a TSR) with no goal
         // configuration: see TaskSpaceRRTC.
+        //
+        // With `manifold` constraints (e.g. a SplineConstraint) every state of the tree stays on the manifold they
+        // define: extensions and the goal-directed steps are projected onto it (ConstrainedLocalPlanner), so the
+        // start must be on it, and the goal region should intersect it. Without them the tree is unconstrained.
         static auto solve_task_space(
             const Cfg &start,
             ConstraintVec constraints,
             const Env &env,
             const vamp::planning::TaskSpaceRRTCSettings &s,
             std::shared_ptr<Sampler> rng,
-            const ConstraintSettings &cs) -> PlanningResult
+            const ConstraintSettings &cs,
+            ConstraintVec manifold) -> PlanningResult
         {
             if (constraints.empty())
             {
@@ -422,8 +427,21 @@ namespace vamp::binding
 
             ConstraintSetT region(std::move(constraints), cs);
             apply_pins(region, rng);
-            return vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution>::solve(
-                Input::to(start), region, EnvVec(env), s, rng);
+
+            using Planner = vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution>;
+            if (manifold.empty())
+            {
+                return Planner::solve(Input::to(start), region, EnvVec(env), s, rng);
+            }
+
+            const ConstraintSetT manifold_set(std::move(manifold), cs);
+            if (not manifold_set.satisfied(Input::to(start)))
+            {
+                throw std::invalid_argument("the start configuration is not on the constraint manifold");
+            }
+
+            return Planner::template solve<ConstrainedLP>(
+                Input::to(start), region, EnvVec(env), s, rng, ConstrainedLP(manifold_set));
         }
 
         static auto simplify_constrained(

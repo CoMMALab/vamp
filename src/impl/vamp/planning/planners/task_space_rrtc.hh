@@ -209,6 +209,58 @@ namespace vamp::planning
                         next[j] = q[j] + next[j] * clamp;
                     }
 
+                    if constexpr (LocalPlanner::projecting)
+                    {
+                        // On a constraint manifold the LM point is only a target: it heads straight for the region and
+                        // leaves the manifold. lp.steer takes the step toward it and projects onto the manifold, as
+                        // every extension of a constrained RRT does (with the continuity and collision checks), and
+                        // returns the chain of on-manifold waypoints. The walk then judges the chain's endpoint.
+                        const Configuration target(next);
+                        const float step_length = std::min(norm, settings.range);
+                        const auto extension = lp.steer(
+                            Configuration(buffer_index(current)), target, step_length, settings.range, true, environment);
+
+                        if (extension.status == SteerStatus::Trapped or extension.status == SteerStatus::Rejected)
+                        {
+                            record(TraceEvent::WalkProposal, TraceOutcome::Collision, -1, current, nan, error, next);
+                            return;
+                        }
+
+                        const Lane endpoint = lane_of(extension.endpoint());
+                        const Block endpoint_block = broadcast(endpoint);
+                        const float endpoint_error = region.squared_error(endpoint_block)[{0, 0}];
+                        if (not(endpoint_error < error))
+                        {
+                            record(
+                                TraceEvent::WalkProposal, TraceOutcome::NoImprovement, -1, current, endpoint_error, error, endpoint);
+                            return;
+                        }
+
+                        const auto [last, truncated] = insert_chain<Robot>(
+                            extension.waypoints,
+                            current,
+                            [&](const Configuration &c, std::size_t parent) { return add_node(c, parent); });
+                        if (truncated or last == current)
+                        {
+                            record(TraceEvent::WalkProposal, TraceOutcome::TreeFull, -1, current, endpoint_error, error, endpoint);
+                            return;
+                        }
+
+                        record(
+                            TraceEvent::WalkProposal,
+                            TraceOutcome::Accepted,
+                            static_cast<std::int32_t>(last),
+                            current,
+                            endpoint_error,
+                            error,
+                            endpoint);
+                        current = last;
+                        q = endpoint;
+                        block = endpoint_block;  // the region's Jacobian cache now holds this block, for the next step
+                        error = endpoint_error;
+                        continue;
+                    }
+
                     Block candidate = broadcast(next);
                     constraint::renormalize_so3<Robot, rake>(candidate);
                     const float next_error = region.squared_error(candidate)[{0, 0}];

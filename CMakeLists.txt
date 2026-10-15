@@ -164,6 +164,13 @@ if(VAMP_BUILD_CPP_DEMO)
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_spline_constraint_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
   endif()
+
+  # Drives the constrained local planner over the spline constraint (steer, validate, a walk)
+  add_executable(vamp_spline_local_planner_test scripts/cpp/spline_local_planner_test.cc)
+  target_link_libraries(vamp_spline_local_planner_test PRIVATE vamp_cpp)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(vamp_spline_local_planner_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+  endif()
 endif()
 
 # OMPL integration demo

@@ -17,6 +17,7 @@
 #include <vamp/planning/constraints/manifold/constraint.hh>
 #include <vamp/planning/constraints/manifold/constraint_set.hh>
 #include <vamp/planning/constraints/manifold/lead_screw_constraint.hh>
+#include <vamp/planning/constraints/manifold/spline_constraint.hh>
 #include <vamp/planning/constraints/manifold/twist_constraint.hh>
 #include <vamp/planning/constraints/local_planner.hh>
 #include <vamp/planning/constraints/settings.hh>
@@ -86,6 +87,9 @@ VAMP_DEFINE_HAS_METHOD(n_closed_loops)
 VAMP_DEFINE_ROBOT_FLAG(has_com)
 VAMP_DEFINE_ROBOT_FLAG(has_lead_screw)
 VAMP_DEFINE_ROBOT_FLAG(has_twist)
+// Robots generated with the spline constraint (cricket recipe key "spline_constraint") declare the number of
+// control points of the spline their kernels were traced for.
+VAMP_DEFINE_ROBOT_FLAG(spline_control_points)
 
 namespace vamp::binding
 {
@@ -742,7 +746,8 @@ namespace vamp::binding
 
         if constexpr (
             has_n_eef_v<Robot> or has_n_closed_loops_v<Robot> or robot_has_com_v<Robot> or
-            robot_has_lead_screw_v<Robot> or robot_has_twist_v<Robot>)
+            robot_has_lead_screw_v<Robot> or robot_has_twist_v<Robot> or
+            robot_spline_control_points_v<Robot>)
         {
             namespace vc = vamp::planning::constraint;
             using ConstraintT = vc::Constraint<Robot, rake>;
@@ -850,6 +855,105 @@ namespace vamp::binding
                     .def(
                         nb::init<const std::vector<typename CMC::Vertex> &>(),
                         "polygon"_a);
+            }
+
+            if constexpr (robot_spline_control_points_v<Robot>)
+            {
+                using SPC = vc::SplineConstraint<Robot, rake>;
+                using Point = typename SPC::Point;
+                using ConfigurationBlock = typename Robot::template ConfigurationBlock<rake>;
+                using Array = std::array<float, Robot::dimension>;
+
+                submodule.def(
+                    "spline_control_points",
+                    []() { return Robot::spline_control_points; },
+                    "Number of control points (and fitted waypoints) of the spline the kernels were traced for.");
+
+                nb::class_<SPC, ConstraintT>(
+                    submodule,
+                    "SplineConstraint",
+                    "Position constraint against a cubic B-spline: the first end-effector's position must lie on "
+                    "the curve P(t), t in [0, 1]. Takes the control points (n x 3), the clamped knots (n + 4), and "
+                    "the n waypoints the spline was fitted through (n x 3) with the parameters at which it passes "
+                    "through them (n); the waypoints only seed the search for the closest point. The curve "
+                    "parameter t is a second unknown of a projection, kept inside the constraint and started at "
+                    "the closest point of the curve to the end-effector.")
+                    .def(
+                        nb::init<
+                            const std::array<Point, SPC::n_control> &,
+                            const std::array<float, SPC::n_knots> &,
+                            const std::array<Point, SPC::n_control> &,
+                            const std::array<float, SPC::n_control> &>(),
+                        "control_points"_a,
+                        "knots"_a,
+                        "waypoints"_a,
+                        "parameters"_a)
+                    .def(
+                        "closest_t",
+                        [](const SPC &c, const Array &q) -> std::tuple<float, float>
+                        {
+                            ConfigurationBlock block;
+                            const typename Robot::Configuration configuration(q);
+                            for (auto i = 0U; i < Robot::dimension; ++i)
+                            {
+                                block[i] = configuration.broadcast(i);
+                            }
+
+                            const float squared_distance = c.closest_squared_error(block)[{0, 0}];
+                            return {c.current_t()[{0, 0}], squared_distance};
+                        },
+                        "q"_a,
+                        "The closest point of the curve to the end-effector at q: (t, squared distance). A squared "
+                        "distance near zero proves q is on the curve; a larger one only says no nearby point was "
+                        "found.")
+                    .def(
+                        "projection_trail",
+                        [](const SPC &c,
+                           const Array &q,
+                           vc::ProjMethod method,
+                           float tolerance,
+                           std::size_t max_iterations,
+                           float alpha) -> std::vector<std::tuple<Array, float, float>>
+                        {
+                            // The projection ConstraintSet runs (begin_projection once, then squared_error and step
+                            // until the error is below tolerance), recorded: (q, t, squared error) per iterate
+                            ConfigurationBlock block;
+                            const typename Robot::Configuration configuration(q);
+                            for (auto i = 0U; i < Robot::dimension; ++i)
+                            {
+                                block[i] = configuration.broadcast(i);
+                            }
+
+                            std::vector<std::tuple<Array, float, float>> trail;
+                            c.begin_projection(block);
+                            for (std::size_t iteration = 0; iteration <= max_iterations; ++iteration)
+                            {
+                                const float error = c.squared_error(block)[{0, 0}];
+
+                                Array values;
+                                for (auto j = 0U; j < Robot::dimension; ++j)
+                                {
+                                    values[j] = block[{j, 0}];
+                                }
+
+                                trail.emplace_back(values, c.current_t()[{0, 0}], error);
+                                if (error <= tolerance or iteration == max_iterations)
+                                {
+                                    break;
+                                }
+
+                                c.step(block, method, alpha);
+                            }
+
+                            return trail;
+                        },
+                        "q"_a,
+                        "method"_a = vc::ProjMethod::InnerLM,
+                        "tolerance"_a = 1e-8F,
+                        "max_iterations"_a = 50,
+                        "alpha"_a = 1.0F,
+                        "Project q onto the curve step by step with the given method and return every iterate as "
+                        "(q, t, squared error); t is the constraint's own, carried from step to step.");
             }
 
             if constexpr (robot_has_twist_v<Robot>)

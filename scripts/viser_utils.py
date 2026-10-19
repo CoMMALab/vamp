@@ -81,7 +81,7 @@ def add_trajectory(server, waypoints, robot, attachment_handles, attachment_posi
         return_type: None.
     """
     if len(waypoints) < 1:
-        return
+        return None
     assert len(attachment_handles) == len(attachment_positions[0])
     traj_slider = server.gui.add_slider(
         "Current Waypoint", min = 0, max = len(waypoints) - 1, step = 1, initial_value = 0
@@ -95,3 +95,5 @@ def add_trajectory(server, waypoints, robot, attachment_handles, attachment_posi
 
         for attach_idx, attachment_handle in enumerate(attachment_handles):
             attachment_handle.position = attachment_positions[waypoint_idx][attach_idx]
+
+    return traj_slider

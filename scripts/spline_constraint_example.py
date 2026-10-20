@@ -113,7 +113,7 @@ def end_effector(q):
 # ---- the viewer's JSON ----
 
 
-def write_dump(path, label, points, control_points, knots, parameters, trail):
+def write_dump(path, label, points, control_points, knots, parameters, trail, extra=None):
     ts = np.linspace(0.0, 1.0, 401)
     curve = np.array([evaluate(control_points, knots, t) for t in ts])
     knot_points = np.array([evaluate(control_points, knots, knots[i]) for i in range(3, N + 1)])
@@ -135,6 +135,7 @@ def write_dump(path, label, points, control_points, knots, parameters, trail):
     with open(path, "w") as f:
         json.dump(
             {
+                **(extra or {}),
                 "label": label,
                 "nq": 7,
                 "waypoints": np.asarray(points).tolist(),

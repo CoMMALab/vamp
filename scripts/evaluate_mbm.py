@@ -1,3 +1,4 @@
+import json
 import time
 from tqdm import tqdm
 import numpy as np
@@ -23,6 +24,7 @@ def main(
     samples_per_object: int = 10000,       # If pointcloud, samples per object to use
     filter_radius: float = 0.02,           # Filter radius for pointcloud filtering
     filter_cull: bool = True,              # Cull pointcloud around robot by maximum distance
+    save_eef: str = "",                    # If set, write every solved trial's end-effector trajectory to this JSON file
     **kwargs,
     ):
 
@@ -42,6 +44,7 @@ def main(
 
     tick = time.perf_counter()
     results = []
+    eef_trajectories = {}  # problem name -> one entry per solved trial
     for name, pset in problems.items():
         if name not in problem:
             continue
@@ -84,7 +87,7 @@ def main(
 
             sampler.reset()
             sampler.skip(skip_rng_iterations)
-            for _ in range(trials):
+            for trial in range(trials):
                 result = planner_func(start, goals, env, plan_settings, sampler)
                 if not result.solved:
                     failures.append(i)
@@ -93,6 +96,33 @@ def main(
                 simple = vamp_module.simplify(result.path, env, simp_settings, sampler)
 
                 trial_result = vamp.results_to_dict(result, simple)
+
+                if save_eef:
+                    vertices = simple.path.numpy().copy()
+
+                    # Dense in configuration space (as it would be executed), then forward kinematics
+                    simple.path.interpolate_to_resolution(vamp_module.resolution()//8)
+                    configurations = simple.path.numpy().copy()
+                    transforms = np.array(
+                        [vamp_module.eefk(np.asarray(c, dtype = np.float32)) for c in configurations],
+                        dtype = np.float64,
+                        )
+
+                    def listed(array):
+                        return np.round(np.asarray(array, dtype = np.float64), 6).tolist()
+
+                    eef_trajectories.setdefault(name, []).append({
+                        'problem_index': i,
+                        'trial': trial,
+                        'start': listed(start),
+                        'goals': [listed(goal) for goal in goals],
+                        'vertices': listed(vertices),                    # simplified path, before interpolation (n, dof)
+                        'configurations': listed(configurations),        # interpolated path (T, dof)
+                        'eef_positions': listed(transforms[:, :3, 3]),   # (T, 3)
+                        'eef_transforms': listed(transforms),            # (T, 4, 4), world <- end-effector
+                        })
+                    print(len(listed(transforms[:, :3, 3])))
+
                 if pointcloud:
                     trial_result.update(pointcloud_results)
 
@@ -108,6 +138,24 @@ def main(
                 print(f"  Failed on {failures}")
 
     tock = time.perf_counter()
+
+    if save_eef:
+        # Valid JSON, written with one trial per line so the file stays readable and diffable
+        with open(save_eef, "w") as f:
+            f.write("{\n")
+            f.write(f'  "robot": {json.dumps(robot)},\n  "planner": {json.dumps(planner)},\n')
+            f.write('  "trajectories": {\n')
+            for k, (name, entries) in enumerate(eef_trajectories.items()):
+                f.write(f"    {json.dumps(name)}: [\n")
+                for j, entry in enumerate(entries):
+                    f.write(f"      {json.dumps(entry)}{',' if j + 1 < len(entries) else ''}\n")
+
+                f.write(f"    ]{',' if k + 1 < len(eef_trajectories) else ''}\n")
+
+            f.write("  }\n}\n")
+
+        count = sum(len(entries) for entries in eef_trajectories.values())
+        print(f"Saved {count} end-effector trajectories to {save_eef}")
 
     if not results:
         print(f"No problems solved ({failed_problems} failed); nothing to report.")

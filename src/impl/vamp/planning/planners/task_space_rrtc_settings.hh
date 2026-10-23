@@ -18,5 +18,16 @@ namespace vamp::planning
 
         // (1 + epsilon)-approximate nearest-neighbor queries; 0 is exact.
         float nn_epsilon = 0.;
+
+        // Project every random sample onto the manifold (lp.project) before the nearest-neighbor query and the
+        // extension toward it, instead of leaving it for the extension's projection. A sample that does not project
+        // costs its iteration. For planning in a Space whose states carry a curve parameter (SplineSpace), where a
+        // sample has to be on the curve at its own parameter for "nearest in the joints" to mean "nearest on the
+        // curve". Only constrained (projecting) local planners project.
+        bool project_samples = false;
+
+        // For a Space with a curve parameter t: how far each goal-directed step advances t toward the end of the curve
+        // (Space::advance_parameter); the step's joints still follow the region's error gradient.
+        float parameter_step = 0.05;
     };
 }  // namespace vamp::planning

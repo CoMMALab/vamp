@@ -7,6 +7,7 @@
 
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/validate.hh>
+#include <vamp/space.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning
@@ -24,10 +25,10 @@ namespace vamp::planning
     // are valid only until its next steer/connect_within call; they are empty on
     // Rejected/Trapped, and empty on success when the local path has no interior waypoints
     // (the unconstrained connect_within).
-    template <typename Robot>
+    template <typename Robot, typename Space = Robot>
     struct [[nodiscard]] Extension
     {
-        using Configuration = typename Robot::Configuration;
+        using Configuration = typename SpaceTraits<Robot, Space>::State;
 
         SteerStatus status;
         const std::vector<Configuration> &waypoints;
@@ -62,9 +63,9 @@ namespace vamp::planning
         return {parent, false};
     }
 
-    template <typename Robot, typename AddNode>
+    template <typename Robot, typename Space = Robot, typename AddNode>
     inline auto insert_chain(
-        const std::vector<typename Robot::Configuration> &waypoints,
+        const std::vector<typename SpaceTraits<Robot, Space>::State> &waypoints,
         std::size_t parent,
         AddNode &&add_node) -> std::pair<std::size_t, bool>
     {

@@ -178,6 +178,13 @@ if(VAMP_BUILD_CPP_DEMO)
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_spline_task_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
   endif()
+
+  # The same in (q, t): TaskSpaceRRTC over SplineSpace, where t is sampled and projections solve for q at a given t
+  add_executable(vamp_spline_space_rrtc_test scripts/cpp/spline_space_rrtc_test.cc)
+  target_link_libraries(vamp_spline_space_rrtc_test PRIVATE vamp_cpp)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(vamp_spline_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+  endif()
 endif()
 
 # OMPL integration demo

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -39,6 +40,7 @@
 #include <vamp/random/halton.hh>
 #include <vamp/random/pinned.hh>
 #include <vamp/random/rng.hh>
+#include <vamp/random/spline.hh>
 #include <vamp/utils.hh>
 #include <vamp/vector.hh>
 
@@ -56,6 +58,7 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/array.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
@@ -171,6 +174,20 @@ namespace vamp::binding
         {
             return a;
         }
+    };
+
+    // Result of planning in a robot's SplineSpace (Robot::SplineSpace): the states of the path as joints and curve
+    // parameter side by side, in path order.
+    template <typename Robot>
+    struct SplineSpaceResult
+    {
+        bool solved{false};
+        std::vector<std::array<float, Robot::dimension>> path;
+        std::vector<float> parameters;
+        float cost{0.F};
+        std::size_t nanoseconds{0};
+        std::size_t iterations{0};
+        std::vector<std::size_t> size;
     };
 
     template <typename Robot, typename Input>
@@ -442,6 +459,115 @@ namespace vamp::binding
 
             return Planner::template solve<ConstrainedLP>(
                 Input::to(start), region, EnvVec(env), s, rng, ConstrainedLP(manifold_set));
+        }
+
+        // Plan along a spline in (q, t): TaskSpaceRRTC over the robot's SplineSpace. Every state is a configuration with
+        // the curve parameter t it sits at; t is sampled with the joints and held fixed while a state is projected
+        // onto the curve (see TaskSpaceRRTCSettings::project_samples and ::parameter_step). `manifold` has to hold the
+        // SplineConstraint; the start is on the curve at `start_t`, by default at the closest point of the curve.
+        // Only instantiated for robots generated with the spline constraint.
+        static auto solve_task_space_spline(
+            const Cfg &start,
+            ConstraintVec constraints,
+            const Env &env,
+            const vamp::planning::TaskSpaceRRTCSettings &s,
+            std::shared_ptr<Sampler> rng,
+            ConstraintVec manifold,
+            const ConstraintSettings &cs,
+            std::optional<float> start_t) -> SplineSpaceResult<Robot>
+        {
+            using Space = typename Robot::SplineSpace;
+            using SplineLP = vamp::planning::constraint::
+                ConstrainedLocalPlanner<Robot, rake, Robot::resolution, Space>;
+            using Planner = vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution, Space>;
+            using SplineC = vamp::planning::constraint::SplineConstraint<Robot, rake>;
+
+            if (constraints.empty())
+            {
+                throw std::invalid_argument("task-space planning needs at least one goal constraint");
+            }
+
+            std::shared_ptr<const SplineC> spline;
+            for (const auto &constraint : manifold)
+            {
+                if (auto found = std::dynamic_pointer_cast<const SplineC>(constraint))
+                {
+                    spline = found;
+                }
+            }
+
+            if (not spline)
+            {
+                throw std::invalid_argument("manifold_constraints must contain a SplineConstraint");
+            }
+
+            check_pins(rng, Input::to(start), "Start");
+
+            ConstraintSetT region(std::move(constraints), cs);
+            apply_pins(region, rng);
+
+            const ConstraintSetT manifold_set(std::move(manifold), cs);
+
+            // The planner holds the spline's parameter fixed on the (shared) constraint: back to solving for it on
+            // every way out
+            struct ReleaseParameter
+            {
+                const ConstraintSetT &set;
+
+                ~ReleaseParameter()
+                {
+                    set.clear_parameter();
+                }
+            } release{manifold_set};
+            manifold_set.clear_parameter();
+
+            const auto q = Input::to(start);
+            float t = 0.F;
+            if (start_t)
+            {
+                t = *start_t;
+            }
+            else
+            {
+                spline->closest_squared_error(Input::template block<rake>(start));
+                t = spline->current_t()[{0, 0}];
+            }
+
+            const auto state = Space::make_state(q, t);
+            const SplineLP lp(manifold_set);
+            if (not lp.satisfied(state))
+            {
+                throw std::invalid_argument("the start configuration is not on the spline at start_t");
+            }
+
+            const auto result = Planner::template solve<SplineLP>(
+                state,
+                region,
+                EnvVec(env),
+                s,
+                std::make_shared<vamp::rng::SplineRNG<Robot>>(rng),
+                lp);
+
+            SplineSpaceResult<Robot> out;
+            out.solved = result.solved;
+            out.cost = result.cost;
+            out.nanoseconds = result.nanoseconds;
+            out.iterations = result.iterations;
+            out.size = result.size;
+            for (const auto &path_state : result.path)
+            {
+                const auto array = Space::to_ambient(path_state).to_array();
+                std::array<float, Robot::dimension> values;
+                for (auto j = 0U; j < Robot::dimension; ++j)
+                {
+                    values[j] = array[j];
+                }
+
+                out.path.emplace_back(values);
+                out.parameters.emplace_back(Space::parameter(path_state));
+            }
+
+            return out;
         }
 
         static auto simplify_constrained(
@@ -886,6 +1012,46 @@ namespace vamp::binding
                     "spline_control_points",
                     []() { return Robot::spline_control_points; },
                     "Number of control points (and fitted waypoints) of the spline the kernels were traced for.");
+
+                using SplineResult = SplineSpaceResult<Robot>;
+                nb::class_<SplineResult>(
+                    submodule,
+                    "SplineSpacePlanningResult",
+                    "Result of planning along a spline in (q, t): the path's joints and curve parameters.")
+                    .def(nb::init<>(), "Empty constructor.")
+                    .def_ro("solved", &SplineResult::solved, "Whether a solution was found.")
+                    .def_ro("path", &SplineResult::path, "The joints of each state of the path, in order.")
+                    .def_ro("t", &SplineResult::parameters, "The curve parameter of each state of the path.")
+                    .def_ro("cost", &SplineResult::cost, "Length of the path in the joints (t is ignored).")
+                    .def_ro("nanoseconds", &SplineResult::nanoseconds, "Nanoseconds taken.")
+                    .def_ro("iterations", &SplineResult::iterations, "Planner iterations used.")
+                    .def_ro("size", &SplineResult::size, "Sizes of the planner's data structures (tree nodes).");
+
+                // numpy and plain-list inputs, as for the other planners
+                const auto def_spline_planner = [&](auto traits)
+                {
+                    using Traits = decltype(traits);
+                    submodule.def(
+                        "task_space_rrtc_spline",
+                        &Traits::solve_task_space_spline,
+                        "start"_a,
+                        "goal_constraints"_a,
+                        "environment"_a,
+                        "settings"_a,
+                        "sampler"_a,
+                        "manifold_constraints"_a,
+                        "constraint_settings"_a = vc::ConstraintSettings{},
+                        "start_t"_a = nb::none(),
+                        "Plan along a spline in (q, t) with TaskSpaceRRTC: states carry the curve parameter t, "
+                        "which is sampled with the joints and held fixed while a state is projected onto the "
+                        "curve. manifold_constraints must contain the SplineConstraint; the start must be on "
+                        "the curve at start_t (default: the closest point of the curve to the start). Tune "
+                        "settings.project_samples and settings.parameter_step. Returns a "
+                        "SplineSpacePlanningResult.");
+                };
+
+                def_spline_planner(TA{});
+                def_spline_planner(TC{});
 
                 nb::class_<SPC, ConstraintT>(
                     submodule,

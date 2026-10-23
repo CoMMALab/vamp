@@ -71,6 +71,25 @@ namespace vamp::planning::constraint
             }
         }
 
+        // Fix the constraints' hidden state (see Constraint::set_parameter) to the per-lane values `parameter`, for the
+        // projections and checks that follow on blocks whose lanes carry that parameter in their state, until
+        // clear_parameter(). Constraints without hidden state ignore it.
+        void set_parameter(const Row &parameter) const noexcept
+        {
+            for (const auto &constraint : constraints_)
+            {
+                constraint->set_parameter(parameter);
+            }
+        }
+
+        void clear_parameter() const noexcept
+        {
+            for (const auto &constraint : constraints_)
+            {
+                constraint->clear_parameter();
+            }
+        }
+
         // The constraint violation of q alone: each constraint reports its squared error with its hidden state at
         // its best value for q (Constraint::closest_squared_error), summed. For one-off queries; a configuration on
         // the manifold gives zero. Does not fill the caches that step_in_place() consumes.

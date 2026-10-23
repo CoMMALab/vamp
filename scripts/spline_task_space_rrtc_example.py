@@ -21,6 +21,10 @@ at P(1). The path is written to <prefix>_path.json, in the format of cricket's t
     python3 scripts/spline_task_space_rrtc_example.py --view
     python3 cricket/tests/view_spline.py spline_task_space_rrtc_py_path.json
 
+With --qt the planner works in (q, t) instead (vamp.panda.task_space_rrtc_spline): states carry the curve
+parameter t, which is sampled with the joints and held fixed while a state is projected onto the curve, so no
+closest point of the curve is searched for during planning. The path then comes with the t of every state.
+
 Needs a Panda built with a header generated with "spline_constraint": true (cricket).
 """
 
@@ -87,6 +91,9 @@ def main():
     parser.add_argument("--no-env", action="store_true", help="plan in an empty environment")
     parser.add_argument("--range", type=float, default=0.3, help="longest extension (rad)")
     parser.add_argument("--max-iterations", type=int, default=20000)
+    parser.add_argument("--qt", action="store_true", help="plan in (q, t): task_space_rrtc_spline")
+    parser.add_argument("--parameter-step", type=float, default=0.05, help="with --qt: t advance of each goal-directed step")
+    parser.add_argument("--no-project-samples", action="store_true", help="with --qt: do not project random samples onto the curve")
     parser.add_argument("--prefix", default="spline_task_space_rrtc_py", help="prefix of the output JSON file")
     parser.add_argument("--view", action="store_true", help="start the viewer on the path when done")
     args = parser.parse_args()
@@ -149,18 +156,29 @@ def main():
     constraint_settings.max_iterations = 50
 
     sampler = vamp.panda.halton()
-    result = vamp.panda.task_space_rrtc(
-        start, [goal_region], env, plan_settings, sampler, constraint_settings, manifold_constraints=[manifold]
-    )
-    print(f"task_space_rrtc: solved {result.solved}, {result.iterations} iterations, {result.nanoseconds / 1e3:.2f} us")
+    if args.qt:
+        plan_settings.project_samples = not args.no_project_samples
+        plan_settings.parameter_step = args.parameter_step
+        result = vamp.panda.task_space_rrtc_spline(
+            start, [goal_region], env, plan_settings, sampler, [manifold], constraint_settings, start_t=t
+        )
+    else:
+        result = vamp.panda.task_space_rrtc(
+            start, [goal_region], env, plan_settings, sampler, constraint_settings, manifold_constraints=[manifold]
+        )
+
+    name = "task_space_rrtc_spline" if args.qt else "task_space_rrtc"
+    print(f"{name}: solved {result.solved}, {result.iterations} iterations, {result.nanoseconds / 1e3:.2f} us")
     sce.check(result.solved, "the planner solved")
 
     if result.solved:
-        path = result.path.numpy()
+        path = np.asarray(result.path) if args.qt else result.path.numpy()
         trail = []
         worst = 0.0
-        for q in path:
-            t, d2 = manifold.closest_t(q.tolist())
+        for i, q in enumerate(path):
+            t, d2 = manifold.closest_t(np.asarray(q, dtype=np.float32).tolist())
+            if args.qt:
+                t = result.t[i]  # the state's own t, which the planner held fixed
             worst = max(worst, np.sqrt(d2))
             trail.append((q, t, d2))
 
@@ -178,7 +196,7 @@ def main():
         )
 
         output = f"{args.prefix}_path.json"
-        sce.write_dump(output, "TaskSpaceRRTC path", points, control_points, knots, parameters, trail)
+        sce.write_dump(output, "TaskSpaceRRTC (q, t) path" if args.qt else "TaskSpaceRRTC path", points, control_points, knots, parameters, trail)
         print(f"written to {output}")
 
     if sce.failures:

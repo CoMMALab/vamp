@@ -61,6 +61,19 @@ namespace vamp::planning::constraint
         {
         }
 
+        // For a planning Space whose states carry a constraint's hidden state explicitly (SplineSpace's curve
+        // parameter t): fix it to the per-lane values `parameter`, so the projections that follow solve for q alone and
+        // the error is that of q at the state's own parameter. Until clear_parameter() the hidden state is no longer
+        // seeded from q (begin_projection and closest_t leave it) and no step changes it. Default: nothing.
+        virtual void set_parameter(const FloatVector<rake, 1> & /*parameter*/) const noexcept
+        {
+        }
+
+        // Back to the hidden state being solved for. Default: nothing.
+        virtual void clear_parameter() const noexcept
+        {
+        }
+
         // Bring the hidden state to its best value for q (for the spline constraint: the closest point of the curve),
         // so that the constraint's error is the violation of q alone and not of q at some leftover state. Also what
         // seeds a projection (see begin_projection). Default: begin_projection(q).

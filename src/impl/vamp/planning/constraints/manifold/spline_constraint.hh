@@ -30,6 +30,13 @@ namespace vamp::planning::constraint
     //     depend on whatever t the last projection left.
     //   * Code that drives squared_error()/step() itself must call begin_projection(q) first.
     //
+    // Fixed-parameter mode (set_parameter, for planning in Robot::SplineSpace, where t is part of the state): t is given
+    // per lane and stays as given. begin_projection and closest_t leave it, and the error and the steps are the
+    // generated fixed-t kernels (Robot::spline_error_fixed_t, Robot::solve_spline_fixed_t_*): the Jacobian is
+    // d(err)/dq (3 x joints) and the steps solve for q alone. The error is |FK(q) - P(t)|^2 at the given t, and the
+    // tangent space of the manifold in q at a fixed t is the null space of the raw q-Jacobian. clear_parameter()
+    // returns to solving for t.
+    //
     // What closest_t guarantees: a squared distance near zero proves q is on the curve (the t found is a witness).
     // A larger one only says no nearby point was found, and for a curve that comes near itself it can be the
     // distance to the wrong branch.
@@ -50,6 +57,9 @@ namespace vamp::planning::constraint
         static constexpr std::size_t variables = Robot::spline_variables;
         static constexpr std::size_t err_size = 3;
         static constexpr std::size_t jac_size = err_size * variables;
+
+        // The fixed-parameter Jacobian has no t column
+        static constexpr std::size_t fixed_jac_size = err_size * Robot::dimension;
 
         using Point = std::array<float, 3>;
 
@@ -85,6 +95,11 @@ namespace vamp::planning::constraint
         // the squared distance (see distance_to_spline).
         void closest_t(const Block &q) const noexcept override
         {
+            if (fixed_)
+            {
+                return;
+            }
+
             closest_input_.q = q;
 
             std::array<Row, 2> out;
@@ -108,8 +123,25 @@ namespace vamp::planning::constraint
 
         auto closest_squared_error(const Block &q) const noexcept -> Row override
         {
+            if (fixed_)
+            {
+                return squared_error(q);
+            }
+
             closest_t(q);
             return distance2_;
+        }
+
+        // Fixed-parameter mode: t as given, clamped to the curve's range
+        void set_parameter(const Row &parameter) const noexcept override
+        {
+            t_ = parameter.clamp(0.F, 1.F);
+            fixed_ = true;
+        }
+
+        void clear_parameter() const noexcept override
+        {
+            fixed_ = false;
         }
 
         // The current per-lane t: the closest point after closest_t/begin_projection, then what the steps made of it.
@@ -123,15 +155,15 @@ namespace vamp::planning::constraint
         {
             error_input_.q = q;
             error_input_.t = t_;
-            Robot::template spline_error<rake>(error_input_, solve_);
 
-            auto d = solve_.err[0] * solve_.err[0];
-            for (auto i = 1U; i < err_size; ++i)
+            if (fixed_)
             {
-                d = d + solve_.err[i] * solve_.err[i];
+                Robot::template spline_error_fixed_t<rake>(error_input_, fixed_solve_);
+                return squared_norm(fixed_solve_.err);
             }
 
-            return d;
+            Robot::template spline_error<rake>(error_input_, solve_);
+            return squared_norm(solve_.err);
         }
 
         // One projection step on (q, t) of the requested method, using the cache of the last squared_error() call.
@@ -139,6 +171,12 @@ namespace vamp::planning::constraint
         // other methods take none, and t is clamped afterwards.
         void step(Block &q, ProjMethod method, float alpha) const noexcept override
         {
+            if (fixed_)
+            {
+                step_fixed(q, method, alpha);
+                return;
+            }
+
             FloatVector<rake, variables> gradient;
 
             switch (method)
@@ -200,6 +238,12 @@ namespace vamp::planning::constraint
         // is `variables`, not Robot::dimension; t's own column is never pinned.
         void mask_jacobian(const bool *pinned) const noexcept override
         {
+            if (fixed_)
+            {
+                mask_pinned_columns<Robot>(fixed_solve_, pinned);
+                return;
+            }
+
             for (auto j = 0U; j < Robot::dimension; ++j)
             {
                 if (not pinned[j])
@@ -221,6 +265,13 @@ namespace vamp::planning::constraint
             closest_t(q);
             error_input_.q = q;
             error_input_.t = t_;
+
+            if (fixed_)
+            {
+                Robot::template spline_error_fixed_t<rake>(error_input_, fixed_solve_);
+                return;
+            }
+
             Robot::template spline_error<rake>(error_input_, solve_);
         }
 
@@ -232,6 +283,20 @@ namespace vamp::planning::constraint
         // the raw rows are returned.
         void extract_error_jacobian(std::size_t lane, float *err, float *jac) const noexcept override
         {
+            if (fixed_)
+            {
+                for (auto i = 0U; i < err_size; ++i)
+                {
+                    err[i] = fixed_solve_.err[{i, lane}];
+                    for (auto j = 0U; j < Robot::dimension; ++j)
+                    {
+                        jac[i * Robot::dimension + j] = fixed_solve_.jac[{i * Robot::dimension + j, lane}];
+                    }
+                }
+
+                return;
+            }
+
             float jacobian_q[err_size][Robot::dimension];
             float jacobian_t[err_size];
             float raw_error[err_size];
@@ -290,6 +355,51 @@ namespace vamp::planning::constraint
         }
 
     private:
+        template <typename Err>
+        static auto squared_norm(const Err &err) noexcept -> Row
+        {
+            auto d = err[0] * err[0];
+            for (auto i = 1U; i < err_size; ++i)
+            {
+                d = d + err[i] * err[i];
+            }
+
+            return d;
+        }
+
+        // One fixed-parameter projection step: the joints alone, from the cache of the last squared_error().
+        void step_fixed(Block &q, ProjMethod method, float alpha) const noexcept
+        {
+            Block gradient;
+
+            switch (method)
+            {
+                case ProjMethod::InnerLM:
+                    Robot::template solve_spline_fixed_t_lm_inner<rake>(fixed_solve_, gradient);
+                    break;
+                case ProjMethod::OuterLM:
+                    Robot::template solve_spline_fixed_t_lm_outer<rake>(fixed_solve_, gradient);
+                    break;
+                case ProjMethod::GradDesc:
+                    Robot::template solve_spline_fixed_t_gradient_descent<rake>(fixed_solve_, gradient);
+                    break;
+                case ProjMethod::BoundedLS:
+                {
+                    BoundedSolveInput<Robot, rake, err_size, fixed_jac_size> input{fixed_solve_};
+                    for (auto i = 0U; i < Robot::dimension; ++i)
+                    {
+                        input.lower[i] = Row::fill(Robot::lower_bound[i]) - q[i];
+                        input.upper[i] = Row::fill(Robot::upper_bound[i]) - q[i];
+                    }
+
+                    Robot::template solve_spline_fixed_t_bounded_ls<rake>(input, gradient);
+                    break;
+                }
+            }
+
+            integrate_step<Robot, rake>(q, gradient, alpha);
+        }
+
         // Input layout of the generated Robot::spline_error: q, t, the control points (x y z per point), the knots.
         struct ErrorInput
         {
@@ -385,7 +495,9 @@ namespace vamp::planning::constraint
         mutable ErrorInput error_input_;
         mutable ClosestInput closest_input_;
         mutable SolveBuffer<rake, err_size, jac_size> solve_;
+        mutable SolveBuffer<rake, err_size, fixed_jac_size> fixed_solve_;
         mutable Row t_ = Row::fill(0.5F);
         mutable Row distance2_ = Row::fill(0.F);
+        mutable bool fixed_ = false;
     };
 }  // namespace vamp::planning::constraint

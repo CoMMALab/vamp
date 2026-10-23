@@ -36,7 +36,9 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_greedy_steps", &vp::TaskSpaceRRTCSettings::max_greedy_steps)
         .def_rw("max_iterations", &vp::TaskSpaceRRTCSettings::max_iterations)
         .def_rw("max_samples", &vp::TaskSpaceRRTCSettings::max_samples)
-        .def_rw("nn_epsilon", &vp::TaskSpaceRRTCSettings::nn_epsilon);
+        .def_rw("nn_epsilon", &vp::TaskSpaceRRTCSettings::nn_epsilon)
+        .def_rw("project_samples", &vp::TaskSpaceRRTCSettings::project_samples)
+        .def_rw("parameter_step", &vp::TaskSpaceRRTCSettings::parameter_step);
 
     nb::class_<vp::AORRTCSettings>(pymodule, "AORRTCSettings")
         .def(nb::init<>())

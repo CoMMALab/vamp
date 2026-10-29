@@ -29,8 +29,12 @@ With --curve catmull-rom the curve is a Catmull-Rom curve through the same point
 centripetal by default, --alpha) instead of the fitted B-spline; it is only planned in (q, t), so --qt is implied.
 Its curve and points are written to the dump as the "spline" (the viewer draws the curve through the points).
 
+With --curve linear the curve is the straight-line interpolation of the points (vamp.panda.PolylineConstraint, t the
+chord-length parameter): the baseline for how much the smooth curves differ from joining the dots. Also only planned in
+(q, t).
+
 Needs a Panda built with a header generated with "spline_constraint": true (cricket); with --curve catmull-rom also
-"catmull_rom_constraint": true.
+"catmull_rom_constraint": true, with --curve linear also "position_target_constraint": true.
 """
 
 import argparse
@@ -93,9 +97,10 @@ def start_at(point):
     return np.asarray(vamp.panda.project(READY, [region], settings), dtype=np.float32)
 
 
-def write_catmull_rom_dump(path, label, points, manifold, trail):
-    """The dump in the format of cricket's tests/view_spline.py, for a Catmull-Rom curve: it passes through its
-    points, which stand for the control points and the knot points."""
+def write_curve_dump(path, label, points, manifold, trail):
+    """The dump in the format of cricket's tests/view_spline.py, for a curve that passes through its points and
+    evaluates with manifold.value(t) (Catmull-Rom, polyline): the points stand for the control points and the knot
+    points."""
     ts = np.linspace(0.0, 1.0, 401)
     curve = np.array([manifold.value(t) for t in ts])
 
@@ -150,15 +155,15 @@ def main():
     parser.add_argument("--range", type=float, default=0.3, help="longest extension (rad)")
     parser.add_argument("--max-iterations", type=int, default=20000)
     parser.add_argument("--qt", action="store_true", help="plan in (q, t): task_space_rrtc_spline")
-    parser.add_argument("--curve", choices=["bspline", "catmull-rom"], default="bspline", help="the curve through the points")
+    parser.add_argument("--curve", choices=["bspline", "catmull-rom", "linear"], default="bspline", help="the curve through the points")
     parser.add_argument("--alpha", type=float, default=0.5, help="Catmull-Rom parametrization: 0 uniform, 0.5 centripetal, 1 chordal")
     parser.add_argument("--parameter-step", type=float, default=0.05, help="with --qt: t advance of each goal-directed step")
     parser.add_argument("--no-project-samples", action="store_true", help="with --qt: do not project random samples onto the curve")
     parser.add_argument("--prefix", default="spline_task_space_rrtc_py", help="prefix of the output JSON file")
     parser.add_argument("--view", action="store_true", help="start the viewer on the path when done")
     args = parser.parse_args()
-    catmull_rom = args.curve == "catmull-rom"
-    args.qt = args.qt or catmull_rom  # the Catmull-Rom constraint is only for planning in (q, t)
+    host_curve = args.curve != "bspline"  # evaluated on the host, through value(t)
+    args.qt = args.qt or host_curve  # those constraints are only for planning in (q, t)
 
     if args.shape == "s":
         if args.s_spacing is not None:
@@ -184,8 +189,10 @@ def main():
         start = np.array(entry["start"], dtype=np.float32)
         print(f"spline: the first {N} end-effector positions of {args.trajectory.name}; start: its start configuration")
 
-    if catmull_rom:
+    if args.curve == "catmull-rom":
         manifold = vamp.panda.CatmullRomConstraint(points.tolist(), args.alpha)
+    elif args.curve == "linear":
+        manifold = vamp.panda.PolylineConstraint(points.tolist())
     else:
         control_points, knots, parameters = sce.fit_cubic_bspline(points)
         manifold = vamp.panda.SplineConstraint(
@@ -268,8 +275,8 @@ def main():
         )
 
         output = f"{args.prefix}_path.json"
-        if catmull_rom:
-            write_catmull_rom_dump(output, "TaskSpaceRRTC (q, t) Catmull-Rom path", points, manifold, trail)
+        if host_curve:
+            write_curve_dump(output, f"TaskSpaceRRTC (q, t) {args.curve} path", points, manifold, trail)
         else:
             label = "TaskSpaceRRTC (q, t) path" if args.qt else "TaskSpaceRRTC path"
             sce.write_dump(output, label, points, control_points, knots, parameters, trail)

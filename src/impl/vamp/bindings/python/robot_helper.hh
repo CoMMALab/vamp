@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <functional>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -20,6 +21,7 @@
 #include <vamp/planning/constraints/manifold/lead_screw_constraint.hh>
 #include <vamp/planning/constraints/manifold/spline_constraint.hh>
 #include <vamp/planning/constraints/manifold/catmull_rom_constraint.hh>
+#include <vamp/planning/constraints/manifold/curve_constraint.hh>
 #include <vamp/planning/constraints/manifold/twist_constraint.hh>
 #include <vamp/planning/constraints/local_planner.hh>
 #include <vamp/planning/constraints/settings.hh>
@@ -97,6 +99,9 @@ VAMP_DEFINE_ROBOT_FLAG(spline_control_points)
 // Robots generated with the Catmull-Rom constraint (cricket recipe key "catmull_rom_constraint", which needs
 // "spline_constraint") declare the number of points of the curve their kernel was traced for.
 VAMP_DEFINE_ROBOT_FLAG(catmull_rom_points)
+// Robots generated with the position-target kernel (cricket recipe key "position_target_constraint", which needs
+// "spline_constraint") support curves evaluated on the host: PolylineConstraint.
+VAMP_DEFINE_ROBOT_FLAG(has_position_target)
 
 namespace vamp::binding
 {
@@ -190,6 +195,21 @@ namespace vamp::binding
 
     template <typename Robot>
     struct CatmullRomConstraintFor<Robot, false>
+    {
+        struct type
+        {
+        };
+    };
+
+    // The same for the polyline constraint of robots generated with the position-target kernel
+    template <typename Robot, bool enabled = robot_has_position_target_v<Robot>>
+    struct PolylineConstraintFor
+    {
+        using type = vamp::planning::constraint::PolylineConstraint<Robot, rake>;
+    };
+
+    template <typename Robot>
+    struct PolylineConstraintFor<Robot, false>
     {
         struct type
         {
@@ -484,8 +504,8 @@ namespace vamp::binding
         // Plan along a spline in (q, t): TaskSpaceRRTC over the robot's SplineSpace. Every state is a configuration with
         // the curve parameter t it sits at; t is sampled with the joints and held fixed while a state is projected
         // onto the curve (see TaskSpaceRRTCSettings::project_samples and ::parameter_step). `manifold` has to hold the
-        // SplineConstraint or the CatmullRomConstraint; the start is on the curve at `start_t`, by default at the
-        // closest point of the curve.
+        // SplineConstraint, the CatmullRomConstraint or the PolylineConstraint; the start is on the curve at `start_t`,
+        // by default at the closest point of the curve.
         // Only instantiated for robots generated with the spline constraint.
         static auto solve_task_space_spline(
             const Cfg &start,
@@ -503,44 +523,59 @@ namespace vamp::binding
             using Planner = vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution, Space>;
             using SplineC = vamp::planning::constraint::SplineConstraint<Robot, rake>;
             using CatmullC = typename CatmullRomConstraintFor<Robot>::type;
+            using PolylineC = typename PolylineConstraintFor<Robot>::type;
 
             if (constraints.empty())
             {
                 throw std::invalid_argument("task-space planning needs at least one goal constraint");
             }
 
-            std::shared_ptr<const SplineC> spline;
-            std::shared_ptr<const CatmullC> catmull_rom;
+            check_pins(rng, Input::to(start), "Start");
+            const auto q = Input::to(start);
+
+            // The curve the manifold holds, as the way to find the start's t on it
+            std::function<float()> closest_start_t;
             for (const auto &constraint : manifold)
             {
                 if (auto found = std::dynamic_pointer_cast<const SplineC>(constraint))
                 {
-                    spline = found;
+                    closest_start_t = [found, &start]()
+                    {
+                        found->closest_squared_error(Input::template block<rake>(start));
+                        return found->current_t()[{0, 0}];
+                    };
                 }
 
                 if constexpr (robot_catmull_rom_points_v<Robot>)
                 {
                     if (auto found = std::dynamic_pointer_cast<const CatmullC>(constraint))
                     {
-                        catmull_rom = found;
+                        closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
+                    }
+                }
+
+                if constexpr (robot_has_position_target_v<Robot>)
+                {
+                    if (auto found = std::dynamic_pointer_cast<const PolylineC>(constraint))
+                    {
+                        closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
                     }
                 }
             }
 
-            if (not spline and not catmull_rom)
+            if (not closest_start_t)
             {
                 throw std::invalid_argument(
-                    "manifold_constraints must contain a SplineConstraint or a CatmullRomConstraint");
+                    "manifold_constraints must contain a SplineConstraint, a CatmullRomConstraint or a "
+                    "PolylineConstraint");
             }
-
-            check_pins(rng, Input::to(start), "Start");
 
             ConstraintSetT region(std::move(constraints), cs);
             apply_pins(region, rng);
 
             const ConstraintSetT manifold_set(std::move(manifold), cs);
 
-            // The planner holds the spline's parameter fixed on the (shared) constraint: back to solving for it on
+            // The planner holds the curve's parameter fixed on the (shared) constraint: back to solving for it on
             // every way out
             struct ReleaseParameter
             {
@@ -553,24 +588,7 @@ namespace vamp::binding
             } release{manifold_set};
             manifold_set.clear_parameter();
 
-            const auto q = Input::to(start);
-            float t = 0.F;
-            if (start_t)
-            {
-                t = *start_t;
-            }
-            else if (spline)
-            {
-                spline->closest_squared_error(Input::template block<rake>(start));
-                t = spline->current_t()[{0, 0}];
-            }
-            else
-            {
-                if constexpr (robot_catmull_rom_points_v<Robot>)
-                {
-                    t = catmull_rom->closest_parameter(q).first;
-                }
-            }
+            const float t = start_t ? *start_t : closest_start_t();
 
             const auto state = Space::make_state(q, t);
             const SplineLP lp(manifold_set);
@@ -1108,6 +1126,37 @@ namespace vamp::binding
                             "scan of the curve. For a curve that comes near itself it can find the wrong branch.");
                 }
 
+                if constexpr (robot_has_position_target_v<Robot>)
+                {
+                    using PLC = vc::PolylineConstraint<Robot, rake>;
+                    using PLPoint = typename PLC::Point;
+
+                    nb::class_<PLC, ConstraintT>(
+                        submodule,
+                        "PolylineConstraint",
+                        "Position constraint against the straight-line interpolation of points (a degree-1 spline), "
+                        "at a curve parameter that is given: for planning in (q, t) with task_space_rrtc_spline. "
+                        "Takes any number (at least two) of distinct points (n x 3); t is the chord-length "
+                        "parameter, so t advances at constant speed along the polyline. closest_t is exact.")
+                        .def(nb::init<const std::vector<PLPoint> &>(), "points"_a)
+                        .def(
+                            "value",
+                            [](const PLC &c, double t) -> std::array<double, 3>
+                            {
+                                const Eigen::Vector3d point = c.value(t);
+                                return {point[0], point[1], point[2]};
+                            },
+                            "t"_a,
+                            "The point of the polyline at t.")
+                        .def(
+                            "closest_t",
+                            [](const PLC &c, const std::array<float, Robot::dimension> &q)
+                                -> std::tuple<float, float>
+                            { return c.closest_parameter(typename Robot::Configuration(q)); },
+                            "q"_a,
+                            "The closest point of the polyline to the end-effector at q: (t, squared distance).");
+                }
+
                 // numpy and plain-list inputs, as for the other planners
                 const auto def_spline_planner = [&](auto traits)
                 {
@@ -1125,8 +1174,8 @@ namespace vamp::binding
                         "start_t"_a = nb::none(),
                         "Plan along a spline in (q, t) with TaskSpaceRRTC: states carry the curve parameter t, "
                         "which is sampled with the joints and held fixed while a state is projected onto the "
-                        "curve. manifold_constraints must contain the SplineConstraint or the "
-                        "CatmullRomConstraint; the start must be on "
+                        "curve. manifold_constraints must contain the SplineConstraint, the "
+                        "CatmullRomConstraint or the PolylineConstraint; the start must be on "
                         "the curve at start_t (default: the closest point of the curve to the start). Tune "
                         "settings.project_samples and settings.parameter_step. Returns a "
                         "SplineSpacePlanningResult.");

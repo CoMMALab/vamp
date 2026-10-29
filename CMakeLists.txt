@@ -192,6 +192,13 @@ if(VAMP_BUILD_CPP_DEMO)
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_catmull_rom_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
   endif()
+
+  # The same with the straight-line interpolation of the points (needs "position_target_constraint": true as well)
+  add_executable(vamp_polyline_space_rrtc_test scripts/cpp/polyline_space_rrtc_test.cc)
+  target_link_libraries(vamp_polyline_space_rrtc_test PRIVATE vamp_cpp)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(vamp_polyline_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+  endif()
 endif()
 
 # OMPL integration demo

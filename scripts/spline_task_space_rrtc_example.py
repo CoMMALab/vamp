@@ -25,7 +25,12 @@ With --qt the planner works in (q, t) instead (vamp.panda.task_space_rrtc_spline
 parameter t, which is sampled with the joints and held fixed while a state is projected onto the curve, so no
 closest point of the curve is searched for during planning. The path then comes with the t of every state.
 
-Needs a Panda built with a header generated with "spline_constraint": true (cricket).
+With --curve catmull-rom the curve is a Catmull-Rom curve through the same points (vamp.panda.CatmullRomConstraint,
+centripetal by default, --alpha) instead of the fitted B-spline; it is only planned in (q, t), so --qt is implied.
+Its curve and points are written to the dump as the "spline" (the viewer draws the curve through the points).
+
+Needs a Panda built with a header generated with "spline_constraint": true (cricket); with --curve catmull-rom also
+"catmull_rom_constraint": true.
 """
 
 import argparse
@@ -44,6 +49,13 @@ N = sce.N
 
 
 READY = np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785], dtype=np.float32)
+
+# The S is two arcs of 240 degrees each, so its length is 2 * (4 pi / 3) radii
+S_LENGTH_PER_RADIUS = 8.0 * np.pi / 3.0
+
+# The Panda's shoulder (joint 2) is 0.333 m above its base; the arm reaches about 0.855 m from it
+SHOULDER = np.array([0.0, 0.0, 0.333])
+REACH = 0.855
 
 
 def s_curve_points(radius=0.10, count=N):
@@ -81,25 +93,82 @@ def start_at(point):
     return np.asarray(vamp.panda.project(READY, [region], settings), dtype=np.float32)
 
 
+def write_catmull_rom_dump(path, label, points, manifold, trail):
+    """The dump in the format of cricket's tests/view_spline.py, for a Catmull-Rom curve: it passes through its
+    points, which stand for the control points and the knot points."""
+    ts = np.linspace(0.0, 1.0, 401)
+    curve = np.array([manifold.value(t) for t in ts])
+
+    iterations = []
+    for q, t, squared_error in trail:
+        tangent = (np.array(manifold.value(t + 1e-5)) - np.array(manifold.value(t - 1e-5))) / 2e-5
+        iterations.append(
+            {
+                "t": float(t),
+                "q": [float(v) for v in q],
+                "arm": [sce.end_effector(q).tolist()],
+                "curve_point": list(manifold.value(t)),
+                "tangent": tangent.tolist(),
+                "error_norm": float(np.sqrt(max(squared_error, 0.0))),
+            }
+        )
+
+    with open(path, "w") as f:
+        json.dump(
+            {
+                "label": label,
+                "nq": 7,
+                "waypoints": np.asarray(points).tolist(),
+                "control_points": np.asarray(points).tolist(),
+                "knots": [],
+                "parameters": [],
+                "curve_t": ts.tolist(),
+                "curve": curve.tolist(),
+                "knot_points": np.asarray(points).tolist(),
+                "iterations": iterations,
+            },
+            f,
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--trajectory", type=Path, default=sce.DEFAULT_TRAJECTORY, help="evaluate_mbm.py --save_eef file")
     parser.add_argument("--shape", choices=["trajectory", "s"], default="trajectory", help="the curve: the trajectory's points, or a synthetic S")
     parser.add_argument("--s-radius", type=float, default=0.10, help="radius of the S's arcs (m), for --shape s")
+    parser.add_argument(
+        "--s-spacing",
+        type=float,
+        default=None,
+        help="instead of --s-radius: the distance (m) between consecutive points of the S, which sets its size "
+        "(the default radius gives 0.044 m; 0.08 makes the gaps, and so the difference between straight lines and "
+        "the smooth curve, much larger)",
+    )
     parser.add_argument("--problem", default="bookshelf_small", help="MBM problem set the trajectory was planned for")
     parser.add_argument("--index", type=int, default=0, help="problem index within the set")
     parser.add_argument("--no-env", action="store_true", help="plan in an empty environment")
     parser.add_argument("--range", type=float, default=0.3, help="longest extension (rad)")
     parser.add_argument("--max-iterations", type=int, default=20000)
     parser.add_argument("--qt", action="store_true", help="plan in (q, t): task_space_rrtc_spline")
+    parser.add_argument("--curve", choices=["bspline", "catmull-rom"], default="bspline", help="the curve through the points")
+    parser.add_argument("--alpha", type=float, default=0.5, help="Catmull-Rom parametrization: 0 uniform, 0.5 centripetal, 1 chordal")
     parser.add_argument("--parameter-step", type=float, default=0.05, help="with --qt: t advance of each goal-directed step")
     parser.add_argument("--no-project-samples", action="store_true", help="with --qt: do not project random samples onto the curve")
     parser.add_argument("--prefix", default="spline_task_space_rrtc_py", help="prefix of the output JSON file")
     parser.add_argument("--view", action="store_true", help="start the viewer on the path when done")
     args = parser.parse_args()
+    catmull_rom = args.curve == "catmull-rom"
+    args.qt = args.qt or catmull_rom  # the Catmull-Rom constraint is only for planning in (q, t)
 
     if args.shape == "s":
+        if args.s_spacing is not None:
+            args.s_radius = args.s_spacing * (N - 1) / S_LENGTH_PER_RADIUS
+
         points = s_curve_points(args.s_radius)
+        farthest = float(np.linalg.norm(points - SHOULDER, axis=1).max())
+        if farthest > 0.95 * REACH:
+            print(f"warning: the S reaches {farthest:.2f} m from the shoulder (the arm's reach is about {REACH} m)")
+
         start = start_at(points[0])
         print(
             f"spline: an S of radius {args.s_radius} m, {N} waypoints at equal arc length, "
@@ -115,10 +184,13 @@ def main():
         start = np.array(entry["start"], dtype=np.float32)
         print(f"spline: the first {N} end-effector positions of {args.trajectory.name}; start: its start configuration")
 
-    control_points, knots, parameters = sce.fit_cubic_bspline(points)
-    manifold = vamp.panda.SplineConstraint(
-        control_points.tolist(), knots.tolist(), points.tolist(), parameters.tolist()
-    )
+    if catmull_rom:
+        manifold = vamp.panda.CatmullRomConstraint(points.tolist(), args.alpha)
+    else:
+        control_points, knots, parameters = sce.fit_cubic_bspline(points)
+        manifold = vamp.panda.SplineConstraint(
+            control_points.tolist(), knots.tolist(), points.tolist(), parameters.tolist()
+        )
 
     # the goal: the end of the curve, position only (the rotation bounds are wider than the widest rotation error)
     goal = points[-1]
@@ -196,7 +268,11 @@ def main():
         )
 
         output = f"{args.prefix}_path.json"
-        sce.write_dump(output, "TaskSpaceRRTC (q, t) path" if args.qt else "TaskSpaceRRTC path", points, control_points, knots, parameters, trail)
+        if catmull_rom:
+            write_catmull_rom_dump(output, "TaskSpaceRRTC (q, t) Catmull-Rom path", points, manifold, trail)
+        else:
+            label = "TaskSpaceRRTC (q, t) path" if args.qt else "TaskSpaceRRTC path"
+            sce.write_dump(output, label, points, control_points, knots, parameters, trail)
         print(f"written to {output}")
 
     if sce.failures:

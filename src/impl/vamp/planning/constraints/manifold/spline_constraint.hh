@@ -10,6 +10,48 @@
 
 namespace vamp::planning::constraint
 {
+    // One projection step on the joints alone, for a constraint whose curve parameter is given: consumes the solve
+    // buffer of its fixed-parameter error kernel (a 3-row position error and its Jacobian with respect to q) with the
+    // generated solvers Robot::solve_spline_fixed_t_*, and moves q by the step, clamped to the joint limits. Shared by
+    // the spline constraint in fixed-parameter mode and the Catmull-Rom constraint.
+    template <typename Robot, std::size_t rake, std::size_t err_size, std::size_t jac_size>
+    inline void spline_fixed_step(
+        const SolveBuffer<rake, err_size, jac_size> &solve,
+        typename Robot::template ConfigurationBlock<rake> &q,
+        ProjMethod method,
+        float alpha) noexcept
+    {
+        using Row = FloatVector<rake, 1>;
+        typename Robot::template ConfigurationBlock<rake> gradient;
+
+        switch (method)
+        {
+            case ProjMethod::InnerLM:
+                Robot::template solve_spline_fixed_t_lm_inner<rake>(solve, gradient);
+                break;
+            case ProjMethod::OuterLM:
+                Robot::template solve_spline_fixed_t_lm_outer<rake>(solve, gradient);
+                break;
+            case ProjMethod::GradDesc:
+                Robot::template solve_spline_fixed_t_gradient_descent<rake>(solve, gradient);
+                break;
+            case ProjMethod::BoundedLS:
+            {
+                BoundedSolveInput<Robot, rake, err_size, jac_size> input{solve};
+                for (auto i = 0U; i < Robot::dimension; ++i)
+                {
+                    input.lower[i] = Row::fill(Robot::lower_bound[i]) - q[i];
+                    input.upper[i] = Row::fill(Robot::upper_bound[i]) - q[i];
+                }
+
+                Robot::template solve_spline_fixed_t_bounded_ls<rake>(input, gradient);
+                break;
+            }
+        }
+
+        integrate_step<Robot, rake>(q, gradient, alpha);
+    }
+
     // Position constraint against a cubic B-spline curve: the first end-effector's position must lie on the curve
     // P(t), t in [0, 1]. The manifold is {q : FK(q).translation = P(t) for some t}.
     //
@@ -370,34 +412,7 @@ namespace vamp::planning::constraint
         // One fixed-parameter projection step: the joints alone, from the cache of the last squared_error().
         void step_fixed(Block &q, ProjMethod method, float alpha) const noexcept
         {
-            Block gradient;
-
-            switch (method)
-            {
-                case ProjMethod::InnerLM:
-                    Robot::template solve_spline_fixed_t_lm_inner<rake>(fixed_solve_, gradient);
-                    break;
-                case ProjMethod::OuterLM:
-                    Robot::template solve_spline_fixed_t_lm_outer<rake>(fixed_solve_, gradient);
-                    break;
-                case ProjMethod::GradDesc:
-                    Robot::template solve_spline_fixed_t_gradient_descent<rake>(fixed_solve_, gradient);
-                    break;
-                case ProjMethod::BoundedLS:
-                {
-                    BoundedSolveInput<Robot, rake, err_size, fixed_jac_size> input{fixed_solve_};
-                    for (auto i = 0U; i < Robot::dimension; ++i)
-                    {
-                        input.lower[i] = Row::fill(Robot::lower_bound[i]) - q[i];
-                        input.upper[i] = Row::fill(Robot::upper_bound[i]) - q[i];
-                    }
-
-                    Robot::template solve_spline_fixed_t_bounded_ls<rake>(input, gradient);
-                    break;
-                }
-            }
-
-            integrate_step<Robot, rake>(q, gradient, alpha);
+            spline_fixed_step<Robot, rake>(fixed_solve_, q, method, alpha);
         }
 
         // Input layout of the generated Robot::spline_error: q, t, the control points (x y z per point), the knots.

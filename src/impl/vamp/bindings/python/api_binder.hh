@@ -169,7 +169,9 @@ namespace vamp::binding
             "exploration plus goal-directed Levenberg-Marquardt walks toward the region. With "
             "manifold_constraints (e.g. a SplineConstraint) every state stays on the manifold they "
             "define: extensions and the goal-directed steps are projected onto it, so the start "
-            "must be on it and the goal region should intersect it.");
+            "must be on it and the goal region should intersect it. With an empty goal_constraints and a "
+            "SplineConstraint in manifold_constraints, the goal is the end of the spline: the constraint held at "
+            "t = 1, so the goal-directed steps are fixed-parameter steps toward P(1).");
 
         register_constrained_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
         register_constrained_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");

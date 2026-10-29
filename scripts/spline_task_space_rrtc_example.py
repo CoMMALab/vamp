@@ -3,8 +3,9 @@
 A cubic B-spline is fitted through the first 20 end-effector positions of the first trajectory in a file written by
 evaluate_mbm.py --save_eef (default /tmp/eef_bookshelf_small.json). The tree starts at that trajectory's start
 configuration, which is on the curve, and every state of it stays on the curve: extensions toward random samples and
-the goal-directed steps are projected onto it (manifold_constraints). The goal is the end of the curve, a
-position-only task-space region at P(1); no goal configuration is given.
+the goal-directed steps are projected onto it (manifold_constraints). The goal is the end of the curve, P(1): the
+planner holds the manifold's own constraint at t = 1 as the goal region (fixed-parameter steps, never the solve for
+t), so no goal constraint and no goal configuration is given.
 
 With --shape s the curve is instead a synthetic S, 20 waypoints at equal arc length along two joined arcs (radius
 --s-radius, default 10 cm) in a vertical plane in front of the Panda, centred on the end-effector of the ready pose:
@@ -199,14 +200,9 @@ def main():
             control_points.tolist(), knots.tolist(), points.tolist(), parameters.tolist()
         )
 
-    # the goal: the end of the curve, position only (the rotation bounds are wider than the widest rotation error)
+    # the goal is the end of the curve, P(1): the planner holds the manifold's own constraint at t = 1 as the goal
+    # region, so there is no separate goal constraint
     goal = points[-1]
-    goal_region = vamp.panda.TaskSpaceConstraint(
-        [1, 0, 0, 0, 0, 0, 0],
-        [1, 0, 0, 0, *goal.tolist()],
-        [0.0, 0.0, 0.0, -3.2, -3.2, -3.2],
-        [0.0, 0.0, 0.0, 3.2, 3.2, 3.2],
-    )
 
     # the environment
     if args.no_env or args.shape == "s":
@@ -229,7 +225,7 @@ def main():
     plan_settings.max_iterations = args.max_iterations
     plan_settings.max_samples = 20000
 
-    constraint_settings = vamp.ConstraintSettings()  # used for the manifold and for the goal region
+    constraint_settings = vamp.ConstraintSettings()  # for the manifold and the goal region (the manifold's constraint at t = 1)
     constraint_settings.method = vamp.ProjMethod.InnerLM
     constraint_settings.tolerance = 1e-7
     constraint_settings.max_iterations = 50
@@ -239,11 +235,11 @@ def main():
         plan_settings.project_samples = not args.no_project_samples
         plan_settings.parameter_step = args.parameter_step
         result = vamp.panda.task_space_rrtc_spline(
-            start, [goal_region], env, plan_settings, sampler, [manifold], constraint_settings, start_t=t
+            start, env, plan_settings, sampler, [manifold], constraint_settings, start_t=t
         )
     else:
         result = vamp.panda.task_space_rrtc(
-            start, [goal_region], env, plan_settings, sampler, constraint_settings, manifold_constraints=[manifold]
+            start, [], env, plan_settings, sampler, constraint_settings, manifold_constraints=[manifold]
         )
 
     name = "task_space_rrtc_spline" if args.qt else "task_space_rrtc"

@@ -460,8 +460,20 @@ namespace vamp::binding
                 start, goals, env, s, rng, ConstrainedLP(std::move(set)), manifold_message);
         }
 
+        // A copy of a curve's constraint held at the end of the curve (t = 1): a goal region whose error and steps are
+        // those of the fixed-parameter projection at t = 1, FK(q) - P(1), never the ones that solve for t. It is its own
+        // instance, so it stays at t = 1 while the planner sets the parameter of the manifold's constraint.
+        template <typename Curve>
+        static auto held_at_end(const Curve &curve) -> std::shared_ptr<const ConstraintT>
+        {
+            auto end = std::make_shared<Curve>(curve);
+            end->set_parameter(vamp::FloatVector<rake, 1>::fill(1.F));
+            return end;
+        }
+
         // Plan from `start` to a task-space region (the constraints, e.g. a TSR) with no goal
-        // configuration: see TaskSpaceRRTC.
+        // configuration: see TaskSpaceRRTC. With no goal constraints and a SplineConstraint in `manifold`, the goal is
+        // the end of the spline, P(1).
         //
         // With `manifold` constraints (e.g. a SplineConstraint) every state of the tree stays on the manifold they
         // define: extensions and the goal-directed steps are projected onto it (ConstrainedLocalPlanner), so the
@@ -475,9 +487,29 @@ namespace vamp::binding
             const ConstraintSettings &cs,
             ConstraintVec manifold) -> PlanningResult
         {
+            // No goal region given: the goal is the end of the spline in the manifold, its own constraint held at t = 1
+            if constexpr (robot_spline_control_points_v<Robot>)
+            {
+                if (constraints.empty())
+                {
+                    for (const auto &constraint : manifold)
+                    {
+                        if (auto found =
+                                std::dynamic_pointer_cast<const vamp::planning::constraint::SplineConstraint<Robot, rake>>(
+                                    constraint))
+                        {
+                            constraints.push_back(held_at_end(*found));
+                            break;
+                        }
+                    }
+                }
+            }
+
             if (constraints.empty())
             {
-                throw std::invalid_argument("task-space planning needs at least one goal constraint");
+                throw std::invalid_argument(
+                    "task-space planning needs a goal constraint, or a SplineConstraint in manifold_constraints whose "
+                    "end is the goal");
             }
 
             check_pins(rng, Input::to(start), "Start");
@@ -505,11 +537,11 @@ namespace vamp::binding
         // the curve parameter t it sits at; t is sampled with the joints and held fixed while a state is projected
         // onto the curve (see TaskSpaceRRTCSettings::project_samples and ::parameter_step). `manifold` has to hold the
         // SplineConstraint, the CatmullRomConstraint or the PolylineConstraint; the start is on the curve at `start_t`,
-        // by default at the closest point of the curve.
+        // by default at the closest point of the curve. The goal is the end of the curve: the manifold's constraint
+        // held at t = 1, so a goal-directed step is a fixed-parameter step toward P(1).
         // Only instantiated for robots generated with the spline constraint.
         static auto solve_task_space_spline(
             const Cfg &start,
-            ConstraintVec constraints,
             const Env &env,
             const vamp::planning::TaskSpaceRRTCSettings &s,
             std::shared_ptr<Sampler> rng,
@@ -525,16 +557,12 @@ namespace vamp::binding
             using CatmullC = typename CatmullRomConstraintFor<Robot>::type;
             using PolylineC = typename PolylineConstraintFor<Robot>::type;
 
-            if (constraints.empty())
-            {
-                throw std::invalid_argument("task-space planning needs at least one goal constraint");
-            }
-
             check_pins(rng, Input::to(start), "Start");
             const auto q = Input::to(start);
 
-            // The curve the manifold holds, as the way to find the start's t on it
+            // The curve the manifold holds: the way to find the start's t on it, and its end as the goal
             std::function<float()> closest_start_t;
+            std::shared_ptr<const ConstraintT> curve_end;
             for (const auto &constraint : manifold)
             {
                 if (auto found = std::dynamic_pointer_cast<const SplineC>(constraint))
@@ -544,6 +572,7 @@ namespace vamp::binding
                         found->closest_squared_error(Input::template block<rake>(start));
                         return found->current_t()[{0, 0}];
                     };
+                    curve_end = held_at_end(*found);
                 }
 
                 if constexpr (robot_catmull_rom_points_v<Robot>)
@@ -551,6 +580,7 @@ namespace vamp::binding
                     if (auto found = std::dynamic_pointer_cast<const CatmullC>(constraint))
                     {
                         closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
+                        curve_end = held_at_end(*found);
                     }
                 }
 
@@ -559,6 +589,7 @@ namespace vamp::binding
                     if (auto found = std::dynamic_pointer_cast<const PolylineC>(constraint))
                     {
                         closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
+                        curve_end = held_at_end(*found);
                     }
                 }
             }
@@ -570,7 +601,7 @@ namespace vamp::binding
                     "PolylineConstraint");
             }
 
-            ConstraintSetT region(std::move(constraints), cs);
+            ConstraintSetT region(ConstraintVec{curve_end}, cs);
             apply_pins(region, rng);
 
             const ConstraintSetT manifold_set(std::move(manifold), cs);
@@ -1165,7 +1196,6 @@ namespace vamp::binding
                         "task_space_rrtc_spline",
                         &Traits::solve_task_space_spline,
                         "start"_a,
-                        "goal_constraints"_a,
                         "environment"_a,
                         "settings"_a,
                         "sampler"_a,
@@ -1176,7 +1206,8 @@ namespace vamp::binding
                         "which is sampled with the joints and held fixed while a state is projected onto the "
                         "curve. manifold_constraints must contain the SplineConstraint, the "
                         "CatmullRomConstraint or the PolylineConstraint; the start must be on "
-                        "the curve at start_t (default: the closest point of the curve to the start). Tune "
+                        "the curve at start_t (default: the closest point of the curve to the start). The goal is the "
+                        "end of the curve, P(1): the goal-directed steps are fixed-parameter steps at t = 1. Tune "
                         "settings.project_samples and settings.parameter_step. Returns a "
                         "SplineSpacePlanningResult.");
                 };

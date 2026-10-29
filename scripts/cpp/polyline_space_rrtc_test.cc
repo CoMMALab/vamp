@@ -16,7 +16,6 @@
 
 #include <vamp/planning/constraints/local_planner.hh>
 #include <vamp/planning/constraints/manifold/curve_constraint.hh>
-#include <vamp/planning/constraints/manifold/task_space_constraint.hh>
 #include <vamp/planning/planners/task_space_rrtc.hh>
 #include <vamp/random/halton.hh>
 #include <vamp/random/spline.hh>
@@ -24,7 +23,6 @@
 using Space = Robot::SplineSpace;
 using State = Space::State;
 using PolylineConstraint = vamp::planning::constraint::PolylineConstraint<Robot, rake>;
-using TaskSpaceConstraint = vamp::planning::constraint::TaskSpaceConstraint<Robot, rake>;
 using TaskSpaceRRTC = vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution, Space>;
 using LocalPlanner = vamp::planning::constraint::ConstrainedLocalPlanner<Robot, rake, Robot::resolution, Space>;
 using EnvironmentInput = vamp::collision::Environment<float>;
@@ -66,25 +64,12 @@ int main(int argc, char **argv)
     manifold_settings.max_iterations = 50;
     const ConstraintSet manifold(std::vector<ConstraintSet::Ptr>{curve}, manifold_settings);
 
-    // the goal: the end-effector at the end of the curve, any orientation
+    // the goal: the end of the curve
     const Eigen::Vector3d goal_position = curve->value(1.0);
-    const TaskSpaceConstraint::Transform eef_to_offset{1.F, 0.F, 0.F, 0.F, 0.F, 0.F, 0.F};
-    const TaskSpaceConstraint::Transform world_to_reference{
-        1.F,
-        0.F,
-        0.F,
-        0.F,
-        static_cast<float>(goal_position[0]),
-        static_cast<float>(goal_position[1]),
-        static_cast<float>(goal_position[2])};
-    const TaskSpaceConstraint::Bound lower{0.F, 0.F, 0.F, -3.2F, -3.2F, -3.2F};
-    const TaskSpaceConstraint::Bound upper{0.F, 0.F, 0.F, 3.2F, 3.2F, 3.2F};
-
-    const auto goal_constraint = std::make_shared<TaskSpaceConstraint>(
-        std::array<TaskSpaceConstraint::Transform, 1>{eef_to_offset},
-        std::array<TaskSpaceConstraint::Transform, 1>{world_to_reference},
-        std::array<TaskSpaceConstraint::Bound, 1>{lower},
-        std::array<TaskSpaceConstraint::Bound, 1>{upper});
+    // the goal region: the curve's own constraint held at t = 1 (a copy, so the planner's parameter on the manifold's
+    // constraint does not move it): a goal-directed step is a fixed-parameter step toward P(1)
+    const auto goal_constraint = std::make_shared<PolylineConstraint>(*curve);
+    goal_constraint->set_parameter(vamp::FloatVector<rake, 1>::fill(1.F));
     ConstraintSettings region_settings;  // LM projection, tolerance 1e-6
     const ConstraintSet region(std::vector<ConstraintSet::Ptr>{goal_constraint}, region_settings);
 

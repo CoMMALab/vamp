@@ -1,8 +1,8 @@
 // Plans along a spline with TaskSpaceRRTC: every state of the tree stays on the curve (ConstrainedLocalPlanner over a
-// ConstraintSet holding the SplineConstraint), and the goal is the end of the curve, written as a position-only
-// task-space region at P(1). No goal configuration is given: exploration steps toward random samples are projected
-// onto the curve, and after each the goal-directed walk takes LM steps toward P(1), each handed to the local planner
-// as a steer target so it is projected onto the curve too.
+// ConstraintSet holding the SplineConstraint), and the goal is the end of the curve: the SplineConstraint held at
+// t = 1 (its fixed-parameter error and steps, not the solve for t) is the goal region. No goal configuration is given:
+// exploration steps toward random samples are projected onto the curve, and after each the goal-directed walk takes
+// LM steps toward P(1), each handed to the local planner as a steer target so it is projected onto the curve too.
 //
 // The spline is fitted through the first 20 end-effector positions of the first trajectory in a file written by
 // evaluate_mbm.py --save_eef (default /tmp/eef_bookshelf_small.json), starting from that trajectory's configuration 0
@@ -20,11 +20,9 @@
 #include "spline_test_utils.hh"
 
 #include <vamp/planning/constraints/local_planner.hh>
-#include <vamp/planning/constraints/manifold/task_space_constraint.hh>
 #include <vamp/planning/planners/task_space_rrtc.hh>
 #include <vamp/random/halton.hh>
 
-using TaskSpaceConstraint = vamp::planning::constraint::TaskSpaceConstraint<Robot, rake>;
 using TaskSpaceRRTC = vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution>;
 using LocalPlanner = vamp::planning::constraint::ConstrainedLocalPlanner<Robot, rake, Robot::resolution>;
 using EnvironmentInput = vamp::collision::Environment<float>;
@@ -48,26 +46,12 @@ int main(int argc, char **argv)
     manifold_settings.max_iterations = 50;
     const ConstraintSet manifold(std::vector<ConstraintSet::Ptr>{constraint}, manifold_settings);
 
-    // the goal: the end-effector at the end of the curve, any orientation (the rotation bounds are wider than the
-    // widest rotation error, so only the position is constrained)
+    // the goal: the end of the curve
     const Eigen::Vector3d goal_position = spline.value(1.0);
-    const TaskSpaceConstraint::Transform eef_to_offset{1.F, 0.F, 0.F, 0.F, 0.F, 0.F, 0.F};
-    const TaskSpaceConstraint::Transform world_to_reference{
-        1.F,
-        0.F,
-        0.F,
-        0.F,
-        static_cast<float>(goal_position[0]),
-        static_cast<float>(goal_position[1]),
-        static_cast<float>(goal_position[2])};
-    const TaskSpaceConstraint::Bound lower{0.F, 0.F, 0.F, -3.2F, -3.2F, -3.2F};
-    const TaskSpaceConstraint::Bound upper{0.F, 0.F, 0.F, 3.2F, 3.2F, 3.2F};
-
-    const auto goal_constraint = std::make_shared<TaskSpaceConstraint>(
-        std::array<TaskSpaceConstraint::Transform, 1>{eef_to_offset},
-        std::array<TaskSpaceConstraint::Transform, 1>{world_to_reference},
-        std::array<TaskSpaceConstraint::Bound, 1>{lower},
-        std::array<TaskSpaceConstraint::Bound, 1>{upper});
+    // the goal region: the curve's own constraint held at t = 1 (a copy, so the planner's parameter on the manifold's
+    // constraint does not move it): a goal-directed step is a fixed-parameter step toward P(1)
+    const auto goal_constraint = std::make_shared<SplineConstraint>(*constraint);
+    goal_constraint->set_parameter(vamp::FloatVector<rake, 1>::fill(1.F));
     ConstraintSettings region_settings;  // LM projection, tolerance 1e-6
     const ConstraintSet region(std::vector<ConstraintSet::Ptr>{goal_constraint}, region_settings);
 

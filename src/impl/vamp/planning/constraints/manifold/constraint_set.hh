@@ -90,6 +90,19 @@ namespace vamp::planning::constraint
             }
         }
 
+        // The per-lane parameter the projection or check that followed set_parameter(given) left the constraints at
+        // (Constraint::projected_parameter); `given` for constraints that hold it.
+        auto projected_parameter(const Row &given) const noexcept -> Row
+        {
+            auto parameter = given;
+            for (const auto &constraint : constraints_)
+            {
+                parameter = constraint->projected_parameter(parameter);
+            }
+
+            return parameter;
+        }
+
         // The constraint violation of q alone: each constraint reports its squared error with its hidden state at
         // its best value for q (Constraint::closest_squared_error), summed. For one-off queries; a configuration on
         // the manifold gives zero. Does not fill the caches that step_in_place() consumes.

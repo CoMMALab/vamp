@@ -66,16 +66,40 @@ namespace vamp::planning::constraint
             return points_.size();
         }
 
+        // The segment i with tau_i <= t < tau_{i + 1} (t clamped to [0, 1]); t = 1 belongs to the last one
+        auto segment_of(double t) const noexcept -> std::size_t
+        {
+            t = std::clamp(t, 0.0, 1.0);
+
+            const auto upper = std::upper_bound(tau_.begin(), tau_.end(), t);
+            const std::size_t segment =
+                (upper == tau_.begin()) ? 0 : static_cast<std::size_t>(upper - tau_.begin()) - 1;
+            return std::min(segment, points_.size() - 2);
+        }
+
+        // The range of t that segment i covers: [segment_begin(i), segment_end(i)]
+        auto segment_begin(std::size_t segment) const noexcept -> double
+        {
+            return tau_[segment];
+        }
+
+        auto segment_end(std::size_t segment) const noexcept -> double
+        {
+            return tau_[segment + 1];
+        }
+
+        // dP/dt on segment i (a constant)
+        auto velocity(std::size_t segment) const noexcept -> Eigen::Vector3d
+        {
+            return (points_[segment + 1] - points_[segment]) / (tau_[segment + 1] - tau_[segment]);
+        }
+
         // The point at t (clamped to [0, 1])
         auto value(double t) const noexcept -> Eigen::Vector3d
         {
             t = std::clamp(t, 0.0, 1.0);
 
-            // the segment i with tau_i <= t < tau_{i + 1}; t = 1 belongs to the last one
-            const auto upper = std::upper_bound(tau_.begin(), tau_.end(), t);
-            std::size_t segment = (upper == tau_.begin()) ? 0 : static_cast<std::size_t>(upper - tau_.begin()) - 1;
-            segment = std::min(segment, points_.size() - 2);
-
+            const std::size_t segment = segment_of(t);
             const double s = (t - tau_[segment]) / (tau_[segment + 1] - tau_[segment]);
             return (1.0 - s) * points_[segment] + s * points_[segment + 1];
         }
@@ -84,7 +108,7 @@ namespace vamp::planning::constraint
         auto closest(const Eigen::Vector3d &x) const noexcept -> std::pair<double, double>
         {
             double best_t = 0.0;
-            double best_distance2 = std::numeric_limits<double>::infinity();
+            double best_distance2 = std::numeric_limits<double>::max();
 
             for (std::size_t i = 0; i + 1 < points_.size(); ++i)
             {
@@ -119,6 +143,23 @@ namespace vamp::planning::constraint
     // There is no closest-point search in planning: a state says where on the curve it is. closest_parameter() is the
     // host-side search for the t of a configuration that is not given one (a planner's start).
     //
+    // Sliding (`slide`, for a curve that is made of segments: segment_of(t), segment_begin(i), segment_end(i) and
+    // velocity(i) = dP/dt on segment i, besides value and closest): the parameter given to set_parameter only says
+    // which segment the lane is on, and t is then an unknown of the projection next to the joints, as in the
+    // SplineConstraint that solves for t, but bounded to the segment: the error is FK(q) - P(t), its Jacobian has a
+    // column -dP/dt for t after the joints' columns, and every step moves the joints and t together (the generated
+    // Robot::solve_spline_error_*, whose unknowns are the joints and t; BoundedLS keeps t in the segment's range
+    // exactly, the other methods clamp it after the step). The curve is evaluated at t once per iteration, on the
+    // host. The parameter the projection leaves each lane at is projected_parameter(): planners write it back into the
+    // state. extract_error_jacobian still returns the raw fixed-target rows, which are not the sliding manifold's
+    // tangent space.
+    //
+    // Whole curve (`whole_curve`, the counterpart of the SplineConstraint that solves for t, for a curve of segments as
+    // above): no parameter is given. Every projection starts by finding the closest point of the whole curve to each
+    // lane's end-effector (begin_projection, on the host, exact), which seeds t; t is then an unknown of the
+    // projection next to the joints, bounded to [0, 1], and its column is -dP/dt of whichever segment t is in at the
+    // iteration. It is the q-only projection, where the sliding one is bounded to the segment of a given t.
+    //
     // Not thread-safe, like the other constraints: one instance per thread.
     template <typename Robot, std::size_t rake, typename Curve>
     struct CurveConstraint : Constraint<Robot, rake>
@@ -130,9 +171,33 @@ namespace vamp::planning::constraint
         static constexpr std::size_t err_size = 3;
         static constexpr std::size_t jac_size = err_size * Robot::dimension;
 
-        explicit CurveConstraint(Curve curve) : curve_(std::move(curve))
+        explicit CurveConstraint(Curve curve, bool slide = false, bool whole_curve = false)
+          : curve_(std::move(curve)), slide_(slide), whole_curve_(whole_curve)
         {
-            load_target();
+            if (slide and whole_curve)
+            {
+                throw std::invalid_argument("a curve constraint slides along a segment or solves over the whole curve");
+            }
+
+            set_parameter(t_);
+        }
+
+        // Whether t is solved over the whole curve, seeded by the closest point (see above)
+        auto whole_curve() const noexcept -> bool
+        {
+            return whole_curve_;
+        }
+
+        // Whether the end-effector slides along the parameter's segment while a projection runs (see above)
+        auto slide() const noexcept -> bool
+        {
+            return slide_;
+        }
+
+        void set_slide(bool slide) noexcept
+        {
+            slide_ = slide;
+            set_parameter(t_);
         }
 
         auto curve() const noexcept -> const Curve &
@@ -167,14 +232,83 @@ namespace vamp::planning::constraint
         void set_parameter(const Row &parameter) const noexcept override
         {
             t_ = parameter.clamp(0.F, 1.F);
+
+            if (slide_)
+            {
+                // each lane's segment, from its t: the range t may move in, and the curve's velocity there
+                const auto parameters = t_.to_array();
+                std::array<float, rake> lower;
+                std::array<float, rake> upper;
+                std::array<std::array<float, rake>, 3> velocity;
+                for (auto lane = 0U; lane < rake; ++lane)
+                {
+                    const auto segment = curve_.segment_of(parameters[lane]);
+                    lower[lane] = static_cast<float>(curve_.segment_begin(segment));
+                    upper[lane] = static_cast<float>(curve_.segment_end(segment));
+
+                    const Eigen::Vector3d v = curve_.velocity(segment);
+                    for (auto axis = 0U; axis < 3; ++axis)
+                    {
+                        velocity[axis][lane] = static_cast<float>(v[axis]);
+                    }
+                }
+
+                lower_t_ = Row(lower);
+                upper_t_ = Row(upper);
+                for (auto axis = 0U; axis < 3; ++axis)
+                {
+                    velocity_[axis] = Row(velocity[axis]);
+                }
+
+                // the hint may be a float rounding off its segment's range
+                t_ = t_.max(lower_t_).min(upper_t_);
+            }
+
             load_target();
+        }
+
+        // The whole curve: the closest point of the curve to each lane's end-effector seeds t, once per projection
+        void begin_projection(const Block &q) const noexcept override
+        {
+            if (not whole_curve_)
+            {
+                return;
+            }
+
+            std::array<std::array<float, rake>, Robot::dimension> joints;
+            for (auto j = 0U; j < Robot::dimension; ++j)
+            {
+                joints[j] = q[j].to_array();
+            }
+
+            auto parameters = t_.to_array();
+            for (auto lane = 0U; lane < rake; ++lane)
+            {
+                std::array<float, Robot::dimension> values;
+                for (auto j = 0U; j < Robot::dimension; ++j)
+                {
+                    values[j] = joints[j][lane];
+                }
+
+                const Eigen::Vector3d x = Robot::eefk(values).translation().template cast<double>();
+                parameters[lane] = static_cast<float>(curve_.closest(x).first);
+            }
+
+            t_ = Row(parameters);
+            refresh_rates();
+            load_target();
+        }
+
+        // Solving for t: the parameter each lane's projection left it at. Otherwise the one given.
+        auto projected_parameter(const Row &given) const noexcept -> Row override
+        {
+            return solves_t() ? t_ : given;
         }
 
         // The squared error |FK(q) - target|^2 at the current target. Caches J and err for step().
         auto squared_error(const Block &q) const noexcept -> Row override
         {
-            input_.q = q;
-            Robot::template position_target_error<rake>(input_, solve_);
+            evaluate(q);
 
             auto d = solve_.err[0] * solve_.err[0];
             for (auto i = 1U; i < err_size; ++i)
@@ -187,6 +321,12 @@ namespace vamp::planning::constraint
 
         void step(Block &q, ProjMethod method, float alpha) const noexcept override
         {
+            if (solves_t())
+            {
+                slide_step(q, method, alpha);
+                return;
+            }
+
             spline_fixed_step<Robot, rake>(solve_, q, method, alpha);
         }
 
@@ -211,8 +351,7 @@ namespace vamp::planning::constraint
 
         void evaluate_error_jacobian(const Block &q) const noexcept override
         {
-            input_.q = q;
-            Robot::template position_target_error<rake>(input_, solve_);
+            evaluate(q);
         }
 
         // At a fixed t the tangent space of the manifold in q is the null space of the raw q-Jacobian
@@ -229,6 +368,136 @@ namespace vamp::planning::constraint
         }
 
     private:
+        // The error and Jacobian at q. Sliding: the target is the curve at the lanes' current parameters, and the
+        // Jacobian gets the column of t after the joints' ones.
+        void evaluate(const Block &q) const noexcept
+        {
+            input_.q = q;
+            if (whole_curve_)
+            {
+                refresh_rates();  // t moved with the last step: the segment it is in, and the velocity there
+            }
+
+            if (solves_t())
+            {
+                load_target();
+            }
+
+            Robot::template position_target_error<rake>(input_, solve_);
+
+            if (solves_t())
+            {
+                constexpr std::size_t variables = Robot::dimension + 1;
+                for (auto i = 0U; i < err_size; ++i)
+                {
+                    for (auto j = 0U; j < Robot::dimension; ++j)
+                    {
+                        slide_solve_.jac[i * variables + j] = solve_.jac[i * Robot::dimension + j];
+                    }
+
+                    // d(FK - P(t))/dt = -dP/dt
+                    slide_solve_.jac[i * variables + Robot::dimension] = Row::fill(0.F) - velocity_[i];
+                    slide_solve_.err[i] = solve_.err[i];
+                }
+            }
+        }
+
+        // Whether t is an unknown of the projection (sliding along a segment, or over the whole curve)
+        auto solves_t() const noexcept -> bool
+        {
+            return slide_ or whole_curve_;
+        }
+
+        // The curve's velocity at each lane's current t (the segment it is in): the Jacobian's column of t
+        void refresh_rates() const noexcept
+        {
+            const auto parameters = t_.to_array();
+            std::array<std::array<float, rake>, 3> velocity;
+            for (auto lane = 0U; lane < rake; ++lane)
+            {
+                const Eigen::Vector3d v = curve_.velocity(curve_.segment_of(parameters[lane]));
+                for (auto axis = 0U; axis < 3; ++axis)
+                {
+                    velocity[axis][lane] = static_cast<float>(v[axis]);
+                }
+            }
+
+            for (auto axis = 0U; axis < 3; ++axis)
+            {
+                velocity_[axis] = Row(velocity[axis]);
+            }
+        }
+
+        // One step on the joints and t, from the cache of the last evaluate(): t stays in its range
+        void slide_step(Block &q, ProjMethod method, float alpha) const noexcept
+        {
+            constexpr std::size_t variables = Robot::dimension + 1;
+            FloatVector<rake, variables> gradient;
+
+            switch (method)
+            {
+                case ProjMethod::InnerLM:
+                    Robot::template solve_spline_error_lm_inner<rake>(slide_solve_, gradient);
+                    break;
+                case ProjMethod::OuterLM:
+                    Robot::template solve_spline_error_lm_outer<rake>(slide_solve_, gradient);
+                    break;
+                case ProjMethod::GradDesc:
+                    Robot::template solve_spline_error_gradient_descent<rake>(slide_solve_, gradient);
+                    break;
+                case ProjMethod::BoundedLS:
+                {
+                    SlideInput input{slide_solve_};
+                    for (auto i = 0U; i < Robot::dimension; ++i)
+                    {
+                        input.lower[i] = Row::fill(Robot::lower_bound[i]) - q[i];
+                        input.upper[i] = Row::fill(Robot::upper_bound[i]) - q[i];
+                    }
+
+                    input.lower[Robot::dimension] = lower_t_ - t_;
+                    input.upper[Robot::dimension] = upper_t_ - t_;
+
+                    Robot::template solve_spline_error_bounded_ls<rake>(input, gradient);
+                    break;
+                }
+            }
+
+            // the joints take their part of the step (clamped to the limits) ...
+            Block joint_gradient;
+            for (auto i = 0U; i < Robot::dimension; ++i)
+            {
+                joint_gradient[i] = gradient[i];
+            }
+
+            integrate_step<Robot, rake>(q, joint_gradient, alpha);
+
+            // ... and t the last entry, staying in its segment
+            t_ = (t_ - gradient[Robot::dimension] * alpha).max(lower_t_).min(upper_t_);
+        }
+
+        // Input layout of the generated Robot::solve_spline_error_bounded_ls: the extended error kernel's outputs (the
+        // Jacobian with t's column, then the error), then lower - x and upper - x for the joints and t.
+        struct SlideInput
+        {
+            static constexpr std::size_t variables = Robot::dimension + 1;
+            static constexpr std::size_t solve_size = err_size * variables + err_size;
+
+            const SolveBuffer<rake, err_size, err_size * variables> &solve;
+            FloatVector<rake, variables> lower;
+            FloatVector<rake, variables> upper;
+
+            auto operator[](std::size_t index) const noexcept -> Row
+            {
+                if (index < solve_size)
+                {
+                    return solve[index];
+                }
+
+                index -= solve_size;
+                return (index < variables) ? lower[index] : upper[index - variables];
+            }
+        };
+
         // Input layout of the generated Robot::position_target_error: q, then the target point.
         struct Input
         {
@@ -268,8 +537,14 @@ namespace vamp::planning::constraint
         }
 
         Curve curve_;
+        bool slide_ = false;
+        bool whole_curve_ = false;
 
         // Evaluation state, like the other constraints' caches: not thread-safe, one instance per thread.
+        mutable SolveBuffer<rake, err_size, err_size *(Robot::dimension + 1)> slide_solve_;
+        mutable Row lower_t_ = Row::fill(0.F);
+        mutable Row upper_t_ = Row::fill(1.F);
+        mutable std::array<Row, 3> velocity_;
         mutable Input input_;
         mutable SolveBuffer<rake, err_size, jac_size> solve_;
         mutable Row t_ = Row::fill(0.F);
@@ -281,8 +556,8 @@ namespace vamp::planning::constraint
     {
         using Point = PolylineCurve::Point;
 
-        explicit PolylineConstraint(const std::vector<Point> &points)
-          : CurveConstraint<Robot, rake, PolylineCurve>(PolylineCurve(points))
+        explicit PolylineConstraint(const std::vector<Point> &points, bool slide = false, bool whole_curve = false)
+          : CurveConstraint<Robot, rake, PolylineCurve>(PolylineCurve(points), slide, whole_curve)
         {
         }
     };

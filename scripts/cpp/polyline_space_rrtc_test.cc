@@ -8,7 +8,11 @@
 // the planner solves; every state of the path is on the curve at its own t; the path ends at P(1) and satisfies the goal
 // region.
 //
-// Usage: vamp_polyline_space_rrtc_test [trajectory.json [max_iterations]]
+// With the argument "slide" the constraint slides: the t a state carries only says which segment it is on, the
+// end-effector slides along the segment during every projection, and the state takes the t the projection leaves it at
+// (PolylineConstraint's slide mode); the goal is still the end of the curve, at t = 1.
+//
+// Usage: vamp_polyline_space_rrtc_test [trajectory.json [max_iterations [slide]]]
 // Build: configure with -DVAMP_BUILD_CPP_DEMO=ON and build the vamp_polyline_space_rrtc_test target. Needs a Panda
 // header generated with "spline_constraint": true and "position_target_constraint": true. Exits 1 if a check fails.
 
@@ -35,11 +39,14 @@ int main(int argc, char **argv)
     const SplineProblem problem = make_spline_problem(trajectory_path, 0);
     const SplineData &data = problem.data;
 
-    const auto curve = std::make_shared<PolylineConstraint>(
-        std::vector<PolylineConstraint::Point>(data.waypoints.begin(), data.waypoints.end()));
+    const bool slide = argc > 3 and std::string(argv[3]) == "slide";
+    const std::vector<PolylineConstraint::Point> waypoints(data.waypoints.begin(), data.waypoints.end());
+    const auto curve = std::make_shared<PolylineConstraint>(waypoints, slide);
+    std::printf("projection: %s\n", slide ? "sliding along the segment of t" : "at the t of the state");
 
-    // 1. the generated kernel against the host curve
+    // 1. the generated kernel against the host curve (at a given t: the fixed constraint)
     {
+        const auto fixed_curve = std::make_shared<PolylineConstraint>(waypoints);
         vamp::rng::Halton<Robot> sampler;
         double worst = 0.0;
         for (int sample = 0; sample < 64; ++sample)
@@ -47,9 +54,9 @@ int main(int argc, char **argv)
             const Configuration q = sampler.next();
             const double t = (sample < 4) ? 0.25 * sample : static_cast<double>(sample % 17) / 16.0;
 
-            curve->set_parameter(vamp::FloatVector<rake, 1>::fill(static_cast<float>(t)));
-            const double kernel = curve->squared_error(broadcast_block(q))[{0, 0}];
-            const double host = (end_effector(q) - curve->value(t)).squaredNorm();
+            fixed_curve->set_parameter(vamp::FloatVector<rake, 1>::fill(static_cast<float>(t)));
+            const double kernel = fixed_curve->squared_error(broadcast_block(q))[{0, 0}];
+            const double host = (end_effector(q) - fixed_curve->value(t)).squaredNorm();
             worst = std::max(worst, std::abs(kernel - host) / std::max(1.0, host));
         }
 
@@ -69,6 +76,7 @@ int main(int argc, char **argv)
     // the goal region: the curve's own constraint held at t = 1 (a copy, so the planner's parameter on the manifold's
     // constraint does not move it): a goal-directed step is a fixed-parameter step toward P(1)
     const auto goal_constraint = std::make_shared<PolylineConstraint>(*curve);
+    goal_constraint->set_slide(false);  // the end of the curve, not of its last segment
     goal_constraint->set_parameter(vamp::FloatVector<rake, 1>::fill(1.F));
     ConstraintSettings region_settings;  // LM projection, tolerance 1e-6
     const ConstraintSet region(std::vector<ConstraintSet::Ptr>{goal_constraint}, region_settings);

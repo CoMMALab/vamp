@@ -47,8 +47,10 @@ namespace vamp::planning::constraint
     //
     // Planning in a Space other than the robot's own (SplineSpace): states carry coordinates beyond the joints, which
     // interpolate along with them and are handed to the constraints per lane (ConstraintSet::set_parameter) before
-    // every projection, so the projections solve for the joints at the parameter the lane has. Everything geometric
-    // (continuity, collision, tolerances, drift) is measured on the ambient configuration.
+    // every projection, so the projections solve for the joints at the parameter the lane has. A constraint that
+    // slides along its curve while it projects (Constraint::projected_parameter) moves the parameter within the range
+    // it was given, and the state takes the parameter the projection left. Everything geometric (continuity,
+    // collision, tolerances, drift) is measured on the ambient configuration.
     template <typename Robot, std::size_t rake, std::size_t resolution, typename Space = Robot>
     struct ConstrainedLocalPlanner
     {
@@ -238,13 +240,15 @@ namespace vamp::planning::constraint
             else
             {
                 Ambient projected = Traits::ambient(q);
-                constraints.set_parameter(parameter_row(q));
+                const auto given = parameter_row(q);
+                constraints.set_parameter(given);
                 if (not constraints.project(projected))
                 {
                     return false;
                 }
 
-                q = Traits::with_ambient(q, projected);
+                // a constraint that slides along its curve while it projects has moved the parameter
+                q = Space::make_state(projected, constraints.projected_parameter(given)[{0, 0}]);
                 return true;
             }
         }
@@ -339,6 +343,9 @@ namespace vamp::planning::constraint
                 constraints.set_parameter(states[Robot::dimension]);
                 const auto result = projection(q);
                 store_ambient(states, q);
+
+                // a constraint that slides along its curve while it projects has moved each lane's parameter
+                states[Robot::dimension] = constraints.projected_parameter(states[Robot::dimension]);
                 return result;
             }
         }

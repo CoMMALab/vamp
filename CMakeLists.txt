@@ -199,6 +199,14 @@ if(VAMP_BUILD_CPP_DEMO)
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_polyline_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
   endif()
+
+  # The straight-line interpolation of poses in R^3 x SO(3), the position along a polyline and the rotation along a
+  # slerp (needs a Panda header with a task-space constraint and "spline_constraint": true)
+  add_executable(vamp_pose_polyline_space_rrtc_test scripts/cpp/pose_polyline_space_rrtc_test.cc)
+  target_link_libraries(vamp_pose_polyline_space_rrtc_test PRIVATE vamp_cpp)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(vamp_pose_polyline_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+  endif()
 endif()
 
 # OMPL integration demo

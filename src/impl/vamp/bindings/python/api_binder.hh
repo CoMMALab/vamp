@@ -3,6 +3,7 @@
 #include <vamp/collision/environment.hh>
 #include <vamp/collision/shapes.hh>
 #include <vamp/planning/planners/aorrtc_settings.hh>
+#include "constraint_defaults.hh"
 #include <vamp/planning/constraints/settings.hh>
 #include <vamp/planning/planners/grrtstar_settings.hh>
 #include <vamp/planning/planner.hh>
@@ -87,7 +88,7 @@ namespace vamp::binding
             &Traits::template solve_single_constrained<P, Settings>,
             &Traits::template solve_multi_constrained<P, Settings>,
             "constraints"_a,
-            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{});
+            "constraint_settings"_a = python_constraint_settings());
     }
 
     // Constraint-aware overloads on the same entry points as the unconstrained API: the
@@ -101,7 +102,7 @@ namespace vamp::binding
             &Traits::constraint_project,
             "configuration"_a,
             "constraints"_a,
-            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "constraint_settings"_a = python_constraint_settings(),
             "Project a configuration onto the constraint manifold. Raises ValueError if the "
             "projection does not converge.");
 
@@ -113,7 +114,7 @@ namespace vamp::binding
                 "configuration"_a,
                 "constraints"_a,
                 "rng"_a,
-                "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+                "constraint_settings"_a = python_constraint_settings(),
                 "Project a configuration onto the constraint manifold within the sampler's "
                 "pinned slice: pinned joints are snapped to their pinned values and held "
                 "exactly while the active joints project. Raises ValueError if the projection "
@@ -124,7 +125,7 @@ namespace vamp::binding
             &Traits::constraint_step,
             "configuration"_a,
             "constraints"_a,
-            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "constraint_settings"_a = python_constraint_settings(),
             "A single raw descent step toward the constraint manifold from a configuration, with "
             "no convergence check: returns the configuration after one step of the projection "
             "method.");
@@ -133,14 +134,14 @@ namespace vamp::binding
             &Traits::constraint_squared_error,
             "configuration"_a,
             "constraints"_a,
-            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "constraint_settings"_a = python_constraint_settings(),
             "Summed squared violation of the constraints at a configuration.");
         t.def(
             "satisfied",
             &Traits::constraint_satisfied,
             "configuration"_a,
             "constraints"_a,
-            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "constraint_settings"_a = python_constraint_settings(),
             "Whether a configuration satisfies every constraint within tolerance.");
         t.def(
             "simplify",
@@ -150,7 +151,7 @@ namespace vamp::binding
             "settings"_a,
             "sampler"_a,
             "constraints"_a,
-            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "constraint_settings"_a = python_constraint_settings(),
             "Simplification heuristics restricted to the constraint manifold. Raises ValueError "
             "if any path state violates the constraints.");
 
@@ -162,7 +163,7 @@ namespace vamp::binding
             "environment"_a,
             "settings"_a,
             "sampler"_a,
-            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "constraint_settings"_a = python_constraint_settings(),
             "manifold_constraints"_a = typename Traits::ConstraintVec{},
             "Plan from a start configuration to a task-space goal region (the constraints, "
             "e.g. a TaskSpaceConstraint) without computing a goal configuration: RRT "

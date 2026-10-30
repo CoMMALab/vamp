@@ -182,7 +182,6 @@ def solve_problem(problems, name, index, args, vamp_module, planner, planner_set
         plan_settings.max_samples = 20000
 
         constraint_settings = vamp.ConstraintSettings()  # used for the manifold and for the goal region
-        constraint_settings.method = vamp.ProjMethod.InnerLM
         constraint_settings.tolerance = 1e-7
         constraint_settings.max_iterations = 50
 

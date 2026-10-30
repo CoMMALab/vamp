@@ -141,7 +141,7 @@ namespace vamp::planning::constraint
 
             constexpr int samples = 2000;
             int best = 0;
-            double best_distance2 = std::numeric_limits<double>::infinity();
+            double best_distance2 = std::numeric_limits<double>::max();
             for (int k = 0; k <= samples; ++k)
             {
                 const double distance2 = (x - value(static_cast<double>(k) / samples)).squaredNorm();

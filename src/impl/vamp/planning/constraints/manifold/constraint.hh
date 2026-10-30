@@ -74,6 +74,15 @@ namespace vamp::planning::constraint
         {
         }
 
+        // The parameter of each lane after the projection or check that followed set_parameter(given), for a
+        // constraint that moves the parameter within a range of the curve while it projects (a sliding curve
+        // constraint): the parameter the final configuration of the lane sits at. Planners write it back into the
+        // state. Default: the parameter the constraint was given.
+        virtual auto projected_parameter(const FloatVector<rake, 1> &given) const noexcept -> FloatVector<rake, 1>
+        {
+            return given;
+        }
+
         // Bring the hidden state to its best value for q (for the spline constraint: the closest point of the curve),
         // so that the constraint's error is the violation of q alone and not of q at some leftover state. Also what
         // seeds a projection (see begin_projection). Default: begin_projection(q).
@@ -258,7 +267,7 @@ namespace vamp::planning::constraint
             return d;
         }
 
-        void step(Block &q, ProjMethod method, float alpha) const noexcept final
+        void step(Block &q, ProjMethod method, float alpha) const noexcept override
         {
             Block gradient;
 

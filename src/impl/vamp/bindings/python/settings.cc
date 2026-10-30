@@ -1,6 +1,5 @@
 #include <vamp_python_init.hh>
 
-#include "constraint_defaults.hh"
 #include <vamp/planning/constraints/settings.hh>
 #include <vamp/planning/planners/roadmap.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
@@ -37,9 +36,7 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_greedy_steps", &vp::TaskSpaceRRTCSettings::max_greedy_steps)
         .def_rw("max_iterations", &vp::TaskSpaceRRTCSettings::max_iterations)
         .def_rw("max_samples", &vp::TaskSpaceRRTCSettings::max_samples)
-        .def_rw("nn_epsilon", &vp::TaskSpaceRRTCSettings::nn_epsilon)
-        .def_rw("project_samples", &vp::TaskSpaceRRTCSettings::project_samples)
-        .def_rw("parameter_step", &vp::TaskSpaceRRTCSettings::parameter_step);
+        .def_rw("nn_epsilon", &vp::TaskSpaceRRTCSettings::nn_epsilon);
 
     nb::class_<vp::AORRTCSettings>(pymodule, "AORRTCSettings")
         .def(nb::init<>())
@@ -154,11 +151,7 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .value("BoundedLS", vc::ProjMethod::BoundedLS);
 
     nb::class_<vc::ConstraintSettings>(pymodule, "ConstraintSettings")
-        .def(
-            "__init__",
-            [](vc::ConstraintSettings *self)
-            { new (self) vc::ConstraintSettings(vamp::binding::python_constraint_settings()); },
-            "Constraint settings with the library's defaults, except that the method is BoundedLS.")
+        .def(nb::init<>())
         .def_rw("method", &vc::ConstraintSettings::method)
         .def_rw("descend_rate", &vc::ConstraintSettings::descend_rate)
         .def_rw("tolerance", &vc::ConstraintSettings::tolerance)

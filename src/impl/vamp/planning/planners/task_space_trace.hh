@@ -7,8 +7,6 @@
 #include <string>
 #include <vector>
 
-#include <vamp/space.hh>
-
 namespace vamp::planning
 {
     enum class TraceEvent : std::uint8_t
@@ -36,10 +34,10 @@ namespace vamp::planning
 
     // Optional record of everything TaskSpaceRRTC does, for debugging and visualization.
     // Entries are in execution order; pass a trace to TaskSpaceRRTC::solve to fill it.
-    template <typename Robot, typename Space = Robot>
+    template <typename Robot>
     struct TaskSpaceTrace
     {
-        static constexpr std::size_t dimension = SpaceTraits<Robot, Space>::dimension;
+        static constexpr std::size_t dimension = Robot::dimension;
 
         struct Entry
         {

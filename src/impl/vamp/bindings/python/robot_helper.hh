@@ -1,8 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <functional>
-#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -12,7 +10,6 @@
 #include <vamp/collision/filter.hh>
 #include <vamp/collision/sphere_sphere.hh>
 #include <vamp/collision/validity.hh>
-#include "constraint_defaults.hh"
 #include <vamp/planning/planners/aorrtc.hh>
 #include <vamp/planning/constraints/manifold/bimanual_task_space_constraint.hh>
 #include <vamp/planning/constraints/manifold/closed_loop_constraint.hh>
@@ -20,10 +17,6 @@
 #include <vamp/planning/constraints/manifold/constraint.hh>
 #include <vamp/planning/constraints/manifold/constraint_set.hh>
 #include <vamp/planning/constraints/manifold/lead_screw_constraint.hh>
-#include <vamp/planning/constraints/manifold/spline_constraint.hh>
-#include <vamp/planning/constraints/manifold/catmull_rom_constraint.hh>
-#include <vamp/planning/constraints/manifold/curve_constraint.hh>
-#include <vamp/planning/constraints/manifold/pose_curve_constraint.hh>
 #include <vamp/planning/constraints/manifold/twist_constraint.hh>
 #include <vamp/planning/constraints/local_planner.hh>
 #include <vamp/planning/constraints/settings.hh>
@@ -45,7 +38,6 @@
 #include <vamp/random/halton.hh>
 #include <vamp/random/pinned.hh>
 #include <vamp/random/rng.hh>
-#include <vamp/random/spline.hh>
 #include <vamp/utils.hh>
 #include <vamp/vector.hh>
 
@@ -63,7 +55,6 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/array.h>
-#include <nanobind/stl/optional.h>
 #include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
@@ -95,36 +86,6 @@ VAMP_DEFINE_HAS_METHOD(n_closed_loops)
 VAMP_DEFINE_ROBOT_FLAG(has_com)
 VAMP_DEFINE_ROBOT_FLAG(has_lead_screw)
 VAMP_DEFINE_ROBOT_FLAG(has_twist)
-// Robots generated with the spline constraint (cricket recipe key "spline_constraint") declare the number of
-// control points of the spline their kernels were traced for.
-VAMP_DEFINE_ROBOT_FLAG(spline_control_points)
-// Robots generated with the Catmull-Rom constraint (cricket recipe key "catmull_rom_constraint", which needs
-// "spline_constraint") declare the number of points of the curve their kernel was traced for.
-VAMP_DEFINE_ROBOT_FLAG(catmull_rom_points)
-// Robots generated with the position-target kernel (cricket recipe key "position_target_constraint", which needs
-// "spline_constraint") support curves evaluated on the host: PolylineConstraint.
-VAMP_DEFINE_ROBOT_FLAG(has_position_target)
-// Robots generated with the pose-slide solvers (cricket recipe key "pose_slide_constraint", which needs "constraints"
-// and "spline_constraint"): PosePolylineConstraint.
-VAMP_DEFINE_ROBOT_FLAG(has_pose_slide)
-
-// Robots whose generated kernels a pose curve (PosePolylineConstraint) can run on: one end-effector with the TSR kernel,
-// the spline constraint's SplineSpace, and the pose-slide solvers.
-template <typename Robot>
-constexpr auto robot_has_pose_curve() -> bool
-{
-    if constexpr (has_n_eef_v<Robot> and robot_spline_control_points_v<Robot> and robot_has_pose_slide_v<Robot>)
-    {
-        return Robot::n_eef == 1;
-    }
-    else
-    {
-        return false;
-    }
-}
-
-template <typename Robot>
-constexpr bool robot_has_pose_curve_v = robot_has_pose_curve<Robot>();
 
 namespace vamp::binding
 {
@@ -206,66 +167,6 @@ namespace vamp::binding
         {
             return a;
         }
-    };
-
-    // The Catmull-Rom constraint of a robot generated with it. For robots without, a stand-in that is only ever named
-    // (never instantiated), so planner code can mention the type behind an `if constexpr`.
-    template <typename Robot, bool enabled = robot_catmull_rom_points_v<Robot>>
-    struct CatmullRomConstraintFor
-    {
-        using type = vamp::planning::constraint::CatmullRomConstraint<Robot, rake>;
-    };
-
-    template <typename Robot>
-    struct CatmullRomConstraintFor<Robot, false>
-    {
-        struct type
-        {
-        };
-    };
-
-    // The same for the polyline constraint of robots generated with the position-target kernel
-    template <typename Robot, bool enabled = robot_has_position_target_v<Robot>>
-    struct PolylineConstraintFor
-    {
-        using type = vamp::planning::constraint::PolylineConstraint<Robot, rake>;
-    };
-
-    template <typename Robot>
-    struct PolylineConstraintFor<Robot, false>
-    {
-        struct type
-        {
-        };
-    };
-
-    // The same for the pose polyline constraint
-    template <typename Robot, bool enabled = robot_has_pose_curve_v<Robot>>
-    struct PosePolylineConstraintFor
-    {
-        using type = vamp::planning::constraint::PosePolylineConstraint<Robot, rake>;
-    };
-
-    template <typename Robot>
-    struct PosePolylineConstraintFor<Robot, false>
-    {
-        struct type
-        {
-        };
-    };
-
-    // Result of planning in a robot's SplineSpace (Robot::SplineSpace): the states of the path as joints and curve
-    // parameter side by side, in path order.
-    template <typename Robot>
-    struct SplineSpaceResult
-    {
-        bool solved{false};
-        std::vector<std::array<float, Robot::dimension>> path;
-        std::vector<float> parameters;
-        float cost{0.F};
-        std::size_t nanoseconds{0};
-        std::size_t iterations{0};
-        std::vector<std::size_t> size;
     };
 
     template <typename Robot, typename Input>
@@ -498,227 +399,27 @@ namespace vamp::binding
                 start, goals, env, s, rng, ConstrainedLP(std::move(set)), manifold_message);
         }
 
-        // A constraint that slides along its curve while it projects (PolylineConstraint, PosePolylineConstraint with
-        // `slide`) is made not to when it becomes a goal region: the goal is the end of the curve, not the last segment.
-        template <typename Curve>
-        static auto stop_sliding(Curve &curve, int) -> decltype(curve.set_slide(false), void())
-        {
-            curve.set_slide(false);
-        }
-
-        template <typename Curve>
-        static void stop_sliding(Curve &, long)
-        {
-        }
-
-        // A copy of a curve's constraint held at the end of the curve (t = 1): a goal region whose error and steps are
-        // those of the fixed-parameter projection at t = 1, FK(q) - P(1), never the ones that solve for t. It is its own
-        // instance, so it stays at t = 1 while the planner sets the parameter of the manifold's constraint.
-        template <typename Curve>
-        static auto held_at_end(const Curve &curve) -> std::shared_ptr<const ConstraintT>
-        {
-            auto end = std::make_shared<Curve>(curve);
-            stop_sliding(*end, 0);
-            end->set_parameter(vamp::FloatVector<rake, 1>::fill(1.F));
-            return end;
-        }
-
         // Plan from `start` to a task-space region (the constraints, e.g. a TSR) with no goal
-        // configuration: see TaskSpaceRRTC. With no goal constraints and a SplineConstraint in `manifold`, the goal is
-        // the end of the spline, P(1).
-        //
-        // With `manifold` constraints (e.g. a SplineConstraint) every state of the tree stays on the manifold they
-        // define: extensions and the goal-directed steps are projected onto it (ConstrainedLocalPlanner), so the
-        // start must be on it, and the goal region should intersect it. Without them the tree is unconstrained.
+        // configuration: see TaskSpaceRRTC.
         static auto solve_task_space(
             const Cfg &start,
             ConstraintVec constraints,
             const Env &env,
             const vamp::planning::TaskSpaceRRTCSettings &s,
             std::shared_ptr<Sampler> rng,
-            const ConstraintSettings &cs,
-            ConstraintVec manifold) -> PlanningResult
+            const ConstraintSettings &cs) -> PlanningResult
         {
-            // No goal region given: the goal is the end of the spline in the manifold, its own constraint held at t = 1
-            if constexpr (robot_spline_control_points_v<Robot>)
-            {
-                if (constraints.empty())
-                {
-                    for (const auto &constraint : manifold)
-                    {
-                        if (auto found =
-                                std::dynamic_pointer_cast<const vamp::planning::constraint::SplineConstraint<Robot, rake>>(
-                                    constraint))
-                        {
-                            constraints.push_back(held_at_end(*found));
-                            break;
-                        }
-                    }
-                }
-            }
-
             if (constraints.empty())
             {
-                throw std::invalid_argument(
-                    "task-space planning needs a goal constraint, or a SplineConstraint in manifold_constraints whose "
-                    "end is the goal");
+                throw std::invalid_argument("task-space planning needs at least one goal constraint");
             }
 
             check_pins(rng, Input::to(start), "Start");
 
             ConstraintSetT region(std::move(constraints), cs);
             apply_pins(region, rng);
-
-            using Planner = vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution>;
-            if (manifold.empty())
-            {
-                return Planner::solve(Input::to(start), region, EnvVec(env), s, rng);
-            }
-
-            const ConstraintSetT manifold_set(std::move(manifold), cs);
-            if (not manifold_set.satisfied(Input::to(start)))
-            {
-                throw std::invalid_argument("the start configuration is not on the constraint manifold");
-            }
-
-            return Planner::template solve<ConstrainedLP>(
-                Input::to(start), region, EnvVec(env), s, rng, ConstrainedLP(manifold_set));
-        }
-
-        // Plan along a spline in (q, t): TaskSpaceRRTC over the robot's SplineSpace. Every state is a configuration with
-        // the curve parameter t it sits at; t is sampled with the joints and held fixed while a state is projected
-        // onto the curve (see TaskSpaceRRTCSettings::project_samples and ::parameter_step). `manifold` has to hold the
-        // SplineConstraint, the CatmullRomConstraint, the PolylineConstraint or the PosePolylineConstraint; the start is
-        // on the curve at `start_t`,
-        // by default at the closest point of the curve. The goal is the end of the curve: the manifold's constraint
-        // held at t = 1, so a goal-directed step is a fixed-parameter step toward P(1).
-        // Only instantiated for robots generated with the spline constraint.
-        static auto solve_task_space_spline(
-            const Cfg &start,
-            const Env &env,
-            const vamp::planning::TaskSpaceRRTCSettings &s,
-            std::shared_ptr<Sampler> rng,
-            ConstraintVec manifold,
-            const ConstraintSettings &cs,
-            std::optional<float> start_t) -> SplineSpaceResult<Robot>
-        {
-            using Space = typename Robot::SplineSpace;
-            using SplineLP = vamp::planning::constraint::
-                ConstrainedLocalPlanner<Robot, rake, Robot::resolution, Space>;
-            using Planner = vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution, Space>;
-            using SplineC = vamp::planning::constraint::SplineConstraint<Robot, rake>;
-            using CatmullC = typename CatmullRomConstraintFor<Robot>::type;
-            using PolylineC = typename PolylineConstraintFor<Robot>::type;
-            using PoseC = typename PosePolylineConstraintFor<Robot>::type;
-
-            check_pins(rng, Input::to(start), "Start");
-            const auto q = Input::to(start);
-
-            // The curve the manifold holds: the way to find the start's t on it, and its end as the goal
-            std::function<float()> closest_start_t;
-            std::shared_ptr<const ConstraintT> curve_end;
-            for (const auto &constraint : manifold)
-            {
-                if (auto found = std::dynamic_pointer_cast<const SplineC>(constraint))
-                {
-                    closest_start_t = [found, &start]()
-                    {
-                        found->closest_squared_error(Input::template block<rake>(start));
-                        return found->current_t()[{0, 0}];
-                    };
-                    curve_end = held_at_end(*found);
-                }
-
-                if constexpr (robot_catmull_rom_points_v<Robot>)
-                {
-                    if (auto found = std::dynamic_pointer_cast<const CatmullC>(constraint))
-                    {
-                        closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
-                        curve_end = held_at_end(*found);
-                    }
-                }
-
-                if constexpr (robot_has_position_target_v<Robot>)
-                {
-                    if (auto found = std::dynamic_pointer_cast<const PolylineC>(constraint))
-                    {
-                        closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
-                        curve_end = held_at_end(*found);
-                    }
-                }
-
-                if constexpr (robot_has_pose_curve_v<Robot>)
-                {
-                    if (auto found = std::dynamic_pointer_cast<const PoseC>(constraint))
-                    {
-                        closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
-                        curve_end = held_at_end(*found);
-                    }
-                }
-            }
-
-            if (not closest_start_t)
-            {
-                throw std::invalid_argument(
-                    "manifold_constraints must contain a SplineConstraint, a CatmullRomConstraint, a "
-                    "PolylineConstraint or a PosePolylineConstraint");
-            }
-
-            ConstraintSetT region(ConstraintVec{curve_end}, cs);
-            apply_pins(region, rng);
-
-            const ConstraintSetT manifold_set(std::move(manifold), cs);
-
-            // The planner holds the curve's parameter fixed on the (shared) constraint: back to solving for it on
-            // every way out
-            struct ReleaseParameter
-            {
-                const ConstraintSetT &set;
-
-                ~ReleaseParameter()
-                {
-                    set.clear_parameter();
-                }
-            } release{manifold_set};
-            manifold_set.clear_parameter();
-
-            const float t = start_t ? *start_t : closest_start_t();
-
-            const auto state = Space::make_state(q, t);
-            const SplineLP lp(manifold_set);
-            if (not lp.satisfied(state))
-            {
-                throw std::invalid_argument("the start configuration is not on the curve at start_t");
-            }
-
-            const auto result = Planner::template solve<SplineLP>(
-                state,
-                region,
-                EnvVec(env),
-                s,
-                std::make_shared<vamp::rng::SplineRNG<Robot>>(rng),
-                lp);
-
-            SplineSpaceResult<Robot> out;
-            out.solved = result.solved;
-            out.cost = result.cost;
-            out.nanoseconds = result.nanoseconds;
-            out.iterations = result.iterations;
-            out.size = result.size;
-            for (const auto &path_state : result.path)
-            {
-                const auto array = Space::to_ambient(path_state).to_array();
-                std::array<float, Robot::dimension> values;
-                for (auto j = 0U; j < Robot::dimension; ++j)
-                {
-                    values[j] = array[j];
-                }
-
-                out.path.emplace_back(values);
-                out.parameters.emplace_back(Space::parameter(path_state));
-            }
-
-            return out;
+            return vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution>::solve(
+                Input::to(start), region, EnvVec(env), s, rng);
         }
 
         static auto simplify_constrained(
@@ -785,8 +486,7 @@ namespace vamp::binding
         {
             const ConstraintSetT set(std::move(constraints), cs);
             auto block = Input::template block<rake>(c);
-            set.begin_projection(block);  // constraints with hidden state (the spline's t) start from their seed
-            set.squared_error(block);     // fills the Jacobian cache that step_in_place consumes
+            set.squared_error(block);  // fills the Jacobian cache that step_in_place consumes
             set.step_in_place(block);
 
             std::array<float, Robot::dimension> array;
@@ -803,7 +503,7 @@ namespace vamp::binding
         constraint_squared_error(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs) -> float
         {
             return ConstraintSetT(std::move(constraints), cs)
-                .closest_squared_error(Input::template block<rake>(c))[{0, 0}];
+                .squared_error(Input::template block<rake>(c))[{0, 0}];
         }
 
         static auto
@@ -1041,8 +741,7 @@ namespace vamp::binding
 
         if constexpr (
             has_n_eef_v<Robot> or has_n_closed_loops_v<Robot> or robot_has_com_v<Robot> or
-            robot_has_lead_screw_v<Robot> or robot_has_twist_v<Robot> or
-            robot_spline_control_points_v<Robot>)
+            robot_has_lead_screw_v<Robot> or robot_has_twist_v<Robot>)
         {
             namespace vc = vamp::planning::constraint;
             using ConstraintT = vc::Constraint<Robot, rake>;
@@ -1150,391 +849,6 @@ namespace vamp::binding
                     .def(
                         nb::init<const std::vector<typename CMC::Vertex> &>(),
                         "polygon"_a);
-            }
-
-            if constexpr (robot_spline_control_points_v<Robot>)
-            {
-                using SPC = vc::SplineConstraint<Robot, rake>;
-                using Point = typename SPC::Point;
-                using ConfigurationBlock = typename Robot::template ConfigurationBlock<rake>;
-                using Array = std::array<float, Robot::dimension>;
-
-                submodule.def(
-                    "spline_control_points",
-                    []() { return Robot::spline_control_points; },
-                    "Number of control points (and fitted waypoints) of the spline the kernels were traced for.");
-
-                using SplineResult = SplineSpaceResult<Robot>;
-                nb::class_<SplineResult>(
-                    submodule,
-                    "SplineSpacePlanningResult",
-                    "Result of planning along a spline in (q, t): the path's joints and curve parameters.")
-                    .def(nb::init<>(), "Empty constructor.")
-                    .def_ro("solved", &SplineResult::solved, "Whether a solution was found.")
-                    .def_ro("path", &SplineResult::path, "The joints of each state of the path, in order.")
-                    .def_ro("t", &SplineResult::parameters, "The curve parameter of each state of the path.")
-                    .def_ro("cost", &SplineResult::cost, "Length of the path in the joints (t is ignored).")
-                    .def_ro("nanoseconds", &SplineResult::nanoseconds, "Nanoseconds taken.")
-                    .def_ro("iterations", &SplineResult::iterations, "Planner iterations used.")
-                    .def_ro("size", &SplineResult::size, "Sizes of the planner's data structures (tree nodes).");
-
-                if constexpr (robot_catmull_rom_points_v<Robot>)
-                {
-                    using CRC = vc::CatmullRomConstraint<Robot, rake>;
-                    using CRPoint = typename CRC::Point;
-
-                    submodule.def(
-                        "catmull_rom_points",
-                        []() { return Robot::catmull_rom_points; },
-                        "Number of points of the Catmull-Rom curve the kernel was traced for.");
-
-                    nb::class_<CRC, ConstraintT>(
-                        submodule,
-                        "CatmullRomConstraint",
-                        "Position constraint against a Catmull-Rom curve P(t), t in [0, 1], at a curve parameter that "
-                        "is given: for planning in (q, t) with task_space_rrtc_spline, where t is part of the state "
-                        "and a projection solves for the joints alone. Takes the points the curve passes through "
-                        "(n x 3, distinct) and the exponent alpha of the parametrization (0 uniform, 0.5 centripetal, "
-                        "1 chordal). Unlike SplineConstraint it never searches for a closest point; closest_t is a "
-                        "host-side scan for the t of a configuration (a planner's start).")
-                        .def(
-                            nb::init<const std::array<CRPoint, CRC::n_points> &, float>(),
-                            "points"_a,
-                            "alpha"_a = 0.5F)
-                        .def(
-                            "value",
-                            [](const CRC &c, double t) -> std::array<double, 3>
-                            {
-                                const Eigen::Vector3d point = c.value(t);
-                                return {point[0], point[1], point[2]};
-                            },
-                            "t"_a,
-                            "The point of the curve at t.")
-                        .def(
-                            "closest_t",
-                            [](const CRC &c, const std::array<float, Robot::dimension> &q)
-                                -> std::tuple<float, float>
-                            { return c.closest_parameter(typename Robot::Configuration(q)); },
-                            "q"_a,
-                            "The closest point of the curve to the end-effector at q: (t, squared distance), by a "
-                            "scan of the curve. For a curve that comes near itself it can find the wrong branch.");
-                }
-
-                if constexpr (robot_has_position_target_v<Robot>)
-                {
-                    using PLC = vc::PolylineConstraint<Robot, rake>;
-                    using PLPoint = typename PLC::Point;
-
-                    nb::class_<PLC, ConstraintT>(
-                        submodule,
-                        "PolylineConstraint",
-                        "Position constraint against the straight-line interpolation of points (a degree-1 spline), "
-                        "at a curve parameter that is given: for planning in (q, t) with task_space_rrtc_spline. "
-                        "Takes any number (at least two) of distinct points (n x 3); t is the chord-length "
-                        "parameter, so t advances at constant speed along the polyline. closest_t is exact. With "
-                        "slide, the parameter a state carries only says which segment it is on: the end-effector "
-                        "may slide along that segment while a projection runs, and the state takes the parameter "
-                        "the projection leaves it at. With whole_curve, no t is given: every projection seeds t at the "
-                        "closest point of the whole polyline and solves for it next to the joints (the q-only "
-                        "projection).")
-                        .def(
-                            nb::init<const std::vector<PLPoint> &, bool, bool>(),
-                            "points"_a,
-                            "slide"_a = false,
-                            "whole_curve"_a = false)
-                        .def(
-                            "value",
-                            [](const PLC &c, double t) -> std::array<double, 3>
-                            {
-                                const Eigen::Vector3d point = c.value(t);
-                                return {point[0], point[1], point[2]};
-                            },
-                            "t"_a,
-                            "The point of the polyline at t.")
-                        .def(
-                            "closest_t",
-                            [](const PLC &c, const std::array<float, Robot::dimension> &q)
-                                -> std::tuple<float, float>
-                            { return c.closest_parameter(typename Robot::Configuration(q)); },
-                            "q"_a,
-                            "The closest point of the polyline to the end-effector at q: (t, squared distance).")
-                        .def(
-                            "projection_trail",
-                            [](const PLC &c,
-                               const Array &q,
-                               float t,
-                               vc::ProjMethod method,
-                               float tolerance,
-                               std::size_t max_iterations,
-                               float alpha) -> std::vector<std::tuple<Array, float, float>>
-                            {
-                                // The projection a planner runs, recorded: (q, t, squared error) per iterate. A state's
-                                // parameter t is given (held at P(t), or the segment it picks, when sliding); with
-                                // whole_curve t is ignored: the projection seeds its own from the closest point.
-                                ConfigurationBlock block;
-                                const typename Robot::Configuration configuration(q);
-                                for (auto i = 0U; i < Robot::dimension; ++i)
-                                {
-                                    block[i] = configuration.broadcast(i);
-                                }
-
-                                const auto given = vamp::FloatVector<rake, 1>::fill(t);
-                                if (c.whole_curve())
-                                {
-                                    c.begin_projection(block);
-                                }
-                                else
-                                {
-                                    c.set_parameter(given);
-                                }
-
-                                std::vector<std::tuple<Array, float, float>> trail;
-                                for (std::size_t iteration = 0; iteration <= max_iterations; ++iteration)
-                                {
-                                    const float error = c.squared_error(block)[{0, 0}];
-
-                                    Array values;
-                                    for (auto j = 0U; j < Robot::dimension; ++j)
-                                    {
-                                        values[j] = block[{j, 0}];
-                                    }
-
-                                    trail.emplace_back(values, c.projected_parameter(given)[{0, 0}], error);
-                                    if (error <= tolerance or iteration == max_iterations)
-                                    {
-                                        break;
-                                    }
-
-                                    c.step(block, method, alpha);
-                                }
-
-                                return trail;
-                            },
-                            "q"_a,
-                            "t"_a = 0.F,
-                            "method"_a = vc::ProjMethod::InnerLM,
-                            "tolerance"_a = 1e-8F,
-                            "max_iterations"_a = 50,
-                            "alpha"_a = 1.0F,
-                            "Project q onto the polyline step by step, as a planner does, and return every iterate as "
-                            "(q, t, squared error). t is the given one while the end-effector is held at P(t); while "
-                            "sliding or over the whole curve it is where the projection has reached.");
-                }
-
-                if constexpr (robot_has_pose_curve_v<Robot>)
-                {
-                    using PPC = vc::PosePolylineConstraint<Robot, rake>;
-                    using PPPoint = typename PPC::Point;
-                    using PPQuaternion = typename PPC::Quaternion;
-
-                    nb::class_<PPC, ConstraintT>(
-                        submodule,
-                        "PosePolylineConstraint",
-                        "Pose constraint against the straight-line interpolation of poses in R^3 x SO(3): positions "
-                        "move along their polyline and rotations along the slerp between consecutive keyframe "
-                        "rotations, at a curve parameter that is given (for planning in (q, t) with "
-                        "task_space_rrtc_spline). Takes the keyframe positions (n x 3), the keyframe rotations as "
-                        "quaternions w, x, y, z (n x 4) and the rotation weight in meters per radian, which scales "
-                        "the rotation error and sets the metric of t (a segment's length is "
-                        "sqrt(|dp|^2 + w^2 theta^2)). The end-effector's pose must follow the curve: the goal is the "
-                        "last keyframe. With slide, the parameter a state carries only says which segment it is on: "
-                        "the end-effector's pose may slide along that segment while a projection runs, and the "
-                        "state takes the parameter the projection leaves it at.")
-                        .def(
-                            nb::init<const std::vector<PPPoint> &, const std::vector<PPQuaternion> &, float, bool>(),
-                            "points"_a,
-                            "rotations"_a,
-                            "rotation_weight"_a = 0.1F,
-                            "slide"_a = false)
-                        .def(
-                            "value",
-                            [](const PPC &c, double t) -> std::tuple<std::array<double, 3>, std::array<double, 4>>
-                            {
-                                const auto pose = c.value(t);
-                                return std::make_tuple(
-                                    std::array<double, 3>{pose.position[0], pose.position[1], pose.position[2]},
-                                    std::array<double, 4>{
-                                        pose.rotation.w(), pose.rotation.x(), pose.rotation.y(), pose.rotation.z()});
-                            },
-                            "t"_a,
-                            "The pose of the curve at t: (position, quaternion w, x, y, z).")
-                        .def(
-                            "closest_t",
-                            [](const PPC &c, const std::array<float, Robot::dimension> &q)
-                                -> std::tuple<float, float>
-                            { return c.closest_parameter(typename Robot::Configuration(q)); },
-                            "q"_a,
-                            "The closest pose of the curve to the end-effector at q: (t, squared distance in the "
-                            "curve's metric).")
-                        .def(
-                            "projection_trail",
-                            [](const PPC &c,
-                               const Array &q,
-                               float t,
-                               vc::ProjMethod method,
-                               float tolerance,
-                               std::size_t max_iterations,
-                               float alpha) -> std::vector<std::tuple<Array, float, float>>
-                            {
-                                // The projection a planner runs on a state (q, t): the constraint's parameter is set to
-                                // t, then squared_error and step until the error is below tolerance, recorded:
-                                // (q, t, squared error) per iterate. t is the given one while the end-effector is
-                                // held at P(t), and the one the projection has reached while it slides.
-                                ConfigurationBlock block;
-                                const typename Robot::Configuration configuration(q);
-                                for (auto i = 0U; i < Robot::dimension; ++i)
-                                {
-                                    block[i] = configuration.broadcast(i);
-                                }
-
-                                const auto given = vamp::FloatVector<rake, 1>::fill(t);
-                                c.set_parameter(given);
-
-                                std::vector<std::tuple<Array, float, float>> trail;
-                                for (std::size_t iteration = 0; iteration <= max_iterations; ++iteration)
-                                {
-                                    const float error = c.squared_error(block)[{0, 0}];
-
-                                    Array values;
-                                    for (auto j = 0U; j < Robot::dimension; ++j)
-                                    {
-                                        values[j] = block[{j, 0}];
-                                    }
-
-                                    trail.emplace_back(values, c.projected_parameter(given)[{0, 0}], error);
-                                    if (error <= tolerance or iteration == max_iterations)
-                                    {
-                                        break;
-                                    }
-
-                                    c.step(block, method, alpha);
-                                }
-
-                                return trail;
-                            },
-                            "q"_a,
-                            "t"_a,
-                            "method"_a = vc::ProjMethod::InnerLM,
-                            "tolerance"_a = 1e-8F,
-                            "max_iterations"_a = 50,
-                            "alpha"_a = 1.0F,
-                            "Project q onto the curve at the state parameter t step by step, as a planner does, and "
-                            "return every iterate as (q, t, squared error). With slide the t of an iterate is where "
-                            "the end-effector is on the segment; otherwise it is the given t.");
-                }
-
-                // numpy and plain-list inputs, as for the other planners
-                const auto def_spline_planner = [&](auto traits)
-                {
-                    using Traits = decltype(traits);
-                    submodule.def(
-                        "task_space_rrtc_spline",
-                        &Traits::solve_task_space_spline,
-                        "start"_a,
-                        "environment"_a,
-                        "settings"_a,
-                        "sampler"_a,
-                        "manifold_constraints"_a,
-                        "constraint_settings"_a = python_constraint_settings(),
-                        "start_t"_a = nb::none(),
-                        "Plan along a spline in (q, t) with TaskSpaceRRTC: states carry the curve parameter t, "
-                        "which is sampled with the joints and held fixed while a state is projected onto the "
-                        "curve. manifold_constraints must contain the SplineConstraint, the "
-                        "CatmullRomConstraint, the PolylineConstraint or the PosePolylineConstraint; the start must be on "
-                        "the curve at start_t (default: the closest point of the curve to the start). The goal is the "
-                        "end of the curve, P(1): the goal-directed steps are fixed-parameter steps at t = 1. Tune "
-                        "settings.project_samples and settings.parameter_step. Returns a "
-                        "SplineSpacePlanningResult.");
-                };
-
-                def_spline_planner(TA{});
-                def_spline_planner(TC{});
-
-                nb::class_<SPC, ConstraintT>(
-                    submodule,
-                    "SplineConstraint",
-                    "Position constraint against a cubic B-spline: the first end-effector's position must lie on "
-                    "the curve P(t), t in [0, 1]. Takes the control points (n x 3), the clamped knots (n + 4), and "
-                    "the n waypoints the spline was fitted through (n x 3) with the parameters at which it passes "
-                    "through them (n); the waypoints only seed the search for the closest point. The curve "
-                    "parameter t is a second unknown of a projection, kept inside the constraint and started at "
-                    "the closest point of the curve to the end-effector.")
-                    .def(
-                        nb::init<
-                            const std::array<Point, SPC::n_control> &,
-                            const std::array<float, SPC::n_knots> &,
-                            const std::array<Point, SPC::n_control> &,
-                            const std::array<float, SPC::n_control> &>(),
-                        "control_points"_a,
-                        "knots"_a,
-                        "waypoints"_a,
-                        "parameters"_a)
-                    .def(
-                        "closest_t",
-                        [](const SPC &c, const Array &q) -> std::tuple<float, float>
-                        {
-                            ConfigurationBlock block;
-                            const typename Robot::Configuration configuration(q);
-                            for (auto i = 0U; i < Robot::dimension; ++i)
-                            {
-                                block[i] = configuration.broadcast(i);
-                            }
-
-                            const float squared_distance = c.closest_squared_error(block)[{0, 0}];
-                            return {c.current_t()[{0, 0}], squared_distance};
-                        },
-                        "q"_a,
-                        "The closest point of the curve to the end-effector at q: (t, squared distance). A squared "
-                        "distance near zero proves q is on the curve; a larger one only says no nearby point was "
-                        "found.")
-                    .def(
-                        "projection_trail",
-                        [](const SPC &c,
-                           const Array &q,
-                           vc::ProjMethod method,
-                           float tolerance,
-                           std::size_t max_iterations,
-                           float alpha) -> std::vector<std::tuple<Array, float, float>>
-                        {
-                            // The projection ConstraintSet runs (begin_projection once, then squared_error and step
-                            // until the error is below tolerance), recorded: (q, t, squared error) per iterate
-                            ConfigurationBlock block;
-                            const typename Robot::Configuration configuration(q);
-                            for (auto i = 0U; i < Robot::dimension; ++i)
-                            {
-                                block[i] = configuration.broadcast(i);
-                            }
-
-                            std::vector<std::tuple<Array, float, float>> trail;
-                            c.begin_projection(block);
-                            for (std::size_t iteration = 0; iteration <= max_iterations; ++iteration)
-                            {
-                                const float error = c.squared_error(block)[{0, 0}];
-
-                                Array values;
-                                for (auto j = 0U; j < Robot::dimension; ++j)
-                                {
-                                    values[j] = block[{j, 0}];
-                                }
-
-                                trail.emplace_back(values, c.current_t()[{0, 0}], error);
-                                if (error <= tolerance or iteration == max_iterations)
-                                {
-                                    break;
-                                }
-
-                                c.step(block, method, alpha);
-                            }
-
-                            return trail;
-                        },
-                        "q"_a,
-                        "method"_a = vc::ProjMethod::InnerLM,
-                        "tolerance"_a = 1e-8F,
-                        "max_iterations"_a = 50,
-                        "alpha"_a = 1.0F,
-                        "Project q onto the curve step by step with the given method and return every iterate as "
-                        "(q, t, squared error); t is the constraint's own, carried from step to step.");
             }
 
             if constexpr (robot_has_twist_v<Robot>)

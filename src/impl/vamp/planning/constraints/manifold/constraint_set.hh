@@ -60,72 +60,9 @@ namespace vamp::planning::constraint
             }
         }
 
-        // Let every constraint initialise its per-lane hidden state (cheaply) from the block about to be projected.
-        // The projection entry points call this; callers that drive squared_error()/step_in_place() themselves must
-        // call it first for constraints with hidden state (e.g. SplineConstraint's curve parameter).
-        void begin_projection(const Block &q) const noexcept
-        {
-            for (const auto &constraint : constraints_)
-            {
-                constraint->begin_projection(q);
-            }
-        }
-
-        // Fix the constraints' hidden state (see Constraint::set_parameter) to the per-lane values `parameter`, for the
-        // projections and checks that follow on blocks whose lanes carry that parameter in their state, until
-        // clear_parameter(). Constraints without hidden state ignore it.
-        void set_parameter(const Row &parameter) const noexcept
-        {
-            for (const auto &constraint : constraints_)
-            {
-                constraint->set_parameter(parameter);
-            }
-        }
-
-        void clear_parameter() const noexcept
-        {
-            for (const auto &constraint : constraints_)
-            {
-                constraint->clear_parameter();
-            }
-        }
-
-        // The per-lane parameter the projection or check that followed set_parameter(given) left the constraints at
-        // (Constraint::projected_parameter); `given` for constraints that hold it.
-        auto projected_parameter(const Row &given) const noexcept -> Row
-        {
-            auto parameter = given;
-            for (const auto &constraint : constraints_)
-            {
-                parameter = constraint->projected_parameter(parameter);
-            }
-
-            return parameter;
-        }
-
-        // The constraint violation of q alone: each constraint reports its squared error with its hidden state at
-        // its best value for q (Constraint::closest_squared_error), summed. For one-off queries; a configuration on
-        // the manifold gives zero. Does not fill the caches that step_in_place() consumes.
-        auto closest_squared_error(const Block &q) const noexcept -> Row
-        {
-            if (empty())
-            {
-                return Row::fill(0.F);
-            }
-
-            auto d = constraints_.front()->closest_squared_error(q);
-            for (auto it = std::next(constraints_.begin()); it != constraints_.end(); ++it)
-            {
-                d = d + (*it)->closest_squared_error(q);
-            }
-
-            return d;
-        }
-
         // Per-lane squared violation error summed over all constraints. Caches each
         // constraint's Jacobian and error for step_in_place(). An empty set has zero
-        // error everywhere. This evaluates at whatever hidden state the constraints hold (see
-        // begin_projection and closest_squared_error); for constraints without hidden state that is irrelevant.
+        // error everywhere.
         auto squared_error(const Block &q) const noexcept -> Row
         {
             if (empty())
@@ -295,7 +232,7 @@ namespace vamp::planning::constraint
 
             Block block;
             broadcast(q, block);
-            return closest_squared_error(block)[{0, 0}] <= settings_.tolerance;
+            return squared_error(block)[{0, 0}] <= settings_.tolerance;
         }
 
         static auto squared_distance(const Block &a, const Block &b) noexcept -> Row
@@ -336,9 +273,6 @@ namespace vamp::planning::constraint
         template <bool all>
         auto descend(Block &q, float max_distance) const noexcept -> Row
         {
-            // Once per projection, not per iteration: the constraints' hidden state then carries from step to step
-            begin_projection(q);
-
             const auto tolerance = Row::fill(settings_.tolerance);
             const auto stall = Row::fill(stall_epsilon2);
 

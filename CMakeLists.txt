@@ -157,56 +157,6 @@ if(VAMP_BUILD_CPP_DEMO)
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_task_space_rrtc_cage PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
   endif()
-
-  # Checks the spline constraint on its own (needs a Panda header generated with "spline_constraint": true)
-  add_executable(vamp_spline_constraint_test scripts/cpp/spline_constraint_test.cc)
-  target_link_libraries(vamp_spline_constraint_test PRIVATE vamp_cpp)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(vamp_spline_constraint_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-  endif()
-
-  # Drives the constrained local planner over the spline constraint (steer, validate, a walk)
-  add_executable(vamp_spline_local_planner_test scripts/cpp/spline_local_planner_test.cc)
-  target_link_libraries(vamp_spline_local_planner_test PRIVATE vamp_cpp)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(vamp_spline_local_planner_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-  endif()
-
-  # Plans along a spline with TaskSpaceRRTC: the tree stays on the curve, the goal is the end of the curve
-  add_executable(vamp_spline_task_space_rrtc_test scripts/cpp/spline_task_space_rrtc_test.cc)
-  target_link_libraries(vamp_spline_task_space_rrtc_test PRIVATE vamp_cpp)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(vamp_spline_task_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-  endif()
-
-  # The same in (q, t): TaskSpaceRRTC over SplineSpace, where t is sampled and projections solve for q at a given t
-  add_executable(vamp_spline_space_rrtc_test scripts/cpp/spline_space_rrtc_test.cc)
-  target_link_libraries(vamp_spline_space_rrtc_test PRIVATE vamp_cpp)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(vamp_spline_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-  endif()
-
-  # The same with a Catmull-Rom curve (needs a Panda header generated with "catmull_rom_constraint": true as well)
-  add_executable(vamp_catmull_rom_space_rrtc_test scripts/cpp/catmull_rom_space_rrtc_test.cc)
-  target_link_libraries(vamp_catmull_rom_space_rrtc_test PRIVATE vamp_cpp)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(vamp_catmull_rom_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-  endif()
-
-  # The same with the straight-line interpolation of the points (needs "position_target_constraint": true as well)
-  add_executable(vamp_polyline_space_rrtc_test scripts/cpp/polyline_space_rrtc_test.cc)
-  target_link_libraries(vamp_polyline_space_rrtc_test PRIVATE vamp_cpp)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(vamp_polyline_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-  endif()
-
-  # The straight-line interpolation of poses in R^3 x SO(3), the position along a polyline and the rotation along a
-  # slerp (needs a Panda header with a task-space constraint and "spline_constraint": true)
-  add_executable(vamp_pose_polyline_space_rrtc_test scripts/cpp/pose_polyline_space_rrtc_test.cc)
-  target_link_libraries(vamp_pose_polyline_space_rrtc_test PRIVATE vamp_cpp)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(vamp_pose_polyline_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
-  endif()
 endif()
 
 # OMPL integration demo

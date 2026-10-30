@@ -3,7 +3,6 @@
 #include <vamp/collision/environment.hh>
 #include <vamp/collision/shapes.hh>
 #include <vamp/planning/planners/aorrtc_settings.hh>
-#include "constraint_defaults.hh"
 #include <vamp/planning/constraints/settings.hh>
 #include <vamp/planning/planners/grrtstar_settings.hh>
 #include <vamp/planning/planner.hh>
@@ -88,7 +87,7 @@ namespace vamp::binding
             &Traits::template solve_single_constrained<P, Settings>,
             &Traits::template solve_multi_constrained<P, Settings>,
             "constraints"_a,
-            "constraint_settings"_a = python_constraint_settings());
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{});
     }
 
     // Constraint-aware overloads on the same entry points as the unconstrained API: the
@@ -102,7 +101,7 @@ namespace vamp::binding
             &Traits::constraint_project,
             "configuration"_a,
             "constraints"_a,
-            "constraint_settings"_a = python_constraint_settings(),
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "Project a configuration onto the constraint manifold. Raises ValueError if the "
             "projection does not converge.");
 
@@ -114,7 +113,7 @@ namespace vamp::binding
                 "configuration"_a,
                 "constraints"_a,
                 "rng"_a,
-                "constraint_settings"_a = python_constraint_settings(),
+                "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
                 "Project a configuration onto the constraint manifold within the sampler's "
                 "pinned slice: pinned joints are snapped to their pinned values and held "
                 "exactly while the active joints project. Raises ValueError if the projection "
@@ -125,7 +124,7 @@ namespace vamp::binding
             &Traits::constraint_step,
             "configuration"_a,
             "constraints"_a,
-            "constraint_settings"_a = python_constraint_settings(),
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "A single raw descent step toward the constraint manifold from a configuration, with "
             "no convergence check: returns the configuration after one step of the projection "
             "method.");
@@ -134,14 +133,14 @@ namespace vamp::binding
             &Traits::constraint_squared_error,
             "configuration"_a,
             "constraints"_a,
-            "constraint_settings"_a = python_constraint_settings(),
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "Summed squared violation of the constraints at a configuration.");
         t.def(
             "satisfied",
             &Traits::constraint_satisfied,
             "configuration"_a,
             "constraints"_a,
-            "constraint_settings"_a = python_constraint_settings(),
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "Whether a configuration satisfies every constraint within tolerance.");
         t.def(
             "simplify",
@@ -151,7 +150,7 @@ namespace vamp::binding
             "settings"_a,
             "sampler"_a,
             "constraints"_a,
-            "constraint_settings"_a = python_constraint_settings(),
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "Simplification heuristics restricted to the constraint manifold. Raises ValueError "
             "if any path state violates the constraints.");
 
@@ -163,16 +162,10 @@ namespace vamp::binding
             "environment"_a,
             "settings"_a,
             "sampler"_a,
-            "constraint_settings"_a = python_constraint_settings(),
-            "manifold_constraints"_a = typename Traits::ConstraintVec{},
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "Plan from a start configuration to a task-space goal region (the constraints, "
             "e.g. a TaskSpaceConstraint) without computing a goal configuration: RRT "
-            "exploration plus goal-directed Levenberg-Marquardt walks toward the region. With "
-            "manifold_constraints (e.g. a SplineConstraint) every state stays on the manifold they "
-            "define: extensions and the goal-directed steps are projected onto it, so the start "
-            "must be on it and the goal region should intersect it. With an empty goal_constraints and a "
-            "SplineConstraint in manifold_constraints, the goal is the end of the spline: the constraint held at "
-            "t = 1, so the goal-directed steps are fixed-parameter steps toward P(1).");
+            "exploration plus goal-directed Levenberg-Marquardt walks toward the region.");
 
         register_constrained_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
         register_constrained_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");

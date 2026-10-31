@@ -11,6 +11,13 @@ With --segment the manifold's constraint is in its segment form (qs): t only pic
 solves for t as well, bounded to the segment, and every state takes the t its projection ended at; the goal is still the
 curve at exactly t = 1. The checks are the same.
 
+With --traj vertical_s the curve is instead the vertical S of the old spline examples (--s-spacing, default 0.12 m between
+consecutive points; radius = spacing * (points - 1) / 8.4): two arcs of 240 degrees joined smoothly in a plane in front of
+the Panda, centred on the end-effector of the ready pose, 4 radii tall and 2 wide. The start is the old one too: the
+ready pose projected onto a point region (position only) at the S's first point. For --curve so3r3 the keyframes'
+rotations start from that start configuration's own orientation and turn about the world z axis by --turn degrees, so
+the start is on the pose curve. The environment is empty.
+
 Checked: the planner solves; every state of the path is on the curve at its own t; the path ends at the curve's last
 pose; every state is collision-free. The whole path is printed and written to <prefix>_<curve>_<qt|qs>_path.json, in the format
 of cricket's tests/view_lerp.py:
@@ -32,6 +39,13 @@ import vamp
 
 READY = np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785], dtype=np.float32)
 VIEWER = Path(__file__).resolve().parents[2] / "cricket" / "tests" / "view_lerp.py"
+
+# The vertical S is two arcs of 240 degrees each, so its length is 2 * (4 pi / 3) radii
+S_LENGTH_PER_RADIUS = 8.0 * np.pi / 3.0
+
+# The Panda's shoulder (joint 2) is 0.333 m above its base; the arm reaches about 0.855 m from it
+SHOULDER = np.array([0.0, 0.0, 0.333])
+REACH = 0.855
 
 failures = 0
 
@@ -88,6 +102,79 @@ def end_effector(q):
     return np.asarray(pose[:3, 3], dtype=np.float64), quaternion_from_matrix(pose[:3, :3])
 
 
+def rotations_about_z(count, turn_degrees, rotation):
+    """The quaternions of the curve's keyframes: `rotation` turning about the world z axis by `turn_degrees` over the
+    curve."""
+    rotations = []
+    for i in range(count):
+        angle = np.radians(turn_degrees) * i / (count - 1)
+        about_z = np.array([np.cos(0.5 * angle), 0.0, 0.0, np.sin(0.5 * angle)])
+        rotations.append(quaternion_product(about_z, rotation))
+
+    return np.array(rotations)
+
+
+def s_curve_points(radius, count):
+    """The old vertical S: an S in a vertical plane (x constant), centred on the end-effector of the ready pose.
+
+    Two arcs of radius `radius` joined smoothly at the middle, which is the centre: an upper one (counter-clockwise, 30 to
+    270 degrees) and a lower one (clockwise, from the middle to 210 degrees). It is 4 radii tall and 2 wide, and 8.4 radii
+    long. Returns `count` points at equal arc length.
+    """
+    upper_angle = np.linspace(np.pi / 6, 3 * np.pi / 2, 1200)
+    upper = np.stack([radius * np.cos(upper_angle), radius + radius * np.sin(upper_angle)], axis=1)
+    lower_angle = np.linspace(np.pi / 2, -5 * np.pi / 6, 1200)
+    lower = np.stack([radius * np.cos(lower_angle), -radius + radius * np.sin(lower_angle)], axis=1)
+    dense = np.vstack([upper, lower[1:]])  # (y, z)
+
+    arc_length = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(dense, axis=0), axis=1))])
+    targets = np.linspace(0.0, arc_length[-1], count)
+    yz = np.stack([np.interp(targets, arc_length, dense[:, 0]), np.interp(targets, arc_length, dense[:, 1])], axis=1)
+
+    anchor = end_effector(READY)[0]
+    return np.column_stack([np.full(count, anchor[0]), yz + anchor[1:3]])
+
+
+def start_at(point):
+    """The old start: a configuration whose end-effector is at `point`, the ready pose projected onto a position-only
+    region there. If that one projection does not converge (the point is far from the ready pose's end-effector), the
+    region walks there from the ready pose's end-effector in moves of at most 5 cm, each projection starting from the
+    last one's solution."""
+    settings = vamp.ConstraintSettings()
+    settings.tolerance = 1e-9
+    settings.max_iterations = 100
+
+    def project(q, target):
+        region = vamp.panda.TaskSpaceConstraint(
+            [1, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, *np.asarray(target).tolist()],
+            [0.0, 0.0, 0.0, -3.2, -3.2, -3.2],
+            [0.0, 0.0, 0.0, 3.2, 3.2, 3.2],
+        )
+        return np.asarray(vamp.panda.project(q, [region], settings), dtype=np.float32)
+
+    try:
+        return project(READY, point)
+    except ValueError:
+        pass
+
+    print("the start: one projection onto the S's first point did not converge; walking there in steps")
+    origin = end_effector(READY)[0]
+    steps = max(1, int(np.ceil(np.linalg.norm(np.asarray(point) - origin) / 0.05)))
+    q = READY
+    for k in range(1, steps + 1):
+        target = origin + (np.asarray(point) - origin) * k / steps
+        try:
+            q = project(q, target)
+        except ValueError:
+            raise SystemExit(
+                f"could not move the ready pose's end-effector to {np.round(point, 3).tolist()}: stopped at step {k} of "
+                f"{steps}, target {np.round(target, 3).tolist()}; try a smaller --s-spacing"
+            )
+
+    return q
+
+
 def keyframes(count, turn_degrees, scale=1.0):
     """Positions and quaternions of the curve: from the ready pose's end-effector pose, a gentle S in position, and the
     rotation turning about the world z axis by `turn_degrees` over the curve."""
@@ -110,6 +197,8 @@ def main():
     parser.add_argument("--segment", action="store_true", help="the segment form (qs): t is solved for on its segment, not held fixed")
     parser.add_argument("--rot-weight", type=float, default=0.3, help="with so3r3: the weight of the rotation error (m / rad)")
     parser.add_argument("--scale", type=float, default=1.0, help="the size of the curve: its S has extents 20 x 12 x 8 cm at scale 1 (0.54 m long); larger makes the segments longer, but the curve leaves the arm's reach beyond about 2")
+    parser.add_argument("--traj", choices=["default", "vertical_s"], default="default", help="the curve: the gentle S (--scale), or the old vertical S (--s-spacing)")
+    parser.add_argument("--s-spacing", type=float, default=0.12, help="with vertical_s: the distance (m) between consecutive points of the S, which sets its size")
     parser.add_argument("--turn", type=float, default=60.0, help="with so3r3: the rotation about the world z axis (degrees) over the curve")
     parser.add_argument("--range", type=float, default=0.3, help="longest extension (in the metric of the run)")
     parser.add_argument("--parameter-weight", type=float, default=0.0, help="the weight of t in the metric (rad per unit of t); 0 is 1 / the number of joints")
@@ -120,7 +209,21 @@ def main():
     args = parser.parse_args()
 
     count = vamp.panda.lerp_points()
-    positions, rotations = keyframes(count, args.turn, args.scale)
+    start = READY
+    if args.traj == "vertical_s":
+        radius = args.s_spacing * (count - 1) / S_LENGTH_PER_RADIUS
+        positions = s_curve_points(radius, count)
+        farthest = float(np.linalg.norm(positions - SHOULDER, axis=1).max())
+        print(
+            f"vertical S: radius {radius:.3f} m, {np.linalg.norm(np.diff(positions, axis=0), axis=1).sum():.2f} m long, "
+            f"the farthest point {farthest:.2f} m from the shoulder (the arm reaches about {REACH} m)"
+        )
+
+        # the old start, and the rotations of the pose curve from its orientation
+        start = start_at(positions[0])
+        rotations = rotations_about_z(count, args.turn, end_effector(start)[1])
+    else:
+        positions, rotations = keyframes(count, args.turn, args.scale)
     pose_curve = args.curve == "so3r3"
     form = "qs" if args.segment else "qt"
     if pose_curve:
@@ -149,8 +252,7 @@ def main():
 
     env = vamp.Environment()  # empty
 
-    # the start has to be on the manifold: the ready pose is where the curve starts
-    start = READY
+    # the start has to be on the manifold
     t0, d2 = manifold.closest_t(start.tolist())
     print(f"start: closest t {t0:.4f}, squared distance to the curve {d2:.2e}")
     check(d2 < 1e-8, f"the start is on the curve (squared distance {d2:.2e})")

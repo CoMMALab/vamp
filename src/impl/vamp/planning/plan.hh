@@ -4,6 +4,7 @@
 #include <vamp/planning/cost.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/nn/nn.hh>
+#include <vamp/space.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning
@@ -133,8 +134,8 @@ namespace vamp::planning
         }
     }  // namespace path_helpers
 
-    template <typename Robot>
-    struct Path : public std::vector<FloatVector<Robot::dimension>>
+    template <typename Robot, typename Space = Robot>
+    struct Path : public std::vector<FloatVector<SpaceTraits<Robot, Space>::dimension>>
     {
         [[nodiscard]] inline auto cost() const noexcept -> float
         {
@@ -172,10 +173,10 @@ namespace vamp::planning
         }
     };
 
-    template <typename Robot>
+    template <typename Robot, typename Space = Robot>
     struct PlanningResult
     {
-        Path<Robot> path;
+        Path<Robot, Space> path;
         bool solved{false};
         float cost{0.};
         std::size_t nanoseconds{0};

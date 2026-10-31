@@ -9,7 +9,7 @@
 // projection (the whole project_all call, all lanes holding the same start) and, for qs, where on its segment the
 // projection ended: at either end (s = 0 or 1) or inside.
 //
-// The curve is the one of lerp_space_rrtc_test: 20 keyframes starting at the ready pose's end-effector pose, a gentle S
+// The curve is the one of lerp_space_rrtc_test: Robot::lerp_points keyframes starting at the ready pose's end-effector pose, a gentle S
 // (and, for poses, a 60 degree turn about the world z axis).
 //
 // The last argument scales the S (its extents are 20 x 12 x 8 cm at scale 1, 0.54 m long): a larger one makes the segments

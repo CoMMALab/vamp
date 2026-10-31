@@ -1,6 +1,6 @@
 """Plans along a straight-line (lerp) curve in (q, t) from Python: vamp.panda.task_space_rrtc_curve.
 
-The curve is the straight-line interpolation of 20 keyframes that start at the end-effector's pose at the Panda's ready
+The curve is the straight-line interpolation of lerp_points() keyframes that start at the end-effector's pose at the Panda's ready
 configuration and wander from there in a gentle S: positions in R^3 (--curve r3, vamp.panda.LerpR3Constraint) or poses in
 SO(3) x R^3 with the rotation slerped, turning about the world z axis (--curve so3r3, vamp.panda.LerpSO3R3Constraint,
 with an adjustable --rot-weight in m / rad). t in [0, 1] is the normalized chord length. States of the tree carry the t

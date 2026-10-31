@@ -29,7 +29,8 @@ namespace vamp::planning
         // For a Space with a curve parameter t: the weight of t in the metric of the run, in rad per unit of t (the
         // joints' distance is in rad). The nearest-neighbor tree measures distances as sqrt(|dq|^2 + (w dt)^2), and
         // `range` bounds a step in that metric. With the goal-directed walk heading for t = 1, a larger weight makes t
-        // advance more slowly per step (about range / w when far from the goal), a smaller one faster.
-        float parameter_weight = 1.;
+        // advance more slowly per step (about range / w when far from the goal), a smaller one faster. 0 (the default)
+        // is 1 / the number of joints: the whole curve costs as much as one joint's rad on average.
+        float parameter_weight = 0.;
     };
 }  // namespace vamp::planning

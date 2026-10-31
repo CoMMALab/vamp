@@ -44,7 +44,7 @@ namespace vamp::planning
     // extra coordinate (CurveSpace's curve parameter t) is planned in as a whole: samples, extensions and nodes carry
     // it, while the region and collision checking see the ambient configuration (the first Robot::dimension
     // coordinates). The metric of the run is the joints' with t weighted, sqrt(|dq|^2 + (w dt)^2), w =
-    // settings.parameter_weight: the nearest-neighbor tree measures in it, and `range` bounds a step in it. The region
+    // settings.parameter_weight (by default 1 / the number of joints): the nearest-neighbor tree measures in it, and `range` bounds a step in it. The region
     // is held at the end of the curve (t = 1), and a goal-directed step heads for (the region's LM point, t = 1),
     // clamped to `range` in that metric, so the joints and t advance together. With a projecting local planner the
     // step is then projected onto the manifold at its new t (which the local planner holds fixed while it projects the
@@ -76,10 +76,15 @@ namespace vamp::planning
             PlanningResult<Robot, Space> result;
             const auto start_time = std::chrono::steady_clock::now();
 
+            // the weight of the curve parameter in the metric of the run: the setting, or by default 1 / the joints
+            const float parameter_weight = settings.parameter_weight > 0.F
+                                               ? settings.parameter_weight
+                                               : 1.F / static_cast<float>(ambient_dimension);
+
             NN<Robot, Space> tree;
             tree.reserve(settings.max_samples);
             tree.set_epsilon(settings.nn_epsilon);
-            tree.set_parameter_weight(settings.parameter_weight);
+            tree.set_parameter_weight(parameter_weight);
 
             if constexpr (Traits::extra > 0)
             {
@@ -211,7 +216,7 @@ namespace vamp::planning
                     if constexpr (Traits::extra > 0)
                     {
                         parameter_delta = 1.F - q[ambient_dimension];
-                        const float weighted = settings.parameter_weight * parameter_delta;
+                        const float weighted = parameter_weight * parameter_delta;
                         norm2 += weighted * weighted;
                     }
 

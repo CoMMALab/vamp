@@ -21,6 +21,26 @@
 
 namespace vamp::planning
 {
+    namespace detail
+    {
+        // The dimension of the states of a Space, and how many coordinates it adds to the robot's. A tree over the robot's
+        // own configurations (the default) needs nothing but Robot::dimension, so that robots without a Configuration
+        // type (a lifted robot) keep working: only a real Space goes through SpaceTraits.
+        template <typename Robot, typename Space>
+        struct KDTreeDimensions
+        {
+            static constexpr std::size_t dimension = SpaceTraits<Robot, Space>::dimension;
+            static constexpr std::size_t extra = SpaceTraits<Robot, Space>::extra;
+        };
+
+        template <typename Robot>
+        struct KDTreeDimensions<Robot, Robot>
+        {
+            static constexpr std::size_t dimension = Robot::dimension;
+            static constexpr std::size_t extra = 0;
+        };
+    }  // namespace detail
+
     // Incremental batched kd-tree over robot configurations.
     //
     // Leaves hold up to leaf_capacity configurations in SoA blocks (dimension-major,
@@ -47,10 +67,8 @@ namespace vamp::planning
     template <typename Robot, std::size_t leaf_capacity = 128, typename Space = Robot>
     struct KDTree
     {
-        using Traits = SpaceTraits<Robot, Space>;
-
-        static constexpr std::size_t dim = Traits::dimension;
-        static constexpr std::size_t extra = Traits::extra;
+        static constexpr std::size_t dim = detail::KDTreeDimensions<Robot, Space>::dimension;
+        static constexpr std::size_t extra = detail::KDTreeDimensions<Robot, Space>::extra;
         static_assert(extra <= 1, "KDTree supports one extra state coordinate");
         static constexpr std::size_t width = FloatVectorWidth;
         static constexpr std::size_t n_blocks = (leaf_capacity + width - 1) / width;

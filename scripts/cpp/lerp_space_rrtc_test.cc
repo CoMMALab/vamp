@@ -17,7 +17,11 @@
 // projection solves for t as well (bounded to the segment), and every state takes the t its projection ended at. The
 // goal region is still the curve at exactly t = 1. The checks are the same: every state is on the curve at its own t.
 //
-// Usage: vamp_lerp_space_rrtc_test [r3|so3r3 [max_iterations [rotation_weight [dump.json [qt|qs]]]]]
+// The curve is 0.54 m long at scale 1 (the seventh argument multiplies the S's extents: 20 x 12 x 8 cm); a larger scale
+// makes its segments longer. The ready pose's end-effector is about 0.3 m in front of the base, so the curve leaves the
+// arm's reach somewhere beyond a scale of 2 (poses reach less than positions).
+//
+// Usage: vamp_lerp_space_rrtc_test [r3|so3r3 [max_iterations [rotation_weight [dump.json [qt|qs [scale]]]]]]
 // Build: configure with -DVAMP_BUILD_CPP_DEMO=ON and build the vamp_lerp_space_rrtc_test target. Needs a Panda header
 // generated with "lerp_r3_constraint": true and "lerp_so3r3_constraint": true. Exits 1 if a check fails.
 
@@ -424,10 +428,11 @@ int main(int argc, char **argv)
     const std::string mode = argc > 5 ? argv[5] : "qt";
     const std::string dump_path = argc > 4 ? argv[4] : "lerp_" + kind + "_" + mode + "_path.json";
     const bool segment = mode == "qs";
+    const double scale = argc > 6 ? std::strtod(argv[6], nullptr) : 1.0;  // the size of the curve
 
     if ((kind != "r3" and kind != "so3r3") or (mode != "qt" and mode != "qs"))
     {
-        std::fprintf(stderr, "usage: %s [r3|so3r3 [max_iterations [rotation_weight [dump.json [qt|qs]]]]]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s [r3|so3r3 [max_iterations [rotation_weight [dump.json [qt|qs [scale]]]]]]\n", argv[0]);
         return 2;
     }
 
@@ -442,7 +447,7 @@ int main(int argc, char **argv)
     {
         const double s = static_cast<double>(i) / static_cast<double>(N - 1);
         const Eigen::Vector3d position =
-            start_pose.translation() + Eigen::Vector3d(0.20 * s, 0.12 * std::sin(2.0 * pi * s), 0.08 * s);
+            start_pose.translation() + scale * Eigen::Vector3d(0.20 * s, 0.12 * std::sin(2.0 * pi * s), 0.08 * s);
         const Eigen::Quaterniond rotation(
             Eigen::AngleAxisd(60.0 * pi / 180.0 * s, Eigen::Vector3d::UnitZ()) * Eigen::Quaterniond(start_pose.rotation()));
         for (auto axis = 0U; axis < 3; ++axis)

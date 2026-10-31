@@ -12,7 +12,10 @@
 // The curve is the one of lerp_space_rrtc_test: 20 keyframes starting at the ready pose's end-effector pose, a gentle S
 // (and, for poses, a 60 degree turn about the world z axis).
 //
-// Usage: vamp_lerp_projection_benchmark [r3|so3r3 [trials [method [t_offset [perturb [rotation_weight]]]]]]
+// The last argument scales the S (its extents are 20 x 12 x 8 cm at scale 1, 0.54 m long): a larger one makes the segments
+// longer, so a projection onto a segment more often ends inside it.
+//
+// Usage: vamp_lerp_projection_benchmark [r3|so3r3 [trials [method [t_offset [perturb [rotation_weight [scale]]]]]]]
 //   method: bounded (default), inner, outer or gradient
 // Build: configure with -DVAMP_BUILD_CPP_DEMO=ON and build the vamp_lerp_projection_benchmark target. Needs a Panda header
 // generated with the lerp constraints and their segment forms ("lerp_r3_constraint", "lerp_so3r3_constraint",
@@ -187,10 +190,11 @@ int main(int argc, char **argv)
     const float t_offset = argc > 4 ? std::strtof(argv[4], nullptr) : 0.25F;
     const float perturb = argc > 5 ? std::strtof(argv[5], nullptr) : 0.55F;
     const float rotation_weight = argc > 6 ? std::strtof(argv[6], nullptr) : 0.3F;
+    const double scale = argc > 7 ? std::strtod(argv[7], nullptr) : 1.0;  // the size of the curve
 
     if (kind != "r3" and kind != "so3r3")
     {
-        std::fprintf(stderr, "usage: %s [r3|so3r3 [trials [method [t_offset [perturb [rotation_weight]]]]]]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s [r3|so3r3 [trials [method [t_offset [perturb [rotation_weight [scale]]]]]]]\n", argv[0]);
         return 2;
     }
 
@@ -230,7 +234,7 @@ int main(int argc, char **argv)
     {
         const double s = static_cast<double>(i) / static_cast<double>(N - 1);
         const Eigen::Vector3d position =
-            start_pose.translation() + Eigen::Vector3d(0.20 * s, 0.12 * std::sin(2.0 * pi * s), 0.08 * s);
+            start_pose.translation() + scale * Eigen::Vector3d(0.20 * s, 0.12 * std::sin(2.0 * pi * s), 0.08 * s);
         const Eigen::Quaterniond rotation(
             Eigen::AngleAxisd(60.0 * pi / 180.0 * s, Eigen::Vector3d::UnitZ()) * Eigen::Quaterniond(start_pose.rotation()));
         for (auto axis = 0U; axis < 3; ++axis)
@@ -268,7 +272,8 @@ int main(int argc, char **argv)
     }
 
     std::printf(
-        "projections onto a lerp curve: %zu starts (ready + %.2f rad noise), t = closest + %.2f, method %s, tolerance %g\n\n",
+        "projections onto a lerp curve (scale %.2f): %zu starts (ready + %.2f rad noise), t = closest + %.2f, method %s, tolerance %g\n\n",
+        scale,
         trials,
         perturb,
         t_offset,

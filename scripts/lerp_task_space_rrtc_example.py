@@ -88,7 +88,7 @@ def end_effector(q):
     return np.asarray(pose[:3, 3], dtype=np.float64), quaternion_from_matrix(pose[:3, :3])
 
 
-def keyframes(count, turn_degrees):
+def keyframes(count, turn_degrees, scale=1.0):
     """Positions and quaternions of the curve: from the ready pose's end-effector pose, a gentle S in position, and the
     rotation turning about the world z axis by `turn_degrees` over the curve."""
     position, rotation = end_effector(READY)
@@ -96,7 +96,7 @@ def keyframes(count, turn_degrees):
     rotations = []
     for i in range(count):
         s = i / (count - 1)
-        positions.append(position + np.array([0.20 * s, 0.12 * np.sin(2.0 * np.pi * s), 0.08 * s]))
+        positions.append(position + scale * np.array([0.20 * s, 0.12 * np.sin(2.0 * np.pi * s), 0.08 * s]))
         angle = np.radians(turn_degrees) * s
         about_z = np.array([np.cos(0.5 * angle), 0.0, 0.0, np.sin(0.5 * angle)])
         rotations.append(quaternion_product(about_z, rotation))
@@ -109,6 +109,7 @@ def main():
     parser.add_argument("--curve", choices=["r3", "so3r3"], default="r3", help="positions in R^3, or poses in SO(3) x R^3")
     parser.add_argument("--segment", action="store_true", help="the segment form (qs): t is solved for on its segment, not held fixed")
     parser.add_argument("--rot-weight", type=float, default=0.3, help="with so3r3: the weight of the rotation error (m / rad)")
+    parser.add_argument("--scale", type=float, default=1.0, help="the size of the curve: its S has extents 20 x 12 x 8 cm at scale 1 (0.54 m long); larger makes the segments longer, but the curve leaves the arm's reach beyond about 2")
     parser.add_argument("--turn", type=float, default=60.0, help="with so3r3: the rotation about the world z axis (degrees) over the curve")
     parser.add_argument("--range", type=float, default=0.3, help="longest extension (in the metric of the run)")
     parser.add_argument("--parameter-weight", type=float, default=0.0, help="the weight of t in the metric (rad per unit of t); 0 is 1 / the number of joints")
@@ -119,7 +120,7 @@ def main():
     args = parser.parse_args()
 
     count = vamp.panda.lerp_points()
-    positions, rotations = keyframes(count, args.turn)
+    positions, rotations = keyframes(count, args.turn, args.scale)
     pose_curve = args.curve == "so3r3"
     form = "qs" if args.segment else "qt"
     if pose_curve:

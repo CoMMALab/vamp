@@ -1,6 +1,8 @@
 #pragma once
 
 #include <algorithm>
+#include <functional>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -8,6 +10,7 @@
 #include <vamp/bindings/python/array_helpers.hh>
 
 #include <vamp/collision/filter.hh>
+#include <vamp/curve_space.hh>
 #include <vamp/collision/sphere_sphere.hh>
 #include <vamp/collision/validity.hh>
 #include <vamp/planning/planners/aorrtc.hh>
@@ -17,6 +20,7 @@
 #include <vamp/planning/constraints/manifold/constraint.hh>
 #include <vamp/planning/constraints/manifold/constraint_set.hh>
 #include <vamp/planning/constraints/manifold/lead_screw_constraint.hh>
+#include <vamp/planning/constraints/manifold/lerp_constraint.hh>
 #include <vamp/planning/constraints/manifold/twist_constraint.hh>
 #include <vamp/planning/constraints/local_planner.hh>
 #include <vamp/planning/constraints/settings.hh>
@@ -35,6 +39,7 @@
 #include <vamp/planning/simplify.hh>
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/planning/validate.hh>
+#include <vamp/random/curve.hh>
 #include <vamp/random/halton.hh>
 #include <vamp/random/pinned.hh>
 #include <vamp/random/rng.hh>
@@ -55,6 +60,7 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/array.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
@@ -86,6 +92,9 @@ VAMP_DEFINE_HAS_METHOD(n_closed_loops)
 VAMP_DEFINE_ROBOT_FLAG(has_com)
 VAMP_DEFINE_ROBOT_FLAG(has_lead_screw)
 VAMP_DEFINE_ROBOT_FLAG(has_twist)
+// Robots generated with the lerp constraints (cricket recipe keys "lerp_r3_constraint" and "lerp_so3r3_constraint")
+// declare the number of points of the straight-line curves their kernels were traced for.
+VAMP_DEFINE_ROBOT_FLAG(lerp_points)
 
 namespace vamp::binding
 {
@@ -167,6 +176,20 @@ namespace vamp::binding
         {
             return a;
         }
+    };
+
+    // Result of planning along a curve in a robot's CurveSpace: the states of the path as joints and curve parameter side
+    // by side, in path order.
+    template <typename Robot>
+    struct CurveSpaceResult
+    {
+        bool solved{false};
+        std::vector<std::array<float, Robot::dimension>> path;
+        std::vector<float> parameters;
+        float cost{0.F};
+        std::size_t nanoseconds{0};
+        std::size_t iterations{0};
+        std::vector<std::size_t> size;
     };
 
     template <typename Robot, typename Input>
@@ -420,6 +443,96 @@ namespace vamp::binding
             apply_pins(region, rng);
             return vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution>::solve(
                 Input::to(start), region, EnvVec(env), s, rng);
+        }
+
+        // Plan along a straight-line curve in (q, t): TaskSpaceRRTC over the robot's CurveSpace. Every state is a
+        // configuration with the curve parameter t it sits at, sampled with the joints and held fixed while a state is
+        // projected onto the curve (see TaskSpaceRRTCSettings::project_samples and ::parameter_weight). `manifold` has to
+        // hold the LerpR3Constraint or the LerpSO3R3Constraint; the start is on the curve at `start_t`, by default at the
+        // closest point of the curve. The goal is the end of the curve: the planner holds a copy of the manifold's
+        // constraint at t = 1 as the goal region. Only instantiated for robots generated with the lerp constraints.
+        static auto solve_task_space_curve(
+            const Cfg &start,
+            const Env &env,
+            const vamp::planning::TaskSpaceRRTCSettings &s,
+            std::shared_ptr<Sampler> rng,
+            ConstraintVec manifold,
+            const ConstraintSettings &cs,
+            std::optional<float> start_t) -> CurveSpaceResult<Robot>
+        {
+            using Space = vamp::CurveSpace<Robot>;
+            using CurveLP = vamp::planning::constraint::
+                ConstrainedLocalPlanner<Robot, rake, Robot::resolution, Space>;
+            using Planner = vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution, Space>;
+            using R3C = vamp::planning::constraint::LerpR3Constraint<Robot, rake>;
+            using PoseC = vamp::planning::constraint::LerpSO3R3Constraint<Robot, rake>;
+
+            check_pins(rng, Input::to(start), "Start");
+            const auto q = Input::to(start);
+
+            // The curve the manifold holds: the way to find the start's t on it, and a copy of it as the goal region
+            std::function<float()> closest_start_t;
+            std::shared_ptr<const ConstraintT> curve_end;
+            for (const auto &constraint : manifold)
+            {
+                if (auto found = std::dynamic_pointer_cast<const R3C>(constraint))
+                {
+                    closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
+                    curve_end = std::make_shared<const R3C>(*found);
+                }
+
+                if (auto found = std::dynamic_pointer_cast<const PoseC>(constraint))
+                {
+                    closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
+                    curve_end = std::make_shared<const PoseC>(*found);
+                }
+            }
+
+            if (not closest_start_t)
+            {
+                throw std::invalid_argument(
+                    "manifold_constraints must contain a LerpR3Constraint or a LerpSO3R3Constraint");
+            }
+
+            // a separate instance from the manifold's, which the planner gives the parameter of each state; the planner
+            // holds the region at t = 1
+            ConstraintSetT region(ConstraintVec{curve_end}, cs);
+            apply_pins(region, rng);
+
+            const ConstraintSetT manifold_set(std::move(manifold), cs);
+
+            const float t = start_t ? *start_t : closest_start_t();
+
+            const auto state = Space::make_state(q, t);
+            const CurveLP lp(manifold_set);
+            if (not lp.satisfied(state))
+            {
+                throw std::invalid_argument("the start configuration is not on the curve at start_t");
+            }
+
+            const auto result = Planner::template solve<CurveLP>(
+                state, region, EnvVec(env), s, std::make_shared<vamp::rng::CurveRNG<Robot>>(rng), lp);
+
+            CurveSpaceResult<Robot> out;
+            out.solved = result.solved;
+            out.cost = result.cost;
+            out.nanoseconds = result.nanoseconds;
+            out.iterations = result.iterations;
+            out.size = result.size;
+            for (const auto &path_state : result.path)
+            {
+                const auto array = Space::to_ambient(path_state).to_array();
+                std::array<float, Robot::dimension> values;
+                for (auto j = 0U; j < Robot::dimension; ++j)
+                {
+                    values[j] = array[j];
+                }
+
+                out.path.emplace_back(values);
+                out.parameters.emplace_back(Space::parameter(path_state));
+            }
+
+            return out;
         }
 
         static auto simplify_constrained(
@@ -920,6 +1033,138 @@ namespace vamp::binding
                         "world_to_reference"_a,
                         "pitch"_a,
                         "target"_a);
+            }
+
+            if constexpr (robot_lerp_points_v<Robot>)
+            {
+                using LR3 = vc::LerpR3Constraint<Robot, rake>;
+                using LSO3 = vc::LerpSO3R3Constraint<Robot, rake>;
+                using CurveResult = CurveSpaceResult<Robot>;
+
+                submodule.def(
+                    "lerp_points",
+                    []() { return Robot::lerp_points; },
+                    "Number of points of the straight-line curves the kernels were traced for.");
+
+                nb::class_<CurveResult>(
+                    submodule,
+                    "CurveSpacePlanningResult",
+                    "Result of planning along a curve in (q, t): the path's joints and curve parameters.")
+                    .def(nb::init<>(), "Empty constructor.")
+                    .def_ro("solved", &CurveResult::solved, "Whether a solution was found.")
+                    .def_ro("path", &CurveResult::path, "The joints of each state of the path, in order.")
+                    .def_ro("t", &CurveResult::parameters, "The curve parameter of each state of the path.")
+                    .def_ro("cost", &CurveResult::cost, "Length of the path in the joints (t is ignored).")
+                    .def_ro("nanoseconds", &CurveResult::nanoseconds, "Nanoseconds taken.")
+                    .def_ro("iterations", &CurveResult::iterations, "Planner iterations used.")
+                    .def_ro("size", &CurveResult::size, "Sizes of the planner's data structures (tree nodes).");
+
+                nb::class_<LR3, ConstraintT>(
+                    submodule,
+                    "LerpR3Constraint",
+                    "Position constraint against the straight-line interpolation of points in R^3, at a curve "
+                    "parameter that is given: for planning in (q, t) with task_space_rrtc_curve, where t is part of "
+                    "the state and a projection solves for the joints alone. Takes lerp_points() distinct points "
+                    "(n x 3); t in [0, 1] is the normalized chord length, so t advances at constant speed along "
+                    "the polyline. The curve is evaluated by the generated kernel. closest_t is a host-side scan "
+                    "for the t of a configuration (a planner's start).")
+                    .def(
+                        nb::init<const std::array<typename LR3::Point, LR3::n_points> &>(),
+                        "points"_a)
+                    .def(
+                        "value",
+                        [](const LR3 &c, double t) -> std::array<double, 3>
+                        {
+                            const Eigen::Vector3d point = c.value(t);
+                            return {point[0], point[1], point[2]};
+                        },
+                        "t"_a,
+                        "The point of the curve at t.")
+                    .def(
+                        "closest_t",
+                        [](const LR3 &c, const std::array<float, Robot::dimension> &q) -> std::tuple<float, float>
+                        { return c.closest_parameter(typename Robot::Configuration(q)); },
+                        "q"_a,
+                        "The closest point of the curve to the end-effector at q: (t, squared distance).")
+                    .def(
+                        "parameters",
+                        [](const LR3 &c)
+                        { return std::vector<double>(c.parameters().begin(), c.parameters().end()); },
+                        "The curve parameter t of each point.");
+
+                nb::class_<LSO3, ConstraintT>(
+                    submodule,
+                    "LerpSO3R3Constraint",
+                    "Pose constraint against the straight-line interpolation of poses in SO(3) x R^3 (positions "
+                    "lerped, rotations slerped), at a curve parameter that is given: for planning in (q, t) with "
+                    "task_space_rrtc_curve. Takes lerp_points() positions (n x 3, x y z), as many unit quaternions "
+                    "(n x 4, w x y z, consecutive ones less than 175 degrees apart; poses must be distinct) and the "
+                    "rotation weight (m / rad, adjustable: it scales the rotation error against the translation "
+                    "error and the rotation's share of a segment's length). The error is "
+                    "[R_t^T (p - p_t); weight log(R_t^T R)] against the curve's pose at t.")
+                    .def(
+                        nb::init<
+                            const std::array<typename LSO3::Position, LSO3::n_points> &,
+                            const std::array<typename LSO3::Quaternion, LSO3::n_points> &,
+                            float>(),
+                        "points"_a,
+                        "rotations"_a,
+                        "rotation_weight"_a = 1.0F)
+                    .def_prop_rw(
+                        "rotation_weight",
+                        &LSO3::rotation_weight,
+                        &LSO3::set_rotation_weight,
+                        "The weight (m / rad) of the rotation error; setting it recomputes the parameters of the "
+                        "points.")
+                    .def(
+                        "value",
+                        [](const LSO3 &c, double t) -> std::tuple<std::array<double, 3>, std::array<double, 4>>
+                        {
+                            const auto [position, rotation] = c.value(t);
+                            return {
+                                std::array<double, 3>{position[0], position[1], position[2]},
+                                std::array<double, 4>{rotation.w(), rotation.x(), rotation.y(), rotation.z()}};
+                        },
+                        "t"_a,
+                        "The pose of the curve at t: (position, quaternion w x y z).")
+                    .def(
+                        "closest_t",
+                        [](const LSO3 &c, const std::array<float, Robot::dimension> &q) -> std::tuple<float, float>
+                        { return c.closest_parameter(typename Robot::Configuration(q)); },
+                        "q"_a,
+                        "The closest pose of the curve to the end-effector at q, in the curve's metric: "
+                        "(t, squared distance).")
+                    .def(
+                        "parameters",
+                        [](const LSO3 &c)
+                        { return std::vector<double>(c.parameters().begin(), c.parameters().end()); },
+                        "The curve parameter t of each point.");
+
+                // numpy and plain-list inputs, as for the other planners
+                const auto def_curve_planner = [&](auto traits)
+                {
+                    using Traits = decltype(traits);
+                    submodule.def(
+                        "task_space_rrtc_curve",
+                        &Traits::solve_task_space_curve,
+                        "start"_a,
+                        "environment"_a,
+                        "settings"_a,
+                        "sampler"_a,
+                        "manifold_constraints"_a,
+                        "constraint_settings"_a = vc::ConstraintSettings{},
+                        "start_t"_a = nb::none(),
+                        "Plan along a straight-line curve in (q, t) with TaskSpaceRRTC: states carry the curve "
+                        "parameter t, which is sampled with the joints and held fixed while a state is projected "
+                        "onto the curve. manifold_constraints must contain a LerpR3Constraint or a "
+                        "LerpSO3R3Constraint; the start must be on the curve at start_t (default: the closest "
+                        "point of the curve to the start). The goal is the end of the curve: the planner holds "
+                        "a copy of the constraint at t = 1 as the goal region. Tune settings.project_samples and "
+                        "settings.parameter_weight. Returns a CurveSpacePlanningResult.");
+                };
+
+                def_curve_planner(TA{});
+                def_curve_planner(TC{});
             }
 
             bind_constraint_methods<TA>(submodule);

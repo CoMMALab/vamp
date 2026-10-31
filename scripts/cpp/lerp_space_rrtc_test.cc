@@ -271,7 +271,7 @@ static void run(
 
     // the manifold: the curve, at the parameter of each state
     ConstraintSettings manifold_settings;
-    manifold_settings.method = ProjMethod::InnerLM;
+    manifold_settings.method = ProjMethod::BoundedLS;
     manifold_settings.tolerance = 1e-8F;
     manifold_settings.max_iterations = 50;
     const ConstraintSet manifold(std::vector<ConstraintSet::Ptr>{curve}, manifold_settings);

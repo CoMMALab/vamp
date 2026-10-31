@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include <vamp/space.hh>
 #include <vamp/vector.hh>
 
 #ifdef __linux__
@@ -38,10 +39,19 @@ namespace vamp::planning
     //
     // Deterministic and single-threaded: no RNG, candidate ties broken by lowest index,
     // and pruning is strict (bound > best) so the lowest-index minimum is always found.
-    template <typename Robot, std::size_t leaf_capacity = 128>
+    //
+    // Over the states of a Space with an extra coordinate (a curve parameter t, see CurveSpace) the tree has one more
+    // Euclidean dimension, the coordinate after the joints, which is scaled by a weight (set_parameter_weight, in
+    // metric units per unit of the coordinate; 1 by default) on the way in and on queries. The metric is then
+    // sqrt(|dq|^2 + (weight dt)^2), and the distances queries return are in it. Without extra coordinates nothing changes.
+    template <typename Robot, std::size_t leaf_capacity = 128, typename Space = Robot>
     struct KDTree
     {
-        static constexpr std::size_t dim = Robot::dimension;
+        using Traits = SpaceTraits<Robot, Space>;
+
+        static constexpr std::size_t dim = Traits::dimension;
+        static constexpr std::size_t extra = Traits::extra;
+        static_assert(extra <= 1, "KDTree supports one extra state coordinate");
         static constexpr std::size_t width = FloatVectorWidth;
         static constexpr std::size_t n_blocks = (leaf_capacity + width - 1) / width;
         static_assert(leaf_capacity % width == 0, "leaf_capacity must be a multiple of the SIMD width");
@@ -146,6 +156,12 @@ namespace vamp::planning
             prune_scale_ = 1.F / (s * s);
         }
 
+        // The weight of the extra coordinate in the metric (see above); set it before inserting
+        void set_parameter_weight(float weight) noexcept
+        {
+            weight_ = weight;
+        }
+
         void reserve(std::size_t n)
         {
             leaves_.reserve(2 * n / leaf_capacity + 2);
@@ -166,6 +182,11 @@ namespace vamp::planning
         {
             std::array<float, dim> qa;
             std::copy_n(q, dim, qa.begin());
+            if constexpr (extra > 0)
+            {
+                qa[Robot::dimension] *= weight_;
+            }
+
             canonicalize(qa);
 
             auto ni = 0U;
@@ -197,6 +218,39 @@ namespace vamp::planning
         [[nodiscard]] auto nearest(const float *q) const noexcept
             -> std::optional<std::pair<std::size_t, float>>
         {
+            if constexpr (extra == 0)
+            {
+                return nearest_weighted(q);
+            }
+            else
+            {
+                const auto weighted = weight_query(q);
+                return nearest_weighted(weighted.data());
+            }
+        }
+
+        // K-nearest within an optional radius, sorted ascending by (distance, index).
+        void nearest(
+            std::vector<std::pair<std::size_t, float>> &out,
+            const float *q,
+            std::size_t k,
+            float radius = inf) const
+        {
+            if constexpr (extra == 0)
+            {
+                nearest_weighted(out, q, k, radius);
+            }
+            else
+            {
+                const auto weighted = weight_query(q);
+                nearest_weighted(out, weighted.data(), k, radius);
+            }
+        }
+
+        // The queries on a point already in the tree's coordinates (the extra coordinate multiplied by the weight)
+        [[nodiscard]] auto nearest_weighted(const float *q) const noexcept
+            -> std::optional<std::pair<std::size_t, float>>
+        {
             if (size_ == 0)
             {
                 return std::nullopt;
@@ -209,8 +263,7 @@ namespace vamp::planning
             return std::make_pair(best_index, std::sqrt(best_d2));
         }
 
-        // K-nearest within an optional radius, sorted ascending by (distance, index).
-        void nearest(
+        void nearest_weighted(
             std::vector<std::pair<std::size_t, float>> &out,
             const float *q,
             std::size_t k,
@@ -246,6 +299,15 @@ namespace vamp::planning
             root.leaf = 0;
             nodes_.push_back(root);
             leaves_.emplace_back();
+        }
+
+        // A query point with the extra coordinate multiplied by the weight
+        auto weight_query(const float *q) const noexcept -> std::array<float, dim>
+        {
+            std::array<float, dim> weighted;
+            std::copy_n(q, dim, weighted.begin());
+            weighted[Robot::dimension] *= weight_;
+            return weighted;
         }
 
         static void canonicalize(std::array<float, dim> &q) noexcept
@@ -628,6 +690,7 @@ namespace vamp::planning
         }
 
         float prune_scale_ = 1.F;
+        float weight_ = 1.F;  // of the extra coordinate, if the Space has one
         std::vector<Node> nodes_;
         std::vector<Leaf> leaves_;
         std::size_t size_ = 0;

@@ -12,9 +12,12 @@ namespace vamp
     // the t of a state (see ConstrainedLocalPlanner, which hands it to them before every projection). Header-only: the
     // robot is only used through its Configuration and its distance, interpolation and bounds.
     //
-    // The state is the joints, then t. The metric is the robot's on the joints and ignores t, so "near" in the planner's
-    // tree means near in the joints; interpolation moves t linearly along with them. See SpaceTraits (vamp/space.hh) for
-    // what a planner reads off a Space.
+    // The state is the joints, then t. distance() here is the robot's on the joints and ignores t: it is the length of a
+    // path (its cost), which is the joints' travel. The metric the planner measures extensions and nearest neighbours
+    // with is the weighted one, sqrt(|dq|^2 + (w dt)^2), which lives in the nearest-neighbour tree (KDTree's parameter
+    // weight) and in the planner's step clamp, since the weight is a setting of the planning run and a Space is static.
+    // Interpolation moves t linearly along with the joints, for any weight (a weighted norm has the same straight lines).
+    // See SpaceTraits (vamp/space.hh) for what a planner reads off a Space.
     template <typename Robot>
     struct CurveSpace
     {
@@ -75,12 +78,6 @@ namespace vamp
         static inline auto with_ambient(const State &s, const Configuration &q) noexcept -> State
         {
             return make_state(q, parameter(s));
-        }
-
-        // Where a goal-directed step takes t: `step` further along the curve, up to its end
-        static inline auto advance_parameter(float t, float step) noexcept -> float
-        {
-            return (t + step < 1.0F) ? t + step : 1.0F;
         }
 
         // The metric ignores t

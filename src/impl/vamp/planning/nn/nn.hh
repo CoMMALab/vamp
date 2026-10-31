@@ -4,6 +4,6 @@
 
 namespace vamp::planning
 {
-    template <typename Robot>
-    using NN = KDTree<Robot>;
+    template <typename Robot, typename Space = Robot>
+    using NN = KDTree<Robot, 128, Space>;
 }  // namespace vamp::planning

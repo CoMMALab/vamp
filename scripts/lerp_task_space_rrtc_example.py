@@ -7,12 +7,16 @@ with an adjustable --rot-weight in m / rad). t in [0, 1] is the normalized chord
 they sit at, sampled with the joints and held fixed while a state is projected onto the curve; the goal is the end of
 the curve, which the planner holds a copy of the constraint at t = 1 for, so no goal constraint is given.
 
+With --segment the manifold's constraint is in its segment form (qs): t only picks the segment of a state, a projection
+solves for t as well, bounded to the segment, and every state takes the t its projection ended at; the goal is still the
+curve at exactly t = 1. The checks are the same.
+
 Checked: the planner solves; every state of the path is on the curve at its own t; the path ends at the curve's last
-pose; every state is collision-free. The whole path is printed and written to <prefix>_<curve>_path.json, in the format
+pose; every state is collision-free. The whole path is printed and written to <prefix>_<curve>_<qt|qs>_path.json, in the format
 of cricket's tests/view_lerp.py:
 
     python3 scripts/lerp_task_space_rrtc_example.py --curve so3r3 --view
-    python3 cricket/tests/view_lerp.py lerp_so3r3_path.json
+    python3 cricket/tests/view_lerp.py lerp_so3r3_qt_path.json
 
 Needs a Panda built with a header generated with "lerp_r3_constraint": true and "lerp_so3r3_constraint": true (cricket).
 """
@@ -103,6 +107,7 @@ def keyframes(count, turn_degrees):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--curve", choices=["r3", "so3r3"], default="r3", help="positions in R^3, or poses in SO(3) x R^3")
+    parser.add_argument("--segment", action="store_true", help="the segment form (qs): t is solved for on its segment, not held fixed")
     parser.add_argument("--rot-weight", type=float, default=0.3, help="with so3r3: the weight of the rotation error (m / rad)")
     parser.add_argument("--turn", type=float, default=60.0, help="with so3r3: the rotation about the world z axis (degrees) over the curve")
     parser.add_argument("--range", type=float, default=0.3, help="longest extension (in the metric of the run)")
@@ -116,12 +121,13 @@ def main():
     count = vamp.panda.lerp_points()
     positions, rotations = keyframes(count, args.turn)
     pose_curve = args.curve == "so3r3"
+    form = "qs" if args.segment else "qt"
     if pose_curve:
-        manifold = vamp.panda.LerpSO3R3Constraint(positions.tolist(), rotations.tolist(), args.rot_weight)
-        print(f"lerp curve in SO(3) x R^3 through {count} poses, rotation weight {args.rot_weight}")
+        manifold = vamp.panda.LerpSO3R3Constraint(positions.tolist(), rotations.tolist(), args.rot_weight, args.segment)
+        print(f"lerp curve in SO(3) x R^3 through {count} poses, rotation weight {args.rot_weight}, {form}")
     else:
-        manifold = vamp.panda.LerpR3Constraint(positions.tolist())
-        print(f"lerp curve in R^3 through {count} points")
+        manifold = vamp.panda.LerpR3Constraint(positions.tolist(), args.segment)
+        print(f"lerp curve in R^3 through {count} points, {form}")
 
     taus = np.array(manifold.parameters())
 
@@ -217,13 +223,13 @@ def main():
         )
 
         ts_curve = np.linspace(0.0, 1.0, 401)
-        output = f"{args.prefix}_{args.curve}_path.json"
+        output = f"{args.prefix}_{args.curve}_{form}_path.json"
         with open(output, "w") as f:
             json.dump(
                 {
                     "kind": args.curve,
                     "mode": "path",
-                    "label": f"lerp {args.curve}, path ({len(path)} states)",
+                    "label": f"lerp {args.curve}, {form}, path ({len(path)} states)",
                     "nq": 7,
                     "weight": args.rot_weight if pose_curve else 0.0,
                     "taus": taus.tolist(),

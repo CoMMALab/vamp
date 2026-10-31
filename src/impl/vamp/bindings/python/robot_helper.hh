@@ -806,6 +806,55 @@ namespace vamp::binding
         }
     };
 
+    // The iterates of one projection onto a lerp curve, for looking at it step by step: the joints, the curve parameter and
+    // the squared error at the start and after every step, until the error is within `tolerance` or `max_iterations` steps
+    // were taken. `constraint` is copied, so its own evaluation state is untouched. In the fixed form t stays as given; in
+    // the segment form it is solved for, and every iterate carries the t where the projection stands.
+    template <typename Robot, typename Constraint>
+    inline auto lerp_projection_trail(
+        const Constraint &constraint,
+        const std::array<float, Robot::dimension> &values,
+        float t,
+        vamp::planning::constraint::ProjMethod method,
+        float tolerance,
+        std::size_t max_iterations,
+        float alpha) -> std::vector<std::tuple<std::array<float, Robot::dimension>, float, float>>
+    {
+        using Row = vamp::FloatVector<rake, 1>;
+        using Block = typename Robot::template ConfigurationBlock<rake>;
+
+        Constraint copy(constraint);
+
+        Block block;
+        const typename Robot::Configuration q(values);
+        for (auto i = 0U; i < Robot::dimension; ++i)
+        {
+            block[i] = q.broadcast(i);
+        }
+
+        copy.set_parameter(Row::fill(t));
+
+        std::vector<std::tuple<std::array<float, Robot::dimension>, float, float>> trail;
+        for (std::size_t iteration = 0;; ++iteration)
+        {
+            const float error = copy.squared_error(block)[{0, 0}];
+
+            std::array<float, Robot::dimension> lane;
+            for (auto i = 0U; i < Robot::dimension; ++i)
+            {
+                lane[i] = block[{i, 0}];
+            }
+
+            trail.emplace_back(lane, copy.projected_parameter(Row::fill(t))[{0, 0}], error);
+            if (error <= tolerance or iteration >= max_iterations)
+            {
+                return trail;
+            }
+
+            copy.step(block, method, alpha);
+        }
+    }
+
     template <typename Robot>
     inline auto init_robot(nanobind::module_ &pymodule) -> nanobind::module_
     {
@@ -1067,10 +1116,36 @@ namespace vamp::binding
                     "the state and a projection solves for the joints alone. Takes lerp_points() distinct points "
                     "(n x 3); t in [0, 1] is the normalized chord length, so t advances at constant speed along "
                     "the polyline. The curve is evaluated by the generated kernel. closest_t is a host-side scan "
-                    "for the t of a configuration (a planner's start).")
+                    "for the t of a configuration (a planner's start). With segment=True, t only picks the segment "
+                    "(the one the state's t is on): the end-effector may be anywhere on it, t is solved for next to "
+                    "the joints (bounded to the segment) and a state takes the t where its projection ended.")
                     .def(
-                        nb::init<const std::array<typename LR3::Point, LR3::n_points> &>(),
-                        "points"_a)
+                        nb::init<const std::array<typename LR3::Point, LR3::n_points> &, bool>(),
+                        "points"_a,
+                        "segment"_a = false)
+                    .def_prop_ro(
+                        "segment",
+                        [](const LR3 &c) { return c.segment_form(); },
+                        "Whether this is the segment form (t solved for on its segment) and not the fixed form.")
+                    .def(
+                        "projection_trail",
+                        [](const LR3 &c,
+                           const std::array<float, Robot::dimension> &q,
+                           float t,
+                           vc::ProjMethod method,
+                           float tolerance,
+                           std::size_t max_iterations,
+                           float alpha)
+                        { return lerp_projection_trail<Robot>(c, q, t, method, tolerance, max_iterations, alpha); },
+                        "q"_a,
+                        "t"_a,
+                        "method"_a,
+                        "tolerance"_a = 1e-8F,
+                        "max_iterations"_a = 50,
+                        "alpha"_a = 1.0F,
+                        "The iterates of one projection from (q, t): a list of (joints, t, squared error), at the "
+                        "start and after each step, until the error is within tolerance or max_iterations steps. In "
+                        "the fixed form t stays as given; in the segment form it moves.")
                     .def(
                         "value",
                         [](const LR3 &c, double t) -> std::array<double, 3>
@@ -1101,15 +1176,43 @@ namespace vamp::binding
                     "(n x 4, w x y z, consecutive ones less than 175 degrees apart; poses must be distinct) and the "
                     "rotation weight (m / rad, adjustable: it scales the rotation error against the translation "
                     "error and the rotation's share of a segment's length). The error is "
-                    "[R_t^T (p - p_t); weight log(R_t^T R)] against the curve's pose at t.")
+                    "[R_t^T (p - p_t); weight log(R_t^T R)] against the curve's pose at t. With segment=True, t "
+                    "only picks the segment (the one the state's t is on): the end-effector's pose may be anywhere "
+                    "on it, t is solved for next to the joints (bounded to the segment) and a state takes the t "
+                    "where its projection ended.")
                     .def(
                         nb::init<
                             const std::array<typename LSO3::Position, LSO3::n_points> &,
                             const std::array<typename LSO3::Quaternion, LSO3::n_points> &,
-                            float>(),
+                            float,
+                            bool>(),
                         "points"_a,
                         "rotations"_a,
-                        "rotation_weight"_a = 1.0F)
+                        "rotation_weight"_a = 1.0F,
+                        "segment"_a = false)
+                    .def_prop_ro(
+                        "segment",
+                        [](const LSO3 &c) { return c.segment_form(); },
+                        "Whether this is the segment form (t solved for on its segment) and not the fixed form.")
+                    .def(
+                        "projection_trail",
+                        [](const LSO3 &c,
+                           const std::array<float, Robot::dimension> &q,
+                           float t,
+                           vc::ProjMethod method,
+                           float tolerance,
+                           std::size_t max_iterations,
+                           float alpha)
+                        { return lerp_projection_trail<Robot>(c, q, t, method, tolerance, max_iterations, alpha); },
+                        "q"_a,
+                        "t"_a,
+                        "method"_a,
+                        "tolerance"_a = 1e-8F,
+                        "max_iterations"_a = 50,
+                        "alpha"_a = 1.0F,
+                        "The iterates of one projection from (q, t): a list of (joints, t, squared error), at the "
+                        "start and after each step, until the error is within tolerance or max_iterations steps. In "
+                        "the fixed form t stays as given; in the segment form it moves.")
                     .def_prop_rw(
                         "rotation_weight",
                         &LSO3::rotation_weight,

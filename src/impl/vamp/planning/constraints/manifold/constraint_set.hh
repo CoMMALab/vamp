@@ -60,6 +60,25 @@ namespace vamp::planning::constraint
             }
         }
 
+        // Hand the constraints the per-lane curve parameter of the states about to be projected or checked (see
+        // Constraint::set_parameter), until the next set_parameter or clear_parameter(). Constraints that do not depend
+        // on a parameter ignore it.
+        void set_parameter(const Row &parameter) const noexcept
+        {
+            for (const auto &constraint : constraints_)
+            {
+                constraint->set_parameter(parameter);
+            }
+        }
+
+        void clear_parameter() const noexcept
+        {
+            for (const auto &constraint : constraints_)
+            {
+                constraint->clear_parameter();
+            }
+        }
+
         // Per-lane squared violation error summed over all constraints. Caches each
         // constraint's Jacobian and error for step_in_place(). An empty set has zero
         // error everywhere.

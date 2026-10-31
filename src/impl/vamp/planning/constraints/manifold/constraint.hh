@@ -68,6 +68,15 @@ namespace vamp::planning::constraint
         {
         }
 
+        // For a constraint that solves for the curve parameter t itself (the segment form of the lerp constraints): the
+        // parameter each lane ended at, after a projection that started from the values given to set_parameter. The state
+        // takes this t, so a state's t is where its projection ended. Valid right after a projection (the last evaluation
+        // is at the final q). Default: the parameter given, for constraints that never change it.
+        virtual auto projected_parameter(const FloatVector<rake, 1> &given) const noexcept -> FloatVector<rake, 1>
+        {
+            return given;
+        }
+
         // Whether projection keeps already-satisfied rows in the Jacobian (see
         // ConstraintSettings::hold_satisfied_rows). Set by ConstraintSet from its settings.
         // Default: no-op, for constraints without hinged rows.

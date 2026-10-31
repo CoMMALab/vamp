@@ -73,12 +73,70 @@ namespace vamp::planning::constraint
         }
     }  // namespace lerp_detail
 
-    // What the two lerp constraints share: the curve parameter t, given per lane, at which the error is evaluated and
-    // the steps hold (a projection solves for the joints alone); the error and Jacobian come from one generated kernel
-    // that also evaluates the curve at t, and the steps from generated solvers. The derived constraint supplies, as
-    // private members visible through `friend Base`:
-    //   - run_kernel(q, t, solve): evaluate the error/Jacobian kernel at (q, t) into `solve`;
-    //   - solve_step(solve, q, method, alpha): dispatch to the generated projection solvers and move q.
+    // Input layout of the generated bounded least-squares solvers of the segment form, whose unknowns are the joints and
+    // t: the solve buffer (Jacobian with the column of t, then the error; the kernel's two last outputs, the allowed step
+    // of t to the ends of its segment, follow in the buffer and are read from it), then the allowed step to the lower
+    // bounds (lower - x) and to the upper bounds (upper - x) of every unknown: the joints' limits minus q, and for t
+    // those two outputs of the kernel.
+    template <typename Robot, std::size_t rake, std::size_t err_size>
+    struct SegmentSolveInput
+    {
+        using Block = typename Robot::template ConfigurationBlock<rake>;
+        using Row = FloatVector<rake, 1>;
+
+        static constexpr std::size_t n_vars = Robot::dimension + 1;
+        static constexpr std::size_t jac_size = err_size * n_vars;
+
+        const SolveBuffer<rake, err_size + 2, jac_size> &solve;
+        Block lower;
+        Block upper;
+        Row lower_t;
+        Row upper_t;
+
+        auto operator[](std::size_t index) const noexcept -> Row
+        {
+            if (index < jac_size)
+            {
+                return solve.jac[index];
+            }
+
+            index -= jac_size;
+            if (index < err_size)
+            {
+                return solve.err[index];
+            }
+
+            index -= err_size;
+            if (index < Robot::dimension)
+            {
+                return lower[index];
+            }
+
+            if (index == Robot::dimension)
+            {
+                return lower_t;
+            }
+
+            index -= n_vars;
+            return (index < Robot::dimension) ? upper[index] : upper_t;
+        }
+    };
+
+    // What the two lerp constraints share: the curve parameter t, given per lane, at which the error is evaluated; the
+    // error and Jacobian come from one generated kernel that also evaluates the curve at t, and the steps from generated
+    // solvers. Two forms:
+    //
+    //   fixed (the default): t is held at the value given (set_parameter), and a projection solves for the joints
+    //       alone: the end-effector must reach the curve's pose at t.
+    //   segment: t only picks the segment of the curve (the one the given t is on). The end-effector may be anywhere on
+    //       that segment: t is an unknown next to the joints, bounded to the segment, and starts at the given value. The
+    //       Jacobian has the column of t (the generated segment kernels and solvers), and after a projection
+    //       projected_parameter() is the t each lane ended at, which the state takes.
+    //
+    // The derived constraint supplies, as private members visible through `friend Base`:
+    //   - run_kernel(q, t, solve) and solve_step(solve, q, method, alpha), for the fixed form;
+    //   - run_segment_kernel(q, t, t_segment, solve), solve_segment(solve, gradient, method) (the solvers other than the
+    //     bounded one) and solve_segment_bounded(input, gradient), for the segment form.
     template <typename Derived, typename Robot, std::size_t rake, std::size_t err_size_>
     struct LerpConstraintBase : Constraint<Robot, rake>
     {
@@ -88,32 +146,95 @@ namespace vamp::planning::constraint
         static constexpr std::size_t err_size = err_size_;
         static constexpr std::size_t jac_size = err_size * Robot::dimension;
 
-        // The parameter, per lane, that the error is evaluated at and the steps hold. Set by the planner before every
-        // projection (ConstraintSet::set_parameter); clear_parameter() has nothing to undo, since this constraint never
-        // solves for t.
+        // The segment form: the unknowns are the joints and t
+        static constexpr std::size_t n_vars = Robot::dimension + 1;
+        static constexpr std::size_t segment_jac_size = err_size * n_vars;
+        using SegmentBuffer = SolveBuffer<rake, err_size + 2, segment_jac_size>;
+        using SegmentGradient = FloatVector<rake, n_vars>;
+
+        // The parameter, per lane, that the error is evaluated at, and in the segment form where a projection starts and
+        // what picks its segment. Set by the planner before every projection (ConstraintSet::set_parameter);
+        // clear_parameter() has nothing to undo.
         void set_parameter(const Row &parameter) const noexcept override
         {
             t_ = parameter.max(0.F).min(1.F);
+            t_segment_ = t_;
+        }
+
+        // In the segment form, the t each lane ended at; otherwise the parameter given
+        auto projected_parameter(const Row &given) const noexcept -> Row override
+        {
+            return segment_mode_ ? t_ : given;
+        }
+
+        // Whether this is the segment form
+        auto segment_form() const noexcept -> bool
+        {
+            return segment_mode_;
+        }
+
+        // A copy that holds t at the value given: the fixed form, for the goal region at t = 1
+        auto fixed_copy() const -> Derived
+        {
+            Derived copy(self());
+            copy.segment_mode_ = false;
+            return copy;
         }
 
         // The squared error at the current parameter (for the pose curve with the rotation rows weighted). Caches J and
         // err for step().
         auto squared_error(const Block &q) const noexcept -> Row override
         {
-            self().run_kernel(q, t_, solve_);
-
-            auto d = solve_.err[0] * solve_.err[0];
-            for (auto i = 1U; i < err_size; ++i)
+            if (segment_mode_)
             {
-                d = d + solve_.err[i] * solve_.err[i];
+                self().run_segment_kernel(q, t_, t_segment_, segment_solve_);
+                return sum_of_squares(segment_solve_.err);
             }
 
-            return d;
+            self().run_kernel(q, t_, solve_);
+            return sum_of_squares(solve_.err);
         }
 
         void step(Block &q, ProjMethod method, float alpha) const noexcept override
         {
-            self().solve_step(solve_, q, method, alpha);
+            if (not segment_mode_)
+            {
+                self().solve_step(solve_, q, method, alpha);
+                return;
+            }
+
+            SegmentGradient gradient;
+            if (method == ProjMethod::BoundedLS)
+            {
+                SegmentSolveInput<Robot, rake, err_size> input{segment_solve_};
+                for (auto i = 0U; i < Robot::dimension; ++i)
+                {
+                    input.lower[i] = Row::fill(Robot::lower_bound[i]) - q[i];
+                    input.upper[i] = Row::fill(Robot::upper_bound[i]) - q[i];
+                }
+
+                // the kernel's allowed step of t to the start and to the end of its segment
+                input.lower_t = segment_solve_.err[err_size];
+                input.upper_t = segment_solve_.err[err_size + 1];
+                self().solve_segment_bounded(input, gradient);
+            }
+            else
+            {
+                self().solve_segment(segment_solve_, gradient, method);
+            }
+
+            // t moves by its step, kept in the segment (the bounded solve already keeps it there; the others do not)
+            const Row lower_t = t_ + segment_solve_.err[err_size];
+            const Row upper_t = t_ + segment_solve_.err[err_size + 1];
+            t_ = (t_ - gradient[Robot::dimension] * alpha).max(lower_t).min(upper_t);
+
+            Block step_q;
+            for (auto i = 0U; i < Robot::dimension; ++i)
+            {
+                step_q[i] = gradient[i];
+            }
+
+            integrate_step<Robot, rake>(q, step_q, alpha);
         }
 
         auto n_rows() const noexcept -> std::size_t override
@@ -121,7 +242,7 @@ namespace vamp::planning::constraint
             return err_size;
         }
 
-        // The error rows pin the end-effector to the curve's pose at t: all manifold-defining
+        // The error rows pin the end-effector to the curve's pose at t (on the segment): all manifold-defining
         void active_rows(bool *rows) const noexcept override
         {
             for (auto i = 0U; i < err_size; ++i)
@@ -132,23 +253,49 @@ namespace vamp::planning::constraint
 
         void mask_jacobian(const bool *pinned) const noexcept override
         {
-            mask_pinned_columns<Robot>(solve_, pinned);
+            if (not segment_mode_)
+            {
+                mask_pinned_columns<Robot>(solve_, pinned);
+                return;
+            }
+
+            for (auto j = 0U; j < Robot::dimension; ++j)
+            {
+                if (not pinned[j])
+                {
+                    continue;
+                }
+
+                for (auto i = 0U; i < err_size; ++i)
+                {
+                    segment_solve_.jac[i * n_vars + j] = Row::fill(0.F);
+                }
+            }
         }
 
         void evaluate_error_jacobian(const Block &q) const noexcept override
         {
-            self().run_kernel(q, t_, solve_);
+            if (segment_mode_)
+            {
+                self().run_segment_kernel(q, t_, t_segment_, segment_solve_);
+            }
+            else
+            {
+                self().run_kernel(q, t_, solve_);
+            }
         }
 
-        // At a fixed t the tangent space of the manifold in q is the null space of the raw q-Jacobian
+        // The raw q-Jacobian of one lane (in the segment form without the column of t); at a fixed t the tangent space of
+        // the manifold in q is its null space
         void extract_error_jacobian(std::size_t lane, float *err, float *jac) const noexcept override
         {
             for (auto i = 0U; i < err_size; ++i)
             {
-                err[i] = solve_.err[{i, lane}];
+                err[i] = segment_mode_ ? segment_solve_.err[{i, lane}] : solve_.err[{i, lane}];
                 for (auto j = 0U; j < Robot::dimension; ++j)
                 {
-                    jac[i * Robot::dimension + j] = solve_.jac[{i * Robot::dimension + j, lane}];
+                    jac[i * Robot::dimension + j] = segment_mode_ ? segment_solve_.jac[{i * n_vars + j, lane}]
+                                                                  : solve_.jac[{i * Robot::dimension + j, lane}];
                 }
             }
         }
@@ -159,19 +306,37 @@ namespace vamp::planning::constraint
             return static_cast<const Derived &>(*this);
         }
 
+        template <typename Errors>
+        static auto sum_of_squares(const Errors &err) noexcept -> Row
+        {
+            auto d = err[0] * err[0];
+            for (auto i = 1U; i < err_size; ++i)
+            {
+                d = d + err[i] * err[i];
+            }
+
+            return d;
+        }
+
+        bool segment_mode_ = false;
+
         // Evaluation state, like the other constraints' caches: not thread-safe, one instance per thread.
         mutable SolveBuffer<rake, err_size, jac_size> solve_;
+        mutable SegmentBuffer segment_solve_;
         mutable Row t_ = Row::fill(0.F);
+        mutable Row t_segment_ = Row::fill(0.F);  // the t that picks the segment, in the segment form
     };
 
     // Position constraint against the straight-line (lerp) curve through Robot::lerp_points points in R^3, at a curve
-    // parameter that is given: the first end-effector's position must equal P(t). For planning in CurveSpace, where t is
-    // part of the state and ConstraintSet::set_parameter hands it to the constraint per lane before every projection.
+    // parameter that is given (fixed form), or with t free on the segment it starts on (segment form: see
+    // LerpConstraintBase). The first end-effector's position must equal P(t). For planning in CurveSpace, where t is part
+    // of the state and ConstraintSet::set_parameter hands it to the constraint per lane before every projection.
     //
     // The parameter t in [0, 1] is the normalized chord length along the polyline: tau_0 = 0, tau_{i + 1} - tau_i
     // proportional to |P_{i + 1} - P_i|. The points and their parameters go to the generated kernel as inputs, which
-    // picks the segment of t, evaluates the lerp and the error, and differentiates it (recipe key "lerp_r3_constraint").
-    // The curve data is broadcast into the kernel's input once, here; an evaluation fills only q and t.
+    // picks the segment of t, evaluates the lerp and the error, and differentiates it (recipe keys "lerp_r3_constraint"
+    // and, for the segment form, "lerp_r3_segment_constraint"). The curve data is broadcast into the kernel's input once,
+    // here; an evaluation fills only q and t.
     //
     // There is no closest-point search in planning: a state says where on the curve it is. closest_parameter() is the
     // host-side scan for the t of a configuration that is not given one (a planner's start).
@@ -186,9 +351,11 @@ namespace vamp::planning::constraint
 
         static constexpr std::size_t n_points = Robot::lerp_points;
 
-        // The points the curve passes through, in order (distinct)
-        explicit LerpR3Constraint(const std::array<Point, n_points> &points)
+        // The points the curve passes through, in order (distinct); `segment` selects the segment form
+        explicit LerpR3Constraint(const std::array<Point, n_points> &points, bool segment = false)
         {
+            this->segment_mode_ = segment;
+
             for (auto i = 0U; i < n_points; ++i)
             {
                 points_[i] = Eigen::Vector3d(points[i][0], points[i][1], points[i][2]);
@@ -212,9 +379,11 @@ namespace vamp::planning::constraint
                 for (auto axis = 0U; axis < 3; ++axis)
                 {
                     input_.points[i * 3 + axis] = Row::fill(static_cast<float>(points_[i][axis]));
+                    segment_input_.points[i * 3 + axis] = input_.points[i * 3 + axis];
                 }
 
                 input_.taus[i] = Row::fill(static_cast<float>(taus_[i]));
+                segment_input_.taus[i] = input_.taus[i];
             }
         }
 
@@ -254,18 +423,18 @@ namespace vamp::planning::constraint
     private:
         friend Base;
 
-        void run_kernel(const Block &q, const Row &t, SolveBuffer<rake, 3, 3 * Robot::dimension> &solve) const noexcept
+        using Solve = SolveBuffer<rake, 3, 3 * Robot::dimension>;
+        using SegmentBuffer = typename Base::SegmentBuffer;
+        using SegmentGradient = typename Base::SegmentGradient;
+
+        void run_kernel(const Block &q, const Row &t, Solve &solve) const noexcept
         {
             input_.q = q;
             input_.t = t;
             Robot::template lerp_r3_error<rake>(input_, solve);
         }
 
-        void solve_step(
-            const SolveBuffer<rake, 3, 3 * Robot::dimension> &solve,
-            Block &q,
-            ProjMethod method,
-            float alpha) const noexcept
+        void solve_step(const Solve &solve, Block &q, ProjMethod method, float alpha) const noexcept
         {
             Block gradient;
             switch (method)
@@ -296,11 +465,45 @@ namespace vamp::planning::constraint
             integrate_step<Robot, rake>(q, gradient, alpha);
         }
 
-        // Input layout of the generated Robot::lerp_r3_error: q, t, the points (x y z per point), their parameters
-        struct Input
+        void run_segment_kernel(const Block &q, const Row &t, const Row &t_segment, SegmentBuffer &solve) const noexcept
+        {
+            segment_input_.q = q;
+            segment_input_.t = t;
+            segment_input_.t_segment = t_segment;
+            Robot::template lerp_r3_segment_error<rake>(segment_input_, solve);
+        }
+
+        void solve_segment(const SegmentBuffer &solve, SegmentGradient &gradient, ProjMethod method) const noexcept
+        {
+            switch (method)
+            {
+                case ProjMethod::OuterLM:
+                    Robot::template solve_lerp_r3_segment_error_lm_outer<rake>(solve, gradient);
+                    break;
+                case ProjMethod::GradDesc:
+                    Robot::template solve_lerp_r3_segment_error_gradient_descent<rake>(solve, gradient);
+                    break;
+                default:  // InnerLM (the bounded solve is solve_segment_bounded)
+                    Robot::template solve_lerp_r3_segment_error_lm_inner<rake>(solve, gradient);
+                    break;
+            }
+        }
+
+        void solve_segment_bounded(
+            const SegmentSolveInput<Robot, rake, 3> &input,
+            SegmentGradient &gradient) const noexcept
+        {
+            Robot::template solve_lerp_r3_segment_error_bounded_ls<rake>(input, gradient);
+        }
+
+        // Input layout of the generated Robot::lerp_r3_error (and, with the segment's t, of lerp_r3_segment_error): q, t,
+        // [t_segment], the points (x y z per point), their parameters
+        template <bool Segment>
+        struct InputT
         {
             Block q;
             Row t;
+            Row t_segment;
             FloatVector<rake, 3 * n_points> points;
             FloatVector<rake, n_points> taus;
 
@@ -318,6 +521,16 @@ namespace vamp::planning::constraint
                 }
 
                 index -= 1;
+                if constexpr (Segment)
+                {
+                    if (index == 0)
+                    {
+                        return t_segment;
+                    }
+
+                    index -= 1;
+                }
+
                 if (index < 3 * n_points)
                 {
                     return points[index];
@@ -330,15 +543,17 @@ namespace vamp::planning::constraint
         std::array<Eigen::Vector3d, n_points> points_;
         std::array<double, n_points> taus_;
 
-        mutable Input input_;
+        mutable InputT<false> input_;
+        mutable InputT<true> segment_input_;
     };
 
     // Pose constraint against the straight-line curve through Robot::lerp_points poses in SO(3) x R^3 (positions lerped,
-    // rotations slerped), at a curve parameter that is given: the first end-effector's pose must equal the curve's pose
-    // at t. The error is the TSR error against that pose, [R_t^T (p - p_t); weight log(R_t^T R)], six rows; the weight
-    // (m / rad, adjustable) trades a radian of rotation error against a metre of position error, and is also how rotation
-    // enters the length of a segment: the parameters taus are the normalized lengths sqrt(|dp|^2 + weight^2 theta^2) of the
-    // segments, theta the angle between a segment's rotations (recipe key "lerp_so3r3_constraint").
+    // rotations slerped), at a curve parameter that is given (fixed form), or with t free on the segment it starts on
+    // (segment form: see LerpConstraintBase): the first end-effector's pose must equal the curve's pose at t. The error is
+    // the TSR error against that pose, [R_t^T (p - p_t); weight log(R_t^T R)], six rows; the weight (m / rad, adjustable)
+    // trades a radian of rotation error against a metre of position error, and is also how rotation enters the length of
+    // a segment: the parameters taus are the normalized lengths sqrt(|dp|^2 + weight^2 theta^2) of the segments, theta the
+    // angle between a segment's rotations (recipe keys "lerp_so3r3_constraint" and "lerp_so3r3_segment_constraint").
     //
     // The keyframes' quaternions are normalized and put on one side (each with a non-negative dot product with the
     // previous one), so the slerp takes the short way, and consecutive rotations more than 175 degrees apart are
@@ -360,8 +575,11 @@ namespace vamp::planning::constraint
         LerpSO3R3Constraint(
             const std::array<Position, n_points> &positions,
             const std::array<Quaternion, n_points> &quaternions,
-            float rotation_weight = 1.F)
+            float rotation_weight = 1.F,
+            bool segment = false)
         {
+            this->segment_mode_ = segment;
+
             for (auto i = 0U; i < n_points; ++i)
             {
                 positions_[i] = Eigen::Vector3d(positions[i][0], positions[i][1], positions[i][2]);
@@ -394,12 +612,17 @@ namespace vamp::planning::constraint
                 for (auto axis = 0U; axis < 3; ++axis)
                 {
                     input_.positions[i * 3 + axis] = Row::fill(static_cast<float>(positions_[i][axis]));
+                    segment_input_.positions[i * 3 + axis] = input_.positions[i * 3 + axis];
                 }
 
                 input_.quaternions[i * 4 + 0] = Row::fill(static_cast<float>(rotations_[i].w()));
                 input_.quaternions[i * 4 + 1] = Row::fill(static_cast<float>(rotations_[i].x()));
                 input_.quaternions[i * 4 + 2] = Row::fill(static_cast<float>(rotations_[i].y()));
                 input_.quaternions[i * 4 + 3] = Row::fill(static_cast<float>(rotations_[i].z()));
+                for (auto c = 0U; c < 4; ++c)
+                {
+                    segment_input_.quaternions[i * 4 + c] = input_.quaternions[i * 4 + c];
+                }
             }
 
             set_rotation_weight(rotation_weight);
@@ -433,9 +656,11 @@ namespace vamp::planning::constraint
             {
                 taus_[i] /= taus_[n_points - 1];
                 input_.taus[i] = Row::fill(static_cast<float>(taus_[i]));
+                segment_input_.taus[i] = input_.taus[i];
             }
 
             input_.weight = Row::fill(weight_);
+            segment_input_.weight = input_.weight;
         }
 
         auto rotation_weight() const noexcept -> float
@@ -503,18 +728,18 @@ namespace vamp::planning::constraint
     private:
         friend Base;
 
-        void run_kernel(const Block &q, const Row &t, SolveBuffer<rake, 6, 6 * Robot::dimension> &solve) const noexcept
+        using Solve = SolveBuffer<rake, 6, 6 * Robot::dimension>;
+        using SegmentBuffer = typename Base::SegmentBuffer;
+        using SegmentGradient = typename Base::SegmentGradient;
+
+        void run_kernel(const Block &q, const Row &t, Solve &solve) const noexcept
         {
             input_.q = q;
             input_.t = t;
             Robot::template lerp_so3r3_error<rake>(input_, solve);
         }
 
-        void solve_step(
-            const SolveBuffer<rake, 6, 6 * Robot::dimension> &solve,
-            Block &q,
-            ProjMethod method,
-            float alpha) const noexcept
+        void solve_step(const Solve &solve, Block &q, ProjMethod method, float alpha) const noexcept
         {
             Block gradient;
             switch (method)
@@ -545,12 +770,46 @@ namespace vamp::planning::constraint
             integrate_step<Robot, rake>(q, gradient, alpha);
         }
 
-        // Input layout of the generated Robot::lerp_so3r3_error: q, t, the weight, the positions (x y z per keyframe),
-        // the quaternions (w x y z per keyframe), the parameters
-        struct Input
+        void run_segment_kernel(const Block &q, const Row &t, const Row &t_segment, SegmentBuffer &solve) const noexcept
+        {
+            segment_input_.q = q;
+            segment_input_.t = t;
+            segment_input_.t_segment = t_segment;
+            Robot::template lerp_so3r3_segment_error<rake>(segment_input_, solve);
+        }
+
+        void solve_segment(const SegmentBuffer &solve, SegmentGradient &gradient, ProjMethod method) const noexcept
+        {
+            switch (method)
+            {
+                case ProjMethod::OuterLM:
+                    Robot::template solve_lerp_so3r3_segment_error_lm_outer<rake>(solve, gradient);
+                    break;
+                case ProjMethod::GradDesc:
+                    Robot::template solve_lerp_so3r3_segment_error_gradient_descent<rake>(solve, gradient);
+                    break;
+                default:  // InnerLM (the bounded solve is solve_segment_bounded)
+                    Robot::template solve_lerp_so3r3_segment_error_lm_inner<rake>(solve, gradient);
+                    break;
+            }
+        }
+
+        void solve_segment_bounded(
+            const SegmentSolveInput<Robot, rake, 6> &input,
+            SegmentGradient &gradient) const noexcept
+        {
+            Robot::template solve_lerp_so3r3_segment_error_bounded_ls<rake>(input, gradient);
+        }
+
+        // Input layout of the generated Robot::lerp_so3r3_error (and, with the segment's t, of lerp_so3r3_segment_error):
+        // q, t, [t_segment], the weight, the positions (x y z per keyframe), the quaternions (w x y z per keyframe), the
+        // parameters
+        template <bool Segment>
+        struct InputT
         {
             Block q;
             Row t;
+            Row t_segment;
             Row weight;
             FloatVector<rake, 3 * n_points> positions;
             FloatVector<rake, 4 * n_points> quaternions;
@@ -569,12 +828,23 @@ namespace vamp::planning::constraint
                     return t;
                 }
 
-                if (index == 1)
+                index -= 1;
+                if constexpr (Segment)
+                {
+                    if (index == 0)
+                    {
+                        return t_segment;
+                    }
+
+                    index -= 1;
+                }
+
+                if (index == 0)
                 {
                     return weight;
                 }
 
-                index -= 2;
+                index -= 1;
                 if (index < 3 * n_points)
                 {
                     return positions[index];
@@ -595,6 +865,7 @@ namespace vamp::planning::constraint
         std::array<double, n_points> taus_;
         float weight_ = 1.F;
 
-        mutable Input input_;
+        mutable InputT<false> input_;
+        mutable InputT<true> segment_input_;
     };
 }  // namespace vamp::planning::constraint

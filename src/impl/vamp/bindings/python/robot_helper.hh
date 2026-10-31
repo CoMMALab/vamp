@@ -478,13 +478,13 @@ namespace vamp::binding
                 if (auto found = std::dynamic_pointer_cast<const R3C>(constraint))
                 {
                     closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
-                    curve_end = std::make_shared<const R3C>(*found);
+                    curve_end = std::make_shared<const R3C>(found->fixed_copy());
                 }
 
                 if (auto found = std::dynamic_pointer_cast<const PoseC>(constraint))
                 {
                     closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
-                    curve_end = std::make_shared<const PoseC>(*found);
+                    curve_end = std::make_shared<const PoseC>(found->fixed_copy());
                 }
             }
 

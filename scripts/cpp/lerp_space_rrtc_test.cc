@@ -13,7 +13,11 @@
 // that cricket's tests/view_lerp.py shows in viser: the curve, the arm along the path, the end-effector and the curve's
 // pose at each state's own t.
 //
-// Usage: vamp_lerp_space_rrtc_test [r3|so3r3 [max_iterations [rotation_weight [dump.json]]]]
+// With the sixth argument qs the manifold's constraint is in its segment form: t only picks the segment of a lane, a
+// projection solves for t as well (bounded to the segment), and every state takes the t its projection ended at. The
+// goal region is still the curve at exactly t = 1. The checks are the same: every state is on the curve at its own t.
+//
+// Usage: vamp_lerp_space_rrtc_test [r3|so3r3 [max_iterations [rotation_weight [dump.json [qt|qs]]]]]
 // Build: configure with -DVAMP_BUILD_CPP_DEMO=ON and build the vamp_lerp_space_rrtc_test target. Needs a Panda header
 // generated with "lerp_r3_constraint": true and "lerp_so3r3_constraint": true. Exits 1 if a check fails.
 
@@ -235,7 +239,8 @@ static void run(
     const std::array<float, Robot::dimension> &start_values,
     std::size_t max_iterations,
     const std::string &dump_path,
-    double rotation_weight)
+    double rotation_weight,
+    const char *form)
 {
     // the squared error at (q, t) on the host
     const auto host_error = [&](const Configuration &q, double t)
@@ -278,7 +283,7 @@ static void run(
 
     // the goal region: a copy of the curve's constraint (the planner holds the region at t = 1; a separate instance, so
     // the parameter the manifold's constraint is given does not move it)
-    const auto goal_constraint = std::make_shared<Curve>(*curve);
+    const auto goal_constraint = std::make_shared<Curve>(curve->fixed_copy());
     ConstraintSettings region_settings;
     const ConstraintSet region(std::vector<ConstraintSet::Ptr>{goal_constraint}, region_settings);
 
@@ -393,7 +398,7 @@ static void run(
         {
             write_dump(
                 dump_path,
-                std::string("lerp ") + (access.has_rotation ? "so3r3" : "r3") + ", path (" + std::to_string(entries.size()) +
+                std::string("lerp ") + (access.has_rotation ? "so3r3" : "r3") + ", " + form + ", path (" + std::to_string(entries.size()) +
                     " states)",
                 access,
                 taus,
@@ -416,11 +421,13 @@ int main(int argc, char **argv)
     const std::string kind = argc > 1 ? argv[1] : "r3";
     const std::size_t max_iterations = argc > 2 ? std::strtoull(argv[2], nullptr, 10) : 20000;
     const float rotation_weight = argc > 3 ? std::strtof(argv[3], nullptr) : 0.3F;
-    const std::string dump_path = argc > 4 ? argv[4] : "lerp_" + kind + "_path.json";
+    const std::string mode = argc > 5 ? argv[5] : "qt";
+    const std::string dump_path = argc > 4 ? argv[4] : "lerp_" + kind + "_" + mode + "_path.json";
+    const bool segment = mode == "qs";
 
-    if (kind != "r3" and kind != "so3r3")
+    if ((kind != "r3" and kind != "so3r3") or (mode != "qt" and mode != "qs"))
     {
-        std::fprintf(stderr, "usage: %s [r3|so3r3 [max_iterations [rotation_weight [dump.json]]]]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s [r3|so3r3 [max_iterations [rotation_weight [dump.json [qt|qs]]]]]\n", argv[0]);
         return 2;
     }
 
@@ -452,20 +459,20 @@ int main(int argc, char **argv)
 
     if (kind == "r3")
     {
-        std::printf("lerp curve in R^3 through %zu points\n", N);
-        const auto curve = std::make_shared<LerpR3Constraint>(positions);
+        std::printf("lerp curve in R^3 through %zu points, %s\n", N, mode.c_str());
+        const auto curve = std::make_shared<LerpR3Constraint>(positions, segment);
 
         CurveAccess access;
         access.has_rotation = false;
         access.pose = [&](double t) { return std::make_pair(curve->value(t), Eigen::Quaterniond::Identity()); };
         access.errors = [&](const Configuration &q, double t) -> std::array<double, 2>
         { return {(end_effector(q).translation() - curve->value(t)).norm(), 0.0}; };
-        run(curve, access, start_values, max_iterations, dump_path, 0.0);
+        run(curve, access, start_values, max_iterations, dump_path, 0.0, mode.c_str());
     }
     else
     {
-        std::printf("lerp curve in SO(3) x R^3 through %zu poses, rotation weight %.3g\n", N, rotation_weight);
-        const auto curve = std::make_shared<LerpSO3R3Constraint>(positions, quaternions, rotation_weight);
+        std::printf("lerp curve in SO(3) x R^3 through %zu poses, rotation weight %.3g, %s\n", N, rotation_weight, mode.c_str());
+        const auto curve = std::make_shared<LerpSO3R3Constraint>(positions, quaternions, rotation_weight, segment);
 
         CurveAccess access;
         access.has_rotation = true;
@@ -476,7 +483,7 @@ int main(int argc, char **argv)
             const auto e = curve->error(pose.translation(), Eigen::Quaterniond(pose.rotation()), t);
             return {e.template head<3>().norm(), e.template tail<3>().norm()};
         };
-        run(curve, access, start_values, max_iterations, dump_path, rotation_weight);
+        run(curve, access, start_values, max_iterations, dump_path, rotation_weight, mode.c_str());
     }
 
     if (failures != 0)

@@ -79,6 +79,19 @@ namespace vamp::planning::constraint
             }
         }
 
+        // The parameter each lane ended at, after a projection that started from the values given to set_parameter (see
+        // Constraint::projected_parameter): only a constraint that solves for the parameter changes it.
+        auto projected_parameter(const Row &given) const noexcept -> Row
+        {
+            auto parameter = given;
+            for (const auto &constraint : constraints_)
+            {
+                parameter = constraint->projected_parameter(parameter);
+            }
+
+            return parameter;
+        }
+
         // Per-lane squared violation error summed over all constraints. Caches each
         // constraint's Jacobian and error for step_in_place(). An empty set has zero
         // error everywhere.

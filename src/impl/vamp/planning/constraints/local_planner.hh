@@ -49,7 +49,9 @@ namespace vamp::planning::constraint
     // parameter t in [0, 1], which interpolates along with them and is handed to the constraints per lane
     // (ConstraintSet::set_parameter) before every projection, so the projections solve for the joints at the parameter
     // the lane has. Everything geometric (continuity, collision, tolerances, drift) is measured on the ambient
-    // configuration.
+    // configuration. A constraint in its segment form solves for the parameter too: after every projection each state
+    // takes the t its projection ended at (ConstraintSet::projected_parameter); a Space with a parameter provides
+    // make_state(q, t) for that.
     template <typename Robot, std::size_t rake, std::size_t resolution, typename Space = Robot>
     struct ConstrainedLocalPlanner
     {
@@ -251,7 +253,8 @@ namespace vamp::planning::constraint
                     return false;
                 }
 
-                q = Traits::with_ambient(q, projected);
+                // a constraint that solves for the parameter (the segment form) leaves each state at the t it ended at
+                q = Space::make_state(projected, constraints.projected_parameter(parameter_row(q))[{0, 0}]);
                 return true;
             }
         }
@@ -346,6 +349,9 @@ namespace vamp::planning::constraint
                 constraints.set_parameter(states[Robot::dimension]);
                 const auto result = projection(q);
                 store_ambient(states, q);
+
+                // a constraint that solves for the parameter (the segment form) leaves each lane at the t it ended at
+                states[Robot::dimension] = constraints.projected_parameter(states[Robot::dimension]);
                 return result;
             }
         }

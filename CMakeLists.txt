@@ -165,6 +165,14 @@ if(VAMP_BUILD_CPP_DEMO)
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_lerp_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
   endif()
+
+  # Compares the qt projection (t held fixed) with the qs projection (t free on its segment) onto a lerp curve, from the
+  # same starts (needs the lerp constraints' segment forms as well: "lerp_r3_segment_constraint", "lerp_so3r3_segment_constraint")
+  add_executable(vamp_lerp_projection_benchmark scripts/cpp/lerp_projection_benchmark.cc)
+  target_link_libraries(vamp_lerp_projection_benchmark PRIVATE vamp_cpp)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(vamp_lerp_projection_benchmark PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+  endif()
 endif()
 
 # OMPL integration demo

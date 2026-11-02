@@ -267,7 +267,8 @@ namespace vamp
         if (not e.pointclouds.empty())
         {
             throw std::runtime_error(
-                "Robots with cuboid collision geometry do not support pointcloud (CAPT) environments.");
+                "Cuboid collision geometry (on the robot or in an attachment) does not support pointcloud (CAPT) "
+                "environments.");
         }
     }
 
@@ -469,7 +470,7 @@ namespace vamp
         return not collision::cuboid_cuboid(a, b).test_zero();
     }
 
-    // Robot cuboid vs. the spheres of the object attached to the robot
+    // Robot cuboid vs. the object attached to the robot (its spheres and its cuboids)
     template <typename DataT>
     inline auto attachment_cuboid_collision(
         const collision::Environment<DataT> &e,
@@ -483,12 +484,25 @@ namespace vamp
             }
         }
 
+        for (const auto &att_c : e.attachments->posed_cuboids)
+        {
+            if (not collision::cuboid_cuboid(box, att_c).test_zero())
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
+    // Attached object vs. the environment.
+    //
+    // As for robot cuboids, attached cuboids do not support pointcloud (CAPT) environments (see
+    // check_cuboid_environment_supported), and as everything that calls this is noexcept, an attachment
+    // with cuboids in such an environment terminates the program. Callers (e.g., bindings) should check
+    // ahead of time.
     template <typename DataT>
-    inline constexpr auto attachment_environment_collision(const collision::Environment<DataT> &e) noexcept
-        -> bool
+    inline auto attachment_environment_collision(const collision::Environment<DataT> &e) noexcept -> bool
     {
         for (const auto &s : e.attachments->posed_spheres)
         {
@@ -502,11 +516,20 @@ namespace vamp
             }
         }
 
+        for (const auto &c : e.attachments->posed_cuboids)
+        {
+            if (cuboid_environment_in_collision(e, c))
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
+    // Robot sphere vs. the object attached to the robot (its spheres and its cuboids)
     template <typename DataT, typename ArgT1, typename ArgT2, typename ArgT3, typename ArgT4>
-    inline constexpr auto attachment_sphere_collision(
+    inline auto attachment_sphere_collision(
         const collision::Environment<DataT> &e,
         ArgT1 sx_,
         ArgT2 sy_,
@@ -522,6 +545,14 @@ namespace vamp
         {
             if (not collision::sphere_sphere_sql2(sx, sy, sz, sr, att_s.x, att_s.y, att_s.z, att_s.r)
                         .test_zero())
+            {
+                return true;
+            }
+        }
+
+        for (const auto &att_c : e.attachments->posed_cuboids)
+        {
+            if (not collision::cuboid_sphere(att_c, sx, sy, sz, sr).test_zero())
             {
                 return true;
             }

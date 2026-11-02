@@ -32,12 +32,25 @@ namespace vamp::collision
             {
                 spheres.emplace_back(sphere);
             }
+
+            cuboids.reserve(o.cuboids.size());
+            for (const auto &cuboid : o.cuboids)
+            {
+                cuboids.emplace_back(cuboid);
+            }
         }
 
+        // The attached geometry, in the attachment's own frame (`tf` relative to the end-effector)
         std::vector<Sphere<DataT>> spheres;
+        std::vector<Cuboid<DataT>> cuboids;
+
+        // The attached geometry in the world frame, as of the last call to pose.
         // HACK: To get around passing the environment as const but needing to re-pose the
         // attachments
         mutable std::vector<Sphere<DataT>> posed_spheres;
+        // Posed cuboids are OrientedBoxes (rather than Cuboids) since they are recomputed at every
+        // configuration, so they should not pay to precompute a min_distance.
+        mutable std::vector<OrientedBox<DataT>> posed_cuboids;
         Eigen::Transform<DataT, 3, Eigen::Isometry> tf;
 
         inline void pose(const Eigen::Transform<DataT, 3, Eigen::Isometry> &p_tf) const noexcept
@@ -51,6 +64,41 @@ namespace vamp::collision
                 Eigen::Matrix<DataT, 3, 1> sp(s.x, s.y, s.z);
                 auto tfs = n_tf * sp;
                 posed_spheres[i] = Sphere<DataT>(tfs[0], tfs[1], tfs[2], s.r);
+            }
+
+            // Cuboids move rigidly with the attachment: the center is transformed like a sphere's, and
+            // the axes (directions) are only rotated. The half-lengths are unchanged.
+            posed_cuboids.resize(cuboids.size());
+            const auto &rotation = n_tf.linear();
+            for (auto i = 0U; i < cuboids.size(); ++i)
+            {
+                const auto &c = cuboids[i];
+                Eigen::Matrix<DataT, 3, 1> center(c.x, c.y, c.z);
+                Eigen::Matrix<DataT, 3, 1> axis_1(c.axis_1_x, c.axis_1_y, c.axis_1_z);
+                Eigen::Matrix<DataT, 3, 1> axis_2(c.axis_2_x, c.axis_2_y, c.axis_2_z);
+                Eigen::Matrix<DataT, 3, 1> axis_3(c.axis_3_x, c.axis_3_y, c.axis_3_z);
+
+                const Eigen::Matrix<DataT, 3, 1> tc = n_tf * center;
+                const Eigen::Matrix<DataT, 3, 1> t1 = rotation * axis_1;
+                const Eigen::Matrix<DataT, 3, 1> t2 = rotation * axis_2;
+                const Eigen::Matrix<DataT, 3, 1> t3 = rotation * axis_3;
+
+                posed_cuboids[i] = OrientedBox<DataT>(
+                    tc[0],
+                    tc[1],
+                    tc[2],
+                    t1[0],
+                    t1[1],
+                    t1[2],
+                    t2[0],
+                    t2[1],
+                    t2[2],
+                    t3[0],
+                    t3[1],
+                    t3[2],
+                    c.axis_1_r,
+                    c.axis_2_r,
+                    c.axis_3_r);
             }
         }
     };

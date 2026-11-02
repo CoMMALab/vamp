@@ -1,8 +1,10 @@
-"""Plans along a straight-line (lerp) curve in (q, t) from Python: vamp.panda.task_space_rrtc_curve.
+"""Plans along a straight-line (lerp) curve in (q, t) from Python: vamp.<robot>.task_space_rrtc_curve.
 
-The curve is the straight-line interpolation of 20 keyframes that start at the end-effector's pose at the Panda's ready
-configuration and wander from there in a gentle S: positions in R^3 (--curve r3, vamp.panda.LerpR3Constraint) or poses in
-SO(3) x R^3 with the rotation slerped, turning about the world z axis (--curve so3r3, vamp.panda.LerpSO3R3Constraint,
+Robots: the Panda (default) and the iiwa with the gripper's tool frame as its end-effector (--robot iiwa_tool).
+
+The curve is the straight-line interpolation of vamp.<robot>.lerp_points() keyframes that start at the end-effector's pose at
+the robot's ready configuration and wander from there in a gentle S: positions in R^3 (--curve r3, LerpR3Constraint) or poses in
+SO(3) x R^3 with the rotation slerped, turning about the world z axis (--curve so3r3, LerpSO3R3Constraint,
 with an adjustable --rot-weight in m / rad). t in [0, 1] is the normalized chord length. States of the tree carry the t
 they sit at, sampled with the joints and held fixed while a state is projected onto the curve; the goal is the end of
 the curve, which the planner holds a copy of the constraint at t = 1 for, so no goal constraint is given.
@@ -11,21 +13,23 @@ With --segment the manifold's constraint is in its segment form (qs): t only pic
 solves for t as well, bounded to the segment, and every state takes the t its projection ended at; the goal is still the
 curve at exactly t = 1. The checks are the same.
 
-With --traj vertical_s the curve is instead the vertical S of the old spline examples (--s-spacing, default 0.12 m between
-consecutive points; radius = spacing * (points - 1) / 8.4): two arcs of 240 degrees joined smoothly in a plane in front of
-the Panda, centred on the end-effector of the ready pose, 4 radii tall and 2 wide. The start is the old one too: the
+With --traj vertical_s the curve is instead the vertical S of the old spline examples (--s-radius, a default per robot,
+or --s-spacing, the distance between consecutive points; radius = spacing * (points - 1) / 8.4): two arcs of 240 degrees
+joined smoothly in a plane in front of the robot, centred on the end-effector of the ready pose, 4 radii tall and 2 wide. The start is the old one too: the
 ready pose projected onto a point region (position only) at the S's first point. For --curve so3r3 the keyframes'
 rotations start from that start configuration's own orientation and turn about the world z axis by --turn degrees, so
 the start is on the pose curve. The environment is empty.
 
 Checked: the planner solves; every state of the path is on the curve at its own t; the path ends at the curve's last
-pose; every state is collision-free. The whole path is printed and written to <prefix>_<curve>_<qt|qs>_path.json, in the format
+pose; every state is collision-free. The whole path is printed and written to <prefix>_<robot>_<curve>_<qt|qs>_path.json, in the format
 of cricket's tests/view_lerp.py:
 
     python3 scripts/lerp_task_space_rrtc_example.py --curve so3r3 --view
-    python3 cricket/tests/view_lerp.py lerp_so3r3_qt_path.json
+    python3 scripts/lerp_task_space_rrtc_example.py --robot iiwa_tool --traj vertical_s --curve so3r3 --view
+    python3 cricket/tests/view_lerp.py lerp_panda_so3r3_qt_path.json
 
-Needs a Panda built with a header generated with "lerp_r3_constraint": true and "lerp_so3r3_constraint": true (cricket).
+Needs the robot built with a header generated with "lerp_r3_constraint": true and "lerp_so3r3_constraint": true (cricket;
+the iiwa_tool recipe is cricket/resources/iiwa_tool.json, and VAMP built with VAMP_ROBOTS including iiwa_tool).
 """
 
 import argparse
@@ -37,15 +41,30 @@ from pathlib import Path
 import numpy as np
 import vamp
 
-READY = np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785], dtype=np.float32)
+# Per robot: the ready configuration the curves start from, the shoulder and reach (for a printout), and the radius of
+# the vertical S (m) that fits the workspace in front of the ready pose
+ROBOTS = {
+    "panda": dict(
+        ready=np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785], dtype=np.float32),
+        shoulder=np.array([0.0, 0.0, 0.333]),
+        reach=0.855,
+        s_radius=0.27,
+    ),
+    # iiwa14 with the WSG's tool frame: the ready pose has the tool at (0.54, 0, 0.445) pointing down; the shoulder
+    # (joint 2) is 0.36 m above the base and the tool is another 0.3 m or so beyond the 0.82 m arm
+    "iiwa_tool": dict(
+        ready=np.array([0.0, 0.35, 0.0, -1.1, 0.0, 1.69, 0.0], dtype=np.float32),
+        shoulder=np.array([0.0, 0.0, 0.36]),
+        reach=1.1,
+        s_radius=0.10,
+    ),
+}
+module = None  # vamp.<robot>, set by main
+READY = None  # the robot's ready configuration, set by main
 VIEWER = Path(__file__).resolve().parents[2] / "cricket" / "tests" / "view_lerp.py"
 
 # The vertical S is two arcs of 240 degrees each, so its length is 2 * (4 pi / 3) radii
 S_LENGTH_PER_RADIUS = 8.0 * np.pi / 3.0
-
-# The Panda's shoulder (joint 2) is 0.333 m above its base; the arm reaches about 0.855 m from it
-SHOULDER = np.array([0.0, 0.0, 0.333])
-REACH = 0.855
 
 failures = 0
 
@@ -98,7 +117,7 @@ def rotation_angle(a, b):
 
 def end_effector(q):
     """The end-effector's position and quaternion (w, x, y, z) at q."""
-    pose = vamp.panda.eefk(np.asarray(q, dtype=np.float32))
+    pose = module.eefk(np.asarray(q, dtype=np.float32))
     return np.asarray(pose[:3, 3], dtype=np.float64), quaternion_from_matrix(pose[:3, :3])
 
 
@@ -145,13 +164,13 @@ def start_at(point):
     settings.max_iterations = 100
 
     def project(q, target):
-        region = vamp.panda.TaskSpaceConstraint(
+        region = module.TaskSpaceConstraint(
             [1, 0, 0, 0, 0, 0, 0],
             [1, 0, 0, 0, *np.asarray(target).tolist()],
             [0.0, 0.0, 0.0, -3.2, -3.2, -3.2],
             [0.0, 0.0, 0.0, 3.2, 3.2, 3.2],
         )
-        return np.asarray(vamp.panda.project(q, [region], settings), dtype=np.float32)
+        return np.asarray(module.project(q, [region], settings), dtype=np.float32)
 
     try:
         return project(READY, point)
@@ -192,13 +211,16 @@ def keyframes(count, turn_degrees, scale=1.0):
 
 
 def main():
+    global module, READY
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--robot", choices=sorted(ROBOTS), default="panda", help="the robot (its vamp module has to be built)")
     parser.add_argument("--curve", choices=["r3", "so3r3"], default="r3", help="positions in R^3, or poses in SO(3) x R^3")
     parser.add_argument("--segment", action="store_true", help="the segment form (qs): t is solved for on its segment, not held fixed")
     parser.add_argument("--rot-weight", type=float, default=0.3, help="with so3r3: the weight of the rotation error (m / rad)")
     parser.add_argument("--scale", type=float, default=1.0, help="the size of the curve: its S has extents 20 x 12 x 8 cm at scale 1 (0.54 m long); larger makes the segments longer, but the curve leaves the arm's reach beyond about 2")
     parser.add_argument("--traj", choices=["default", "vertical_s"], default="default", help="the curve: the gentle S (--scale), or the old vertical S (--s-spacing)")
-    parser.add_argument("--s-spacing", type=float, default=0.12, help="with vertical_s: the distance (m) between consecutive points of the S, which sets its size")
+    parser.add_argument("--s-radius", type=float, default=None, help="with vertical_s: the radius (m) of the S's arcs, which sets its size (default: the robot's)")
+    parser.add_argument("--s-spacing", type=float, default=None, help="with vertical_s: instead of --s-radius, the distance (m) between consecutive points of the S")
     parser.add_argument("--turn", type=float, default=60.0, help="with so3r3: the rotation about the world z axis (degrees) over the curve")
     parser.add_argument("--range", type=float, default=0.3, help="longest extension (in the metric of the run)")
     parser.add_argument("--parameter-weight", type=float, default=0.0, help="the weight of t in the metric (rad per unit of t); 0 is 1 / the number of joints")
@@ -208,15 +230,27 @@ def main():
     parser.add_argument("--view", action="store_true", help="start the viewer on the path when done")
     args = parser.parse_args()
 
-    count = vamp.panda.lerp_points()
+    robot = ROBOTS[args.robot]
+    if not hasattr(vamp, args.robot):
+        raise SystemExit(
+            f"vamp has no module {args.robot!r}: build VAMP with it, for example "
+            f"pip install . -C cmake.define.VAMP_ROBOTS=\"{args.robot}\""
+        )
+
+    module = getattr(vamp, args.robot)
+    READY = robot["ready"]
+    count = module.lerp_points()
     start = READY
     if args.traj == "vertical_s":
-        radius = args.s_spacing * (count - 1) / S_LENGTH_PER_RADIUS
+        if args.s_spacing is not None:
+            radius = args.s_spacing * (count - 1) / S_LENGTH_PER_RADIUS
+        else:
+            radius = args.s_radius if args.s_radius is not None else robot["s_radius"]
         positions = s_curve_points(radius, count)
-        farthest = float(np.linalg.norm(positions - SHOULDER, axis=1).max())
+        farthest = float(np.linalg.norm(positions - robot["shoulder"], axis=1).max())
         print(
             f"vertical S: radius {radius:.3f} m, {np.linalg.norm(np.diff(positions, axis=0), axis=1).sum():.2f} m long, "
-            f"the farthest point {farthest:.2f} m from the shoulder (the arm reaches about {REACH} m)"
+            f"the farthest point {farthest:.2f} m from the shoulder (the arm reaches about {robot['reach']} m)"
         )
 
         # the old start, and the rotations of the pose curve from its orientation
@@ -227,10 +261,10 @@ def main():
     pose_curve = args.curve == "so3r3"
     form = "qs" if args.segment else "qt"
     if pose_curve:
-        manifold = vamp.panda.LerpSO3R3Constraint(positions.tolist(), rotations.tolist(), args.rot_weight, args.segment)
+        manifold = module.LerpSO3R3Constraint(positions.tolist(), rotations.tolist(), args.rot_weight, args.segment)
         print(f"lerp curve in SO(3) x R^3 through {count} poses, rotation weight {args.rot_weight}, {form}")
     else:
-        manifold = vamp.panda.LerpR3Constraint(positions.tolist(), args.segment)
+        manifold = module.LerpR3Constraint(positions.tolist(), args.segment)
         print(f"lerp curve in R^3 through {count} points, {form}")
 
     taus = np.array(manifold.parameters())
@@ -270,8 +304,8 @@ def main():
     constraint_settings.tolerance = 1e-7
     constraint_settings.max_iterations = 50
 
-    result = vamp.panda.task_space_rrtc_curve(
-        start, env, plan_settings, vamp.panda.halton(), [manifold], constraint_settings, start_t=t0
+    result = module.task_space_rrtc_curve(
+        start, env, plan_settings, module.halton(), [manifold], constraint_settings, start_t=t0
     )
     print(f"task_space_rrtc_curve: solved {result.solved}, {result.iterations} iterations, {result.nanoseconds / 1e6:.2f} ms")
     check(result.solved, "the planner solved")
@@ -321,19 +355,19 @@ def main():
         check(worst < 1e-3, f"every path state is on the curve at its own t (worst error {worst:.2e})")
         check(final_error < 2e-3, f"the path ends at the curve's last pose (error {final_error:.2e})")
         check(
-            all(vamp.panda.validate(np.asarray(q, dtype=np.float32), env) for q in path),
+            all(module.validate(np.asarray(q, dtype=np.float32), env) for q in path),
             "every path state is collision-free",
         )
 
         ts_curve = np.linspace(0.0, 1.0, 401)
-        output = f"{args.prefix}_{args.curve}_{form}_path.json"
+        output = f"{args.prefix}_{args.robot}_{args.curve}_{form}_path.json"
         with open(output, "w") as f:
             json.dump(
                 {
                     "kind": args.curve,
                     "mode": "path",
-                    "label": f"lerp {args.curve}, {form}, path ({len(path)} states)",
-                    "nq": 7,
+                    "label": f"{args.robot} lerp {args.curve}, {form}, path ({len(path)} states)",
+                    "nq": len(start),
                     "weight": args.rot_weight if pose_curve else 0.0,
                     "taus": taus.tolist(),
                     "keyframes": [curve_pose(t)[0].tolist() for t in taus],

@@ -137,15 +137,21 @@ namespace vamp::binding
     }();
 
     // The one place a Python-side environment is turned into the SIMD environment used for collision
-    // checking. Robots with cuboids cannot be checked against pointclouds (see
-    // vamp::check_cuboid_environment_supported), and the checking functions are noexcept, so the
+    // checking. Cuboids, whether on the robot or in an attachment, cannot be checked against pointclouds
+    // (see vamp::check_cuboid_environment_supported), and the checking functions are noexcept, so the
     // unsupported case has to be caught here to surface as a Python RuntimeError instead of aborting the
     // interpreter.
     template <typename Robot>
     inline auto make_environment(const vamp::collision::Environment<float> &environment)
         -> vamp::collision::Environment<vamp::FloatVector<rake>>
     {
-        if constexpr (n_cuboids_v<Robot> > 0)
+        bool attachment_has_cuboids = false;
+        for (const auto &attachment : environment.attachments)
+        {
+            attachment_has_cuboids = attachment_has_cuboids or not attachment.cuboids.empty();
+        }
+
+        if (n_cuboids_v<Robot> > 0 or attachment_has_cuboids)
         {
             vamp::check_cuboid_environment_supported(environment);
         }

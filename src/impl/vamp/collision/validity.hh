@@ -267,7 +267,8 @@ namespace vamp
         if (not e.pointclouds.empty())
         {
             throw std::runtime_error(
-                "Robots with cuboid collision geometry do not support pointcloud (CAPT) environments.");
+                "Cuboid collision geometry (on the robot or in an attachment) does not support pointcloud (CAPT) "
+                "environments.");
         }
     }
 
@@ -469,26 +470,92 @@ namespace vamp
         return not collision::cuboid_cuboid(a, b).test_zero();
     }
 
-    // Robot cuboid vs. the spheres of the object attached to the robot
+    // Robot cuboid vs. the objects attached to end-effector `end_effector` (their spheres and cuboids)
     template <typename DataT>
     inline auto attachment_cuboid_collision(
         const collision::Environment<DataT> &e,
+        std::size_t end_effector,
         const collision::OrientedBox<DataT> &box) noexcept -> bool
     {
-        for (const auto &att_s : e.attachments->posed_spheres)
+        for (const auto &attachment : e.attachments)
         {
-            if (not collision::cuboid_sphere(box, att_s.x, att_s.y, att_s.z, att_s.r).test_zero())
+            if (attachment.end_effector != end_effector)
             {
-                return true;
+                continue;
+            }
+
+            for (const auto &att_s : attachment.posed_spheres)
+            {
+                if (not collision::cuboid_sphere(box, att_s.x, att_s.y, att_s.z, att_s.r).test_zero())
+                {
+                    return true;
+                }
+            }
+
+            for (const auto &att_c : attachment.posed_cuboids)
+            {
+                if (not collision::cuboid_cuboid(box, att_c).test_zero())
+                {
+                    return true;
+                }
             }
         }
 
         return false;
     }
 
+    // As above for robot link `link`: attachments that are allowed to touch that link are skipped.
     template <typename DataT>
-    inline constexpr auto attachment_environment_collision(const collision::Environment<DataT> &e) noexcept
-        -> bool
+    inline auto attachment_cuboid_collision(
+        const collision::Environment<DataT> &e,
+        std::size_t end_effector,
+        std::size_t link,
+        const collision::OrientedBox<DataT> &box) noexcept -> bool
+    {
+        for (const auto &attachment : e.attachments)
+        {
+            if (attachment.end_effector != end_effector or attachment.allows(link))
+            {
+                continue;
+            }
+
+            for (const auto &att_s : attachment.posed_spheres)
+            {
+                if (not collision::cuboid_sphere(box, att_s.x, att_s.y, att_s.z, att_s.r).test_zero())
+                {
+                    return true;
+                }
+            }
+
+            for (const auto &att_c : attachment.posed_cuboids)
+            {
+                if (not collision::cuboid_cuboid(box, att_c).test_zero())
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Single-attachment form of the previous generators: checks against the attachments of end-effector 0.
+    template <typename DataT>
+    inline auto attachment_cuboid_collision(
+        const collision::Environment<DataT> &e,
+        const collision::OrientedBox<DataT> &box) noexcept -> bool
+    {
+        return attachment_cuboid_collision<DataT>(e, std::size_t{0}, box);
+    }
+
+    // Attached objects vs. the environment.
+    //
+    // As for robot cuboids, attached cuboids do not support pointcloud (CAPT) environments (see
+    // check_cuboid_environment_supported), and as everything that calls this is noexcept, an attachment
+    // with cuboids in such an environment terminates the program. Callers (e.g., bindings) should check
+    // ahead of time.
+    template <typename DataT>
+    inline auto attachment_environment_collision(const collision::Environment<DataT> &e) noexcept -> bool
     {
         for (const auto &attachment : e.attachments)
         {
@@ -503,14 +570,23 @@ namespace vamp
                     return true;
                 }
             }
+
+            for (const auto &c : attachment.posed_cuboids)
+            {
+                if (cuboid_environment_in_collision(e, c))
+                {
+                    return true;
+                }
+            }
         }
 
         return false;
     }
 
-    // Checks a robot sphere against every attachment riding on end-effector `end_effector`.
+    // Checks a robot sphere against every attachment riding on end-effector `end_effector` (spheres and
+    // cuboids).
     template <typename DataT, typename ArgT1, typename ArgT2, typename ArgT3, typename ArgT4>
-    inline constexpr auto attachment_sphere_collision(
+    inline auto attachment_sphere_collision(
         const collision::Environment<DataT> &e,
         std::size_t end_effector,
         ArgT1 sx_,
@@ -538,6 +614,14 @@ namespace vamp
                     return true;
                 }
             }
+
+            for (const auto &att_c : attachment.posed_cuboids)
+            {
+                if (not collision::cuboid_sphere(att_c, sx, sy, sz, sr).test_zero())
+                {
+                    return true;
+                }
+            }
         }
 
         return false;
@@ -545,7 +629,7 @@ namespace vamp
 
     // As above for robot link `link`: attachments that are allowed to touch that link are skipped.
     template <typename DataT, typename ArgT1, typename ArgT2, typename ArgT3, typename ArgT4>
-    inline constexpr auto attachment_sphere_collision(
+    inline auto attachment_sphere_collision(
         const collision::Environment<DataT> &e,
         std::size_t end_effector,
         std::size_t link,
@@ -573,6 +657,14 @@ namespace vamp
                     return true;
                 }
             }
+
+            for (const auto &att_c : attachment.posed_cuboids)
+            {
+                if (not collision::cuboid_sphere(att_c, sx, sy, sz, sr).test_zero())
+                {
+                    return true;
+                }
+            }
         }
 
         return false;
@@ -590,11 +682,10 @@ namespace vamp
         return attachment_sphere_collision<DataT>(e, std::size_t{0}, sx_, sy_, sz_, sr_);
     }
 
-    // Checks attachments on different end-effectors against each other; attachments riding
-    // on the same end-effector move rigidly together and are never tested.
+    // Checks attachments on different end-effectors against each other (spheres and cuboids); attachments
+    // riding on the same end-effector move rigidly together and are never tested.
     template <typename DataT>
-    inline constexpr auto attachment_attachment_collision(const collision::Environment<DataT> &e) noexcept
-        -> bool
+    inline auto attachment_attachment_collision(const collision::Environment<DataT> &e) noexcept -> bool
     {
         for (auto i = 0U; i < e.attachments.size(); ++i)
         {
@@ -613,6 +704,33 @@ namespace vamp
                     {
                         if (not collision::sphere_sphere_sql2(sa.x, sa.y, sa.z, sa.r, sb.x, sb.y, sb.z, sb.r)
                                     .test_zero())
+                        {
+                            return true;
+                        }
+                    }
+
+                    for (const auto &cb : b.posed_cuboids)
+                    {
+                        if (not collision::cuboid_sphere(cb, sa.x, sa.y, sa.z, sa.r).test_zero())
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                for (const auto &ca : a.posed_cuboids)
+                {
+                    for (const auto &sb : b.posed_spheres)
+                    {
+                        if (not collision::cuboid_sphere(ca, sb.x, sb.y, sb.z, sb.r).test_zero())
+                        {
+                            return true;
+                        }
+                    }
+
+                    for (const auto &cb : b.posed_cuboids)
+                    {
+                        if (not collision::cuboid_cuboid(ca, cb).test_zero())
                         {
                             return true;
                         }

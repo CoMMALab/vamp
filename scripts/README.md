@@ -95,8 +95,9 @@ The script supports the following arguments:
 
 ## `kmriiwa_table.py`
 A mobile manipulation example with the KMR iiwa (an iiwa arm on a mobile base), planned as one 10-DoF robot: base x, y, yaw, then the seven arm joints.
-The robot starts on one side of a table with its arm upright and has to drive around the table to the other side and reach over it, with the tool above an object on the tabletop.
+The robot starts on one side of a table with its arm upright, drives around the table and reaches over it to pick up a block, lifts the block, and carries it to another side of the table.
 Its collision model mixes shapes: spheres cover the arm and a single cuboid covers the base, so the base is checked as the large box it is.
+The block is carried as a cuboid attachment (`Attachment.add_cuboid`), so while it is carried the block itself is checked against the table and the robot, not an approximation of it by spheres.
 
 The robot must be built into VAMP (it is not in the default set of robots you get from older builds), e.g.,
 ```
@@ -119,5 +120,5 @@ Options:
 **Base yaw limit.** The planner treats the base yaw as an ordinary coordinate within its joint limits. If the URDF gives it a very wide range (e.g., +-1000 rad), planned paths can spin the base around many times.
 The script warns when the range exceeds a full turn. Limit the base yaw joint (`kmr_base/theta`) to +-pi in the URDF and regenerate the robot with cricket.
 
-Collision cuboids on a robot cannot be checked against pointcloud (CAPT) environments, so use spheres, capsules, cuboids, or heightfields for the environment with this robot.
+Cuboids on a robot, or in an attachment, cannot be checked against pointcloud (CAPT) environments (a Python `RuntimeError` is raised), so use spheres, capsules, cuboids, or heightfields for the environment with this robot.
 

@@ -1,10 +1,8 @@
 """Plans along a straight-line (lerp) curve in (q, t) from Python: vamp.<robot>.task_space_rrtc_curve.
 
-Robots: the Panda (default) and the iiwa with the gripper's tool frame as its end-effector (--robot iiwa_tool).
-
-The curve is the straight-line interpolation of vamp.<robot>.lerp_points() keyframes that start at the end-effector's pose at
-the robot's ready configuration and wander from there in a gentle S: positions in R^3 (--curve r3, LerpR3Constraint) or poses in
-SO(3) x R^3 with the rotation slerped, turning about the world z axis (--curve so3r3, LerpSO3R3Constraint,
+The curve is the straight-line interpolation of lerp_points() keyframes that start at the end-effector's pose at the Panda's ready
+configuration and wander from there in a gentle S: positions in R^3 (--curve r3, vamp.panda.LerpR3Constraint) or poses in
+SO(3) x R^3 with the rotation slerped, turning about the world z axis (--curve so3r3, vamp.panda.LerpSO3R3Constraint,
 with an adjustable --rot-weight in m / rad). t in [0, 1] is the normalized chord length. States of the tree carry the t
 they sit at, sampled with the joints and held fixed while a state is projected onto the curve; the goal is the end of
 the curve, which the planner holds a copy of the constraint at t = 1 for, so no goal constraint is given.

@@ -1,5 +1,8 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
+
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
 
@@ -52,10 +55,43 @@
 DEFINE_HAS_METHOD(set_lows)
 DEFINE_HAS_METHOD(set_highs)
 DEFINE_HAS_METHOD(set_radius)
+DEFINE_HAS_METHOD(n_cuboids)
 
 namespace vamp::binding
 {
     static constexpr const std::size_t rake = vamp::FloatVectorWidth;
+
+    // Number of cuboids in the robot's collision model. Robots generated before cuboid support do not
+    // define `n_cuboids`; they have none.
+    template <typename Robot>
+    inline constexpr std::size_t n_cuboids_v = []() constexpr -> std::size_t
+    {
+        if constexpr (has_n_cuboids_v<Robot>)
+        {
+            return Robot::n_cuboids;
+        }
+        else
+        {
+            return 0;
+        }
+    }();
+
+    // The one place a Python-side environment is turned into the SIMD environment used for collision
+    // checking. Robots with cuboids cannot be checked against pointclouds (see
+    // vamp::check_cuboid_environment_supported), and the checking functions are noexcept, so the
+    // unsupported case has to be caught here to surface as a Python RuntimeError instead of aborting the
+    // interpreter.
+    template <typename Robot>
+    inline auto make_environment(const vamp::collision::Environment<float> &environment)
+        -> vamp::collision::Environment<vamp::FloatVector<rake>>
+    {
+        if constexpr (n_cuboids_v<Robot> > 0)
+        {
+            vamp::check_cuboid_environment_supported(environment);
+        }
+
+        return vamp::collision::Environment<vamp::FloatVector<rake>>(environment);
+    }
 
     template <typename Robot>
     struct NDArrayInput
@@ -183,7 +219,7 @@ namespace vamp::binding
                 typename RNG::Ptr rng) -> PlanningResult
             {
                 return Planner::solve(
-                    Input::to(start), Input::to(goal), EnvironmentVector(environment), settings, rng);
+                    Input::to(start), Input::to(goal), make_environment<Robot>(environment), settings, rng);
             }
 
             inline static auto multi(
@@ -202,7 +238,7 @@ namespace vamp::binding
                 }
 
                 return Planner::solve(
-                    Input::to(start), goals_v, EnvironmentVector(environment), settings, rng);
+                    Input::to(start), goals_v, make_environment<Robot>(environment), settings, rng);
             }
 
             inline static auto roadmap(
@@ -213,7 +249,7 @@ namespace vamp::binding
                 typename RNG::Ptr rng) -> Roadmap
             {
                 return Planner::build_roadmap(
-                    Input::to(start), Input::to(goal), EnvironmentVector(environment), settings, rng);
+                    Input::to(start), Input::to(goal), make_environment<Robot>(environment), settings, rng);
             }
         };
 
@@ -251,10 +287,47 @@ namespace vamp::binding
             return result;
         }
 
+        // Robot cuboids posed at a configuration, as the same Cuboid type environments use (center, three
+        // axes, and half-lengths), so they can be drawn like any other cuboid. Empty for robots without
+        // cuboids.
+        inline static auto cuboid_fk(const Type &c_in) -> std::vector<vamp::collision::Cuboid<float>>
+        {
+            std::vector<vamp::collision::Cuboid<float>> result;
+
+            if constexpr (n_cuboids_v<Robot> > 0)
+            {
+                typename Robot::template Cuboids<1> out;
+                Robot::template cuboid_fk<1>(Input::template block<1>(c_in), out);
+
+                result.reserve(Robot::n_cuboids);
+                for (auto i = 0U; i < Robot::n_cuboids; ++i)
+                {
+                    result.emplace_back(
+                        out.x[{i, 0}],
+                        out.y[{i, 0}],
+                        out.z[{i, 0}],
+                        out.axis_1_x[{i, 0}],
+                        out.axis_1_y[{i, 0}],
+                        out.axis_1_z[{i, 0}],
+                        out.axis_2_x[{i, 0}],
+                        out.axis_2_y[{i, 0}],
+                        out.axis_2_z[{i, 0}],
+                        out.axis_3_x[{i, 0}],
+                        out.axis_3_y[{i, 0}],
+                        out.axis_3_z[{i, 0}],
+                        out.axis_1_r[{i, 0}],
+                        out.axis_2_r[{i, 0}],
+                        out.axis_3_r[{i, 0}]);
+                }
+            }
+
+            return result;
+        }
+
         inline static auto debug(const Type &c_in, const EnvironmentInput &environment) ->
             typename Robot::Debug
         {
-            return Robot::fkcc_debug(EnvironmentVector(environment), Input::template block<rake>(c_in));
+            return Robot::fkcc_debug(make_environment<Robot>(environment), Input::template block<rake>(c_in));
         }
 
         inline static auto
@@ -268,7 +341,7 @@ namespace vamp::binding
 
             return (not check_bounds or in_bounds) and
                    vamp::planning::validate_motion<Robot, rake, 1>(
-                       configuration, configuration, EnvironmentVector(environment));
+                       configuration, configuration, make_environment<Robot>(environment));
         }
 
         inline static auto validate_motion(
@@ -291,7 +364,7 @@ namespace vamp::binding
 
             return (not check_bounds or (in_bounds_in and in_bounds_out)) and
                    vamp::planning::validate_motion<Robot, rake, 1>(
-                       configuration_in, configuration_out, EnvironmentVector(environment));
+                       configuration_in, configuration_out, make_environment<Robot>(environment));
         }
 
         inline static auto simplify(
@@ -301,7 +374,7 @@ namespace vamp::binding
             typename RNG::Ptr rng) -> PlanningResult
         {
             return vamp::planning::simplify<Robot, rake, Robot::resolution>(
-                path, EnvironmentVector(environment), settings, rng);
+                path, make_environment<Robot>(environment), settings, rng);
         }
 
         inline static auto eefk(const Type &start) -> Eigen::Matrix4f
@@ -316,10 +389,16 @@ namespace vamp::binding
             const EnvironmentInput &environment) -> std::vector<collision::Point>
         {
             // TODO: Do this smarter with SIMD CC
+            // NOTE: Only points are checked against the environment here (as spheres), never robot
+            // cuboids, so unlike the other entry points this is fine for pointcloud environments and
+            // does not go through make_environment.
             EnvironmentVector ev(environment);
 
             typename Robot::template Spheres<1> out;
             Robot::template sphere_fk<1>(Input::template block<1>(c_in), out);
+
+            // Robot cuboids; empty for robots without any
+            const auto robot_cuboids = cuboid_fk(c_in);
 
             std::vector<collision::Point> filtered;
             filtered.reserve(pc.size());
@@ -340,6 +419,37 @@ namespace vamp::binding
                     }
                 }
 
+                // Sphere (the point, inflated by point_radius) vs. each robot cuboid
+                for (const auto &cuboid : robot_cuboids)
+                {
+                    if (not valid)
+                    {
+                        break;
+                    }
+
+                    const float xs = x - cuboid.x, ys = y - cuboid.y, zs = z - cuboid.z;
+                    const float a1 = std::max(
+                        std::abs(
+                            cuboid.axis_1_x * xs + cuboid.axis_1_y * ys + cuboid.axis_1_z * zs) -
+                            cuboid.axis_1_r,
+                        0.F);
+                    const float a2 = std::max(
+                        std::abs(
+                            cuboid.axis_2_x * xs + cuboid.axis_2_y * ys + cuboid.axis_2_z * zs) -
+                            cuboid.axis_2_r,
+                        0.F);
+                    const float a3 = std::max(
+                        std::abs(
+                            cuboid.axis_3_x * xs + cuboid.axis_3_y * ys + cuboid.axis_3_z * zs) -
+                            cuboid.axis_3_r,
+                        0.F);
+
+                    if (a1 * a1 + a2 * a2 + a3 * a3 < r * r)
+                    {
+                        valid = false;
+                    }
+                }
+
                 if (valid)
                 {
                     filtered.emplace_back(point);
@@ -350,8 +460,14 @@ namespace vamp::binding
         }
     };
 
+    // `submodule_name` is the name the robot is exposed under in Python. The build uses the same name
+    // (the robot's header name) to list robots and generate stubs, so it has to be what the module is
+    // registered as. It defaults to the robot's own name, which is what it was before this parameter
+    // existed; they differ for generated robots whose name has no underscore but whose header does
+    // (e.g., KMRIiwaTool is named "kmriiwatool" but lives in kmriiwa_tool.hh).
     template <typename Robot>
-    inline auto init_robot(nanobind::module_ &pymodule) -> nanobind::module_
+    inline auto init_robot(nanobind::module_ &pymodule, const char *submodule_name = Robot::name)
+        -> nanobind::module_
     {
         namespace nb = nanobind;
         using namespace nb::literals;
@@ -363,7 +479,7 @@ namespace vamp::binding
         using HPN = Helper<Robot, NA>;
         using HPA = Helper<Robot, CA>;
 
-        auto submodule = pymodule.def_submodule(Robot::name, "Robot-specific submodule");
+        auto submodule = pymodule.def_submodule(submodule_name, "Robot-specific submodule");
 
         submodule.def(
             "dimension",
@@ -375,6 +491,10 @@ namespace vamp::binding
             "Collision checking resolution for this robot.");
         submodule.def(
             "n_spheres", []() { return Robot::n_spheres; }, "Number of spheres in robot collision model.");
+        submodule.def(
+            "n_cuboids",
+            []() { return n_cuboids_v<Robot>; },
+            "Number of cuboids in robot collision model (0 if the robot is spheres only).");
         submodule.def(
             "space_measure", []() { return Robot::space_measure(); }, "Measure of robot's C-space.");
         submodule.def(
@@ -508,7 +628,7 @@ namespace vamp::binding
                 "validate",
                 [](Path &p, const typename HPN::EnvironmentInput &e)
                 {
-                    const typename HPN::EnvironmentVector ev(e);
+                    const auto ev = make_environment<Robot>(e);
                     return p.template validate<rake>(ev);
                 },
                 "Validate the path in an environment.")
@@ -582,6 +702,12 @@ namespace vamp::binding
            "Computes the forward kinematics of the robot. Returns array of all collision sphere positions.",
            "configuration"_a);
 
+        MF("cuboid_fk",
+           cuboid_fk,
+           "Computes the forward kinematics of the robot's collision cuboids. Returns a list of Cuboids "
+           "(empty if the robot has none).",
+           "configuration"_a);
+
         MF("eefk",
            eefk,
            "Computes the forward kinematics of the robot's end-effector. Returns XYZ and a XYZW quaternion.",
@@ -589,7 +715,9 @@ namespace vamp::binding
 
         MF("debug",
            debug,
-           "Check which spheres of a robot configuration are in collision.",
+           "Check which geometry of a robot configuration is in collision. Returns, for each sphere and then "
+           "each cuboid, the names of the environment objects it collides with, and the pairs of robot "
+           "geometry in self-collision (an index >= n_spheres refers to cuboid index - n_spheres).",
            "configuration"_a,
            "environment"_a = vamp::collision::Environment<float>());
 
@@ -610,7 +738,7 @@ namespace vamp::binding
 
         MF("filter_self_from_pointcloud",
            filter_self_from_pointcloud,
-           "Removes points from pointcloud which collide with the robot and environment.",
+           "Removes points from pointcloud which collide with the robot (spheres and cuboids) and environment.",
            "pc"_a,
            "point_radius"_a,
            "configuration"_a,

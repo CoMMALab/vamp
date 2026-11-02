@@ -6,7 +6,13 @@
 #include <vamp/collision/sphere_capsule.hh>
 #include <vamp/collision/sphere_cuboid.hh>
 #include <vamp/collision/sphere_heightfield.hh>
+#include <vamp/collision/cuboid_sphere.hh>
+#include <vamp/collision/cuboid_capsule.hh>
+#include <vamp/collision/cuboid_cuboid.hh>
+#include <vamp/collision/cuboid_heightfield.hh>
 #include <vamp/collision/math.hh>
+
+#include <stdexcept>
 
 namespace vamp
 {
@@ -246,6 +252,238 @@ namespace vamp
         }
 
         return objects;
+    }
+
+    // Robot cuboid vs. environment collision checking.
+    //
+    // Pointclouds (CAPT) are not supported: the CAPT affordance tree is built for sphere queries of a
+    // bounded radius and has no meaningful query for a box. Rather than silently ignoring the pointcloud
+    // (which would report free space where there is none), these throw if the environment has one. Call
+    // check_cuboid_environment_supported once up front (e.g., in bindings) so the error surfaces
+    // cleanly: robots' fkcc functions are noexcept, so a throw from inside one terminates the program.
+    template <typename DataT>
+    inline void check_cuboid_environment_supported(const collision::Environment<DataT> &e)
+    {
+        if (not e.pointclouds.empty())
+        {
+            throw std::runtime_error(
+                "Robots with cuboid collision geometry do not support pointcloud (CAPT) environments.");
+        }
+    }
+
+    template <typename DataT>
+    inline auto cuboid_environment_in_collision(
+        const collision::Environment<DataT> &e,
+        const collision::OrientedBox<DataT> &box) -> bool
+    {
+        check_cuboid_environment_supported(e);
+
+        // Bounding sphere about the origin of the box, for early-out against the sorted environment
+        const auto max_extent =
+            collision::sqrt(collision::dot_3(box.x, box.y, box.z, box.x, box.y, box.z)) +
+            box.bounding_radius();
+
+        for (const auto &es : e.spheres)
+        {
+            if ((es.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_sphere(box, es).test_zero())
+            {
+                return true;
+            }
+        }
+
+        for (const auto &ec : e.capsules)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_capsule(box, ec).test_zero())
+            {
+                return true;
+            }
+        }
+
+        for (const auto &ec : e.z_aligned_capsules)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_z_aligned_capsule(box, ec).test_zero())
+            {
+                return true;
+            }
+        }
+
+        for (const auto &ec : e.cuboids)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_cuboid(box, ec).test_zero())
+            {
+                return true;
+            }
+        }
+
+        for (const auto &ec : e.z_aligned_cuboids)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_z_aligned_cuboid(box, ec).test_zero())
+            {
+                return true;
+            }
+        }
+
+        for (const auto &eh : e.heightfields)
+        {
+            if (not collision::cuboid_heightfield(box, eh).test_zero())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    template <typename DataT>
+    inline auto cuboid_environment_get_collisions(
+        const collision::Environment<DataT> &e,
+        const collision::OrientedBox<DataT> &box) -> std::vector<std::string>
+    {
+        check_cuboid_environment_supported(e);
+
+        std::vector<std::string> objects;
+
+        const auto max_extent =
+            collision::sqrt(collision::dot_3(box.x, box.y, box.z, box.x, box.y, box.z)) +
+            box.bounding_radius();
+
+        for (const auto &es : e.spheres)
+        {
+            if ((es.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_sphere(box, es).test_zero())
+            {
+                objects.emplace_back(es.name);
+            }
+        }
+
+        for (const auto &ec : e.capsules)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_capsule(box, ec).test_zero())
+            {
+                objects.emplace_back(ec.name);
+            }
+        }
+
+        for (const auto &ec : e.z_aligned_capsules)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_z_aligned_capsule(box, ec).test_zero())
+            {
+                objects.emplace_back(ec.name);
+            }
+        }
+
+        for (const auto &ec : e.cuboids)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_cuboid(box, ec).test_zero())
+            {
+                objects.emplace_back(ec.name);
+            }
+        }
+
+        for (const auto &ec : e.z_aligned_cuboids)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_z_aligned_cuboid(box, ec).test_zero())
+            {
+                objects.emplace_back(ec.name);
+            }
+        }
+
+        for (const auto &eh : e.heightfields)
+        {
+            if (not collision::cuboid_heightfield(box, eh).test_zero())
+            {
+                objects.emplace_back(eh.name);
+            }
+        }
+
+        return objects;
+    }
+
+    // Robot self-collision checks involving cuboids. Both bodies are robot geometry, so (unlike the
+    // environment checks) neither throws and both are safe to call from noexcept code.
+    template <typename DataT>
+    inline auto sphere_cuboid_self_collision(
+        const collision::OrientedBox<DataT> &box,
+        const DataT &sx,
+        const DataT &sy,
+        const DataT &sz,
+        const DataT &sr) noexcept -> bool
+    {
+        return not collision::cuboid_sphere(box, sx, sy, sz, sr).test_zero();
+    }
+
+    template <typename DataT>
+    inline auto cuboid_cuboid_self_collision(
+        const collision::OrientedBox<DataT> &a,
+        const collision::OrientedBox<DataT> &b) noexcept -> bool
+    {
+        return not collision::cuboid_cuboid(a, b).test_zero();
+    }
+
+    // Robot cuboid vs. the spheres of the object attached to the robot
+    template <typename DataT>
+    inline auto attachment_cuboid_collision(
+        const collision::Environment<DataT> &e,
+        const collision::OrientedBox<DataT> &box) noexcept -> bool
+    {
+        for (const auto &att_s : e.attachments->posed_spheres)
+        {
+            if (not collision::cuboid_sphere(box, att_s.x, att_s.y, att_s.z, att_s.r).test_zero())
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     template <typename DataT>

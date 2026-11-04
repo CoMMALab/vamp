@@ -3,7 +3,9 @@
 #include <array>
 #include <vector>
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <type_traits>
 
 #include <pdqsort.h>
 
@@ -19,6 +21,21 @@
 
 namespace vamp::collision
 {
+    namespace detail
+    {
+        // Robots generated before cuboid support do not define `n_cuboids`; they have none.
+        template <typename Robot, typename = void>
+        struct robot_n_cuboids : std::integral_constant<std::size_t, 0>
+        {
+        };
+
+        template <typename Robot>
+        struct robot_n_cuboids<Robot, std::void_t<decltype(Robot::n_cuboids)>>
+          : std::integral_constant<std::size_t, Robot::n_cuboids>
+        {
+        };
+    }  // namespace detail
+
     // LUTs taken from https://github.com/Forceflow/libmorton
 
     static constexpr const std::array<uint32_t, 256> MORTON_LUT_X_256 = {
@@ -335,6 +352,36 @@ namespace vamp::collision
         typename Robot::template Spheres<1> spheres;
         Robot::template sphere_fk<1>(block, spheres);
 
+        // Cuboids are only posed for robots that have them
+        constexpr std::size_t n_cuboids = detail::robot_n_cuboids<Robot>::value;
+        std::vector<std::array<float, 15>> cuboids;
+        if constexpr (n_cuboids > 0)
+        {
+            typename Robot::template Cuboids<1> posed;
+            Robot::template cuboid_fk<1>(block, posed);
+
+            cuboids.reserve(n_cuboids);
+            for (std::size_t i = 0; i < n_cuboids; ++i)
+            {
+                cuboids.push_back(
+                    {posed.x[{i, 0}],
+                     posed.y[{i, 0}],
+                     posed.z[{i, 0}],
+                     posed.axis_1_x[{i, 0}],
+                     posed.axis_1_y[{i, 0}],
+                     posed.axis_1_z[{i, 0}],
+                     posed.axis_2_x[{i, 0}],
+                     posed.axis_2_y[{i, 0}],
+                     posed.axis_2_z[{i, 0}],
+                     posed.axis_3_x[{i, 0}],
+                     posed.axis_3_y[{i, 0}],
+                     posed.axis_3_z[{i, 0}],
+                     posed.axis_1_r[{i, 0}],
+                     posed.axis_2_r[{i, 0}],
+                     posed.axis_3_r[{i, 0}]});
+            }
+        }
+
         out.clear();
         out.reserve(n);
 
@@ -362,6 +409,26 @@ namespace vamp::collision
                     break;
                 }
             }
+
+            // Sphere (the point, inflated by point_radius) vs. each robot cuboid
+            for (const auto &c : cuboids)
+            {
+                if (not valid)
+                {
+                    break;
+                }
+
+                const float xs = x - c[0], ys = y - c[1], zs = z - c[2];
+                const float a1 = std::max(std::abs(c[3] * xs + c[4] * ys + c[5] * zs) - c[12], 0.F);
+                const float a2 = std::max(std::abs(c[6] * xs + c[7] * ys + c[8] * zs) - c[13], 0.F);
+                const float a3 = std::max(std::abs(c[9] * xs + c[10] * ys + c[11] * zs) - c[14], 0.F);
+
+                if (a1 * a1 + a2 * a2 + a3 * a3 < point_radius * point_radius)
+                {
+                    valid = false;
+                }
+            }
+
             if (valid)
             {
                 out.emplace_back(vamp::collision::Point{x, y, z});

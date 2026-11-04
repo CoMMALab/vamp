@@ -30,38 +30,19 @@ from diffik_benchmark.trajectories import Episode  # noqa: E402
 
 # (start_id, L, stride).
 PROBLEMS = [
-    # kmriiwa_base_link vs the left finger's tip sphere (sphere 69, r 35 mm) in
-    # VAMP's sphere model; the base spheres are big (r 19-26 cm). Overlap in mm
-    # (my numpy check), all 18 starts fail at L=4 in the planner and tsr passes:
-    (58, 4, 6),   # 83
-    (9, 4, 6),    # 63
-    (157, 4, 6),  # 56
-    (93, 4, 6),   # 55
-    (89, 4, 6),   # 45
-    (292, 4, 6),  # 41
-    (165, 4, 6),  # 36
-    (118, 4, 6),  # 29
-    (25, 4, 6),   # 28
-    (201, 4, 6),  # 26 (passes: the reference barely moves, held q0 is accepted)
-    (8, 4, 6),    # 26
-    (244, 4, 6),  # 23
-    (57, 4, 6),   # 12
-    (137, 4, 6),  # 9
-    (277, 4, 6),  # 5
-    (168, 4, 6),  # 5
-    (312, 4, 6),  # 4
-    (74, 4, 6),   # 2.5 (planner solves it)
-    # Valid starts where the planner uses the whole 20000-iteration budget and
-    # tsr passes:
-    (144, 4, 6),
-    (37, 16, 6), (148, 16, 6), (150, 16, 6), (184, 16, 6), (186, 16, 6),
-    (218, 16, 6), (280, 16, 6), (281, 16, 6),
-    (16, 32, 6), (18, 32, 6), (42, 32, 6), (53, 32, 6), (85, 32, 6),
-    # iiwa_link_1 vs kmriiwa_base_link (pair now disabled in the cricket SRDF;
-    # these should validate after the rebuild): 1, 4, 5, 7 at L=4.
-    (1, 4, 6), (4, 4, 6), (5, 4, 6), (7, 4, 6),
+    # The 7 L=32 planner failures (no path returned; the scorer reads the held q0
+    # as WAYPOINT_MISS) of the 2026-11-03 full_reason run of 02:20; all use the
+    # whole 20000-iteration budget. tsr passes the first three; 198 and 199 now
+    # solve.
+    (225, 32, 6),
+    (272, 32, 6),
+    (305, 32, 6),
+    (8, 32, 6),    # tsr fails too
+    (144, 32, 6),  # tsr fails too (0.76 s)
+    (233, 32, 6),  # tsr fails too
+    (292, 32, 6),  # tsr fails too
 ]
-problem_index = 0
+problem_index = 4
 START_ID, L, STRIDE = PROBLEMS[problem_index]
 # START_ID, L, STRIDE = 1, 4, 6
 
@@ -70,20 +51,25 @@ START_ID, L, STRIDE = PROBLEMS[problem_index]
 P = VampCurveRRTCParams()
 ROT_WEIGHT = P.rotation_weight
 TOL = P.tolerance
-PROJ_METHOD = P.proj_method
-RANGE = P.range
+PROJ_METHOD = 'BoundedLS'
+RANGE = 0.75
 MAX_ITERATIONS = P.max_iterations
-MAX_SAMPLES = P.max_samples
+# MAX_SAMPLES = P.max_samples
+MAX_SAMPLES = 200_000
 MAX_GREEDY_STEPS = P.max_greedy_steps
 PARAMETER_WEIGHT = P.parameter_weight
 PROJECT_SAMPLES = P.project_samples
 N_TRIALS = 5
-SWEEP_WEIGHTS = [0.1, 0.3, 1.0]
+# SWEEP_WEIGHTS = [0.1, 0.3, 1.0]
+SWEEP_WEIGHTS = [0.1, 0.25, 0.5, 1.0]
 SWEEP_SAMPLES = [20_000, 200_000]
+FINE_SWEEP = True      # solved/not over a fine grid of rotation weights
+SEED_WEIGHTS = [0.1, 0.3, 1.0]  # weights for the xorshift seed sweep ([] = skip)
+N_SEEDS = 20
 PREFIX_SWEEP = False  # plan on the first k waypoints, k = 2 .. L
 
 DATA = "/src/diffik-benchmark/data"
-URDF = "/src/diffik-benchmark/models/kmriiwa/external/kmriiwa_spherized.urdf"
+URDF = "/src/diffik-benchmark/models/kmriiwa/external/kmriiwa_primitive.urdf"
 # Sphere order of the generated header = the order of the <collision> spheres in
 # the spherized URDF cricket was given; used only to name colliding spheres.
 SPHERE_URDF = URDF
@@ -236,16 +222,31 @@ q_start32 = q_start.astype(np.float32)
 # in ~50 ms). This is the main suspect on the kmriiwa.
 sphere_links = []
 sphere_geom = []  # (link, offset in the link frame, radius), in sphere order
+box_links = []    # cuboids, in URDF order (= cuboid index in the generated header)
 for link in ET.parse(SPHERE_URDF).getroot().findall("link"):
     for col in link.findall("collision"):
         org = col.find("origin")
         xyz = np.array([float(x) for x in
                         (org.get("xyz", "0 0 0") if org is not None else "0 0 0").split()])
-        radius = float(col.find("geometry").find("sphere").get("radius"))
+        geometry = col.find("geometry")
+        if geometry.find("box") is not None:
+            box_links.append(link.get("name"))
+            continue
+        radius = float(geometry.find("sphere").get("radius"))
         sphere_links.append(link.get("name"))
         sphere_geom.append((link.get("name"), xyz, radius))
+# VAMP's debug() indexes spheres first, then cuboids (an index >= n_spheres is a
+# cuboid), so the cuboids simply follow the spheres here.
+n_spheres = len(sphere_links)
+sphere_links += box_links
 valid = module.validate(q_start32, env, True)
-print(f"VAMP validate(q_start): {valid}")
+print(f"VAMP validate(q_start): {valid}  "
+      f"(without the bounds check: {module.validate(q_start32, env, False)})")
+for name_, q_ in (("q0", q0), ("q_start", q_start)):
+    for n_, v_, lo_, hi_ in zip(joint_names, q_, q_lo, q_hi):
+        if v_ < lo_ or v_ > hi_:
+            print(f"  {name_}: {n_} = {v_:.5f} is outside [{lo_:.5f}, {hi_:.5f}] "
+                  f"by {max(lo_ - v_, v_ - hi_):.2e}")
 env_hits, self_pairs = module.debug(q_start32, env)
 if self_pairs:
     named = sorted({tuple(sorted((sphere_links[a], sphere_links[b]))) for a, b in self_pairs})
@@ -270,7 +271,7 @@ def update_highlights(q):
     urdf.update_cfg(np.asarray(q, float))
     _, pairs = module.debug(np.asarray(q, dtype=np.float32), env)
     names = set()
-    for i in sorted({i for pr in pairs for i in pr}):
+    for i in sorted({i for pr in pairs for i in pr if i < n_spheres}):
         link, off, rad = sphere_geom[i]
         T = urdf.get_transform(link, "world")
         highlights.append(server.scene.add_icosphere(
@@ -290,14 +291,15 @@ manifold = module.LerpSO3R3Constraint(
     ROT_WEIGHT, False)
 
 
-def plan_with(weight=ROT_WEIGHT, max_samples=MAX_SAMPLES, k=None, method_name=PROJ_METHOD):
+def plan_with(weight=ROT_WEIGHT, max_samples=MAX_SAMPLES, k=None, method_name=PROJ_METHOD, seed=None):
     kp, kq, _ = pad_keyframes(plan_pos[:k], plan_quat[:k], n_points, weight)
     m = module.LerpSO3R3Constraint(kp.tolist(), kq.tolist(), weight, False)
     pl = vamp.TaskSpaceRRTCSettings()
     pl.range, pl.max_greedy_steps = RANGE, MAX_GREEDY_STEPS
     pl.max_iterations, pl.max_samples = MAX_ITERATIONS, max_samples
     pl.project_samples, pl.parameter_weight = PROJECT_SAMPLES, PARAMETER_WEIGHT
-    return module.task_space_rrtc_curve(q_start32, env, pl, module.halton(), [m],
+    sampler = module.halton() if seed is None else module.xorshift(seed)
+    return module.task_space_rrtc_curve(q_start32, env, pl, sampler, [m],
                                         make_settings(method_name), start_t=0.0)
 
 
@@ -315,13 +317,39 @@ if SWEEP_WEIGHTS and SWEEP_SAMPLES:
                 report(f"  rotation_weight={w:<4} max_samples={ms:<7}", plan_with(w, ms))
             except (ValueError, RuntimeError) as e:
                 print(f"  rotation_weight={w:<4} max_samples={ms:<7} error: {e}")
-if PREFIX_SWEEP:
-    print(f"prefix sweep (first k of {L} waypoints):")
-    for k in range(2, L + 1):
-        try:
-            report(f"  k={k:<3}", plan_with(k=k))
-        except (ValueError, RuntimeError) as e:
-            print(f"  k={k:<3} error: {e}")
+# Is the outcome a property of the weight, or of which random samples the weight
+# happens to give? Halton is deterministic, so a weight only ever sees one draw.
+# (1) a fine weight grid (halton): solved (#) / not (.) in order; an erratic
+#     pattern between neighbouring weights means chaotic sensitivity, a contiguous
+#     band means the weight matters.
+# (2) several xorshift seeds at fixed weights: the solve rate per weight.
+# FINE_WEIGHTS = np.round(np.arange(0.05, 1.0001, 0.025), 3) if FINE_SWEEP else []
+# if len(FINE_WEIGHTS):
+#     pattern = ""
+#     for w in FINE_WEIGHTS:
+#         try:
+#             pattern += "#" if plan_with(float(w)).solved else "."
+#         except (ValueError, RuntimeError):
+#             pattern += "e"
+#     print(f"fine weight grid {FINE_WEIGHTS[0]}..{FINE_WEIGHTS[-1]} step 0.025 (halton): {pattern}")
+# if SEED_WEIGHTS:
+#     for w in SEED_WEIGHTS:
+#         res = []
+#         for sd in range(1, N_SEEDS + 1):
+#             try:
+#                 res.append(plan_with(w, seed=sd))
+#             except (ValueError, RuntimeError):
+#                 pass
+#         print(f"  rotation_weight={w:<4} xorshift seeds 1..{N_SEEDS}: "
+#               f"{sum(r.solved for r in res)}/{len(res)} solved, "
+#               f"iterations {[int(r.iterations) for r in res]}")
+# if PREFIX_SWEEP:
+#     print(f"prefix sweep (first k of {L} waypoints):")
+#     for k in range(2, L + 1):
+#         try:
+#             report(f"  k={k:<3}", plan_with(k=k))
+#         except (ValueError, RuntimeError) as e:
+#             print(f"  k={k:<3} error: {e}")
 
 # Projection probe: from q_start, project onto the curve at fixed t.
 print(f"projection probe ({PROJ_METHOD}): t, converged, err, max |dq| (base x/y m, theta/joints rad)")

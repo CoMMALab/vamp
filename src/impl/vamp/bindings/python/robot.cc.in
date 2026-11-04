@@ -6,6 +6,6 @@
 
 void vamp::binding::init_@robot_name@(nanobind::module_ &pymodule)
 {
-    vamp::binding::init_robot<vamp::robots::@robot_struct@>(pymodule);
+    vamp::binding::init_robot<vamp::robots::@robot_struct@>(pymodule, "@robot_name@");
 }
 // clang-format on

@@ -198,6 +198,16 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
             [](vc::Attachment<float> &a, std::vector<collision::Sphere<float>> &spheres)
             { a.spheres.insert(a.spheres.end(), spheres.cbegin(), spheres.cend()); })
         .def(
+            "add_cuboid",
+            [](vc::Attachment<float> &a, collision::Cuboid<float> &cuboid)
+            { a.cuboids.emplace_back(cuboid); },
+            "Add a cuboid, given in the attachment's local frame.")
+        .def(
+            "add_cuboids",
+            [](vc::Attachment<float> &a, std::vector<collision::Cuboid<float>> &cuboids)
+            { a.cuboids.insert(a.cuboids.end(), cuboids.cbegin(), cuboids.cend()); },
+            "Add cuboids, given in the attachment's local frame.")
+        .def(
             "set_ee_pose",
             [](vc::Attachment<float> &a, Eigen::Matrix4f &tf)
             {
@@ -206,5 +216,36 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
                 a.pose(iso);
             },
             "tf"_a)
-        .def_ro("posed_spheres", &vc::Attachment<float>::posed_spheres);
+        .def_ro("posed_spheres", &vc::Attachment<float>::posed_spheres)
+        .def_prop_ro(
+            "posed_cuboids",
+            [](vc::Attachment<float> &a)
+            {
+                // Posed cuboids are stored as oriented boxes; hand them out as the Cuboid type used
+                // everywhere else, so they can be drawn like any other cuboid
+                std::vector<collision::Cuboid<float>> result;
+                result.reserve(a.posed_cuboids.size());
+                for (const auto &c : a.posed_cuboids)
+                {
+                    result.emplace_back(
+                        c.x,
+                        c.y,
+                        c.z,
+                        c.axis_1_x,
+                        c.axis_1_y,
+                        c.axis_1_z,
+                        c.axis_2_x,
+                        c.axis_2_y,
+                        c.axis_2_z,
+                        c.axis_3_x,
+                        c.axis_3_y,
+                        c.axis_3_z,
+                        c.axis_1_r,
+                        c.axis_2_r,
+                        c.axis_3_r);
+                }
+
+                return result;
+            },
+            "The attached cuboids in the world frame, as of the last call to set_ee_pose.");
 }

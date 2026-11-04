@@ -6,7 +6,13 @@
 #include <vamp/collision/sphere_capsule.hh>
 #include <vamp/collision/sphere_cuboid.hh>
 #include <vamp/collision/sphere_heightfield.hh>
+#include <vamp/collision/cuboid_sphere.hh>
+#include <vamp/collision/cuboid_capsule.hh>
+#include <vamp/collision/cuboid_cuboid.hh>
+#include <vamp/collision/cuboid_heightfield.hh>
 #include <vamp/collision/math.hh>
+
+#include <stdexcept>
 
 namespace vamp
 {
@@ -248,9 +254,273 @@ namespace vamp
         return objects;
     }
 
+    // Robot cuboid vs. environment collision checking.
+    //
+    // Pointclouds (CAPT) are not supported: the CAPT affordance tree is built for sphere queries of a
+    // bounded radius and has no meaningful query for a box. Rather than silently ignoring the pointcloud
+    // (which would report free space where there is none), these throw if the environment has one. Call
+    // check_cuboid_environment_supported once up front (e.g., in bindings) so the error surfaces
+    // cleanly: robots' fkcc functions are noexcept, so a throw from inside one terminates the program.
     template <typename DataT>
-    inline constexpr auto attachment_environment_collision(const collision::Environment<DataT> &e) noexcept
-        -> bool
+    inline void check_cuboid_environment_supported(const collision::Environment<DataT> &e)
+    {
+        if (not e.pointclouds.empty())
+        {
+            throw std::runtime_error(
+                "Cuboid collision geometry (on the robot or in an attachment) does not support pointcloud (CAPT) "
+                "environments.");
+        }
+    }
+
+    template <typename DataT>
+    inline auto cuboid_environment_in_collision(
+        const collision::Environment<DataT> &e,
+        const collision::OrientedBox<DataT> &box) -> bool
+    {
+        check_cuboid_environment_supported(e);
+
+        // Bounding sphere about the origin of the box, for early-out against the sorted environment
+        const auto max_extent =
+            collision::sqrt(collision::dot_3(box.x, box.y, box.z, box.x, box.y, box.z)) +
+            box.bounding_radius();
+
+        for (const auto &es : e.spheres)
+        {
+            if ((es.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_sphere(box, es).test_zero())
+            {
+                return true;
+            }
+        }
+
+        for (const auto &ec : e.capsules)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_capsule(box, ec).test_zero())
+            {
+                return true;
+            }
+        }
+
+        for (const auto &ec : e.z_aligned_capsules)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_z_aligned_capsule(box, ec).test_zero())
+            {
+                return true;
+            }
+        }
+
+        for (const auto &ec : e.cuboids)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_cuboid(box, ec).test_zero())
+            {
+                return true;
+            }
+        }
+
+        for (const auto &ec : e.z_aligned_cuboids)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_z_aligned_cuboid(box, ec).test_zero())
+            {
+                return true;
+            }
+        }
+
+        for (const auto &eh : e.heightfields)
+        {
+            if (not collision::cuboid_heightfield(box, eh).test_zero())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    template <typename DataT>
+    inline auto cuboid_environment_get_collisions(
+        const collision::Environment<DataT> &e,
+        const collision::OrientedBox<DataT> &box) -> std::vector<std::string>
+    {
+        check_cuboid_environment_supported(e);
+
+        std::vector<std::string> objects;
+
+        const auto max_extent =
+            collision::sqrt(collision::dot_3(box.x, box.y, box.z, box.x, box.y, box.z)) +
+            box.bounding_radius();
+
+        for (const auto &es : e.spheres)
+        {
+            if ((es.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_sphere(box, es).test_zero())
+            {
+                objects.emplace_back(es.name);
+            }
+        }
+
+        for (const auto &ec : e.capsules)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_capsule(box, ec).test_zero())
+            {
+                objects.emplace_back(ec.name);
+            }
+        }
+
+        for (const auto &ec : e.z_aligned_capsules)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_z_aligned_capsule(box, ec).test_zero())
+            {
+                objects.emplace_back(ec.name);
+            }
+        }
+
+        for (const auto &ec : e.cuboids)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_cuboid(box, ec).test_zero())
+            {
+                objects.emplace_back(ec.name);
+            }
+        }
+
+        for (const auto &ec : e.z_aligned_cuboids)
+        {
+            if ((ec.min_distance - max_extent).test_zero())
+            {
+                break;
+            }
+
+            if (not collision::cuboid_z_aligned_cuboid(box, ec).test_zero())
+            {
+                objects.emplace_back(ec.name);
+            }
+        }
+
+        for (const auto &eh : e.heightfields)
+        {
+            if (not collision::cuboid_heightfield(box, eh).test_zero())
+            {
+                objects.emplace_back(eh.name);
+            }
+        }
+
+        return objects;
+    }
+
+    // Robot self-collision checks involving cuboids. Both bodies are robot geometry, so (unlike the
+    // environment checks) neither throws and both are safe to call from noexcept code.
+    template <typename DataT>
+    inline auto sphere_cuboid_self_collision(
+        const collision::OrientedBox<DataT> &box,
+        const DataT &sx,
+        const DataT &sy,
+        const DataT &sz,
+        const DataT &sr) noexcept -> bool
+    {
+        return not collision::cuboid_sphere(box, sx, sy, sz, sr).test_zero();
+    }
+
+    template <typename DataT>
+    inline auto cuboid_cuboid_self_collision(
+        const collision::OrientedBox<DataT> &a,
+        const collision::OrientedBox<DataT> &b) noexcept -> bool
+    {
+        return not collision::cuboid_cuboid(a, b).test_zero();
+    }
+
+    // Robot cuboid vs. the objects attached to end-effector `end_effector` (their spheres and cuboids)
+    template <typename DataT>
+    inline auto attachment_cuboid_collision(
+        const collision::Environment<DataT> &e,
+        std::size_t end_effector,
+        const collision::OrientedBox<DataT> &box) noexcept -> bool
+    {
+        for (const auto &attachment : e.attachments)
+        {
+            if (attachment.end_effector != end_effector)
+            {
+                continue;
+            }
+
+            for (const auto &att_s : attachment.posed_spheres)
+            {
+                if (not collision::cuboid_sphere(box, att_s.x, att_s.y, att_s.z, att_s.r).test_zero())
+                {
+                    return true;
+                }
+            }
+
+            for (const auto &att_c : attachment.posed_cuboids)
+            {
+                if (not collision::cuboid_cuboid(box, att_c).test_zero())
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Single-attachment form of the previous generator: checks against the attachments of end-effector 0.
+    template <typename DataT>
+    inline auto attachment_cuboid_collision(
+        const collision::Environment<DataT> &e,
+        const collision::OrientedBox<DataT> &box) noexcept -> bool
+    {
+        return attachment_cuboid_collision<DataT>(e, std::size_t{0}, box);
+    }
+
+    // Attached objects vs. the environment.
+    //
+    // As for robot cuboids, attached cuboids do not support pointcloud (CAPT) environments (see
+    // check_cuboid_environment_supported), and as everything that calls this is noexcept, an attachment
+    // with cuboids in such an environment terminates the program. Callers (e.g., bindings) should check
+    // ahead of time.
+    template <typename DataT>
+    inline auto attachment_environment_collision(const collision::Environment<DataT> &e) noexcept -> bool
     {
         for (const auto &attachment : e.attachments)
         {
@@ -265,14 +535,23 @@ namespace vamp
                     return true;
                 }
             }
+
+            for (const auto &c : attachment.posed_cuboids)
+            {
+                if (cuboid_environment_in_collision(e, c))
+                {
+                    return true;
+                }
+            }
         }
 
         return false;
     }
 
-    // Checks a robot sphere against every attachment riding on end-effector `end_effector`.
+    // Checks a robot sphere against every attachment riding on end-effector `end_effector` (spheres and
+    // cuboids).
     template <typename DataT, typename ArgT1, typename ArgT2, typename ArgT3, typename ArgT4>
-    inline constexpr auto attachment_sphere_collision(
+    inline auto attachment_sphere_collision(
         const collision::Environment<DataT> &e,
         std::size_t end_effector,
         ArgT1 sx_,
@@ -300,6 +579,14 @@ namespace vamp
                     return true;
                 }
             }
+
+            for (const auto &att_c : attachment.posed_cuboids)
+            {
+                if (not collision::cuboid_sphere(att_c, sx, sy, sz, sr).test_zero())
+                {
+                    return true;
+                }
+            }
         }
 
         return false;
@@ -320,8 +607,7 @@ namespace vamp
     // Checks attachments on different end-effectors against each other; attachments riding
     // on the same end-effector move rigidly together and are never tested.
     template <typename DataT>
-    inline constexpr auto attachment_attachment_collision(const collision::Environment<DataT> &e) noexcept
-        -> bool
+    inline auto attachment_attachment_collision(const collision::Environment<DataT> &e) noexcept -> bool
     {
         for (auto i = 0U; i < e.attachments.size(); ++i)
         {
@@ -341,6 +627,33 @@ namespace vamp
                         if (not collision::sphere_sphere_sql2(
                                     sa.x, sa.y, sa.z, sa.r, sb.x, sb.y, sb.z, sb.r)
                                     .test_zero())
+                        {
+                            return true;
+                        }
+                    }
+
+                    for (const auto &cb : b.posed_cuboids)
+                    {
+                        if (not collision::cuboid_sphere(cb, sa.x, sa.y, sa.z, sa.r).test_zero())
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                for (const auto &ca : a.posed_cuboids)
+                {
+                    for (const auto &sb : b.posed_spheres)
+                    {
+                        if (not collision::cuboid_sphere(ca, sb.x, sb.y, sb.z, sb.r).test_zero())
+                        {
+                            return true;
+                        }
+                    }
+
+                    for (const auto &cb : b.posed_cuboids)
+                    {
+                        if (not collision::cuboid_cuboid(ca, cb).test_zero())
                         {
                             return true;
                         }

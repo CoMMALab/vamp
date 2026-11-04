@@ -185,6 +185,11 @@ namespace vamp::binding
             "configuration"_a,
             "Forward kinematics. Returns the robot's collision spheres in world frame.");
         t.def(
+            "cuboid_fk",
+            &Traits::cuboid_fk,
+            "configuration"_a,
+            "Forward kinematics of the robot's collision cuboids in world frame (empty if it has none).");
+        t.def(
             "eefk",
             &Traits::eefk,
             "configuration"_a,
@@ -194,7 +199,8 @@ namespace vamp::binding
             &Traits::debug,
             "configuration"_a,
             "environment"_a = default_env,
-            "Per-sphere collision debug: which spheres collide with each other and the environment.");
+            "Per-geometry collision debug: for each sphere and then each cuboid, the environment objects it collides with, "
+            "and the pairs of robot geometry in self-collision (an index >= n_spheres is cuboid index - n_spheres).");
         t.def(
             "validate",
             &Traits::validate,
@@ -217,7 +223,7 @@ namespace vamp::binding
             "point_radius"_a,
             "configuration"_a,
             "environment"_a = default_env,
-            "Remove pointcloud points colliding with the robot or environment.");
+            "Remove pointcloud points colliding with the robot (spheres and cuboids) or environment.");
         t.def(
             "simplify",
             &Traits::simplify,

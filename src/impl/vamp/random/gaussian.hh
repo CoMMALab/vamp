@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <vamp/random/rng.hh>
 #include <cmath>
 
@@ -27,37 +28,35 @@ namespace vamp::rng
 
         inline void reset() noexcept override final
         {
-            has_spare = false;
         }
 
+        // Independent standard-normal draw per dimension (Box-Muller, two draws per pair).
         inline auto next() noexcept -> FloatVector<dim> override final
         {
-            if (has_spare)
+            std::array<FloatT, dim> z;
+            for (std::size_t d = 0; d < dim; d += 2)
             {
-                has_spare = false;
-                return mean + stddev * spare;
+                float u1;
+                do
+                {
+                    u1 = uniform_01();
+                } while (u1 <= 0.0F);
+                const float u2 = uniform_01();
+
+                const float r = std::sqrt(-2.0F * std::log(u1));
+                const float theta = 2.0F * static_cast<float>(M_PI) * u2;
+
+                z[d] = r * std::cos(theta);
+                if (d + 1 < dim)
+                {
+                    z[d + 1] = r * std::sin(theta);
+                }
             }
-            
-            float u1, u2, r, theta;
-            do
-            {
-                u1 = uniform_01();
-                u2 = uniform_01();
-            } while (u1 <= 0.0F);
-            
-            r = std::sqrt(-2.0F * std::log(u1));
-            theta = 2.0F * M_PI * u2;
-            
-            float z0 = r * std::cos(theta);
-            spare = r * std::sin(theta);
-            has_spare = true;
-            
-            return mean + stddev * FloatVector<dim>::fill(z0);
+
+            return mean + stddev * FloatVector<dim>(z);
         }
 
         FloatVector<dim> mean;
         FloatVector<dim> stddev;
-        float spare;
-        bool has_spare = false;
     };
 } // namespace vamp::rng

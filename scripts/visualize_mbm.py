@@ -143,7 +143,6 @@ n Graph States: {result.size}
 
     if not valid:
         for state in [start, *goals]:
-            print(f"Displaying colliding spheres for first invalid state: {state}")
             if not vamp_module.validate(state, env):
                 print(f"Displaying colliding spheres for first invalid state: {state}")
                 debug = vamp_module.debug(state, env)

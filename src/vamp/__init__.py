@@ -52,11 +52,6 @@ try:
     __all__.append("jax")
 except ImportError:
     pass
-robots = _core.robots()
-
-for robot in robots:
-    globals()[robot] = getattr(_core, robot)
-    __all__.append(robot)
 
 robots = _core.robots()
 

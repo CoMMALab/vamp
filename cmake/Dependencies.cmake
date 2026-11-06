@@ -50,7 +50,6 @@ if(VAMP_INSTALL_CPP_LIBRARY)
   export(EXPORT pdqsort_TARGETS FILE ${CMAKE_CURRENT_BINARY_DIR}/cmake/pdqsortTargets.cmake NAMESPACE pdqsort::)
 endif()
 
-find_package(OpenMP REQUIRED)
 # SIMDxorshift for x86_64 systems (includes macOS Intel and Linux x86_64)
 # Explicitly exclude Emscripten since it doesn't support AVX
 if(NOT EMSCRIPTEN AND (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64"))

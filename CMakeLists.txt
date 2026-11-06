@@ -6,8 +6,6 @@ option(VAMP_FORCE_CLANG "Force the use of Clang." OFF)
 
 option(VAMP_BUILD_PYTHON_BINDINGS "Build VAMP Python bindings" ON)
 option(VAMP_USE_OPENMP "Use OpenMP for batched planning/validation bindings." ON)
-option(VAMP_BUILD_JAX "Build JAX FFI extensions." OFF)
-set(XLA_DIR "" CACHE PATH "JAX/XLA FFI include directory (required if VAMP_BUILD_JAX is ON)")
 option(VAMP_INSTALL_CPP_LIBRARY "Install VAMP C++ library (disable for Python wheel builds)" ON)
 
 option(VAMP_BUILD_CPP_DEMO "Build VAMP C++ Demo Scripts" OFF)

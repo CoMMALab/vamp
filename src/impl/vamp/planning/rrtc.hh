@@ -20,6 +20,27 @@ namespace vamp::planning
         static constexpr auto dimension = Robot::dimension;
         using RNG = typename vamp::rng::RNG<Robot>;
 
+        // Scratch storage for one solve. Reusing a Workspace across calls (e.g., one per
+        // thread when running many small queries) avoids reallocating it on every solve.
+        struct Workspace
+        {
+            explicit Workspace(std::size_t max_samples)
+              : capacity(max_samples)
+              , buffer(
+                    vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
+                        max_samples * Configuration::num_scalars_rounded),
+                    &free)
+              , parents(max_samples)
+              , radii(max_samples)
+            {
+            }
+
+            std::size_t capacity;
+            std::unique_ptr<float, decltype(&free)> buffer;
+            std::vector<std::size_t> parents;
+            std::vector<float> radii;
+        };
+
         inline static auto solve(
             const Configuration &start,
             const Configuration &goal,
@@ -37,6 +58,29 @@ namespace vamp::planning
             const RRTCSettings &settings,
             typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
         {
+            Workspace workspace(settings.max_samples);
+            return solve(start, goals, environment, settings, rng, workspace);
+        }
+
+        inline static auto solve(
+            const Configuration &start,
+            const Configuration &goal,
+            const collision::Environment<FloatVector<rake>> &environment,
+            const RRTCSettings &settings,
+            typename RNG::Ptr rng,
+            Workspace &workspace) noexcept -> PlanningResult<Robot>
+        {
+            return solve(start, std::vector<Configuration>{goal}, environment, settings, rng, workspace);
+        }
+
+        inline static auto solve(
+            const Configuration &start,
+            const std::vector<Configuration> &goals,
+            const collision::Environment<FloatVector<rake>> &environment,
+            const RRTCSettings &settings,
+            typename RNG::Ptr rng,
+            Workspace &workspace) noexcept -> PlanningResult<Robot>
+        {
             PlanningResult<Robot> result;
 
             NN<dimension> start_tree;
@@ -44,16 +88,17 @@ namespace vamp::planning
 
             constexpr const std::size_t start_index = 0;
 
-            auto buffer = std::unique_ptr<float, decltype(&free)>(
-                vamp::utils::vector_alloc<float, FloatVectorAlignment, FloatVectorWidth>(
-                    settings.max_samples * Configuration::num_scalars_rounded),
-                &free);
+            if (workspace.capacity < settings.max_samples)
+            {
+                workspace = Workspace(settings.max_samples);
+            }
 
+            auto &buffer = workspace.buffer;
             const auto buffer_index = [&buffer](std::size_t index) -> float *
             { return buffer.get() + index * Configuration::num_scalars_rounded; };
 
-            std::vector<std::size_t> parents(settings.max_samples);
-            std::vector<float> radii(settings.max_samples);
+            auto &parents = workspace.parents;
+            auto &radii = workspace.radii;
 
             auto start_time = std::chrono::steady_clock::now();
 

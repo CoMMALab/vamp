@@ -6,7 +6,6 @@
 #include <vamp/planning/phs.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/random/halton.hh>
-#include <vamp/random/gaussian.hh>
 
 #if defined(__x86_64__)
 #include <vamp/random/xorshift.hh>
@@ -444,11 +443,6 @@ namespace vamp::binding
             "Creates a new Halton sampler.");
 
         submodule.def(
-            "gaussian",
-            []() -> typename RNG::Ptr { return std::make_shared<vamp::rng::Gaussian<Robot>>(); },
-            "Creates a new Gaussian sampler.");
-
-        submodule.def(
             "phs_sampler",
             [](const planning::ProlateHyperspheroid<Robot> &phs, typename RNG::Ptr rng) -> typename RNG::Ptr
             { return std::make_shared<planning::ProlateHyperspheroidRNG<Robot>>(phs, rng); },
@@ -623,36 +617,6 @@ namespace vamp::binding
            "point_radius"_a,
            "configuration"_a,
            "environment"_a = vamp::collision::Environment<float>());
-
-        submodule.def(
-            "filter_from_pointcloud",
-            [](const std::vector<collision::Point> &pointcloud,
-               const NDArray &configuration,
-               const typename HPN::EnvironmentInput &environment,
-               float point_radius) -> std::vector<collision::Point>
-            {
-                return HPN::filter_self_from_pointcloud(pointcloud, point_radius, configuration, environment);
-            },
-            "pointcloud"_a,
-            "configuration"_a,
-            "environment"_a,
-            "point_radius"_a,
-            "Legacy alias for filter_self_from_pointcloud with the historical argument order.");
-
-        submodule.def(
-            "filter_from_pointcloud",
-            [](const std::vector<collision::Point> &pointcloud,
-               const Array &configuration,
-               const typename HPA::EnvironmentInput &environment,
-               float point_radius) -> std::vector<collision::Point>
-            {
-                return HPA::filter_self_from_pointcloud(pointcloud, point_radius, configuration, environment);
-            },
-            "pointcloud"_a,
-            "configuration"_a,
-            "environment"_a,
-            "point_radius"_a,
-            "Legacy alias for filter_self_from_pointcloud with the historical argument order.");
 
         MF("roadmap",
            PRM::roadmap,

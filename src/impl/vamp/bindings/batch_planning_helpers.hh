@@ -1,16 +1,13 @@
 #pragma once
 
-#include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <memory>
-#include <random>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
-#include <vamp/planning/rrtc_prealloc.hh>
+#include <vamp/planning/rrtc.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/random/halton.hh>
 
@@ -20,14 +17,6 @@
 namespace vamp::binding
 {
     static constexpr const std::size_t batch_helper_rake = vamp::FloatVectorWidth;
-
-    template <typename Robot, typename HelperT>
-    inline auto logit_sample(typename HelperT::RNG::Ptr rng, float scale) noexcept ->
-        typename HelperT::Configuration
-    {
-        const auto u = rng->next();
-        return (u * (1.F - u).rcp()).log() * std::sqrt(scale);
-    }
 
     // Build a configuration from `Robot::dimension` scalars read through `at(d)`.
     // Goes through a padded, aligned buffer so we never read past the end of a
@@ -51,34 +40,6 @@ namespace vamp::binding
         return (configuration <= 1.F).all() and (configuration >= 0.F).all();
     }
 
-    // Repeatedly calls `try_sample(config)` until `batch_size` samples are accepted or
-    // `max_attempts` total attempts are used (0 = unlimited). Only accepted samples are
-    // returned, so the result has shape {num_accepted, dimension}.
-    template <typename Robot, typename Configuration, typename SampleFnT>
-    inline auto collect_samples(std::size_t batch_size, std::size_t max_attempts, const SampleFnT &try_sample)
-        -> nanobind::ndarray<nanobind::numpy, float, nanobind::ndim<2>>
-    {
-        namespace nb = nanobind;
-
-        auto *configs = new float[batch_size * Robot::dimension];
-        nb::capsule owner(configs, [](void *p) noexcept { delete[] reinterpret_cast<float *>(p); });
-
-        std::size_t accepted = 0;
-        for (std::size_t attempts = 0;
-             accepted < batch_size and (max_attempts == 0 or attempts < max_attempts);
-             ++attempts)
-        {
-            Configuration config;
-            if (try_sample(config))
-            {
-                config.to_array_unaligned(&configs[accepted * Robot::dimension]);
-                ++accepted;
-            }
-        }
-
-        return nb::ndarray<nb::numpy, float, nb::ndim<2>>(configs, {accepted, Robot::dimension}, owner);
-    }
-
     template <typename Robot, typename HelperT>
     inline void bind_batch_planning_helpers(nanobind::module_ &submodule)
     {
@@ -90,234 +51,6 @@ namespace vamp::binding
         using RowArray = nb::ndarray<const float, nb::shape<-1, Robot::dimension>, nb::device::cpu>;
 
         static constexpr auto validate = vamp::planning::validate_motion<Robot, batch_helper_rake, 1>;
-
-        const auto is_valid = [](const Configuration &c, const EnvironmentVector &env_v) noexcept
-        { return validate(c, c, env_v); };
-
-        submodule.def(
-            "batch_sample",
-            [is_valid](
-                std::size_t batch_size,
-                std::size_t num_layers,
-                std::size_t num_dreams,
-                float scale,
-                typename HelperT::RNG::Ptr rng,
-                const typename HelperT::EnvironmentInput &env,
-                std::size_t max_attempts)
-            {
-                const EnvironmentVector env_v(env);
-                const std::size_t total = batch_size * num_layers * num_dreams;
-
-                auto *configs = new float[total * Robot::dimension];
-                nb::capsule owner(configs, [](void *p) noexcept { delete[] reinterpret_cast<float *>(p); });
-
-                std::size_t attempts = 0;
-                for (std::size_t i = 0; i < total; ++i)
-                {
-                    Configuration config;
-                    do
-                    {
-                        if (max_attempts != 0 and attempts++ >= max_attempts)
-                        {
-                            throw std::runtime_error(
-                                "batch_sample: exhausted max_attempts after " + std::to_string(i) + " of " +
-                                std::to_string(total) + " samples");
-                        }
-
-                        config = rng->next() * scale;
-                        Robot::scale_configuration(config);
-                    } while (not is_valid(config, env_v));
-
-                    config.to_array_unaligned(&configs[i * Robot::dimension]);
-                }
-
-                return nb::ndarray<nb::numpy, float, nb::ndim<4>>(
-                    configs, {batch_size, num_layers, num_dreams, Robot::dimension}, owner);
-            },
-            "batch_size"_a,
-            "num_layers"_a,
-            "num_dreams"_a,
-            "scale"_a,
-            "rng"_a,
-            "environment"_a,
-            "max_attempts"_a = 0,
-            "Sample batch_size x num_layers x num_dreams valid configurations. Raises if "
-            "max_attempts (0 = unlimited) total attempts are used before all samples are found.");
-
-        submodule.def(
-            "batch_scale_sample",
-            [is_valid](
-                std::size_t batch_size,
-                float scale,
-                std::size_t max_attempts,
-                typename HelperT::RNG::Ptr rng,
-                const typename HelperT::EnvironmentInput &env)
-            {
-                const EnvironmentVector env_v(env);
-                return collect_samples<Robot, Configuration>(
-                    batch_size,
-                    max_attempts,
-                    [&](Configuration &config)
-                    {
-                        config = rng->next() * scale;
-                        Robot::scale_configuration(config);
-                        return is_valid(config, env_v);
-                    });
-            },
-            "batch_size"_a,
-            "scale"_a,
-            "max_attempts"_a,
-            "rng"_a,
-            "environment"_a,
-            "Sample up to batch_size valid scaled configurations; returns only the samples found.");
-
-        submodule.def(
-            "batch_gaussian_sample",
-            [is_valid](
-                std::size_t batch_size,
-                const nb::ndarray<const float, nb::shape<Robot::dimension>, nb::device::cpu> &mean,
-                float stddev,
-                typename HelperT::RNG::Ptr rng,
-                const typename HelperT::EnvironmentInput &env,
-                std::size_t max_attempts)
-            {
-                const auto mean_view = mean.view();
-                auto mean_config =
-                    load_configuration<Robot, Configuration>([&](std::size_t d) { return mean_view(d); });
-                Robot::descale_configuration(mean_config);
-                const EnvironmentVector env_v(env);
-
-                return collect_samples<Robot, Configuration>(
-                    batch_size,
-                    max_attempts,
-                    [&](Configuration &config)
-                    {
-                        config = mean_config + rng->next() * stddev;
-                        Robot::scale_configuration(config);
-                        return is_valid(config, env_v);
-                    });
-            },
-            "batch_size"_a,
-            "mean"_a,
-            "variance"_a,
-            "rng"_a,
-            "environment"_a,
-            "max_attempts"_a = 0,
-            "Sample up to batch_size valid configurations around mean (in normalized joint space); "
-            "returns only the samples found. `variance` scales the rng output (i.e., acts as a stddev).");
-
-        const auto bridge_sample = [is_valid](
-                                       typename HelperT::RNG::Ptr &rng,
-                                       const EnvironmentVector &env_v,
-                                       float scale,
-                                       Configuration &out) -> bool
-        {
-            // Bridge test: both endpoints in collision, midpoint collision-free.
-            Configuration ca = rng->next();
-            Robot::scale_configuration(ca);
-            if (is_valid(ca, env_v))
-            {
-                return false;
-            }
-
-            Configuration cb = ca + logit_sample<Robot, HelperT>(rng, scale).trim();
-            Robot::descale_configuration(cb);
-            cb = cb.clamp(0, 1);
-            Robot::scale_configuration(cb);
-            if (is_valid(cb, env_v))
-            {
-                return false;
-            }
-
-            out = ca.interpolate(cb, 0.5);
-            return is_valid(out, env_v);
-        };
-
-        submodule.def(
-            "batch_bridge_test_sample",
-            [bridge_sample](
-                std::size_t batch_size,
-                float scale,
-                std::size_t max_attempts,
-                typename HelperT::RNG::Ptr rng,
-                const typename HelperT::EnvironmentInput &env)
-            {
-                const EnvironmentVector env_v(env);
-                return collect_samples<Robot, Configuration>(
-                    batch_size,
-                    max_attempts,
-                    [&](Configuration &config) { return bridge_sample(rng, env_v, scale, config); });
-            },
-            "batch_size"_a,
-            "scale"_a,
-            "max_attempts"_a,
-            "rng"_a,
-            "environment"_a,
-            "Bridge-test sampling; returns only the samples found within max_attempts.");
-
-        submodule.def(
-            "batch_bridge_test_sample",
-            [bridge_sample](
-                std::size_t batch_size,
-                float min_scale,
-                float max_scale,
-                std::size_t max_attempts,
-                typename HelperT::RNG::Ptr rng,
-                const typename HelperT::EnvironmentInput &env)
-            {
-                const EnvironmentVector env_v(env);
-                std::default_random_engine generator;
-                std::uniform_real_distribution<float> scale_dist(min_scale, max_scale);
-                return collect_samples<Robot, Configuration>(
-                    batch_size,
-                    max_attempts,
-                    [&](Configuration &config)
-                    { return bridge_sample(rng, env_v, scale_dist(generator), config); });
-            },
-            "batch_size"_a,
-            "min_scale"_a,
-            "max_scale"_a,
-            "max_attempts"_a,
-            "rng"_a,
-            "environment"_a,
-            "Bridge-test sampling with scale drawn uniformly from [min_scale, max_scale].");
-
-        submodule.def(
-            "batch_surface_sample",
-            [is_valid](
-                std::size_t batch_size,
-                float scale,
-                std::size_t max_attempts,
-                typename HelperT::RNG::Ptr rng,
-                const typename HelperT::EnvironmentInput &env)
-            {
-                const EnvironmentVector env_v(env);
-                return collect_samples<Robot, Configuration>(
-                    batch_size,
-                    max_attempts,
-                    [&](Configuration &config)
-                    {
-                        // Surface sample: collision configuration perturbed into free space.
-                        Configuration ca = rng->next();
-                        Robot::scale_configuration(ca);
-                        if (is_valid(ca, env_v))
-                        {
-                            return false;
-                        }
-
-                        config = ca + logit_sample<Robot, HelperT>(rng, scale).trim();
-                        Robot::descale_configuration(config);
-                        config = config.clamp(0, 1);
-                        Robot::scale_configuration(config);
-                        return is_valid(config, env_v);
-                    });
-            },
-            "batch_size"_a,
-            "scale"_a,
-            "max_attempts"_a,
-            "rng"_a,
-            "environment"_a,
-            "Surface sampling; returns only the samples found within max_attempts.");
 
         submodule.def(
             "validate_motion_batch",
@@ -462,7 +195,7 @@ namespace vamp::binding
                std::size_t start_point_range,
                std::size_t end_point_range)
             {
-                using RRTCAlloc = vamp::planning::RRTC_Alloc<Robot, batch_helper_rake, Robot::resolution>;
+                using RRTC = vamp::planning::RRTC<Robot, batch_helper_rake, Robot::resolution>;
 
                 const std::size_t batch_size = batch_layers.shape(0);
                 const std::size_t num_layers = batch_layers.shape(1);
@@ -517,13 +250,13 @@ namespace vamp::binding
 #pragma omp parallel
 #endif
                 {
-                    RRTCAlloc rrtc(settings);
+                    typename RRTC::Workspace workspace(settings.max_samples);
                     auto rng = std::make_shared<vamp::rng::Halton<Robot>>();
 
-                    const auto check_connect = [&rrtc, &rng, &settings, &env_v](const auto &a, const auto &b)
+                    const auto check_connect = [&workspace, &rng, &settings, &env_v](const auto &a, const auto &b)
                     {
                         rng->reset();
-                        auto result = rrtc.solve(a, b, env_v, settings, rng);
+                        auto result = RRTC::solve(a, b, env_v, settings, rng, workspace);
                         return result.path.size() > 1;
                     };
 

@@ -20,6 +20,5 @@ venv/
 /resources/panda/*.pkl
 src/vamp/_core/*.pyi
 /.mypy_cache/
-.vscode/
 .DS_store
 vamp-web/

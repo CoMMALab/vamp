@@ -69,14 +69,6 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
   )
   endforeach()
 
-  if(VAMP_BUILD_JAX)
-    list(APPEND VAMP_EXT_SOURCES
-      src/impl/vamp/bindings/jax/jax.cc
-      src/impl/vamp/bindings/jax/panda.cc
-      src/impl/vamp/bindings/jax/fetch.cc
-    )
-  endif()
-
   nanobind_add_module(_core_ext
     NB_STATIC
     STABLE_ABI
@@ -99,14 +91,6 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     find_package(OpenMP REQUIRED)
     target_link_libraries(_core_ext PRIVATE OpenMP::OpenMP_CXX)
     target_compile_definitions(_core_ext PRIVATE VAMP_USE_OPENMP)
-  endif()
-
-  if(VAMP_BUILD_JAX)
-    if(NOT XLA_DIR)
-      message(FATAL_ERROR "VAMP_BUILD_JAX is ON but XLA_DIR is not set")
-    endif()
-    target_include_directories(_core_ext PRIVATE ${XLA_DIR})
-    target_compile_definitions(_core_ext PRIVATE VAMP_BUILD_JAX)
   endif()
 
   if($ENV{GITHUB_ACTIONS})

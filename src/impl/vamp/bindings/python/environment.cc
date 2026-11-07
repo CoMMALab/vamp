@@ -163,8 +163,7 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
             })
         .def(
             "attach",
-            [](vc::Environment<float> &e, const vc::Attachment<float> &a)
-            { e.attachments.emplace_back(a); },
+            [](vc::Environment<float> &e, const vc::Attachment<float> &a) { e.attachments.emplace_back(a); },
             "Adds an attachment; multiple attachments (across end-effectors) may coexist.")
         .def("detach", [](vc::Environment<float> &e) { e.attachments.clear(); })
         .def_ro("attachments", &vc::Environment<float>::attachments)

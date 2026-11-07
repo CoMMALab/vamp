@@ -110,5 +110,4 @@ namespace vamp::collision
         set_attachment_pose(e, std::size_t{0}, p_tf);
     }
 
-
 }  // namespace vamp::collision

@@ -485,13 +485,27 @@ namespace vamp::planning
                 std::size_t best_parent = nearest_index;
                 const auto &waypoints = extension.waypoints;
 
+                // For a projected chain, the accept-computed cost (direct edge to the
+                // candidate endpoint) is only a pruning heuristic; the first tree node is
+                // waypoints.front()
+                if constexpr (LocalPlanner::projecting)
+                {
+                    if (waypoints.size() > 1)
+                    {
+                        new_cost =
+                            costs[nearest_index] + chain_edge_cost(nearest_configuration, waypoints.front());
+                    }
+                }
+
                 // Write config to buffer once (before both parent selection and node addition)
                 float *new_config_ptr = buffer_index(free_index);
                 waypoints.front().to_array(new_config_ptr);
 
                 // RRT* parent selection and rewiring (skip until first solution if
-                // delay_rewiring)
-                const bool do_rewire = not settings.delay_rewiring or has_solution;
+                // delay_rewiring; disabled entirely for projecting local planners, whose tree
+                // edges are projected chains that cannot be re-parented)
+                const bool do_rewire =
+                    (not LocalPlanner::projecting) and (not settings.delay_rewiring or has_solution);
 
                 if (do_rewire)
                 {
@@ -699,7 +713,8 @@ namespace vamp::planning
 
                 // Extend incrementally toward other tree
                 const std::size_t n_extensions = std::max(
-                    static_cast<std::size_t>(std::ceil(other_nearest_distance / settings.range)),
+                    static_cast<std::size_t>(
+                        std::ceil(lp.connect_slack * other_nearest_distance / settings.range)),
                     static_cast<std::size_t>(1));
 
                 std::size_t i_extension = 0;

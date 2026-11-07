@@ -23,5 +23,8 @@ namespace vamp::planning
         bool optimize = true;
         std::size_t max_iterations = 100000;
         std::size_t max_samples = 100000;
+
+        // (1 + epsilon)-approximate nearest-neighbor queries; 0 is exact.
+        float nn_epsilon = 0.;
     };
 }  // namespace vamp::planning

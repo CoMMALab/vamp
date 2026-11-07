@@ -87,6 +87,8 @@ namespace vamp::planning
             NNTree goal_tree;
             start_tree.reserve(settings.max_samples);
             goal_tree.reserve(settings.max_samples);
+            start_tree.set_epsilon(settings.nn_epsilon);
+            goal_tree.set_epsilon(settings.nn_epsilon);
 
             constexpr const std::size_t start_index = 0;
 

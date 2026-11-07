@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <type_traits>
 #include <utility>
@@ -14,6 +15,7 @@
 //   static auto sample(FloatVector<sample_dimension>) -> Configuration;   // unit cube -> configuration
 //   static auto distance(const Configuration &, const Configuration &) -> float;
 //   static auto interpolate(const Configuration &, const Configuration &, float t) -> Configuration;
+//   static constexpr std::array<std::size_t, N> so3_offsets;  // start index of each quaternion block
 //
 // Robots that define none of them are Euclidean, sample the configuration cube directly, and use
 // Configuration::distance and Configuration::interpolate. The helpers below resolve each hook with
@@ -31,6 +33,18 @@ namespace vamp::robots
         struct euclidean<Robot, std::void_t<decltype(Robot::euclidean)>>
           : std::bool_constant<Robot::euclidean>
         {
+        };
+
+        template <typename Robot, typename = void>
+        struct so3_offsets
+        {
+            static constexpr std::array<std::size_t, 0> value{};
+        };
+
+        template <typename Robot>
+        struct so3_offsets<Robot, std::void_t<decltype(Robot::so3_offsets)>>
+        {
+            static constexpr auto value = Robot::so3_offsets;
         };
 
         template <typename Robot, typename = void>
@@ -89,6 +103,10 @@ namespace vamp::robots
 
     template <typename Robot>
     inline constexpr bool is_euclidean_v = detail::euclidean<Robot>::value;
+
+    // Start index of each quaternion (SO(3)) block in the configuration; empty if there are none.
+    template <typename Robot>
+    inline constexpr auto so3_offsets_v = detail::so3_offsets<Robot>::value;
 
     template <typename Robot>
     inline constexpr std::size_t sample_dimension_v = detail::sample_dimension<Robot>::value;

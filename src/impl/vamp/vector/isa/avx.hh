@@ -439,6 +439,12 @@ namespace vamp
         }
 
         template <unsigned int = 0>
+        inline static constexpr auto min(VectorT v, VectorT other) noexcept -> VectorT
+        {
+            return _mm256_min_ps(v, other);
+        }
+
+        template <unsigned int = 0>
         inline static constexpr auto hsum(VectorT v) noexcept -> ScalarT
         {
             auto vhigh = _mm256_extractf128_ps(v, 1);

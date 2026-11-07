@@ -27,11 +27,32 @@ namespace vamp::collision
         template <typename DT = DataT, typename = std::enable_if_t<not std::is_same_v<DT, float>>>
         Attachment(const Attachment<float> &o) noexcept : Attachment(o.tf)
         {
+            end_effector = o.end_effector;
+            allowed_links = o.allowed_links;
             spheres.reserve(o.spheres.size());
             for (const auto &sphere : o.spheres)
             {
                 spheres.emplace_back(sphere);
             }
+        }
+
+        // Index into the robot's end-effector list this attachment rides on.
+        std::size_t end_effector = 0;
+        // Links (the robot's link ids, see Robot::link_names) this attachment may touch without being
+        // flagged. Empty: the attachment is checked against every link its end-effector is checked against.
+        std::vector<std::size_t> allowed_links;
+
+        inline auto allows(std::size_t link) const noexcept -> bool
+        {
+            for (const auto allowed : allowed_links)
+            {
+                if (allowed == link)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         std::vector<Sphere<DataT>> spheres;

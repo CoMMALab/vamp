@@ -53,6 +53,34 @@ VAMP_DEFINE_HAS_METHOD(set_lows)
 VAMP_DEFINE_HAS_METHOD(set_highs)
 VAMP_DEFINE_HAS_METHOD(set_radius)
 
+// Robots generated with attachment link tables declare `exempt_link_pairs` and `link_names`.
+template <typename T, typename = void>
+struct robot_has_exempt_link_pairs : std::false_type
+{
+};
+
+template <typename T>
+struct robot_has_exempt_link_pairs<T, std::void_t<decltype(T::exempt_link_pairs)>> : std::true_type
+{
+};
+
+template <typename T>
+constexpr bool robot_has_exempt_link_pairs_v = robot_has_exempt_link_pairs<T>::value;
+
+// Robots generated with several end-effectors declare `end_effectors` (frame names) and `eefk(x, i)`.
+template <typename T, typename = void>
+struct robot_has_end_effectors : std::false_type
+{
+};
+
+template <typename T>
+struct robot_has_end_effectors<T, std::void_t<decltype(T::end_effectors)>> : std::true_type
+{
+};
+
+template <typename T>
+constexpr bool robot_has_end_effectors_v = robot_has_end_effectors<T>::value;
+
 namespace vamp::binding
 {
     namespace nb = nanobind;
@@ -241,9 +269,26 @@ namespace vamp::binding
             return result;
         }
 
-        static auto eefk(const Cfg &c) -> Eigen::Matrix4f
+        static auto eefk(const Cfg &c, std::size_t end_effector) -> Eigen::Matrix4f
         {
-            return Robot::eefk(Input::array(c)).matrix();
+            if constexpr (robot_has_end_effectors_v<Robot>)
+            {
+                if (end_effector >= Robot::end_effectors.size())
+                {
+                    throw std::out_of_range("end_effector index out of range");
+                }
+
+                return Robot::eefk(Input::array(c), end_effector).matrix();
+            }
+            else
+            {
+                if (end_effector != 0)
+                {
+                    throw std::out_of_range("end_effector index out of range");
+                }
+
+                return Robot::eefk(Input::array(c)).matrix();
+            }
         }
 
         static auto debug(const Cfg &c, const Env &env) -> typename Robot::Debug
@@ -418,6 +463,85 @@ namespace vamp::binding
             []() -> std::pair<float, float> { return {Robot::min_radius, Robot::max_radius}; });
         submodule.def("joint_names", []() { return Robot::joint_names; });
         submodule.def("end_effector", []() { return Robot::end_effector; });
+        submodule.def(
+            "end_effectors",
+            []()
+            {
+                std::vector<std::string> names;
+                if constexpr (robot_has_end_effectors_v<Robot>)
+                {
+                    for (const auto &name : Robot::end_effectors)
+                    {
+                        names.emplace_back(name);
+                    }
+                }
+                else
+                {
+                    names.emplace_back(Robot::end_effector);
+                }
+
+                return names;
+            },
+            "Frame names of the robot's end-effectors; `eefk` and `Attachment` take indices into this list.");
+
+        if constexpr (robot_has_exempt_link_pairs_v<Robot>)
+        {
+            submodule.def(
+                "link_names",
+                []()
+                {
+                    std::vector<std::string> names;
+                    for (const auto &name : Robot::link_names)
+                    {
+                        names.emplace_back(name);
+                    }
+
+                    return names;
+                },
+                "Link (frame) names; their positions are the ids used by `Attachment.allowed_links`.");
+
+            submodule.def(
+                "exempt_links",
+                [](const std::vector<std::string> &names)
+                {
+                    std::vector<std::size_t> links;
+                    const auto add = [&links](std::size_t link)
+                    {
+                        if (std::find(links.begin(), links.end(), link) == links.end())
+                        {
+                            links.emplace_back(link);
+                        }
+                    };
+
+                    for (const auto &name : names)
+                    {
+                        const auto it = std::find(Robot::link_names.begin(), Robot::link_names.end(), name);
+                        if (it == Robot::link_names.end())
+                        {
+                            throw std::invalid_argument("Unknown link '" + name + "'");
+                        }
+
+                        const auto link = static_cast<std::size_t>(it - Robot::link_names.begin());
+                        add(link);
+                        for (const auto &[a, b] : Robot::exempt_link_pairs)
+                        {
+                            if (a == link)
+                            {
+                                add(b);
+                            }
+                            else if (b == link)
+                            {
+                                add(a);
+                            }
+                        }
+                    }
+
+                    return links;
+                },
+                "names"_a,
+                "Link ids for `Attachment.allowed_links`: the named links plus every link they may touch "
+                "(their disabled collision pairs).");
+        }
 
         const auto bounds = [](float fill) -> typename NA::Type
         {

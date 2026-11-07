@@ -67,6 +67,20 @@ struct robot_has_exempt_link_pairs<T, std::void_t<decltype(T::exempt_link_pairs)
 template <typename T>
 constexpr bool robot_has_exempt_link_pairs_v = robot_has_exempt_link_pairs<T>::value;
 
+// Robots generated with several end-effectors declare `end_effectors` (frame names) and `eefk(x, i)`.
+template <typename T, typename = void>
+struct robot_has_end_effectors : std::false_type
+{
+};
+
+template <typename T>
+struct robot_has_end_effectors<T, std::void_t<decltype(T::end_effectors)>> : std::true_type
+{
+};
+
+template <typename T>
+constexpr bool robot_has_end_effectors_v = robot_has_end_effectors<T>::value;
+
 namespace vamp::binding
 {
     namespace nb = nanobind;
@@ -255,9 +269,26 @@ namespace vamp::binding
             return result;
         }
 
-        static auto eefk(const Cfg &c) -> Eigen::Matrix4f
+        static auto eefk(const Cfg &c, std::size_t end_effector) -> Eigen::Matrix4f
         {
-            return Robot::eefk(Input::array(c)).matrix();
+            if constexpr (robot_has_end_effectors_v<Robot>)
+            {
+                if (end_effector >= Robot::end_effectors.size())
+                {
+                    throw std::out_of_range("end_effector index out of range");
+                }
+
+                return Robot::eefk(Input::array(c), end_effector).matrix();
+            }
+            else
+            {
+                if (end_effector != 0)
+                {
+                    throw std::out_of_range("end_effector index out of range");
+                }
+
+                return Robot::eefk(Input::array(c)).matrix();
+            }
         }
 
         static auto debug(const Cfg &c, const Env &env) -> typename Robot::Debug
@@ -432,6 +463,26 @@ namespace vamp::binding
             []() -> std::pair<float, float> { return {Robot::min_radius, Robot::max_radius}; });
         submodule.def("joint_names", []() { return Robot::joint_names; });
         submodule.def("end_effector", []() { return Robot::end_effector; });
+        submodule.def(
+            "end_effectors",
+            []()
+            {
+                std::vector<std::string> names;
+                if constexpr (robot_has_end_effectors_v<Robot>)
+                {
+                    for (const auto &name : Robot::end_effectors)
+                    {
+                        names.emplace_back(name);
+                    }
+                }
+                else
+                {
+                    names.emplace_back(Robot::end_effector);
+                }
+
+                return names;
+            },
+            "Frame names of the robot's end-effectors; `eefk` and `Attachment` take indices into this list.");
 
         if constexpr (robot_has_exempt_link_pairs_v<Robot>)
         {

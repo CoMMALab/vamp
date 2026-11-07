@@ -126,7 +126,8 @@ namespace vamp::planning
                 for (auto k = 1U; k < segment_states; ++k)
                 {
                     next.emplace_back(
-                        robots::interpolate<Robot>(a, b, static_cast<float>(k) / static_cast<float>(segment_states)));
+                        robots::interpolate<Robot>(
+                            a, b, static_cast<float>(k) / static_cast<float>(segment_states)));
                 }
             }
             next.emplace_back(wps.back());

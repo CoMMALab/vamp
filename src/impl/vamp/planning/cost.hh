@@ -8,9 +8,8 @@ namespace vamp::planning
     VAMP_DEFINE_HAS_METHOD(cost)
 
     template <typename Robot>
-    [[nodiscard]] inline auto cost(
-        const typename Robot::Configuration &a,
-        const typename Robot::Configuration &b) noexcept -> float
+    [[nodiscard]] inline auto
+    cost(const typename Robot::Configuration &a, const typename Robot::Configuration &b) noexcept -> float
     {
         if constexpr (has_cost_v<Robot>)
         {

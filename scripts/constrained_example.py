@@ -262,8 +262,9 @@ def main(
                 position=np.array(PLANE_POSE[4:]),
             )
 
-        # Paths are already dense (planners emit whole projected waypoint chains): no
-        # interpolation, since linear interpolation leaves the manifold.
+        # No interpolation, since linear interpolation leaves the manifold. By default the planners
+        # keep only the endpoint of each projected step; pass --constraint_emit_all_waypoints=True
+        # for dense paths made of whole projected waypoint chains.
         # numpy() is a read-only view and the bindings only take writable arrays, so copy.
         waypoints = path.numpy().copy()
 

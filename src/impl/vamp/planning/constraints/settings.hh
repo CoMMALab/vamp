@@ -36,7 +36,7 @@ namespace vamp::planning::constraint
         float perturbation_scale = 0.1F;
 
         // Emit every waypoint of a projected chain from steer, not just the endpoint.
-        bool emit_all_waypoints = true;
+        bool emit_all_waypoints = false;
 
         // Multiplier on a connect loop's direct-path step budget: projection drift makes
         // constrained connects wander, so allow extra steps before giving up.

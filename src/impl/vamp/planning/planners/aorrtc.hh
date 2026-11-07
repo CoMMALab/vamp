@@ -293,48 +293,54 @@ namespace vamp::planning
                                                  nearest_edge_cost :
                                                  chain_edge_cost(nearest_node.array, waypoints.front()));
 
-                    // If resampling costs to try and find a better parent...
-                    if (settings.cost_bound_resample)
+                    // If resampling costs to try and find a better parent... (re-parenting is
+                    // only sound when tree edges are straight lines, not projected chains)
+                    if constexpr (not LocalPlanner::projecting)
                     {
-                        const float g_hat = (tree_a_is_start) ?
-                                                planning::cost<Robot>(root_vert.array, waypoints.front()) :
-                                                planning::cost<Robot>(waypoints.front(), root_vert.array);
-
-                        // Continuously resample cost until an invalid connection is found
-                        for (auto i = 0U; i < settings.max_cost_bound_resamples; ++i)
+                        if (settings.cost_bound_resample)
                         {
-                            const float c_range = std::max(new_cost - g_hat, 0.0F);
-                            const float c_rand = (rng->dist.uniform_01() * c_range) + g_hat;
+                            const float g_hat =
+                                (tree_a_is_start) ?
+                                    planning::cost<Robot>(root_vert.array, waypoints.front()) :
+                                    planning::cost<Robot>(waypoints.front(), root_vert.array);
 
-                            auto [new_nearest_node, new_nearest_distance, new_nearest_edge_cost] =
-                                find_nearest(tree_a, root_vert, waypoints.front(), c_rand, tree_a_is_start);
+                            // Continuously resample cost until an invalid connection is found
+                            for (auto i = 0U; i < settings.max_cost_bound_resamples; ++i)
+                            {
+                                const float c_range = std::max(new_cost - g_hat, 0.0F);
+                                const float c_rand = (rng->dist.uniform_01() * c_range) + g_hat;
 
-                            // If we have connected:
-                            //      to the same parent
-                            //      with a worse cost
-                            //      to the best possible parent before this
-                            //      (crange == 0 \equiv cost == g^)
-                            // ...then stop spending effort resampling costs
-                            if (new_nearest_node.index == nearest_node.index or
-                                new_nearest_node.cost + new_nearest_edge_cost >= new_cost or c_range == 0)
-                            {
-                                break;
-                            }
-                            // Validate edge to newly found parent
-                            else if (lp.validate(
-                                         new_nearest_node.array,
-                                         waypoints.front(),
-                                         environment,
-                                         tree_a_is_start))
-                            {
-                                // Congratulations to the new parent
-                                nearest_node = new_nearest_node;
-                                new_cost = new_nearest_node.cost + new_nearest_edge_cost;
-                            }
-                            // The edge is invalid, we have failed a connection. Stop resampling!
-                            else
-                            {
-                                break;
+                                auto [new_nearest_node, new_nearest_distance, new_nearest_edge_cost] =
+                                    find_nearest(
+                                        tree_a, root_vert, waypoints.front(), c_rand, tree_a_is_start);
+
+                                // If we have connected:
+                                //      to the same parent
+                                //      with a worse cost
+                                //      to the best possible parent before this
+                                //      (crange == 0 \equiv cost == g^)
+                                // ...then stop spending effort resampling costs
+                                if (new_nearest_node.index == nearest_node.index or
+                                    new_nearest_node.cost + new_nearest_edge_cost >= new_cost or c_range == 0)
+                                {
+                                    break;
+                                }
+                                // Validate edge to newly found parent
+                                else if (lp.validate(
+                                             new_nearest_node.array,
+                                             waypoints.front(),
+                                             environment,
+                                             tree_a_is_start))
+                                {
+                                    // Congratulations to the new parent
+                                    nearest_node = new_nearest_node;
+                                    new_cost = new_nearest_node.cost + new_nearest_edge_cost;
+                                }
+                                // The edge is invalid, we have failed a connection. Stop resampling!
+                                else
+                                {
+                                    break;
+                                }
                             }
                         }
                     }
@@ -383,7 +389,8 @@ namespace vamp::planning
                     }
 
                     // Extend incrementally towards other tree
-                    const std::size_t n_extensions = std::ceil(other_nearest_distance / rrtc_settings.range);
+                    const std::size_t n_extensions =
+                        std::ceil(lp.connect_slack * other_nearest_distance / rrtc_settings.range);
 
                     std::size_t i_extension = 0;
                     bool connected = false;

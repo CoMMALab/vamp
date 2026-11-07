@@ -198,7 +198,8 @@ namespace vamp::planning
                     const auto [other_nearest_index, other_nearest_distance] = *other_nearest;
                     const auto other_nearest_configuration = Configuration(buffer_index(other_nearest_index));
 
-                    const std::size_t n_extensions = std::ceil(other_nearest_distance / settings.range);
+                    const std::size_t n_extensions =
+                        std::ceil(lp.connect_slack * other_nearest_distance / settings.range);
 
                     std::size_t i_extension = 0;
                     bool connected = false;

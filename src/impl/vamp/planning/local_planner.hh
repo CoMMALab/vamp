@@ -24,7 +24,7 @@ namespace vamp::planning
     // path, in execution order. The waypoints view a buffer owned by the local planner and
     // are valid only until its next steer/connect_within call; they are empty on
     // Rejected/Trapped, and empty on success when the local path has no interior waypoints
-    // (connect_within).
+    // (the unconstrained connect_within).
     template <typename Robot>
     struct [[nodiscard]] Extension
     {
@@ -81,6 +81,9 @@ namespace vamp::planning
     // perform the same arithmetic as calling those primitives directly (bit-identical
     // under -ffp-contract=off; under the release flags' -ffp-contract=fast, inlining
     // context may contract FMAs differently, which can shift results by 1 ULP).
+    // Constrained local planners instead project candidates onto a constraint manifold
+    // and return the whole projected waypoint chain, which planners insert as a chain of
+    // tree nodes.
     template <typename Robot, std::size_t rake, std::size_t resolution>
     struct UnconstrainedLocalPlanner
     {
@@ -88,6 +91,15 @@ namespace vamp::planning
         using Environment = collision::Environment<FloatVector<rake>>;
 
         UnconstrainedLocalPlanner() = default;
+
+        // True if configurations must be projected to remain valid (e.g. onto a constraint
+        // manifold): planners must lp.project() any configuration they synthesize
+        // (interpolated midpoints, perturbations) before use.
+        static constexpr bool projecting = false;
+
+        // Multiplier on the number of steps a connect loop may take: projection drift can
+        // require more steps than ceil(distance / range).
+        static constexpr float connect_slack = 1.F;
 
         // Validity of the local path a -> b. `a` is the configuration already known to be valid and
         // `b` the new one: validate_motion does not check its start, so the path is always checked
@@ -124,7 +136,7 @@ namespace vamp::planning
         // Steer from `from` toward `target` by at most `range`. `forward` is true iff `from`
         // precedes `target` in execution order. `distance` is robots::distance<Robot>(from, target),
         // precomputed by callers (usually from a nearest-neighbor query). `accept` is invoked
-        // on the candidate endpoint after interpolation but before
+        // on the candidate endpoint after interpolation (and projection) but before
         // validation; returning false aborts with Rejected, letting optimizing planners
         // prune an extension on cost before paying for the validity check.
         template <typename Accept = AlwaysTrue>
@@ -157,6 +169,19 @@ namespace vamp::planning
 
             chain_.emplace_back(next);
             return {(reach) ? SteerStatus::Reached : SteerStatus::Advanced, chain_};
+        }
+
+        // Project a configuration onto the constraint manifold (identity here). Returns false
+        // if projection fails; the configuration is then unusable.
+        inline auto project(Configuration &) const noexcept -> bool
+        {
+            return true;
+        }
+
+        // Whether a configuration satisfies the constraint: no manifold here, so always true.
+        inline auto satisfied(const Configuration &) const noexcept -> bool
+        {
+            return true;
         }
 
     private:

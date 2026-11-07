@@ -26,7 +26,10 @@ if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64") # x86 supports additional flags
 	if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang") # Clang supports additional fine-grained flags over GCC
 		# -fno-honor-nans is deliberately NOT set: together with -fno-honor-infinities it lets the
 		# compiler break the kd-tree's nearest-neighbor search (it returns an infinite distance and no
-		# index for a 14-dimensional robot), so every planner fails immediately.
+		# index for a 14-dimensional robot), so every planner fails immediately. The manifold constraint
+		# code also relies on NaN handling (the log map is NaN exactly at satisfied orientations; the
+		# min/max hinge zeroes it), which that flag lets the compiler optimize away, making projection
+		# never converge. Infinities are still assumed absent.
 		string(APPEND VAMP_FAST_ARGS " -fno-honor-infinities")
 		if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 11.0.0) # clang 11 does not support -fapprox-func
 			string(APPEND VAMP_FAST_ARGS " -fapprox-func")

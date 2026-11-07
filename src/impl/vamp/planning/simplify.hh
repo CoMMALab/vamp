@@ -14,6 +14,53 @@
 
 namespace vamp::planning
 {
+    // Interpolate the path to n states; for projecting local planners, every interpolated
+    // state is projected back onto the constraint manifold and every resulting edge is
+    // revalidated (projection bends states off their validated chords, so the new edges
+    // do not inherit validity), reverting on any failure.
+    template <typename Robot, std::size_t rake, typename LocalPlanner>
+    inline static auto interpolate_and_project(
+        Path<Robot> &path,
+        std::size_t n,
+        const collision::Environment<FloatVector<rake>> &environment,
+        const LocalPlanner &lp) -> bool
+    {
+        if constexpr (LocalPlanner::projecting)
+        {
+            auto backup = path;
+            path.interpolate_to_n_states(n);
+
+            bool admitted = true;
+            for (auto &state : path)
+            {
+                if (not lp.project(state))
+                {
+                    admitted = false;
+                    break;
+                }
+            }
+
+            for (auto i = 0U; admitted and i + 1 < path.size(); ++i)
+            {
+                admitted = lp.validate(path[i], path[i + 1], environment);
+            }
+
+            if (not admitted)
+            {
+                path = std::move(backup);
+                return false;
+            }
+
+            return true;
+        }
+        else
+        {
+            (void)environment;
+            path.interpolate_to_n_states(n);
+            return true;
+        }
+    }
+
     template <typename Robot>
     inline static auto segment_cost(const Path<Robot> &path, std::size_t from, std::size_t to) -> float
     {
@@ -39,8 +86,9 @@ namespace vamp::planning
         }
 
         // Subdivided edges inherit validity from the edge they split only when
-        // interpolation is a straight line.
-        constexpr bool preserves_edges = robots::is_euclidean_v<Robot>;
+        // interpolation is a straight line and midpoints stay on it: projection bends
+        // midpoints off their validated chords.
+        constexpr bool preserves_edges = robots::is_euclidean_v<Robot> and not LocalPlanner::projecting;
 
         // Subdivision can also lengthen the path even when every later midpoint move is
         // cost-nonincreasing, so snapshot the input and revert the whole pass if it
@@ -56,14 +104,19 @@ namespace vamp::planning
         bool changed = false;
         for (auto step = 0U; step < settings.max_steps; ++step)
         {
-            // Bail out (reverting this step's subdivision) unless every new edge
-            // revalidates.
+            // Bail out (reverting this step's subdivision) unless every midpoint
+            // projects and every new edge revalidates.
             if constexpr (not preserves_edges)
             {
                 auto backup = path;
                 path.subdivide();
 
                 bool admitted = true;
+                for (auto index = 1U; admitted and index < path.size(); index += 2)
+                {
+                    admitted = lp.project(path[index]);
+                }
+
                 for (auto index = 1U; admitted and index < path.size(); index += 2)
                 {
                     admitted = lp.validate(path[index - 1], path[index], environment) and
@@ -90,7 +143,8 @@ namespace vamp::planning
                     robots::interpolate<Robot>(path[index], path[index + 1], settings.midpoint_interpolation);
                 auto midpoint = robots::interpolate<Robot>(temp_1, temp_2, 0.5);
 
-                if (robots::distance<Robot>(path[index], midpoint) > settings.min_change and
+                if (lp.project(midpoint) and
+                    robots::distance<Robot>(path[index], midpoint) > settings.min_change and
                     cost_nonincreasing<Robot>(path[index - 1], path[index], midpoint, path[index + 1]) and
                     lp.validate(path[index - 1], midpoint, environment) and
                     lp.validate(midpoint, path[index + 1], environment))
@@ -170,7 +224,7 @@ namespace vamp::planning
 
             // Reject non-shrinking chains (see shortcut_path): every success resets
             // no_change, so accepting growth would loop forever. The cost budget rejects
-            // chains that cost more than the segment despite having fewer states.
+            // projected chains that cost more than the segment despite having fewer states.
             const auto extension = lp.connect_within(
                 path[point_0],
                 path[point_1],
@@ -207,9 +261,10 @@ namespace vamp::planning
         // planning::cost<Robot> and try to collapse the widest valid skip starting from the
         // most expensive edge. After each successful shortcut the ranking changes, so we
         // re-score and re-sort. Terminates because every iteration either shrinks the path
-        // by >= 1 or exits: shortcuts whose emitted waypoint chain does not shrink the
-        // segment are rejected, since accepting them would grow the path and re-shortcut
-        // its own output forever.
+        // by >= 1 or exits: shortcuts whose emitted waypoint chain (rake - 1 interior
+        // waypoints for projecting local planners) does not shrink the segment are
+        // rejected, since accepting them would grow the path and re-shortcut its own
+        // output forever.
         bool result = false;
         while (path.size() >= 3)
         {
@@ -228,8 +283,8 @@ namespace vamp::planning
                 const std::size_t i = entry.second;
                 for (auto j = path.size() - 1; j > i + 1; --j)
                 {
-                    // The cost budget rejects chains that cost more than the segment
-                    // despite having fewer states.
+                    // The cost budget rejects projected chains that cost more than the
+                    // segment despite having fewer states.
                     const auto extension = lp.connect_within(
                         path[i],
                         path[j],
@@ -293,8 +348,11 @@ namespace vamp::planning
             {
                 // next() already returns a joint-space configuration; do not rescale it.
                 const auto perturbation = rng->next();
-                const auto new_state =
-                    robots::interpolate<Robot>(perturb_state, perturbation, settings.range);
+                auto new_state = robots::interpolate<Robot>(perturb_state, perturbation, settings.range);
+                if (not lp.project(new_state))
+                {
+                    continue;
+                }
 
                 float new_cost = cost<Robot>(before_state, new_state) + cost<Robot>(new_state, after_state);
 
@@ -344,13 +402,15 @@ namespace vamp::planning
                 case PERTURB:
                     return perturb_path<Robot, rake, resolution>(
                         result.path, environment, settings.perturb, rng, lp);
+                case INTERP:
+                    return interpolate_and_project<Robot>(result.path, settings.interpolate, environment, lp);
             }
 
             return false;
         };
 
         // Check if the direct local path from start to goal is valid; the cost budget
-        // rejects a direct chain that costs more than the input path.
+        // rejects a direct projected chain that costs more than the input path.
         if (path.size() > 2)
         {
             const auto direct = lp.connect_within(
@@ -387,7 +447,7 @@ namespace vamp::planning
 
         if (settings.interpolate)
         {
-            result.path.interpolate_to_n_states(settings.interpolate);
+            interpolate_and_project<Robot>(result.path, settings.interpolate, environment, lp);
         }
 
         if (path.size() > 2)

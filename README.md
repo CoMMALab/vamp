@@ -83,6 +83,8 @@ pip install vamp-planner
 
 > [!IMPORTANT]  
 > VAMP comes with precompiled robots! If you want to add your own, use [cricket](https://github.com/CoMMALab/cricket) and follow the instructions there.
+>
+> **`pip install .` builds Panda, UR5, Fetch and Baxter by default**, because every robot adds a large header to the build. To change the set, for example `pip install . -C cmake.define.VAMP_ROBOTS="ur5;panda;fetch;baxter;sphere"`, or `-C cmake.define.VAMP_ROBOTS=all` for everything (`sphere`, `ur5`, `panda`, `fetch`, `baxter`).
 
 VAMP requires the following system dependencies:
 - [CMake](https://cmake.org/) version 3.16 or greater.

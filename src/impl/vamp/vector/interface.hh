@@ -394,6 +394,23 @@ namespace vamp
             return D(apply<S::template max<0>>(d()->data, broadcast_scalar(other)));
         }
 
+        template <typename T, typename allow_types<D>::template check<T> = true>
+        inline constexpr auto min(T o) const noexcept -> D
+        {
+            return min(o.data);
+        }
+
+        template <typename T, typename allow_types<DataT, typename S::VectorT>::template check<T> = true>
+        inline constexpr auto min(T other) const noexcept -> D
+        {
+            return D(apply<S::template min<0>>(d()->data, other));
+        }
+
+        inline constexpr auto min(typename S::ScalarT other) const noexcept -> D
+        {
+            return D(apply<S::template min<0>>(d()->data, broadcast_scalar(other)));
+        }
+
         inline constexpr auto hsum() const noexcept -> typename S::ScalarT
         {
             return S::hsum(unpack::sum_(d()->data));

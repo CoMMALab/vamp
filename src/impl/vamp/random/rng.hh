@@ -6,12 +6,13 @@
 
 namespace vamp::rng
 {
-    template <typename Robot>
+    // A sampler of states of `Space` (by default the robot's own configuration space).
+    template <typename Robot, typename Space = Robot>
     struct RNG
     {
-        using Ptr = std::shared_ptr<RNG<Robot>>;
+        using Ptr = std::shared_ptr<RNG<Robot, Space>>;
         virtual inline void reset() noexcept = 0;
-        virtual inline auto next() noexcept -> FloatVector<Robot::dimension> = 0;
+        virtual inline auto next() noexcept -> FloatVector<Space::dimension> = 0;
 
         Distribution dist;
     };

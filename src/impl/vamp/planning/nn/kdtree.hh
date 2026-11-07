@@ -29,7 +29,7 @@ namespace vamp::planning
     // pruning, so correctness never depends on the split heuristic. Splits happen when a
     // leaf overflows: median of the widest box axis, ties broken by insertion index.
     //
-    // Metric: L2 over the configuration, except quaternion blocks (Robot::so3_offsets)
+    // Metric: L2 over the configuration, except quaternion blocks (Space::so3_offsets)
     // which use the sign-minimized chordal distance min(|a - b|, |a + b|). Because each
     // block contributes an independent term to the squared sum, the minimum over sign
     // choices factorizes per block: box lower bounds and leaf distances take the min of
@@ -39,10 +39,10 @@ namespace vamp::planning
     //
     // Deterministic and single-threaded: no RNG, candidate ties broken by lowest index,
     // and pruning is strict (bound > best) so the lowest-index minimum is always found.
-    template <typename Robot, std::size_t leaf_capacity = 128>
+    template <typename Space, std::size_t leaf_capacity = 128>
     struct KDTree
     {
-        static constexpr std::size_t dim = Robot::dimension;
+        static constexpr std::size_t dim = Space::dimension;
         static constexpr std::size_t width = FloatVectorWidth;
         static constexpr std::size_t n_blocks = (leaf_capacity + width - 1) / width;
         static_assert(leaf_capacity % width == 0, "leaf_capacity must be a multiple of the SIMD width");
@@ -55,7 +55,7 @@ namespace vamp::planning
         static constexpr std::array<bool, dim> is_quat = []()
         {
             std::array<bool, dim> mask{};
-            for (const auto offset : robots::so3_offsets_v<Robot>)
+            for (const auto offset : robots::so3_offsets_v<Space>)
             {
                 for (auto j = 0U; j < 4U; ++j)
                 {
@@ -66,7 +66,7 @@ namespace vamp::planning
             return mask;
         }();
 
-        static constexpr std::size_t n_base = dim - 4 * robots::so3_offsets_v<Robot>.size();
+        static constexpr std::size_t n_base = dim - 4 * robots::so3_offsets_v<Space>.size();
 
         static constexpr std::array<std::size_t, n_base == 0 ? 1 : n_base> base_dims = []()
         {
@@ -251,7 +251,7 @@ namespace vamp::planning
 
         static void canonicalize(std::array<float, dim> &q) noexcept
         {
-            for (const auto offset : robots::so3_offsets_v<Robot>)
+            for (const auto offset : robots::so3_offsets_v<Space>)
             {
                 auto sign = 0.F;
                 for (auto j = 0U; j < 4U; ++j)
@@ -375,7 +375,7 @@ namespace vamp::planning
             // The passes above charged quaternion lanes at +q; swap each block's
             // contribution for the sign-minimized one. May round slightly negative,
             // which only over-visits, never over-prunes.
-            for (const auto offset : robots::so3_offsets_v<Robot>)
+            for (const auto offset : robots::so3_offsets_v<Space>)
             {
                 auto bp = 0.F, bm = 0.F;
                 for (auto j = offset; j < offset + 4; ++j)
@@ -424,7 +424,7 @@ namespace vamp::planning
                     continue;
                 }
 
-                for (const auto offset : robots::so3_offsets_v<Robot>)
+                for (const auto offset : robots::so3_offsets_v<Space>)
                 {
                     auto dp = Row::fill(0.F), dm = Row::fill(0.F);
                     for (auto j = offset; j < offset + 4; ++j)

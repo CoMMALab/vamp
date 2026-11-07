@@ -373,8 +373,7 @@ namespace vamp
                 {
                     for (const auto &sb : b.posed_spheres)
                     {
-                        if (not collision::sphere_sphere_sql2(
-                                    sa.x, sa.y, sa.z, sa.r, sb.x, sb.y, sb.z, sb.r)
+                        if (not collision::sphere_sphere_sql2(sa.x, sa.y, sa.z, sa.r, sb.x, sb.y, sb.z, sb.r)
                                     .test_zero())
                         {
                             return true;

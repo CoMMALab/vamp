@@ -10,6 +10,7 @@
 #include <vamp/random/rng.hh>
 #include <vamp/planning/roadmap.hh>
 #include <vamp/vector/eigen.hh>
+#include <vamp/robots/traits.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning
@@ -162,20 +163,31 @@ namespace vamp::planning
 
         inline auto next() noexcept -> FloatVector<Robot::dimension> override
         {
-            auto x = phs.transform(uniform_in_ball());
+            if constexpr (robots::is_euclidean_v<Robot>)
+            {
+                auto x = phs.transform(uniform_in_ball());
 
-            // Clamp values
-            Robot::descale_configuration(x);
-            x = x.clamp(0.F, 1.F);
-            Robot::scale_configuration(x);
+                // Clamp to joint bounds via descale -> [0,1] -> scale
+                Robot::descale_configuration(x);
+                x = x.clamp(0.F, 1.F);
+                Robot::scale_configuration(x);
 
-            return x;
+                return x;
+            }
+            else
+            {
+                // Informed (PHS) sampling assumes a Euclidean L2 metric.
+                return rng->next();
+            }
         }
 
         inline auto logit() noexcept -> vamp::FloatVector<Robot::dimension>
         {
             auto U1 = rng->next();
-            Robot::descale_configuration(U1);
+            if constexpr (robots::is_euclidean_v<Robot>)
+            {
+                Robot::descale_configuration(U1);
+            }
             return (U1 * (1 - U1).rcp()).log() * std::sqrt(vamp::utils::constants::pi / 8.F);
         }
 

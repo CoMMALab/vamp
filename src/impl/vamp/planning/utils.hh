@@ -9,7 +9,7 @@
 
 #include <vamp/planning/nn/nn.hh>
 #include <vamp/planning/plan.hh>
-#include <vamp/planning/roadmap.hh>
+#include <vamp/planning/planners/roadmap.hh>
 #include <vamp/robots/traits.hh>
 #include <vamp/vector.hh>
 

@@ -28,8 +28,8 @@ namespace vamp::planning
         const collision::Environment<FloatVector<rake>> &environment,
         const typename Robot::template ConfigurationBlock<rake> &block) noexcept -> bool
     {
-        return (environment.attachments) ? Robot::template fkcc_attach<rake>(environment, block) :
-                                           Robot::template fkcc<rake>(environment, block);
+        return (not environment.attachments.empty()) ? Robot::template fkcc_attach<rake>(environment, block) :
+                                                       Robot::template fkcc<rake>(environment, block);
     }
 
     template <typename Robot, std::size_t rake, std::size_t resolution>

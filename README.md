@@ -86,7 +86,7 @@ pip install vamp-planner
 >
 > The two-arm `bimanual_iiwa_tool` robot (two iiwa arms with a gripper each; the gripper tool frames are two end-effectors, so held objects can be attached to either) is not built by default. Select it when installing, e.g. `pip install . -C cmake.define.VAMP_ROBOT_MODULES="panda;bimanual_iiwa_tool" -C cmake.define.VAMP_ROBOT_STRUCTS="Panda;BimanualIiwaTool"`, then see `scripts/bimanual_attachments_example.py` (planning with one attachment per gripper, visualized with viser).
 >
-> **`pip install .` builds Panda, UR5, Fetch and Baxter by default**, because every robot adds a large header to the build. To change the set, for example `pip install . -C cmake.define.VAMP_ROBOTS="ur5;panda;fetch;baxter;sphere"`, or `-C cmake.define.VAMP_ROBOTS=all` for everything (`sphere`, `ur5`, `panda`, `bimanual_panda`, `fetch`, `baxter`, `digit`, `r2c6`, `bimanual_iiwa`, `bimanual_iiwa_tool`, `g1_unitree`).
+> **`pip install .` builds Panda, UR5, Fetch and Baxter by default**, because every robot adds a large header to the build. To change the set, for example `pip install . -C cmake.define.VAMP_ROBOTS="ur5;panda;fetch;baxter;sphere"`, or `-C cmake.define.VAMP_ROBOTS=all` for everything (`sphere`, `ur5`, `panda`, `bimanual_panda`, `fetch`, `baxter`, `digit`, `r2c6`, `bimanual_iiwa_tool`, `g1_unitree`).
 
 VAMP requires the following system dependencies:
 - [CMake](https://cmake.org/) version 3.16 or greater.

@@ -100,7 +100,6 @@ VAMP requires the following system dependencies:
 
 VAMP fetches the following external dependencies via [CPM](https://github.com/cpm-cmake/CPM.cmake):
 - [`nanobind`](https://github.com/wjakob/nanobind): for Python bindings
-- [`nigh`](https://github.com/KavrakiLab/nigh): a fork of the original [`nigh`](https://github.com/UNC-Robotics/nigh) [[4]](#4) to better use our vector types
 - [`pdqsort`](https://github.com/orlp/pdqsort): for fast sorting
 - [`SIMDxorshift`](https://github.com/lemire/SIMDxorshift): alternative fast random numbers for x86 machines
 

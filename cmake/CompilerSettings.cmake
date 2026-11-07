@@ -24,7 +24,7 @@ set(VAMP_FAST_ARGS "-fno-math-errno -fno-signed-zeros -fno-trapping-math -fno-ro
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64") # x86 supports additional flags
 	string(APPEND VAMP_FAST_ARGS " -fassociative-math")
 	if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang") # Clang supports additional fine-grained flags over GCC
-		string(APPEND VAMP_FAST_ARGS " -fno-honor-infinities -fno-honor-nans")
+		string(APPEND VAMP_FAST_ARGS " -fno-honor-infinities")
 		if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 11.0.0) # clang 11 does not support -fapprox-func
 			string(APPEND VAMP_FAST_ARGS " -fapprox-func")
 		endif()

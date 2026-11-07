@@ -8,7 +8,7 @@
 #include <optional>
 
 #include <vamp/collision/environment.hh>
-#include <vamp/planning/nn/nn.hh>
+#include <vamp/planning/nn/kdtree.hh>
 #include <vamp/planning/cost.hh>
 #include <vamp/planning/local_planner.hh>
 #include <vamp/planning/phs.hh>
@@ -37,9 +37,10 @@ namespace vamp::planning
         struct LiftedRobot
         {
             static constexpr std::size_t dimension = Robot::dimension + 1;
+            static constexpr auto so3_offsets = robots::so3_offsets_v<Robot>;
         };
 
-        using NN = planning::NN<LiftedRobot>;
+        using NN = KDTree<LiftedRobot>;
 
         struct alignas(FloatVectorAlignment) Key : std::array<float, Configuration::num_scalars_rounded + 1>
         {
@@ -171,6 +172,8 @@ namespace vamp::planning
             NN goal_tree;
             start_tree.reserve(rrtc_settings.max_samples);
             goal_tree.reserve(rrtc_settings.max_samples);
+            start_tree.set_epsilon(rrtc_settings.nn_epsilon);
+            goal_tree.set_epsilon(rrtc_settings.nn_epsilon);
 
             std::size_t iter = 0;
             std::size_t free_index = start_index + 1;

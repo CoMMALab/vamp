@@ -178,6 +178,7 @@ namespace vamp::planning
     struct PlanningResult
     {
         Path<Robot> path;
+        bool solved{false};
         float cost{0.};
         std::size_t nanoseconds{0};
         std::size_t iterations{0};

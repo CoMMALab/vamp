@@ -3,8 +3,9 @@
 Plans with manifold constraints by passing `constraints=[...]` to the regular planner
 entry points (rrtc, aorrtc, grrtstar) and simplify:
 
-- line: the Panda's end-effector may only translate along its approach axis.
+- line: the Panda's end-effector may only translate along one axis, past ten small cuboids.
 - plane: the Panda's end-effector slides in a fixed-orientation plane through a sphere cage.
+- bimanual: the two arms of the bimanual Panda hold a fixed relative grasp transform.
 
 Start and goal must lie on the constraint manifold: the planners raise ValueError
 otherwise, so this script projects them first with the module's project() helper.
@@ -34,8 +35,26 @@ PLANE_PROBLEM = [
 
 IDENTITY = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-# Allowed end-effector travel along the line constraint's axis, in meters.
+# Reference pose (qw, qx, qy, qz, x, y, z) of the line constraint: the end-effector slides along the y axis of
+# this frame (+-2.5 mm in x and z), with free orientation.
+LINE_POSE = [0.0, 1.0, 0.0, 0.0, 0.2986, 0.647752, 0.1899]
+
+# Length of the line drawn in the visualization, in meters on each side of the reference pose.
 LINE_EXTENT = 0.6
+
+# Ten cuboids for the line example, [center xyz, half extents xyz] (from the benchmark line problems).
+LINE_CUBOIDS = [
+    [0.72695, 0.20887, 0.18598, 0.0194, 0.0194, 0.0194],
+    [0.02292, -0.01773, 0.64186, 0.01884, 0.01884, 0.01884],
+    [0.25598, 0.10937, 0.53968, 0.0174, 0.0174, 0.0174],
+    [0.79233, -0.74942, 0.30435, 0.00497, 0.00497, 0.00497],
+    [0.76862, 0.14451, 0.66303, 0.02221, 0.02221, 0.02221],
+    [0.39214, -0.47536, -0.1113, 0.01254, 0.01254, 0.01254],
+    [0.68343, 0.3738, 0.39421, 0.01188, 0.01188, 0.01188],
+    [-0.00922, -0.54583, -0.02773, 0.01421, 0.01421, 0.01421],
+    [0.53951, 0.1226, 0.50953, 0.01703, 0.01703, 0.01703],
+    [0.19934, 0.34832, 0.02067, 0.00964, 0.00964, 0.00964],
+]
 
 # Reference pose (qw, qx, qy, qz, x, y, z) of the plane constraint: the end-effector
 # slides in the local x-y plane of this frame with fixed orientation.
@@ -53,19 +72,25 @@ def pose_to_transform(pose):
 
 
 def line_problem(module):
-    # The end-effector may only translate along the approach (local z) axis of its
-    # starting pose; position off-axis and orientation are held to +- 0.01.
-    start_seed = np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785], dtype=np.float32)
-    goal_seed = start_seed + np.array([0.0, 0.35, 0.0, 0.45, 0.0, -0.4, 0.0], dtype=np.float32)
+    # The end-effector slides along the y axis of LINE_POSE (position held to +-2.5 mm off the axis,
+    # orientation free) while ten small cuboids are in the way.
+    start_seed = np.array([0.973156, 0.403079, 0.110229, -1.873058, -0.063795, 2.27308, 1.907363],
+                          dtype=np.float32)
+    goal_seed = np.array([-1.24479, 0.703143, 0.134544, -1.384665, -0.106787, 2.081792, -0.299777],
+                         dtype=np.float32)
 
     tsr = module.TaskSpaceConstraint(
         IDENTITY,
-        pose_to_transform(module.eefk(start_seed)),
-        [-0.01, -0.01, -LINE_EXTENT, -0.01, -0.01, -0.01],
-        [0.01, 0.01, LINE_EXTENT, 0.01, 0.01, 0.01],
+        LINE_POSE,
+        [-0.0025, -10.0025, -0.0025, -1000.0, -1000.0, -1000.0],
+        [0.0025, 10.0025, 0.0025, 1000.0, 1000.0, 1000.0],
     )
 
-    return start_seed, goal_seed, [tsr], vamp.Environment()
+    e = vamp.Environment()
+    for cuboid in LINE_CUBOIDS:
+        e.add_cuboid(vamp.Cuboid(cuboid[:3], [0.0, 0.0, 0.0], cuboid[3:]))
+
+    return start_seed, goal_seed, [tsr], e
 
 
 def plane_problem(module):
@@ -88,14 +113,54 @@ def plane_problem(module):
     return start_seed, goal_seed, [tsr], e
 
 
+# Shelf for the bimanual example: two boards, a center divider, and the ground
+# (center, full extents).
+BIMANUAL_SHELF = [
+    ([0.5, 0.0, 0.2], [0.3, 3.0, 0.014]),
+    ([0.5, 0.0, 0.4], [0.3, 3.0, 0.014]),
+    ([0.5, 0.0, 0.3], [0.3, 0.01, 0.15]),
+    ([0.0, 0.0, -0.2], [5.0, 5.0, 0.2]),
+]
+
+
+def bimanual_problem(module):
+    # The right end-effector holds a fixed transform relative to the left, as if both
+    # arms grasp one rigid object.
+    # Both seeds keep >5cm clearance from the shelf: the object starts held low in
+    # front of the shelf and ends held above the top board.
+    start_seed = np.array(
+        [-1.388458, 1.789655, 0.526891, -2.779171, -0.986079, 3.079894, -0.75567,
+         1.630401, 0.982874, -0.542026, -2.682339, -0.376891, 2.048735, 0.422199],
+        dtype=np.float32,
+    )
+    goal_seed = np.array(
+        [-2.118829, 0.419675, 2.249477, -2.045575, 1.324726, 1.762167, -0.726496,
+         1.423746, 1.290487, -2.148522, -2.168713, -0.143205, 2.446808, -1.55776],
+        dtype=np.float32,
+    )
+
+    relative = module.BimanualTaskSpaceConstraint(
+        [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.221814],
+        [-0.001] * 6,
+        [0.001] * 6,
+    )
+
+    e = vamp.Environment()
+    for center, extents in BIMANUAL_SHELF:
+        e.add_cuboid(vamp.Cuboid(center, [0.0, 0.0, 0.0], [x / 2.0 for x in extents]))
+
+    return start_seed, goal_seed, [relative], e
+
+
 PROBLEMS = {
     "line": ("panda", line_problem, "panda_spherized.urdf"),
     "plane": ("panda", plane_problem, "panda_spherized.urdf"),
+    "bimanual": ("bimanual_panda", bimanual_problem, "bipanda_spherized.urdf"),
 }
 
 
 def main(
-    mode: str = "plane",  # One of line, plane.
+    mode: str = "plane",  # One of line, plane, bimanual.
     planner: str = "rrtc",  # One of rrtc, aorrtc, grrtstar.
     range_: float = 0.5,  # Planner range; constrained steps should stay small.
     visualize: bool = False,
@@ -234,11 +299,9 @@ def main(
             )
 
         if mode == "line":
-            # The line constraint is anchored at the end-effector pose of the start seed;
-            # motion is allowed only along the local z (approach) axis.
-            reference = np.array(module.eefk(start_seed[:n_q]))
-            rotation, origin = reference[:3, :3], reference[:3, 3]
-            axis = rotation[:, 2]
+            # The line runs along the y axis of LINE_POSE.
+            wxyz, origin = np.array(LINE_POSE[:4]), np.array(LINE_POSE[4:])
+            axis = tf.SO3(wxyz).as_matrix()[:, 1]
             server.scene.add_line_segments(
                 "/constraint/line",
                 points=np.array([[origin - LINE_EXTENT * axis, origin + LINE_EXTENT * axis]]),
@@ -247,7 +310,7 @@ def main(
             )
             server.scene.add_frame(
                 "/constraint/reference",
-                wxyz=tf.SO3.from_matrix(rotation).wxyz,
+                wxyz=wxyz,
                 position=origin,
                 axes_length=0.1,
                 axes_radius=0.004,
@@ -268,9 +331,10 @@ def main(
         # numpy() is a read-only view and the bindings only take writable arrays, so copy.
         waypoints = path.numpy().copy()
 
-        # End-effector positions along the path; these should all lie on the constraint.
-        ee_trace = np.array([np.array(module.eefk(q))[:3, 3] for q in waypoints])
-        add_point_cloud(server, ee_trace, colors=[0, 255, 0], point_size=0.008, prefix="/ee_trace")
+        if mode != "bimanual":
+            # End-effector positions along the path; these should all lie on the constraint.
+            ee_trace = np.array([np.array(module.eefk(q))[:3, 3] for q in waypoints])
+            add_point_cloud(server, ee_trace, colors=[0, 255, 0], point_size=0.008, prefix="/ee_trace")
 
         slider = add_trajectory(server, waypoints, robot, [], [[]])
         play = server.gui.add_checkbox("Play", initial_value=True)

@@ -24,7 +24,8 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("tree_ratio", &vp::RRTCSettings::tree_ratio)
         .def_rw("max_iterations", &vp::RRTCSettings::max_iterations)
         .def_rw("max_samples", &vp::RRTCSettings::max_samples)
-        .def_rw("start_tree_first", &vp::RRTCSettings::start_tree_first);
+        .def_rw("start_tree_first", &vp::RRTCSettings::start_tree_first)
+        .def_rw("nn_epsilon", &vp::RRTCSettings::nn_epsilon);
 
     nb::class_<vp::AORRTCSettings>(pymodule, "AORRTCSettings")
         .def(nb::init<>())
@@ -60,7 +61,8 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("prune_threshold", &vp::GRRTStarSettings::prune_threshold)
         .def_rw("optimize", &vp::GRRTStarSettings::optimize)
         .def_rw("max_iterations", &vp::GRRTStarSettings::max_iterations)
-        .def_rw("max_samples", &vp::GRRTStarSettings::max_samples);
+        .def_rw("max_samples", &vp::GRRTStarSettings::max_samples)
+        .def_rw("nn_epsilon", &vp::GRRTStarSettings::nn_epsilon);
 
     // TODO: Redesign a neater form of RoadmapSettings/NeighborParams
     // TODO: Expose the other NeighborParams types
@@ -78,6 +80,7 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_iterations", &PRMStarSettings::max_iterations)
         .def_rw("max_samples", &PRMStarSettings::max_samples)
         .def_rw("neighbor_params", &PRMStarSettings::neighbor_params)
+        .def_rw("nn_epsilon", &PRMStarSettings::nn_epsilon)
         .def("max_neighbors", &PRMStarSettings::max_neighbors)
         .def("neighbor_radius", &PRMStarSettings::neighbor_radius);
 
@@ -97,6 +100,7 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("batch_size", &FCITStarSettings::batch_size)
         .def_rw("optimize", &FCITStarSettings::optimize)
         .def_rw("neighbor_params", &FCITStarSettings::neighbor_params)
+        .def_rw("nn_epsilon", &FCITStarSettings::nn_epsilon)
         .def("max_neighbors", &FCITStarSettings::max_neighbors)
         .def("neighbor_radius", &FCITStarSettings::neighbor_radius);
 

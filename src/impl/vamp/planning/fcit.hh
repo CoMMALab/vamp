@@ -112,6 +112,7 @@ namespace vamp::planning
             PlanningResult<Robot> result;
             NN<Robot> roadmap;
             roadmap.reserve(settings.max_samples);
+            roadmap.set_epsilon(settings.nn_epsilon);
 
             std::size_t iter = 0;
             auto states = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(

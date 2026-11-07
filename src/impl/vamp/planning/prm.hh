@@ -71,6 +71,7 @@ namespace vamp::planning
 
             NN<Robot> roadmap;
             roadmap.reserve(settings.max_samples);
+            roadmap.set_epsilon(settings.nn_epsilon);
 
             auto start_time = std::chrono::steady_clock::now();
 
@@ -216,6 +217,7 @@ namespace vamp::planning
         {
             NN<Robot> roadmap;
             roadmap.reserve(settings.max_samples);
+            roadmap.set_epsilon(settings.nn_epsilon);
 
             constexpr const unsigned int start_index = 0;
             constexpr const unsigned int goal_index = 1;

@@ -4,7 +4,7 @@
 #include <vamp/planning/cost.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/robots/traits.hh>
-#include <vamp/planning/nn.hh>
+#include <vamp/planning/nn/nn.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning

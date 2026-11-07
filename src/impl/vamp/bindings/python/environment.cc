@@ -5,11 +5,13 @@
 #include <vamp/collision/capt.hh>
 #include <vamp/collision/factory.hh>
 #include <vamp/collision/shapes.hh>
+#include <vamp/collision/stats.hh>
 
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/array.h>
 #include <nanobind/stl/vector.h>
+#include <nanobind/stl/tuple.h>
 #include <nanobind/eigen/dense.h>
 #include <nanobind/ndarray.h>
 
@@ -207,4 +209,58 @@ void vamp::binding::init_environment(nanobind::module_ &pymodule)
             },
             "tf"_a)
         .def_ro("posed_spheres", &vc::Attachment<float>::posed_spheres);
+
+    nb::class_<vc::CollisionStats>(
+        pymodule,
+        "CollisionStats",
+        "Which robot link hit which obstacle while collision-checking, as a heuristic for what a planner kept running into. "
+        "Make one with a robot's `collision_stats(environment)`, run planners, validators or simplifiers inside a `with` block, "
+        "and read the matrix after. Only the first collision of a rejected block of samples is counted (the collision kernels "
+        "stop there), and a block is one rejected edge. Rows are the robot's links with geometry then \"<attachment>\" (what the "
+        "robot holds); columns are the environment's obstacles, in the order of its lists (spheres, capsules, z-aligned "
+        "capsules, cuboids, z-aligned cuboids, heightfields, point clouds), then \"<self>\" (the robot hitting itself). Make "
+        "the stats after the environment is built: its obstacles are named, and numbered, as they are then.")
+        .def(
+            "__init__",
+            [](vc::CollisionStats *self, std::vector<std::string> link_names, const vc::Environment<float> &environment)
+            { new (self) vc::CollisionStats(std::move(link_names), vc::obstacle_names(environment)); },
+            "link_names"_a,
+            "environment"_a)
+        .def(
+            "__enter__",
+            [](vc::CollisionStats &stats) -> vc::CollisionStats &
+            {
+                stats.previous = vc::active_stats;
+                vc::active_stats = &stats;
+                return stats;
+            },
+            nb::rv_policy::reference,
+            "Start counting on this thread.")
+        .def(
+            "__exit__",
+            [](vc::CollisionStats &stats, nb::object, nb::object, nb::object)
+            {
+                vc::active_stats = stats.previous;
+                stats.previous = nullptr;
+            },
+            "exc_type"_a = nb::none(),
+            "exc_value"_a = nb::none(),
+            "traceback"_a = nb::none(),
+            "Stop counting.")
+        .def("reset", &vc::CollisionStats::reset, "Set every count back to zero.")
+        .def(
+            "matrix",
+            [](const vc::CollisionStats &stats)
+            {
+                const std::size_t rows = stats.link_names.size(), columns = stats.obstacle_names.size();
+                auto *data = new std::uint64_t[rows * columns];
+                std::copy(stats.counts.begin(), stats.counts.end(), data);
+                nb::capsule owner(data, [](void *p) noexcept { delete[] static_cast<std::uint64_t *>(p); });
+                return nb::ndarray<nb::numpy, std::uint64_t, nb::ndim<2>>(data, {rows, columns}, owner);
+            },
+            "The counts: a (links + 1) x (obstacles + 1) array of integers.")
+        .def("pairs", &vc::CollisionStats::pairs, "The nonzero counts as (link, obstacle, count), the most counted first.")
+        .def_ro("link_names", &vc::CollisionStats::link_names)
+        .def_ro("obstacle_names", &vc::CollisionStats::obstacle_names)
+        .def_ro("rejected", &vc::CollisionStats::rejected);
 }

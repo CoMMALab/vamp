@@ -10,6 +10,7 @@
 #include <vamp/collision/filter.hh>
 #include <vamp/collision/sphere_sphere.hh>
 #include <vamp/collision/validity.hh>
+#include <vamp/collision/stats.hh>
 #include <vamp/planning/planners/aorrtc.hh>
 #include <vamp/planning/constraints/manifold/bimanual_task_space_constraint.hh>
 #include <vamp/planning/constraints/manifold/closed_loop_constraint.hh>
@@ -85,6 +86,7 @@ VAMP_DEFINE_HAS_METHOD(n_closed_loops)
 VAMP_DEFINE_ROBOT_FLAG(has_com)
 VAMP_DEFINE_ROBOT_FLAG(has_lead_screw)
 VAMP_DEFINE_ROBOT_FLAG(has_twist)
+VAMP_DEFINE_ROBOT_FLAG(collision_link_names)
 
 namespace vamp::binding
 {
@@ -660,6 +662,22 @@ namespace vamp::binding
             []() -> std::pair<float, float> { return {Robot::min_radius, Robot::max_radius}; });
         submodule.def("joint_names", []() { return Robot::joint_names; });
         submodule.def("end_effector", []() { return Robot::end_effector; });
+
+        if constexpr (robot_collision_link_names_v<Robot>)
+        {
+            submodule.def(
+                "collision_stats",
+                [](const vamp::collision::Environment<float> &environment)
+                {
+                    return vamp::collision::CollisionStats(
+                        std::vector<std::string>(
+                            Robot::collision_link_names.begin(), Robot::collision_link_names.end()),
+                        vamp::collision::obstacle_names(environment));
+                },
+                "environment"_a,
+                "A vamp.CollisionStats for this robot's links and this environment's obstacles: use it in a `with` block "
+                "around planning, validating or simplifying, then read its matrix().");
+        }
 
         const auto bounds = [](float fill) -> typename NA::Type
         {

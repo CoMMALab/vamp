@@ -6,6 +6,7 @@
 #include <vamp/collision/sphere_capsule.hh>
 #include <vamp/collision/sphere_cuboid.hh>
 #include <vamp/collision/sphere_heightfield.hh>
+#include <vamp/collision/stats.hh>
 #include <vamp/collision/math.hh>
 
 namespace vamp
@@ -44,7 +45,7 @@ namespace vamp
     }
 
     template <typename DataT, typename ArgT1, typename ArgT2, typename ArgT3, typename ArgT4>
-    inline constexpr auto sphere_environment_in_collision(
+    inline auto sphere_environment_in_collision(
         const collision::Environment<DataT> &e,  //
         ArgT1 sx_,
         ArgT2 sy_,
@@ -68,6 +69,8 @@ namespace vamp
 
             if (not collision::sphere_sphere_sql2(es, sx, sy, sz, sr).test_zero())
             {
+                collision::last_obstacle =
+                    collision::ObstacleOffsets<DataT>(e).spheres + static_cast<std::size_t>(&es - e.spheres.data());
                 return true;
             }
         }
@@ -82,6 +85,8 @@ namespace vamp
 
             if (not collision::sphere_capsule(ec, sx, sy, sz, sr).test_zero())
             {
+                collision::last_obstacle =
+                    collision::ObstacleOffsets<DataT>(e).capsules + static_cast<std::size_t>(&ec - e.capsules.data());
                 return true;
             }
         }
@@ -96,6 +101,8 @@ namespace vamp
 
             if (not collision::sphere_z_aligned_capsule(ec, sx, sy, sz, sr).test_zero())
             {
+                collision::last_obstacle =
+                    collision::ObstacleOffsets<DataT>(e).z_aligned_capsules + static_cast<std::size_t>(&ec - e.z_aligned_capsules.data());
                 return true;
             }
         }
@@ -111,6 +118,8 @@ namespace vamp
 
             if (not collision::sphere_cuboid(ec, sx, sy, sz, rsq).test_zero())
             {
+                collision::last_obstacle =
+                    collision::ObstacleOffsets<DataT>(e).cuboids + static_cast<std::size_t>(&ec - e.cuboids.data());
                 return true;
             }
         }
@@ -125,6 +134,8 @@ namespace vamp
 
             if (not collision::sphere_z_aligned_cuboid(ec, sx, sy, sz, rsq).test_zero())
             {
+                collision::last_obstacle =
+                    collision::ObstacleOffsets<DataT>(e).z_aligned_cuboids + static_cast<std::size_t>(&ec - e.z_aligned_cuboids.data());
                 return true;
             }
         }
@@ -133,6 +144,8 @@ namespace vamp
         {
             if (not collision::sphere_heightfield(eh, sx, sy, sz, sr).test_zero())
             {
+                collision::last_obstacle =
+                    collision::ObstacleOffsets<DataT>(e).heightfields + static_cast<std::size_t>(&eh - e.heightfields.data());
                 return true;
             }
         }
@@ -142,11 +155,39 @@ namespace vamp
         {
             if (pc.collides_simd(positions, sr))
             {
+                collision::last_obstacle =
+                    collision::ObstacleOffsets<DataT>(e).pointclouds + static_cast<std::size_t>(&pc - e.pointclouds.data());
                 return true;
             }
         }
 
         return false;
+    }
+
+    // Called by the generated collision kernels (cricket) where they find the first collision of a block and stop, so that
+    // collision::CollisionStats, if one is active on this thread, can count it. They cost a pointer check otherwise.
+    inline void record_link_collision(std::size_t link) noexcept
+    {
+        if (collision::active_stats != nullptr) [[unlikely]]
+        {
+            collision::active_stats->record(link, collision::last_obstacle);
+        }
+    }
+
+    inline void record_self_collision(std::size_t first, std::size_t second) noexcept
+    {
+        if (collision::active_stats != nullptr) [[unlikely]]
+        {
+            collision::active_stats->record_self(first, second);
+        }
+    }
+
+    inline void record_attachment_collision() noexcept
+    {
+        if (collision::active_stats != nullptr) [[unlikely]]
+        {
+            collision::active_stats->record_attachment(collision::last_obstacle);
+        }
     }
 
     template <typename DataT, typename ArgT1, typename ArgT2, typename ArgT3, typename ArgT4>

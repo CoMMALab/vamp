@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <vamp/collision/environment.hh>
+#include <vamp/planning/space.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/robots/traits.hh>
 #include <vamp/vector.hh>
@@ -25,10 +26,12 @@ namespace vamp::planning
     // are valid only until its next steer/connect_within call; they are empty on
     // Rejected/Trapped, and empty on success when the local path has no interior waypoints
     // (the unconstrained connect_within).
-    template <typename Robot>
+    //
+    // The waypoints are states of `Space` (the robot's configurations by default).
+    template <typename Robot, typename Space = Robot>
     struct [[nodiscard]] Extension
     {
-        using Configuration = typename Robot::Configuration;
+        using Configuration = space::State<Space>;
 
         SteerStatus status;
         const std::vector<Configuration> &waypoints;
@@ -63,9 +66,9 @@ namespace vamp::planning
         return {parent, false};
     }
 
-    template <typename Robot, typename AddNode>
+    template <typename Robot, typename Space = Robot, typename AddNode>
     inline auto insert_chain(
-        const std::vector<typename Robot::Configuration> &waypoints,
+        const std::vector<space::State<Space>> &waypoints,
         std::size_t parent,
         AddNode &&add_node) -> std::pair<std::size_t, bool>
     {
@@ -84,10 +87,13 @@ namespace vamp::planning
     // Constrained local planners instead project candidates onto a constraint manifold
     // and return the whole projected waypoint chain, which planners insert as a chain of
     // tree nodes.
-    template <typename Robot, std::size_t rake, std::size_t resolution>
+    //
+    // It plans in `Space` (the robot's own by default): it steers by Space::interpolate and a motion is valid
+    // when its samples, resolved into the ambient robot's configurations, are collision free.
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename Space = Robot>
     struct UnconstrainedLocalPlanner
     {
-        using Configuration = typename Robot::Configuration;
+        using Configuration = space::State<Space>;
         using Environment = collision::Environment<FloatVector<rake>>;
 
         UnconstrainedLocalPlanner() = default;
@@ -112,7 +118,7 @@ namespace vamp::planning
             const Environment &e,
             bool /* forward */ = true) const noexcept -> bool
         {
-            return validate_motion<Robot, rake, resolution>(a, b, e);
+            return validate_motion<Robot, rake, resolution, AlwaysTrue, Space>(a, b, e);
         }
 
         // Admit the local path a -> b only if it is valid, has fewer interior waypoints than
@@ -126,7 +132,7 @@ namespace vamp::planning
             const Configuration &b,
             const Environment &e,
             Budget &&,
-            std::size_t max_states) const noexcept -> Extension<Robot>
+            std::size_t max_states) const noexcept -> Extension<Robot, Space>
         {
             chain_.clear();
             const bool valid = 0 < max_states and validate(a, b, e);
@@ -134,7 +140,7 @@ namespace vamp::planning
         }
 
         // Steer from `from` toward `target` by at most `range`. `forward` is true iff `from`
-        // precedes `target` in execution order. `distance` is robots::distance<Robot>(from, target),
+        // precedes `target` in execution order. `distance` is space::distance<Space>(from, target),
         // precomputed by callers (usually from a nearest-neighbor query). `accept` is invoked
         // on the candidate endpoint after interpolation (and projection) but before
         // validation; returning false aborts with Rejected, letting optimizing planners
@@ -147,15 +153,15 @@ namespace vamp::planning
             float range,
             bool forward,
             const Environment &e,
-            Accept &&accept = Accept()) const noexcept -> Extension<Robot>
+            Accept &&accept = Accept()) const noexcept -> Extension<Robot, Space>
         {
             chain_.clear();
 
             const bool reach = distance < range;
             const float step = range / distance;
             const auto next = (reach)   ? target :
-                              (forward) ? robots::interpolate<Robot>(from, target, step) :
-                                          robots::interpolate<Robot>(target, from, 1.F - step);
+                              (forward) ? space::interpolate<Space>(from, target, step) :
+                                          space::interpolate<Space>(target, from, 1.F - step);
 
             if (not accept(next))
             {

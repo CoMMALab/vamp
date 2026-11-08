@@ -98,6 +98,9 @@ namespace vamp::planning::space
             using type = typename S::template StateBlock<rake>;
         };
 
+        template <typename S, std::size_t rake>
+        using block_of_t = typename block_of<S, rake>::type;
+
         template <typename S, typename = void>
         struct has_to_ambient : std::false_type
         {
@@ -117,6 +120,23 @@ namespace vamp::planning::space
         template <typename S>
         struct has_in_bounds<S, std::void_t<decltype(S::in_bounds(std::declval<const state_t<S> &>()))>>
           : std::true_type
+        {
+        };
+
+        template <typename S, std::size_t rake, typename = void>
+        struct has_interpolate_block : std::false_type
+        {
+        };
+
+        template <typename S, std::size_t rake>
+        struct has_interpolate_block<
+            S,
+            rake,
+            std::void_t<decltype(S::template interpolate_block<rake>(
+                std::declval<const state_t<S> &>(),
+                std::declval<const state_t<S> &>(),
+                std::declval<const FloatVector<rake> &>(),
+                std::declval<block_of_t<S, rake> &>()))>> : std::true_type
         {
         };
 
@@ -286,6 +306,30 @@ namespace vamp::planning::space
         else
         {
             return in_bounds<Ambient<S>>(to_ambient<S>(s));
+        }
+    }
+
+    // The states a -> b at the fractions in t, as a block (lane k holds the state at t[k]). Uses the space's
+    // interpolate_block when it has one; otherwise the states lie on the straight line, which is what a
+    // Euclidean space interpolates along.
+    template <typename S, std::size_t rake>
+    inline void interpolate_block(
+        const State<S> &a,
+        const State<S> &b,
+        const FloatVector<rake> &t,
+        StateBlock<S, rake> &out) noexcept
+    {
+        if constexpr (detail::has_interpolate_block<S, rake>::value)
+        {
+            S::template interpolate_block<rake>(a, b, t, out);
+        }
+        else
+        {
+            static_assert(euclidean_v<S>, "a non-Euclidean space must provide interpolate_block");
+            for (auto j = 0U; j < S::dimension; ++j)
+            {
+                out[j] = a.broadcast(j) + (b.broadcast(j) - a.broadcast(j)) * t;
+            }
         }
     }
 }  // namespace vamp::planning::space

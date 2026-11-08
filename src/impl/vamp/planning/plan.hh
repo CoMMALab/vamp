@@ -163,14 +163,11 @@ namespace vamp::planning
         template <std::size_t rake>
         inline auto validate(const collision::Environment<FloatVector<rake>> &environment) noexcept -> bool
         {
-            // Validating a path checks its states against the robot directly; for a space other than
-            // the robot's own, states must first be resolved into the robot's configurations.
-            static_assert(std::is_same_v<Robot, Space>, "Path::validate requires the robot's own space");
             for (auto i = 0U; i < this->size() - 1; ++i)
             {
                 const auto &current = this->operator[](i);
                 const auto &next = this->operator[](i + 1);
-                if (not validate_motion<Robot, rake, Robot::resolution>(current, next, environment))
+                if (not validate_motion<Robot, rake, Robot::resolution, AlwaysTrue, Space>(current, next, environment))
                 {
                     return false;
                 }

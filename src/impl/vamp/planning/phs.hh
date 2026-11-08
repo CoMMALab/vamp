@@ -7,6 +7,8 @@
 #include <Eigen/SVD>
 
 #include <vamp/random/distribution.hh>
+#include <vamp/planning/cost.hh>
+#include <vamp/planning/space.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/planning/planners/roadmap.hh>
 #include <vamp/vector/eigen.hh>
@@ -33,10 +35,16 @@ namespace vamp::planning
 
     }  // namespace utils
 
-    template <typename Robot>
+    // Informed (prolate hyperspheroid) sampling is an L2 construction: it is available in a space with no custom edge
+    // cost, and, if the space is Euclidean, one that can be scaled from the unit cube and back.
+    template <typename Space>
+    inline constexpr bool informed_sampling_v = not has_cost_v<Space> and (not space::euclidean_v<Space> or space::has_scale_v<Space>);
+
+    // `Space` is the space informed samples are drawn in (a robot is its own space).
+    template <typename Space>
     class ProlateHyperspheroid
     {
-        static constexpr auto dimension = Robot::dimension;
+        static constexpr auto dimension = Space::dimension;
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     public:
@@ -145,10 +153,10 @@ namespace vamp::planning
         }
     };
 
-    template <typename Robot>
-    struct ProlateHyperspheroidRNG : public rng::RNG<Robot>
+    template <typename Robot, typename Space = Robot>
+    struct ProlateHyperspheroidRNG : public rng::RNG<Robot, Space>
     {
-        ProlateHyperspheroidRNG(ProlateHyperspheroid<Robot> phs, typename vamp::rng::RNG<Robot>::Ptr &rng)
+        ProlateHyperspheroidRNG(ProlateHyperspheroid<Space> phs, typename vamp::rng::RNG<Robot, Space>::Ptr &rng)
           : phs(phs), rng(rng)
         {
         }
@@ -161,16 +169,16 @@ namespace vamp::planning
             rng->dist.reset();
         }
 
-        inline auto next() noexcept -> FloatVector<Robot::dimension> override
+        inline auto next() noexcept -> FloatVector<Space::dimension> override
         {
-            if constexpr (robots::is_euclidean_v<Robot>)
+            if constexpr (space::euclidean_v<Space>)
             {
                 auto x = phs.transform(uniform_in_ball());
 
                 // Clamp to joint bounds via descale -> [0,1] -> scale
-                Robot::descale_configuration(x);
+                Space::descale_configuration(x);
                 x = x.clamp(0.F, 1.F);
-                Robot::scale_configuration(x);
+                Space::scale_configuration(x);
 
                 return x;
             }
@@ -181,30 +189,30 @@ namespace vamp::planning
             }
         }
 
-        inline auto logit() noexcept -> vamp::FloatVector<Robot::dimension>
+        inline auto logit() noexcept -> vamp::FloatVector<Space::dimension>
         {
             auto U1 = rng->next();
-            if constexpr (robots::is_euclidean_v<Robot>)
+            if constexpr (space::euclidean_v<Space>)
             {
-                Robot::descale_configuration(U1);
+                Space::descale_configuration(U1);
             }
             return (U1 * (1 - U1).rcp()).log() * std::sqrt(vamp::utils::constants::pi / 8.F);
         }
 
-        inline auto uniform_on_ball() noexcept -> vamp::FloatVector<Robot::dimension>
+        inline auto uniform_on_ball() noexcept -> vamp::FloatVector<Space::dimension>
         {
             const auto unv = logit().trim();
             return unv / unv.l2_norm();
         }
 
-        inline auto uniform_in_ball() noexcept -> vamp::FloatVector<Robot::dimension>
+        inline auto uniform_in_ball() noexcept -> vamp::FloatVector<Space::dimension>
         {
-            return std::pow(rng->dist.uniform_01(), 1.0 / static_cast<float>(Robot::dimension)) *
+            return std::pow(rng->dist.uniform_01(), 1.0 / static_cast<float>(Space::dimension)) *
                    uniform_on_ball();
         }
 
-        ProlateHyperspheroid<Robot> phs;
-        typename vamp::rng::RNG<Robot>::Ptr rng;
+        ProlateHyperspheroid<Space> phs;
+        typename vamp::rng::RNG<Robot, Space>::Ptr rng;
     };
 
 }  // namespace vamp::planning

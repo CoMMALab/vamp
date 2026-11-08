@@ -8,12 +8,13 @@ extern "C"
 #include <vamp/vector.hh>
 #include <vamp/vector/interface.hh>
 #include <vamp/random/rng.hh>
+#include <vamp/planning/space.hh>
 #include <vamp/robots/traits.hh>
 
 namespace vamp::rng
 {
-    template <typename Robot>
-    struct XORShift : public RNG<Robot>
+    template <typename Robot, typename Space = Robot>
+    struct XORShift : public RNG<Robot, Space>
     {
         explicit XORShift(uint64_t key1 = 2UL, uint64_t key2 = 3UL) noexcept
           : key1_init(key1), key2_init(key2)
@@ -27,7 +28,7 @@ namespace vamp::rng
         uint64_t key2_init;
 
         avx_xorshift128plus_key_t key{};
-        using IntVector = Vector<SIMDVector<__m256i>, 1, robots::sample_dimension_v<Robot>>;
+        using IntVector = Vector<SIMDVector<__m256i>, 1, planning::space::sample_dimension_v<Space>>;
         IntVector buffer;
 
         inline void reset() noexcept override final
@@ -35,15 +36,15 @@ namespace vamp::rng
             avx_xorshift128plus_init(key1_init, key2_init, &key);
         }
 
-        inline auto next() noexcept -> FloatVector<Robot::dimension> override final
+        inline auto next() noexcept -> FloatVector<Space::dimension> override final
         {
             for (auto i = 0U; i < IntVector::num_vectors; ++i)
             {
                 buffer.data[i] = avx_xorshift128plus(&key);
             }
 
-            return robots::sample<Robot>(
-                FloatVector<robots::sample_dimension_v<Robot>>::map_to_range(buffer, 0.F, 1.F));
+            return planning::space::sample<Space>(
+                FloatVector<planning::space::sample_dimension_v<Space>>::map_to_range(buffer, 0.F, 1.F));
         }
     };
 }  // namespace vamp::rng

@@ -74,10 +74,28 @@ namespace vamp::planning::space
             using type = typename S::Ambient;
         };
 
+        // An aligned scalar buffer for a state of S, for spaces that do not define one.
+        template <typename S>
+        struct alignas(FloatVectorAlignment) GenericStateBuffer : std::array<float, state_t<S>::num_scalars_rounded>
+        {
+        };
+
+        template <typename S, typename = void>
+        struct configuration_buffer_of
+        {
+            using type = GenericStateBuffer<S>;
+        };
+
+        template <typename S>
+        struct configuration_buffer_of<S, std::void_t<typename S::ConfigurationBuffer>>
+        {
+            using type = typename S::ConfigurationBuffer;
+        };
+
         template <typename S, typename = void>
         struct buffer_of
         {
-            using type = typename S::ConfigurationBuffer;
+            using type = typename configuration_buffer_of<S>::type;
         };
 
         template <typename S>
@@ -137,6 +155,27 @@ namespace vamp::planning::space
                 std::declval<const state_t<S> &>(),
                 std::declval<const FloatVector<rake> &>(),
                 std::declval<block_of_t<S, rake> &>()))>> : std::true_type
+        {
+        };
+
+        template <typename S, typename = void>
+        struct has_scale : std::false_type
+        {
+        };
+
+        template <typename S>
+        struct has_scale<S, std::void_t<decltype(S::scale_configuration(std::declval<state_t<S> &>()))>>
+          : std::true_type
+        {
+        };
+
+        template <typename S, typename = void>
+        struct has_space_measure : std::false_type
+        {
+        };
+
+        template <typename S>
+        struct has_space_measure<S, std::void_t<decltype(S::space_measure())>> : std::true_type
         {
         };
 
@@ -331,5 +370,38 @@ namespace vamp::planning::space
                 out[j] = a.broadcast(j) + (b.broadcast(j) - a.broadcast(j)) * t;
             }
         }
+    }
+
+    // Size of the sampler's unit cube for a space (its dimension unless the space says otherwise).
+    template <typename S>
+    inline constexpr std::size_t sample_dimension_v = robots::sample_dimension_v<S>;
+
+    // Map a point of the sampler's unit cube to a state of the space.
+    template <typename S>
+    [[nodiscard]] inline auto sample(const FloatVector<sample_dimension_v<S>> &unit) noexcept -> State<S>
+    {
+        if constexpr (robots::detail::has_sample<S>::value)
+        {
+            return S::sample(unit);
+        }
+        else
+        {
+            static_assert(detail::has_scale<S>::value, "a space needs sample() or scale_configuration() to be sampled");
+            auto state = unit;
+            S::scale_configuration(state);
+            return state;
+        }
+    }
+
+    // Whether a space can be scaled from the unit cube and back (what informed sampling needs in a Euclidean space).
+    template <typename S>
+    inline constexpr bool has_scale_v = detail::has_scale<S>::value;
+
+    // The measure of the space, used for the connection radius of asymptotically optimal planners.
+    template <typename S>
+    [[nodiscard]] inline auto space_measure() noexcept -> float
+    {
+        static_assert(detail::has_space_measure<S>::value, "a space needs space_measure() for GRRT*");
+        return S::space_measure();
     }
 }  // namespace vamp::planning::space

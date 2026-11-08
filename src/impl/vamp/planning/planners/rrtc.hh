@@ -7,6 +7,7 @@
 #include <vamp/planning/local_planner.hh>
 #include <vamp/planning/nn/nn.hh>
 #include <vamp/planning/plan.hh>
+#include <vamp/planning/space.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/random/rng.hh>
@@ -16,38 +17,38 @@
 
 namespace vamp::planning
 {
-    template <typename Robot, std::size_t rake, std::size_t resolution>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename Space = Robot>
     struct RRTC
     {
-        using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
-        using RNG = typename vamp::rng::RNG<Robot>;
+        using Configuration = space::State<Space>;
+        static constexpr auto dimension = Space::dimension;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
 
-        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution>>
+        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution, Space>>
         inline static auto solve(
             const Configuration &start,
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const RRTCSettings &settings,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot, Space>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng, lp);
         }
 
-        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution>>
+        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution, Space>>
         inline static auto solve(
             const Configuration &start,
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
             const RRTCSettings &settings,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot, Space>
         {
-            PlanningResult<Robot> result;
+            PlanningResult<Robot, Space> result;
 
-            NN<Robot> start_tree;
-            NN<Robot> goal_tree;
+            NN<Space> start_tree;
+            NN<Space> goal_tree;
             start_tree.reserve(settings.max_samples);
             goal_tree.reserve(settings.max_samples);
             start_tree.set_epsilon(settings.nn_epsilon);
@@ -143,7 +144,7 @@ namespace vamp::planning
                 }
 
                 auto temp = rng->next();
-                typename Robot::ConfigurationBuffer temp_array;
+                space::StateBuffer<Space> temp_array;
                 temp.to_array(temp_array.data());
 
                 const auto nearest = tree_a->nearest(temp_array.data());
@@ -176,7 +177,7 @@ namespace vamp::planning
                 if (extension.status != SteerStatus::Trapped)
                 {
                     const auto [new_index, extend_truncated] =
-                        insert_chain<Robot>(extension.waypoints, nearest_index, add_node);
+                        insert_chain<Robot, Space>(extension.waypoints, nearest_index, add_node);
 
                     if (settings.dynamic_domain and nearest_radius != std::numeric_limits<float>::max())
                     {
@@ -207,7 +208,7 @@ namespace vamp::planning
                     std::size_t prior_index = new_index;
                     while (not connected and i_extension < n_extensions and free_index < settings.max_samples)
                     {
-                        const float remaining = robots::distance<Robot>(prior, other_nearest_configuration);
+                        const float remaining = space::distance<Space>(prior, other_nearest_configuration);
                         const bool final_step =
                             (i_extension == n_extensions - 1) or (remaining <= settings.range);
 
@@ -225,7 +226,7 @@ namespace vamp::planning
                         }
 
                         const auto [step_index, step_truncated] =
-                            insert_chain<Robot>(step.waypoints, prior_index, add_node);
+                            insert_chain<Robot, Space>(step.waypoints, prior_index, add_node);
                         if (step_truncated)
                         {
                             break;
@@ -245,7 +246,7 @@ namespace vamp::planning
                         {
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.cost += robots::distance<Robot>(
+                            result.cost += space::distance<Space>(
                                 result.path[result.path.size() - 1], result.path[result.path.size() - 2]);
                             current = parent;
                         }
@@ -257,7 +258,7 @@ namespace vamp::planning
                         {
                             auto parent = parents[current];
                             result.path.emplace_back(buffer_index(parent));
-                            result.cost += robots::distance<Robot>(
+                            result.cost += space::distance<Space>(
                                 result.path[result.path.size() - 1], result.path[result.path.size() - 2]);
                             current = parent;
                         }

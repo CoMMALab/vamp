@@ -1,19 +1,20 @@
 #pragma once
 
 #include <algorithm>
+#include <vamp/planning/space.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/robots/traits.hh>
 
 namespace vamp::rng
 {
-    template <typename Robot>
-    struct Halton : public RNG<Robot>
+    template <typename Robot, typename Space = Robot>
+    struct Halton : public RNG<Robot, Space>
     {
         // Numerical precision degrades around 1.4M iterations, this value can be increased up to that point.
         static constexpr const std::size_t max_iterations = 1000000U;
 
-        using Configuration = typename Robot::Configuration;
-        using Sample = FloatVector<robots::sample_dimension_v<Robot>>;
+        using Configuration = planning::space::State<Space>;
+        using Sample = FloatVector<planning::space::sample_dimension_v<Space>>;
 
         // First 40 primes (excluding 2 — Halton avoids it because the base-2
         // sequence has poor stratification at coarse subdivisions). Robots with a
@@ -40,8 +41,8 @@ namespace vamp::rng
 
         inline constexpr auto bases() noexcept -> Sample
         {
-            alignas(FloatVectorAlignment) std::array<float, robots::sample_dimension_v<Robot>> a;
-            std::copy_n(primes.cbegin(), robots::sample_dimension_v<Robot>, a.begin());
+            alignas(FloatVectorAlignment) std::array<float, planning::space::sample_dimension_v<Space>> a;
+            std::copy_n(primes.cbegin(), planning::space::sample_dimension_v<Space>, a.begin());
             return Sample(a);
         }
 
@@ -49,7 +50,7 @@ namespace vamp::rng
         {
             alignas(FloatVectorAlignment) std::array<float, Sample::num_scalars_rounded> a;
             b.to_array(a.data());
-            std::rotate(a.begin(), a.begin() + 1, a.begin() + robots::sample_dimension_v<Robot>);
+            std::rotate(a.begin(), a.begin() + 1, a.begin() + planning::space::sample_dimension_v<Space>);
             b = Sample(a.data());
         }
 
@@ -97,7 +98,7 @@ namespace vamp::rng
 
             n = (((b + 1.F) * y).floor() - xf).blend(Sample::fill(1), x_eq_1);
 
-            return robots::sample<Robot>((n / d).trim());
+            return planning::space::sample<Space>((n / d).trim());
         }
     };
 }  // namespace vamp::rng

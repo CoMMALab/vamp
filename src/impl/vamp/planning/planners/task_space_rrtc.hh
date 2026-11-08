@@ -15,6 +15,7 @@
 #include <vamp/planning/local_planner.hh>
 #include <vamp/planning/nn/nn.hh>
 #include <vamp/planning/plan.hh>
+#include <vamp/planning/validate.hh>
 #include <vamp/planning/planners/task_space_rrtc_settings.hh>
 #include <vamp/planning/planners/task_space_trace.hh>
 #include <vamp/random/rng.hh>
@@ -77,6 +78,7 @@ namespace vamp::planning
 
             const float tolerance = region.settings().tolerance;
             std::size_t iter = 0;
+            const float walk_range = (settings.walk_range > 0.F) ? settings.walk_range : settings.range;
 
             std::size_t free_index = 0;
             const auto add_node = [&](const Configuration &c, std::size_t parent) -> std::optional<std::size_t>
@@ -203,7 +205,7 @@ namespace vamp::planning
                         return;
                     }
 
-                    const float clamp = std::min(1.F, settings.range / norm);
+                    const float clamp = std::min(1.F, walk_range / norm);
                     for (auto j = 0U; j < dimension; ++j)
                     {
                         next[j] = q[j] + next[j] * clamp;
@@ -328,6 +330,172 @@ namespace vamp::planning
                 return last;
             };
 
+
+            // Optional (settings.ik_rate > 0): a second tree grown from goal configurations found by projecting
+            // random samples onto the region. It is grown like the other tree of RRT-Connect: the start tree
+            // extends toward a sample, the goal tree extends toward a sample on the IK iterations, and each new node
+            // of one tree is connected to the nearest node of the other. Joining the two solves the problem.
+            const std::size_t goal_capacity = (settings.ik_rate > 0.F) ? settings.max_samples : 1;
+            NN<Robot> goal_tree;
+            goal_tree.reserve(goal_capacity);
+            goal_tree.set_epsilon(settings.nn_epsilon);
+            auto goal_buffer = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(
+                goal_capacity * Configuration::num_scalars_rounded);
+            auto goal_parents = vamp::utils::buffer_alloc<std::size_t, FloatVectorAlignment>(goal_capacity);
+            std::size_t goal_free = 0;
+            std::size_t goal_roots = 0;
+            std::size_t goal_join = 0;
+            bool joined = false;
+            float ik_credit = 0.F;
+            const auto goal_at = [&goal_buffer](std::size_t index) -> float *
+            { return goal_buffer.get() + index * Configuration::num_scalars_rounded; };
+
+            const auto add_goal_node = [&](const Configuration &c, std::size_t parent) -> std::optional<std::size_t>
+            {
+                if (goal_free >= goal_capacity)
+                {
+                    return std::nullopt;
+                }
+
+                float *ptr = goal_at(goal_free);
+                c.to_array(ptr);
+                goal_tree.insert(goal_free, ptr);
+                goal_parents[goal_free] = parent;
+                return goal_free++;
+            };
+
+            // Extends the start tree from `from_index` toward `target` until it is reached or blocked, returning the
+            // last node of the start tree if the target was reached.
+            const auto connect_start_to = [&](std::size_t from_index,
+                                              const Configuration &target,
+                                              float distance) -> std::optional<std::size_t>
+            {
+                const std::size_t n_extensions = std::ceil(lp.connect_slack * distance / settings.range);
+                Configuration prior(buffer_index(from_index));
+                std::size_t prior_index = from_index;
+                for (std::size_t i = 0; i < n_extensions and free_index < settings.max_samples; ++i)
+                {
+                    const float remaining = Robot::distance(prior, target);
+                    const bool final_step = (i == n_extensions - 1) or (remaining <= settings.range);
+                    const auto step = lp.steer(
+                        prior,
+                        target,
+                        remaining,
+                        final_step ? std::numeric_limits<float>::max() : settings.range,
+                        true,
+                        environment);
+
+                    if (step.status == SteerStatus::Trapped or step.status == SteerStatus::Rejected)
+                    {
+                        return std::nullopt;
+                    }
+
+                    const auto [step_index, step_truncated] = insert_chain<Robot>(
+                        step.waypoints,
+                        prior_index,
+                        [&](const Configuration &c, std::size_t parent) { return add_node(c, parent); });
+                    if (step_truncated or step_index == prior_index)
+                    {
+                        return std::nullopt;
+                    }
+
+                    if (step.status == SteerStatus::Reached)
+                    {
+                        return step_index;
+                    }
+
+                    prior = step.endpoint();
+                    prior_index = step_index;
+                }
+
+                return std::nullopt;
+            };
+
+            // Tries to join the start tree to goal node `g`, from the nearest start-tree node.
+            const auto join_goal_node = [&](std::size_t g)
+            {
+                const Configuration target(goal_at(g));
+                typename Robot::ConfigurationBuffer array;
+                target.to_array(array.data());
+                if (const auto nearest = tree.nearest(array.data()))
+                {
+                    if (const auto reached = connect_start_to(nearest->first, target, nearest->second))
+                    {
+                        solution = *reached;
+                        goal_join = g;
+                        joined = true;
+                    }
+                }
+            };
+
+            // Tries to join the new start-tree node `n` to the nearest goal-tree node.
+            const auto join_start_node = [&](std::size_t n)
+            {
+                typename Robot::ConfigurationBuffer array;
+                Configuration(buffer_index(n)).to_array(array.data());
+                if (const auto nearest = goal_tree.nearest(array.data()))
+                {
+                    const Configuration target(goal_at(nearest->first));
+                    if (const auto reached = connect_start_to(n, target, nearest->second))
+                    {
+                        solution = *reached;
+                        goal_join = nearest->first;
+                        joined = true;
+                    }
+                }
+            };
+
+            // One IK iteration: find a goal root if the budget allows, then extend the goal tree toward a sample
+            // and try to join its new node to the start tree.
+            const auto ik_iteration = [&]()
+            {
+                auto seed = rng->next();
+                if (goal_roots < settings.ik_pool_size and region.project(seed) and Robot::in_bounds(seed) and
+                    validate_configuration<Robot, rake>(seed, environment))
+                {
+                    if (const auto root = add_goal_node(seed, goal_free))
+                    {
+                        ++goal_roots;
+                        goal_parents[*root] = *root;
+                        join_goal_node(*root);
+                        return;
+                    }
+                }
+
+                if (goal_free == 0)
+                {
+                    return;
+                }
+
+                const auto sample = rng->next();
+                typename Robot::ConfigurationBuffer sample_array;
+                sample.to_array(sample_array.data());
+                const auto nearest = goal_tree.nearest(sample_array.data());
+                const auto extension = lp.steer(
+                    Configuration(goal_at(nearest->first)),
+                    sample,
+                    nearest->second,
+                    settings.range,
+                    false,
+                    environment);
+
+                if (extension.status == SteerStatus::Trapped or extension.status == SteerStatus::Rejected)
+                {
+                    return;
+                }
+
+                const auto [last, truncated] = insert_chain<Robot>(
+                    extension.waypoints,
+                    nearest->first,
+                    [&](const Configuration &c, std::size_t parent) { return add_goal_node(c, parent); });
+                if (truncated or last == nearest->first)
+                {
+                    return;
+                }
+
+                join_goal_node(last);
+            };
+
             add_node(start, 0);
             record(TraceEvent::Root, TraceOutcome::None, 0, -1, nan, nan, lane_of(start));
             walk(0);
@@ -337,6 +505,20 @@ namespace vamp::planning
                 if (const auto added = explore())
                 {
                     walk(*added);
+                    if (not solution and goal_free > 0)
+                    {
+                        join_start_node(*added);
+                    }
+                }
+
+                if (settings.ik_rate > 0.F and not solution)
+                {
+                    ik_credit += settings.ik_rate;
+                    if (ik_credit >= 1.F)
+                    {
+                        ik_credit -= 1.F;
+                        ik_iteration();
+                    }
                 }
             }
 
@@ -363,6 +545,20 @@ namespace vamp::planning
                 }
 
                 std::reverse(result.path.begin(), result.path.end());
+
+                // Joined the goal tree: continue from the joined goal node down to its root.
+                if (joined)
+                {
+                    auto g = goal_join;
+                    while (goal_parents[g] != g)
+                    {
+                        g = goal_parents[g];
+                        result.path.emplace_back(goal_at(g));
+                        result.cost += Robot::distance(
+                            result.path[result.path.size() - 1], result.path[result.path.size() - 2]);
+                    }
+                }
+
                 result.solved = true;
             }
 

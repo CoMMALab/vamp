@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vamp/robots/traits.hh>
+#include <vamp/planning/space.hh>
 #include <vamp/utils.hh>
 
 namespace vamp::planning
@@ -8,8 +9,8 @@ namespace vamp::planning
     VAMP_DEFINE_HAS_METHOD(cost)
 
     template <typename Robot>
-    [[nodiscard]] inline auto
-    cost(const typename Robot::Configuration &a, const typename Robot::Configuration &b) noexcept -> float
+    [[nodiscard]] inline auto cost(const space::State<Robot> &a, const space::State<Robot> &b) noexcept
+        -> float
     {
         if constexpr (has_cost_v<Robot>)
         {
@@ -17,16 +18,16 @@ namespace vamp::planning
         }
         else
         {
-            return robots::distance<Robot>(a, b);
+            return space::distance<Robot>(a, b);
         }
     }
 
     template <typename Robot>
     [[nodiscard]] inline auto cost_nonincreasing(
-        const typename Robot::Configuration &prev,
-        const typename Robot::Configuration &mid_old,
-        const typename Robot::Configuration &mid_new,
-        const typename Robot::Configuration &next) noexcept -> bool
+        const space::State<Robot> &prev,
+        const space::State<Robot> &mid_old,
+        const space::State<Robot> &mid_new,
+        const space::State<Robot> &next) noexcept -> bool
     {
         if constexpr (has_cost_v<Robot>)
         {

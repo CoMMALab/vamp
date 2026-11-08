@@ -4,6 +4,7 @@
 
 namespace vamp::planning
 {
-    template <typename Robot>
-    using NN = KDTree<Robot>;
+    // Nearest-neighbor structure over the states of `Space` (a robot is its own space).
+    template <typename Space>
+    using NN = KDTree<Space>;
 }  // namespace vamp::planning

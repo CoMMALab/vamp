@@ -2,6 +2,7 @@
 
 #include <limits>
 #include <vamp/planning/cost.hh>
+#include <vamp/planning/space.hh>
 #include <vamp/planning/validate.hh>
 #include <vamp/robots/traits.hh>
 #include <vamp/planning/nn/nn.hh>
@@ -44,7 +45,7 @@ namespace vamp::planning
             for (auto i = 0U; i + 1 < n; ++i)
             {
                 next.emplace_back(wps[i]);
-                next.emplace_back(robots::interpolate<Robot>(wps[i], wps[i + 1], 0.5F));
+                next.emplace_back(space::interpolate<Robot>(wps[i], wps[i + 1], 0.5F));
             }
             next.emplace_back(wps.back());
             wps = std::move(next);
@@ -62,7 +63,7 @@ namespace vamp::planning
             float remaining_length = 0.;
             for (auto i = 0U; i + 1 < n_p; ++i)
             {
-                seg_lengths[i] = robots::distance<Robot>(wps[i], wps[i + 1]);
+                seg_lengths[i] = space::distance<Robot>(wps[i], wps[i + 1]);
                 remaining_length += seg_lengths[i];
             }
             if (remaining_length < std::numeric_limits<float>::epsilon())
@@ -88,7 +89,7 @@ namespace vamp::planning
                     for (auto k = 1U; k <= ns; ++k)
                     {
                         next.emplace_back(
-                            robots::interpolate<Robot>(a, b, static_cast<float>(k) / static_cast<float>(ns)));
+                            space::interpolate<Robot>(a, b, static_cast<float>(k) / static_cast<float>(ns)));
                     }
                     n -= ns + 1;
                     remaining_length -= seg_lengths[i];
@@ -115,7 +116,7 @@ namespace vamp::planning
             {
                 const auto &a = wps[i];
                 const auto &b = wps[i + 1];
-                const float segment_cost = robots::distance<Robot>(a, b);
+                const float segment_cost = space::distance<Robot>(a, b);
                 const auto segment_states =
                     static_cast<std::size_t>(segment_cost * static_cast<float>(resolution));
                 next.emplace_back(a);
@@ -126,7 +127,7 @@ namespace vamp::planning
                 for (auto k = 1U; k < segment_states; ++k)
                 {
                     next.emplace_back(
-                        robots::interpolate<Robot>(
+                        space::interpolate<Robot>(
                             a, b, static_cast<float>(k) / static_cast<float>(segment_states)));
                 }
             }
@@ -135,32 +136,36 @@ namespace vamp::planning
         }
     }  // namespace path_helpers
 
-    template <typename Robot>
-    struct Path : public std::vector<FloatVector<Robot::dimension>>
+    // A path of states of `Space` (by default the robot's configuration space).
+    template <typename Robot, typename Space = Robot>
+    struct Path : public std::vector<FloatVector<Space::dimension>>
     {
         [[nodiscard]] inline auto cost() const noexcept -> float
         {
-            return path_helpers::cost_robot<Robot>(*this);
+            return path_helpers::cost_robot<Space>(*this);
         }
 
         inline auto subdivide() noexcept
         {
-            path_helpers::subdivide_robot<Robot>(*this);
+            path_helpers::subdivide_robot<Space>(*this);
         }
 
         inline auto interpolate_to_n_states(std::size_t n) noexcept
         {
-            path_helpers::interpolate_to_n_states_robot<Robot>(*this, n);
+            path_helpers::interpolate_to_n_states_robot<Space>(*this, n);
         }
 
         inline auto interpolate_to_resolution(std::size_t resolution) noexcept
         {
-            path_helpers::interpolate_to_resolution_robot<Robot>(*this, resolution);
+            path_helpers::interpolate_to_resolution_robot<Space>(*this, resolution);
         }
 
         template <std::size_t rake>
         inline auto validate(const collision::Environment<FloatVector<rake>> &environment) noexcept -> bool
         {
+            // Validating a path checks its states against the robot directly; for a space other than
+            // the robot's own, states must first be resolved into the robot's configurations.
+            static_assert(std::is_same_v<Robot, Space>, "Path::validate requires the robot's own space");
             for (auto i = 0U; i < this->size() - 1; ++i)
             {
                 const auto &current = this->operator[](i);
@@ -174,10 +179,10 @@ namespace vamp::planning
         }
     };
 
-    template <typename Robot>
+    template <typename Robot, typename Space = Robot>
     struct PlanningResult
     {
-        Path<Robot> path;
+        Path<Robot, Space> path;
         bool solved{false};
         float cost{0.};
         std::size_t nanoseconds{0};
@@ -185,10 +190,10 @@ namespace vamp::planning
         std::vector<std::size_t> size;
     };
 
-    template <typename Robot>
+    template <typename Robot, typename Space = Robot>
     struct Roadmap
     {
-        std::vector<FloatVector<Robot::dimension>> vertices;
+        std::vector<FloatVector<Space::dimension>> vertices;
         std::vector<std::vector<std::size_t>> edges;
         std::size_t nanoseconds{0};
         std::size_t iterations{0};

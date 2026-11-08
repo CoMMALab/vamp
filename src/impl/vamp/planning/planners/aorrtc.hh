@@ -24,23 +24,23 @@
 
 namespace vamp::planning
 {
-    template <typename Robot, std::size_t rake, std::size_t resolution>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename Space = Robot>
     struct AOX_RRTC
     {
-        using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
-        using RNG = typename vamp::rng::RNG<Robot>;
+        using Configuration = space::State<Space>;
+        static constexpr auto dimension = Space::dimension;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
 
         // Cost-augmented NN: nodes are keyed by the configuration lifted with the node's
         // cost-to-come as one extra L2 coordinate, so the tree metric is
         // sqrt(dist(a, b)^2 + (cost_a - cost_b)^2).
-        struct LiftedRobot
+        struct LiftedSpace
         {
-            static constexpr std::size_t dimension = Robot::dimension + 1;
-            static constexpr auto so3_offsets = robots::so3_offsets_v<Robot>;
+            static constexpr std::size_t dimension = Space::dimension + 1;
+            static constexpr auto so3_offsets = space::so3_offsets_v<Space>;
         };
 
-        using NN = KDTree<LiftedRobot>;
+        using NN = KDTree<LiftedSpace>;
 
         struct alignas(FloatVectorAlignment) Key : std::array<float, Configuration::num_scalars_rounded + 1>
         {
@@ -109,19 +109,19 @@ namespace vamp::planning
             // Only need to consider nodes closer (in the lifted metric) than the root of
             // the tree, since connecting to the root is always valid.
             const float radius = std::sqrt(
-                std::pow(robots::distance<Robot>(c, root.array), 2) + std::pow(cost_bound - root.cost, 2));
+                std::pow(space::distance<Space>(c, root.array), 2) + std::pow(cost_bound - root.cost, 2));
 
             // Almost always just pulls in the entire graph, but good to be principled.
             nn->nearest(near_list_, key.data(), nn->size(), radius);
 
             // Start-tree edges execute node -> c; goal-tree edges execute c -> node
             const auto edge_cost = [&c, tree_is_start](const Configuration &node) -> float
-            { return (tree_is_start) ? planning::cost<Robot>(node, c) : planning::cost<Robot>(c, node); };
+            { return (tree_is_start) ? planning::cost<Space>(node, c) : planning::cost<Space>(c, node); };
 
             // Explicitly handle case where no neighbors are within r distance.
             if (near_list_.empty())
             {
-                return {root, robots::distance<Robot>(c, root.array), edge_cost(root.array)};
+                return {root, space::distance<Space>(c, root.array), edge_cost(root.array)};
             }
 
             auto pick = near_list_[0].first;
@@ -140,7 +140,7 @@ namespace vamp::planning
 
             return {
                 Vertex{pick, costs[pick], pick_array},
-                robots::distance<Robot>(c, pick_array),
+                space::distance<Space>(c, pick_array),
                 pick_edge_cost};
         }
 
@@ -154,7 +154,7 @@ namespace vamp::planning
         {
         }
 
-        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution>>
+        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution, Space>>
         inline auto solve(
             const Configuration &start,
             const std::vector<Configuration> &goals,
@@ -162,11 +162,11 @@ namespace vamp::planning
             const AORRTCSettings &settings,
             const float max_cost,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot, Space>
         {
             static constexpr std::size_t start_index = 0;
             const RRTCSettings &rrtc_settings = settings.rrtc;
-            PlanningResult<Robot> result;
+            PlanningResult<Robot, Space> result;
 
             NN start_tree;
             NN goal_tree;
@@ -200,8 +200,8 @@ namespace vamp::planning
             const auto chain_edge_cost =
                 [&tree_a_is_start](const Configuration &parent, const Configuration &child) -> float
             {
-                return (tree_a_is_start) ? planning::cost<Robot>(parent, child) :
-                                           planning::cost<Robot>(child, parent);
+                return (tree_a_is_start) ? planning::cost<Space>(parent, child) :
+                                           planning::cost<Space>(child, parent);
             };
 
             // Insert one waypoint into tree_a with its accumulated directed cost; nullopt
@@ -239,17 +239,17 @@ namespace vamp::planning
                     goal_verts.begin(),
                     goal_verts.end(),
                     [&temp](const auto &a, const auto &b)
-                    { return planning::cost<Robot>(temp, a.array) < planning::cost<Robot>(temp, b.array); });
+                    { return planning::cost<Space>(temp, a.array) < planning::cost<Space>(temp, b.array); });
 
                 const auto &root_vert = tree_a_is_start ? start_vert : goal_vert;
                 const auto &target_vert = tree_a_is_start ? goal_vert : start_vert;
 
                 // Admissible cost-to-come/cost-to-go through temp, in execution direction: the
                 // start-tree root precedes temp, the goal-tree root follows it
-                const float g_hat = (tree_a_is_start) ? planning::cost<Robot>(root_vert.array, temp) :
-                                                        planning::cost<Robot>(temp, root_vert.array);
-                const float h_hat = (tree_a_is_start) ? planning::cost<Robot>(temp, target_vert.array) :
-                                                        planning::cost<Robot>(target_vert.array, temp);
+                const float g_hat = (tree_a_is_start) ? planning::cost<Space>(root_vert.array, temp) :
+                                                        planning::cost<Space>(temp, root_vert.array);
+                const float h_hat = (tree_a_is_start) ? planning::cost<Space>(temp, target_vert.array) :
+                                                        planning::cost<Space>(target_vert.array, temp);
                 const float f_hat = g_hat + h_hat;
 
                 // The range between the minimum possible cost and maximum allowable cost
@@ -301,8 +301,8 @@ namespace vamp::planning
                         {
                             const float g_hat =
                                 (tree_a_is_start) ?
-                                    planning::cost<Robot>(root_vert.array, waypoints.front()) :
-                                    planning::cost<Robot>(waypoints.front(), root_vert.array);
+                                    planning::cost<Space>(root_vert.array, waypoints.front()) :
+                                    planning::cost<Space>(waypoints.front(), root_vert.array);
 
                             // Continuously resample cost until an invalid connection is found
                             for (auto i = 0U; i < settings.max_cost_bound_resamples; ++i)
@@ -399,7 +399,7 @@ namespace vamp::planning
                     while (not connected and i_extension < n_extensions and
                            free_index < rrtc_settings.max_samples)
                     {
-                        const float remaining = robots::distance<Robot>(prior, other_nearest_node.array);
+                        const float remaining = space::distance<Space>(prior, other_nearest_node.array);
                         const bool final_step =
                             (i_extension == n_extensions - 1) or (remaining <= rrtc_settings.range);
 
@@ -417,7 +417,7 @@ namespace vamp::planning
                         }
 
                         const auto [step_index, step_truncated] =
-                            insert_chain<Robot>(step.waypoints, prior_index, add_node);
+                            insert_chain<Robot, Space>(step.waypoints, prior_index, add_node);
                         if (step_truncated)
                         {
                             break;
@@ -487,35 +487,35 @@ namespace vamp::planning
     // --------------------------------------------- AOX Meta Algorithm
     // ---------------------------------------------
 
-    template <typename Robot, std::size_t rake, std::size_t resolution>
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename Space = Robot>
     struct AORRTC
     {
-        using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
-        using RNG = typename vamp::rng::RNG<Robot>;
-        using AOX_RRTC = typename vamp::planning::AOX_RRTC<Robot, rake, resolution>;
-        using RRTC = typename vamp::planning::RRTC<Robot, rake, resolution>;
+        using Configuration = space::State<Space>;
+        static constexpr auto dimension = Space::dimension;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
+        using AOX_RRTC = typename vamp::planning::AOX_RRTC<Robot, rake, resolution, Space>;
+        using RRTC = typename vamp::planning::RRTC<Robot, rake, resolution, Space>;
 
-        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution>>
+        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution, Space>>
         inline static auto solve(
             const Configuration &start,
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const AORRTCSettings &settings,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot, Space>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng, lp);
         }
 
-        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution>>
+        template <typename LocalPlanner = UnconstrainedLocalPlanner<Robot, rake, resolution, Space>>
         inline static auto solve(
             const Configuration &start,
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
             const AORRTCSettings &settings_in,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot, Space>
         {
             auto start_time = std::chrono::steady_clock::now();
 
@@ -529,7 +529,7 @@ namespace vamp::planning
             rrtc_settings.max_iterations = std::min(rrtc_settings.max_iterations, settings.max_iterations);
             rrtc_settings.max_samples = std::min(rrtc_settings.max_samples, settings.max_samples);
 
-            PlanningResult<Robot> result;
+            PlanningResult<Robot, Space> result;
             float best_path_cost = std::numeric_limits<float>::max();
             std::size_t iters = 0;
 
@@ -557,7 +557,7 @@ namespace vamp::planning
             }
 
             // We have a new best solution
-            PlanningResult<Robot> final_result;
+            PlanningResult<Robot, Space> final_result;
             final_result.path = result.path;
             final_result.solved = true;
             best_path_cost = result.path.cost();
@@ -565,21 +565,21 @@ namespace vamp::planning
             float best_possible_cost = std::numeric_limits<float>::max();
             for (const auto &goal : goals)
             {
-                best_possible_cost = std::min(best_possible_cost, planning::cost<Robot>(start, goal));
+                best_possible_cost = std::min(best_possible_cost, planning::cost<Space>(start, goal));
             }
 
             // Informed sampler: PHS keyed by the single-goal best_path_cost. Disabled for
             // robots with a custom cost: the L2 spheroid is not admissible for C_loc.
-            typename rng::RNG<Robot>::Ptr informed_rng;
+            typename rng::RNG<Robot, Space>::Ptr informed_rng;
             std::function<void(float)> update_informed_bound = [](float) {};
-            if constexpr (not has_cost_v<Robot>)
+            if constexpr (informed_sampling_v<Space>)
             {
                 if (settings.use_phs and goals.size() == 1)
                 {
-                    ProlateHyperspheroid<Robot> phs(start, goals[0]);
+                    ProlateHyperspheroid<Space> phs(start, goals[0]);
                     phs.set_transverse_diameter(best_path_cost);
 
-                    auto phs_rng = std::make_shared<ProlateHyperspheroidRNG<Robot>>(phs, rng);
+                    auto phs_rng = std::make_shared<ProlateHyperspheroidRNG<Robot, Space>>(phs, rng);
                     informed_rng = phs_rng;
                     update_informed_bound = [phs_rng](float c) { phs_rng->phs.set_transverse_diameter(c); };
                 }

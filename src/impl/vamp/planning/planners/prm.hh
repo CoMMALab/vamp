@@ -25,18 +25,19 @@ namespace vamp::planning
         typename Robot,
         std::size_t rake,
         std::size_t resolution,
-        typename NeighborParamsT = PRMStarNeighborParams>
+        typename NeighborParamsT = PRMStarNeighborParams,
+        typename Space = Robot>
     struct PRM
     {
-        using Configuration = typename Robot::Configuration;
-        using RNG = typename vamp::rng::RNG<Robot>;
+        using Configuration = space::State<Space>;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
 
         inline static auto solve(
             const Configuration &start,
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot, Space>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
         }
@@ -51,10 +52,10 @@ namespace vamp::planning
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
             typename RNG::Ptr rng,
-            const LocalPlanner &) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &) noexcept -> PlanningResult<Robot, Space>
         {
             static_assert(
-                std::is_same_v<LocalPlanner, UnconstrainedLocalPlanner<Robot, rake, resolution>>,
+                std::is_same_v<LocalPlanner, UnconstrainedLocalPlanner<Robot, rake, resolution, Space>>,
                 "PRM only supports the unconstrained local planner: constrained, phase, and "
                 "chart planning require RRTC, AORRTC, or GRRTStar");
             return solve(start, goal, environment, settings, rng);
@@ -65,11 +66,11 @@ namespace vamp::planning
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
-            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr rng) noexcept -> PlanningResult<Robot, Space>
         {
-            PlanningResult<Robot> result;
+            PlanningResult<Robot, Space> result;
 
-            NN<Robot> roadmap;
+            NN<Space> roadmap;
             roadmap.reserve(settings.max_samples);
             roadmap.set_epsilon(settings.nn_epsilon);
 
@@ -78,7 +79,7 @@ namespace vamp::planning
             // Check if the straight-line solution is valid
             for (const auto &goal : goals)
             {
-                if (validate_motion<Robot, rake, resolution>(start, goal, environment))
+                if (validate_motion<Robot, rake, resolution, AlwaysTrue, Space>(start, goal, environment))
                 {
                     result.path.emplace_back(start);
                     result.path.emplace_back(goal);
@@ -131,7 +132,7 @@ namespace vamp::planning
             while (iter++ < settings.max_iterations and nodes.size() < settings.max_samples)
             {
                 auto temp = rng->next();
-                if (not validate_configuration<Robot, rake>(temp, environment))
+                if (not validate_configuration<Robot, rake, Space>(temp, environment))
                 {
                     continue;
                 }
@@ -147,7 +148,7 @@ namespace vamp::planning
                 roadmap.nearest(neighbors, state, k, r);
                 for (const auto &[neighbor, distance] : neighbors)
                 {
-                    if (validate_motion<Robot, rake, resolution>(
+                    if (validate_motion<Robot, rake, resolution, AlwaysTrue, Space>(
                             Configuration(state_index(neighbor)), temp, environment))
                     {
                         node.neighbors.emplace_back(
@@ -187,10 +188,10 @@ namespace vamp::planning
                     }
 
                     const auto &goal = goals[i - 1];
-                    auto parents = utils::astar<Robot>(nodes, start, goal, state_index, i);
+                    auto parents = utils::astar<Space>(nodes, start, goal, state_index, i);
                     // NOTE: If the connected component check is correct, we can assume that a solution
                     // was found by A* when we've reached this point
-                    utils::recover_path<Robot>(parents.get(), state_index, result.path, i);
+                    utils::recover_path<Robot, Space>(parents.get(), state_index, result.path, i);
                     result.solved = true;
                     result.cost = nodes[i].g;
                     result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
@@ -213,9 +214,9 @@ namespace vamp::planning
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
-            typename RNG::Ptr rng) noexcept -> Roadmap<Robot>
+            typename RNG::Ptr rng) noexcept -> Roadmap<Robot, Space>
         {
-            NN<Robot> roadmap;
+            NN<Space> roadmap;
             roadmap.reserve(settings.max_samples);
             roadmap.set_epsilon(settings.nn_epsilon);
 
@@ -248,7 +249,7 @@ namespace vamp::planning
             while (iter++ < settings.max_iterations and nodes.size() < settings.max_samples)
             {
                 auto temp = rng->next();
-                if (not validate_configuration<Robot, rake>(temp, environment))
+                if (not validate_configuration<Robot, rake, Space>(temp, environment))
                 {
                     continue;
                 }
@@ -264,7 +265,7 @@ namespace vamp::planning
                 roadmap.nearest(neighbors, state, k, r);
                 for (const auto &[neighbor, distance] : neighbors)
                 {
-                    if (validate_motion<Robot, rake, resolution>(
+                    if (validate_motion<Robot, rake, resolution, AlwaysTrue, Space>(
                             Configuration(state_index(neighbor)), temp, environment))
                     {
                         node.neighbors.emplace_back(
@@ -279,7 +280,7 @@ namespace vamp::planning
                 roadmap.insert(node.index, state);
             }
 
-            Roadmap<Robot> result;
+            Roadmap<Robot, Space> result;
             result.vertices.reserve(nodes.size());
 
             for (const auto &node : nodes)

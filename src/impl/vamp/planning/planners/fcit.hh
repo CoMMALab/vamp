@@ -65,18 +65,19 @@ namespace vamp::planning
         typename Robot,
         std::size_t rake,
         std::size_t resolution,
-        typename NeighborParamsT = FCITStarNeighborParams>
+        typename NeighborParamsT = FCITStarNeighborParams,
+        typename Space = Robot>
     struct FCIT
     {
-        using Configuration = typename Robot::Configuration;
-        using RNG = typename vamp::rng::RNG<Robot>;
+        using Configuration = space::State<Space>;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
 
         inline static auto solve(
             const Configuration &start,
             const Configuration &goal,
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
-            typename RNG::Ptr &rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr &rng) noexcept -> PlanningResult<Robot, Space>
         {
             return solve(start, std::vector<Configuration>{goal}, environment, settings, rng);
         }
@@ -91,10 +92,10 @@ namespace vamp::planning
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
             typename RNG::Ptr &rng,
-            const LocalPlanner &) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &) noexcept -> PlanningResult<Robot, Space>
         {
             static_assert(
-                std::is_same_v<LocalPlanner, UnconstrainedLocalPlanner<Robot, rake, resolution>>,
+                std::is_same_v<LocalPlanner, UnconstrainedLocalPlanner<Robot, rake, resolution, Space>>,
                 "FCIT only supports the unconstrained local planner: constrained, phase, and "
                 "chart planning require RRTC, AORRTC, or GRRTStar");
             return solve(start, goal, environment, settings, rng);
@@ -105,12 +106,12 @@ namespace vamp::planning
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
-            typename RNG::Ptr &rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr &rng) noexcept -> PlanningResult<Robot, Space>
         {
             auto start_time = std::chrono::steady_clock::now();
 
-            PlanningResult<Robot> result;
-            NN<Robot> roadmap;
+            PlanningResult<Robot, Space> result;
+            NN<Space> roadmap;
             roadmap.reserve(settings.max_samples);
             roadmap.set_epsilon(settings.nn_epsilon);
 
@@ -177,14 +178,14 @@ namespace vamp::planning
 
                         const auto neighbor_index = it->index;
                         temp_config = state_index(neighbor_index);
-                        const auto neighbor_distance = robots::distance<Robot>(start, temp_config);
+                        const auto neighbor_distance = space::distance<Space>(start, temp_config);
                         start_node.sampleIdx = std::max(neighbor_index, start_node.sampleIdx);
 
                         // g(p) + c^(p,c) < g(c)
                         if (neighbor_distance < it->g)
                         {
                             // f^(c) = g(p) + c^(p,c) + h^(c)
-                            const auto cost = neighbor_distance + robots::distance<Robot>(goal, temp_config);
+                            const auto cost = neighbor_distance + space::distance<Space>(goal, temp_config);
                             start_node.neighbors.emplace_back(
                                 typename FCITRoadmapNode::Neighbor{neighbor_index, cost});
                         }
@@ -227,7 +228,7 @@ namespace vamp::planning
                             const auto &node = nodes[(*parent_node.neighbor_iterator).index];
 
                             if ((*parent_node.neighbor_iterator).distance <
-                                node.g + robots::distance<Robot>(goal, state_index(node.index)))
+                                node.g + space::distance<Space>(goal, state_index(node.index)))
                             {
                                 open_set.emplace_back(
                                     QueueEdge{
@@ -245,7 +246,7 @@ namespace vamp::planning
                         if (parents[current_index] != current_p)
                         {
                             temp_config_self = state_index(current_index);
-                            const auto dist_to_goal = robots::distance<Robot>(goal, temp_config_self);
+                            const auto dist_to_goal = space::distance<Space>(goal, temp_config_self);
 
                             if (current.cost <= goal_node.g)
                             {
@@ -260,7 +261,7 @@ namespace vamp::planning
                                         if (current_index != current_p)
                                         {
                                             temp_config = state_index(current_p);
-                                            valid = validate_motion<Robot, rake, resolution>(
+                                            valid = validate_motion<Robot, rake, resolution, AlwaysTrue, Space>(
                                                 temp_config, temp_config_self, environment);
                                         }
 
@@ -269,7 +270,7 @@ namespace vamp::planning
                                         {
                                             // Update the node's parent and g value
                                             parents[current_index] = current_p;
-                                            current_g = parent_node.g + robots::distance<Robot>(
+                                            current_g = parent_node.g + space::distance<Space>(
                                                                             temp_config, temp_config_self);
                                             current_node.g = current_g;
                                         }
@@ -307,12 +308,12 @@ namespace vamp::planning
                             const auto neighbor_index = it->index;
                             temp_config = state_index(neighbor_index);
                             const auto neighbor_distance =
-                                robots::distance<Robot>(temp_config_self, temp_config);
+                                space::distance<Space>(temp_config_self, temp_config);
                             current_node.sampleIdx = std::max(neighbor_index, current_node.sampleIdx);
 
                             // f^(c) = g(p) + c^(p,c) + h^(c)
                             auto cost =
-                                current_g + neighbor_distance + robots::distance<Robot>(goal, temp_config);
+                                current_g + neighbor_distance + space::distance<Space>(goal, temp_config);
 
                             current_node.neighbors.emplace_back(
                                 typename FCITRoadmapNode::Neighbor{neighbor_index, cost});
@@ -362,7 +363,7 @@ namespace vamp::planning
                      new_samples < settings.batch_size and nodes.size() < settings.max_samples;)
                 {
                     auto rng_temp = rng->next();
-                    if (not validate_configuration<Robot, rake>(rng_temp, environment))
+                    if (not validate_configuration<Robot, rake, Space>(rng_temp, environment))
                     {
                         continue;
                     }
@@ -391,7 +392,7 @@ namespace vamp::planning
 
             if (best_goal != 0)
             {
-                utils::recover_path<Robot>(parents.data(), state_index, result.path, best_goal);
+                utils::recover_path<Robot, Space>(parents.data(), state_index, result.path, best_goal);
                 result.solved = true;
                 result.cost = nodes[best_goal].g;
             }

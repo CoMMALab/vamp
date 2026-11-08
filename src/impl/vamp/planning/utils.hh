@@ -75,7 +75,7 @@ namespace vamp::planning::utils
 
     // Parent-array convention shared by astar and recover_path: unreached nodes hold
     // max(), the root (the start, index 0) is its own parent.
-    template <typename Robot, typename Configuration, typename StateLookupFn>
+    template <typename Space, typename Configuration, typename StateLookupFn>
     inline auto astar(
         std::vector<RoadmapNode> &graph,
         const Configuration &start,
@@ -96,7 +96,7 @@ namespace vamp::planning::utils
         constexpr const unsigned int start_index = 0;
         parents[start_index] = start_index;
         std::vector<utils::QueueNode> open_set;
-        open_set.emplace_back(utils::QueueNode{start_index, robots::distance<Robot>(goal, start)});
+        open_set.emplace_back(utils::QueueNode{start_index, space::distance<Space>(goal, start)});
         Configuration temp;
         while (not open_set.empty())
         {
@@ -127,7 +127,7 @@ namespace vamp::planning::utils
                 parents[neighbor_index] = current_node.index;
                 temp = state_index(neighbor_index);
                 open_set.emplace_back(
-                    utils::QueueNode{neighbor_index, neighbor_node.g + robots::distance<Robot>(goal, temp)});
+                    utils::QueueNode{neighbor_index, neighbor_node.g + space::distance<Space>(goal, temp)});
             }
 
             pdqsort(
@@ -147,11 +147,11 @@ namespace vamp::planning::utils
     // Walk the parent array from goal_index back to the root (the root is its own
     // parent), emitting the path in start-to-goal order. The goal must have been
     // reached: unreached entries hold max() and are not valid to walk from.
-    template <typename Robot, typename StateLookupFn>
+    template <typename Robot, typename Space = Robot, typename StateLookupFn>
     inline void recover_path(
         const unsigned int *parents,
         const StateLookupFn &state_index,
-        Path<Robot> &path,
+        Path<Robot, Space> &path,
         unsigned int goal_index = 1) noexcept
     {
         auto current_index = goal_index;

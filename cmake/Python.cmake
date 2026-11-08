@@ -28,6 +28,7 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     r2c6=R2c6
     bimanual_iiwa_tool=BimanualIiwaTool
     g1_unitree=G1Unitree
+    kmriiwa_tool=KMRIiwaTool
   )
 
   if(NOT VAMP_ROBOT_MODULES)

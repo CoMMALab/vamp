@@ -48,6 +48,19 @@ ROBOTS = {
         reach=0.855,
         s_radius=0.27,
     ),
+    "iiwa_tool": dict(
+        ready=np.array([0.0, 0.35, 0.0, -1.1, 0.0, 1.69, 0.0], dtype=np.float32),
+        shoulder=np.array([0.0, 0.0, 0.36]),
+        reach=1.1,
+        s_radius=0.10,
+    ),
+    # The base (x, y, theta) at the origin, then the iiwa's joints
+    "kmriiwa_tool": dict(
+        ready=np.array([0.0, 0.0, 0.0, 0.0, 0.35, 0.0, -1.1, 0.0, 1.69, 0.0], dtype=np.float32),
+        shoulder=np.array([0.0, 0.0, 0.36]),
+        reach=1.1,
+        s_radius=0.10,
+    ),
 }
 module = None  # vamp.<robot>, set by main
 READY = None  # the robot's ready configuration, set by main

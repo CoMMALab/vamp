@@ -59,5 +59,13 @@ namespace vamp::planning::constraint
         // remain (measured: Digit, the sphere cage, a hand-held mug, task-space starts). Affects the
         // bounded task-space constraints (TaskSpace, BimanualTaskSpace); the manifold is unchanged.
         bool hold_satisfied_rows = true;
+
+        // Solve all the constraints of a set together: each projection iteration takes one damped least-squares step
+        // on the rows of all constraints stacked (the manifold-defining rows, and the others while they are violated),
+        // instead of one full step per constraint in turn. Constraints that move the same joints (the two arms of a
+        // bimanual robot share its base and torso) undo each other's steps when taken in turn and never converge
+        // together; stacked they do. Only matters for a set of more than one constraint. Off by default, which keeps
+        // the step per constraint. The method does not apply to it; it takes the joint limits by clamping.
+        bool stacked = false;
     };
 }  // namespace vamp::planning::constraint

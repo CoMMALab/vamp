@@ -4,8 +4,11 @@
 #include <memory>
 #include <vector>
 
+#include <Eigen/Dense>
+
 #include <vamp/planning/constraints/manifold/constraint.hh>
 #include <vamp/planning/constraints/settings.hh>
+#include <vamp/planning/constraints/utils.hh>
 #include <vamp/vector.hh>
 
 namespace vamp::planning::constraint
@@ -167,6 +170,12 @@ namespace vamp::planning::constraint
         // caches of the last squared_error() call on the same q.
         void step_in_place(Block &q) const noexcept
         {
+            if (settings_.stacked and constraints_.size() > 1 and total_rows() <= max_stacked_rows)
+            {
+                stacked_step(q);
+                return;
+            }
+
             for (const auto &c : constraints_)
             {
                 c->step(q, settings_.method, settings_.descend_rate);
@@ -259,6 +268,74 @@ namespace vamp::planning::constraint
         }
 
     private:
+        // Most rows of the stacked step (settings().stacked), on the stack; larger sets take the step per constraint
+        static constexpr std::size_t max_stacked_rows = 32;
+
+        // One damped least-squares step on the stacked rows of all constraints, J^T (J J^T + lambda I)^-1 e per lane: the
+        // manifold-defining rows, and the others (the hinges) only while their error is not zero. The joint limits are
+        // taken by clamping (integrate_step).
+        void stacked_step(Block &q) const noexcept
+        {
+            constexpr std::size_t n = Robot::dimension;
+            constexpr float damping = 1e-4F;
+
+            const auto rows = total_rows();
+            std::array<bool, max_stacked_rows> active{};
+            active_rows(active.data());
+
+            evaluate_error_jacobian(q);
+
+            std::array<float, max_stacked_rows> err{};
+            std::array<float, max_stacked_rows * n> jac{};
+            std::array<std::array<float, rake>, n> step{};
+            for (auto lane = 0U; lane < rake; ++lane)
+            {
+                extract_error_jacobian(lane, err.data(), jac.data());
+
+                std::array<std::size_t, max_stacked_rows> used{};
+                std::size_t count = 0;
+                for (auto i = 0U; i < rows; ++i)
+                {
+                    if (active[i] or err[i] != 0.F)
+                    {
+                        used[count++] = i;
+                    }
+                }
+
+                if (count == 0)
+                {
+                    continue;
+                }
+
+                Eigen::MatrixXf a(count, n);
+                Eigen::VectorXf e(count);
+                for (auto r = 0U; r < count; ++r)
+                {
+                    e[r] = err[used[r]];
+                    for (auto j = 0U; j < n; ++j)
+                    {
+                        a(r, j) = jac[used[r] * n + j];
+                    }
+                }
+
+                Eigen::MatrixXf gram = a * a.transpose();
+                gram.diagonal().array() += damping;
+                const Eigen::VectorXf delta = a.transpose() * gram.ldlt().solve(e);
+                for (auto j = 0U; j < n; ++j)
+                {
+                    step[j][lane] = delta[j];
+                }
+            }
+
+            Block gradient;
+            for (auto j = 0U; j < n; ++j)
+            {
+                gradient[j] = Row(step[j]);
+            }
+
+            integrate_step<Robot, rake>(q, gradient, settings_.descend_rate);
+        }
+
         // Effectively unbounded drift: the deviation threshold check never trips.
         static constexpr float no_max_distance = 1e9F;
 

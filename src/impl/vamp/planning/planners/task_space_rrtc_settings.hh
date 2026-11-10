@@ -2,22 +2,18 @@
 
 #include <cstddef>
 
+#include <vamp/planning/planners/rrtc_settings.hh>
+
 namespace vamp::planning
 {
-    struct TaskSpaceRRTCSettings
+    // The settings of the task-space RRT-Connect: those of RRTC (the longest extension `range`, which bounds both an exploration
+    // step toward a random sample and a goal-directed step toward the region; max_iterations; max_samples; nn_epsilon) and
+    // what is specific to planning toward a region. RRTC's settings for the two trees it grows from a start and a goal
+    // configuration (dynamic_domain, radius, alpha, min_radius, balance, tree_ratio, start_tree_first) are not used.
+    struct TaskSpaceRRTCSettings : RRTCSettings
     {
-        // Longest extension: both an exploration step toward a random sample and one
-        // goal-directed step toward the task-space region.
-        float range = 2.;
-
         // Steps taken by the goal-directed walk that follows each exploration step.
         std::size_t max_greedy_steps = 20;
-
-        std::size_t max_iterations = 100000;
-        std::size_t max_samples = 100000;
-
-        // (1 + epsilon)-approximate nearest-neighbor queries; 0 is exact.
-        float nn_epsilon = 0.;
 
         // Optional, off by default: the longest step of the goal-directed walk, if it should differ from the
         // exploration `range`. 0 uses `range`. Near obstacles a long walk step can jump over the narrow way to the

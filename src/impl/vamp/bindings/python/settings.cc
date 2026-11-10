@@ -30,13 +30,9 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("start_tree_first", &vp::RRTCSettings::start_tree_first)
         .def_rw("nn_epsilon", &vp::RRTCSettings::nn_epsilon);
 
-    nb::class_<vp::TaskSpaceRRTCSettings>(pymodule, "TaskSpaceRRTCSettings")
+    nb::class_<vp::TaskSpaceRRTCSettings, vp::RRTCSettings>(pymodule, "TaskSpaceRRTCSettings")
         .def(nb::init<>())
-        .def_rw("range", &vp::TaskSpaceRRTCSettings::range)
         .def_rw("max_greedy_steps", &vp::TaskSpaceRRTCSettings::max_greedy_steps)
-        .def_rw("max_iterations", &vp::TaskSpaceRRTCSettings::max_iterations)
-        .def_rw("max_samples", &vp::TaskSpaceRRTCSettings::max_samples)
-        .def_rw("nn_epsilon", &vp::TaskSpaceRRTCSettings::nn_epsilon)
         .def_rw("walk_range", &vp::TaskSpaceRRTCSettings::walk_range)
         .def_rw("ik_rate", &vp::TaskSpaceRRTCSettings::ik_rate)
         .def_rw("ik_pool_size", &vp::TaskSpaceRRTCSettings::ik_pool_size);

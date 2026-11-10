@@ -44,5 +44,15 @@ namespace vamp::planning
         // advance more slowly per step (about range / w when far from the goal), a smaller one faster. 0 (the default)
         // is 1 / the number of joints: the whole curve costs as much as one joint's rad on average.
         float parameter_weight = 0.;
+
+        // For a Space with a curve parameter t: keep t non-decreasing along every path the planner returns, so a path
+        // never retreats along the curve (a scorer that wants the curve followed in order reads a retreat as leaving
+        // the tube). An exploration step toward a sample whose t is below its nearest node's is steered toward the
+        // sample's joints at the node's t instead (the sample's t is raised to the node's), and an extension whose
+        // chain of waypoints still has t decreasing (a segment-form constraint solves for t) is rejected, in the walk
+        // too. A node can still move at constant t (the joints change at one point of the curve). On by default, as a
+        // path that retreats is rarely wanted; false gives the unconstrained behaviour. It has no effect in the
+        // robot's own space.
+        bool monotone_t = true;
     };
 }  // namespace vamp::planning

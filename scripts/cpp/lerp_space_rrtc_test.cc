@@ -350,6 +350,17 @@ static void run(
             final_error);
 
         CHECK(worst_error < 1e-3);
+
+        // monotone_t is on by default: the path never retreats along the curve
+        float worst_retreat = 0.F;
+        for (std::size_t i = 1; i < result.path.size(); ++i)
+        {
+            worst_retreat = std::max(
+                worst_retreat, Space::parameter(result.path[i - 1]) - Space::parameter(result.path[i]));
+        }
+
+        std::printf("t never decreases: worst retreat %.2e\n", worst_retreat);
+        CHECK(worst_retreat < 1e-5F);
         CHECK(final_error < 2e-3);
         CHECK(region.satisfied(last));
 

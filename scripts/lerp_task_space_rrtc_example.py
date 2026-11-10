@@ -228,6 +228,7 @@ def main():
     parser.add_argument("--range", type=float, default=0.3, help="longest extension (in the metric of the run)")
     parser.add_argument("--parameter-weight", type=float, default=0.0, help="the weight of t in the metric (rad per unit of t); 0 is 1 / the number of joints")
     parser.add_argument("--max-iterations", type=int, default=20000)
+    parser.add_argument("--no-monotone-t", action="store_true", help="let t decrease along the path (it never does by default)")
     parser.add_argument("--project-samples", action="store_true", help="project random samples onto the curve before using them")
     parser.add_argument("--prefix", default="lerp", help="prefix of the output JSON file")
     parser.add_argument("--view", action="store_true", help="start the viewer on the path when done")
@@ -300,6 +301,7 @@ def main():
     plan_settings.max_iterations = args.max_iterations
     plan_settings.max_samples = 20000
     plan_settings.project_samples = args.project_samples
+    plan_settings.monotone_t = not args.no_monotone_t
     plan_settings.parameter_weight = args.parameter_weight
 
     constraint_settings = vamp.ConstraintSettings()  # for the manifold and the goal region
@@ -355,6 +357,9 @@ def main():
             f"{worst:.2e}, final error to the last pose {final_error:.2e}"
         )
 
+        if not args.no_monotone_t:
+            retreat = float(max(0.0, max(ts[i - 1] - ts[i] for i in range(1, len(ts)))))
+            check(retreat < 1e-5, f"t never decreases along the path (worst retreat {retreat:.2e})")
         check(worst < 1e-3, f"every path state is on the curve at its own t (worst error {worst:.2e})")
         check(final_error < 2e-3, f"the path ends at the curve's last pose (error {final_error:.2e})")
         check(

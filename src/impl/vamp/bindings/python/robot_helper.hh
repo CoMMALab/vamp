@@ -486,8 +486,8 @@ namespace vamp::binding
         // configuration with the curve parameter t it sits at, sampled with the joints and held fixed while a state is
         // projected onto the curve (see TaskSpaceRRTCSettings::project_samples and ::parameter_weight). `manifold` has to
         // hold the LerpR3Constraint or the LerpSO3R3Constraint; the start is on the curve at `start_t`, by default at the
-        // closest point of the curve. The goal is the end of the curve: the planner holds a copy of the manifold's
-        // constraint at t = 1 as the goal region. Only instantiated for robots generated with the lerp constraints.
+        // closest point of the first curve. The goal is the end of the curves: the planner holds a copy of the manifold's
+        // curve constraints at t = 1 as the goal region (one curve per end-effector, sharing t, and a CoMConstraint). Only instantiated for robots generated with the lerp constraints.
         static auto solve_task_space_curve(
             const Cfg &start,
             const Env &env,
@@ -506,21 +506,49 @@ namespace vamp::binding
 
             const auto q = Input::to(start);
 
-            // The curve the manifold holds: the way to find the start's t on it, and a copy of it as the goal region
+            // The curves the manifold holds (one per end-effector, sharing t): the way to find the start's t on the first,
+            // and a copy of each as the goal region at t = 1, with a copy of the other constraints the curve planner
+            // supports (the center of mass), which hold along the whole path including the goal
             std::function<float()> closest_start_t;
-            std::shared_ptr<const ConstraintT> curve_end;
+            std::vector<std::shared_ptr<const ConstraintT>> region_constraints;
             for (const auto &constraint : manifold)
             {
                 if (auto found = std::dynamic_pointer_cast<const R3C>(constraint))
                 {
-                    closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
-                    curve_end = std::make_shared<const R3C>(found->fixed_copy());
-                }
+                    if (not closest_start_t)
+                    {
+                        closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
+                    }
 
-                if (auto found = std::dynamic_pointer_cast<const PoseC>(constraint))
+                    region_constraints.push_back(std::make_shared<const R3C>(found->fixed_copy()));
+                }
+                else if (auto found_pose = std::dynamic_pointer_cast<const PoseC>(constraint))
                 {
-                    closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
-                    curve_end = std::make_shared<const PoseC>(found->fixed_copy());
+                    if (not closest_start_t)
+                    {
+                        closest_start_t = [found_pose, q]() { return found_pose->closest_parameter(q).first; };
+                    }
+
+                    region_constraints.push_back(std::make_shared<const PoseC>(found_pose->fixed_copy()));
+                }
+                else
+                {
+                    bool copied = false;
+                    if constexpr (robot_has_com_v<Robot>)
+                    {
+                        using CMC = vamp::planning::constraint::CoMConstraint<Robot, rake>;
+                        if (auto found_com = std::dynamic_pointer_cast<const CMC>(constraint))
+                        {
+                            region_constraints.push_back(std::make_shared<const CMC>(*found_com));
+                            copied = true;
+                        }
+                    }
+
+                    if (not copied)
+                    {
+                        throw std::invalid_argument(
+                            "manifold_constraints of the curve planner may hold lerp constraints and a CoMConstraint");
+                    }
                 }
             }
 
@@ -532,7 +560,7 @@ namespace vamp::binding
 
             // a separate instance from the manifold's, which the planner gives the parameter of each state; the planner
             // holds the region at t = 1
-            ConstraintSetT region(ConstraintVec{curve_end}, cs);
+            ConstraintSetT region(ConstraintVec(region_constraints.begin(), region_constraints.end()), cs);
 
             const ConstraintSetT manifold_set(std::move(manifold), cs);
 
@@ -1376,11 +1404,35 @@ namespace vamp::binding
                             const std::array<typename LSO3::Position, LSO3::n_points> &,
                             const std::array<typename LSO3::Quaternion, LSO3::n_points> &,
                             float,
-                            bool>(),
+                            bool,
+                            std::size_t>(),
                         "points"_a,
                         "rotations"_a,
                         "rotation_weight"_a = 1.0F,
-                        "segment"_a = false)
+                        "segment"_a = false,
+                        "end_effector"_a = 0)
+                    .def_prop_ro(
+                        "end_effector",
+                        &LSO3::end_effector,
+                        "The index of the end-effector whose pose is held on the curve (0 is the first; others need a "
+                        "robot generated with the recipe key lerp_end_effectors).")
+                    .def(
+                        "set_parameters",
+                        [](LSO3 &c, const std::vector<double> &taus)
+                        {
+                            if (taus.size() != LSO3::n_points)
+                            {
+                                throw std::invalid_argument("expected one parameter per point (lerp_points())");
+                            }
+
+                            std::array<double, LSO3::n_points> array;
+                            std::copy(taus.begin(), taus.end(), array.begin());
+                            c.set_parameters(array);
+                        },
+                        "parameters"_a,
+                        "Use these parameters for the points (strictly increasing, from 0 to 1) instead of the "
+                        "normalized segment lengths, so that the curves of several end-effectors that share one t "
+                        "reach their points at the same t. The rotation weight then no longer changes them.")
                     .def_prop_ro(
                         "segment",
                         [](const LSO3 &c) { return c.segment_form(); },

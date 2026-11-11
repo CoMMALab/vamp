@@ -7,6 +7,7 @@
 #include <vamp/planning/planners/grrtstar_settings.hh>
 #include <vamp/planning/planner.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
+#include <vamp/planning/planners/task_space_rrtc_settings.hh>
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/utils.hh>
 
@@ -102,6 +103,22 @@ namespace vamp::binding
             "projection does not converge.");
 
         t.def(
+            "step",
+            &Traits::constraint_step,
+            "configuration"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "A single raw descent step toward the constraint manifold from a configuration, with "
+            "no convergence check: returns the configuration after one step of the projection "
+            "method.");
+        t.def(
+            "squared_error",
+            &Traits::constraint_squared_error,
+            "configuration"_a,
+            "constraints"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "Summed squared violation of the constraints at a configuration.");
+        t.def(
             "satisfied",
             &Traits::constraint_satisfied,
             "configuration"_a,
@@ -119,6 +136,19 @@ namespace vamp::binding
             "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
             "Simplification heuristics restricted to the constraint manifold. Raises ValueError "
             "if any path state violates the constraints.");
+
+        t.def(
+            "task_space_rrtc",
+            &Traits::solve_task_space,
+            "start"_a,
+            "goal_constraints"_a,
+            "environment"_a,
+            "settings"_a,
+            "sampler"_a,
+            "constraint_settings"_a = vamp::planning::constraint::ConstraintSettings{},
+            "Plan from a start configuration to a task-space goal region (the constraints, "
+            "e.g. a TaskSpaceConstraint) without computing a goal configuration: RRT "
+            "exploration plus goal-directed Levenberg-Marquardt walks toward the region.");
 
         register_constrained_planner<Traits, vp_::Planner::RRTC, vp_::RRTCSettings>(t, "rrtc");
         register_constrained_planner<Traits, vp_::Planner::AORRTC, vp_::AORRTCSettings>(t, "aorrtc");

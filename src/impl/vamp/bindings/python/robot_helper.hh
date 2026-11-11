@@ -29,6 +29,7 @@
 #include <vamp/planning/planners/prm.hh>
 #include <vamp/planning/planners/roadmap.hh>
 #include <vamp/planning/planners/rrtc.hh>
+#include <vamp/planning/planners/task_space_rrtc.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/planning/simplify.hh>
 #include <vamp/planning/simplify_settings.hh>
@@ -439,6 +440,26 @@ namespace vamp::binding
                 start, goals, env, s, rng, ConstrainedLP(std::move(set)), manifold_message);
         }
 
+        // Plan from `start` to a task-space region (the constraints, e.g. a TSR) with no goal
+        // configuration: see TaskSpaceRRTC.
+        static auto solve_task_space(
+            const Cfg &start,
+            ConstraintVec constraints,
+            const Env &env,
+            const vamp::planning::TaskSpaceRRTCSettings &s,
+            std::shared_ptr<Sampler> rng,
+            const ConstraintSettings &cs) -> PlanningResult
+        {
+            if (constraints.empty())
+            {
+                throw std::invalid_argument("task-space planning needs at least one goal constraint");
+            }
+
+            ConstraintSetT region(std::move(constraints), cs);
+            return vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution>::solve(
+                Input::to(start), region, make_environment<Robot>(env), s, rng);
+        }
+
         static auto simplify_constrained(
             const Path &p,
             const Env &env,
@@ -468,6 +489,34 @@ namespace vamp::binding
             }
 
             return Input::from(q);
+        }
+
+        // One raw descent step (the operation a projection iteration repeats), with no
+        // convergence requirement: the Jacobian is evaluated at `c` and the configuration
+        // after a single step is returned, whatever its error.
+        static auto
+        constraint_step(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs) -> Cfg
+        {
+            const ConstraintSetT set(std::move(constraints), cs);
+            auto block = Input::template block<rake>(c);
+            set.squared_error(block);  // fills the Jacobian cache that step_in_place consumes
+            set.step_in_place(block);
+
+            std::array<float, Robot::dimension> array;
+            for (auto i = 0U; i < Robot::dimension; ++i)
+            {
+                array[i] = block[{i, 0}];
+            }
+
+            return Input::from(Configuration(array));
+        }
+
+        // Summed squared violation across every constraint's rows (0 if every row is satisfied).
+        static auto
+        constraint_squared_error(const Cfg &c, ConstraintVec constraints, const ConstraintSettings &cs) -> float
+        {
+            return ConstraintSetT(std::move(constraints), cs)
+                .squared_error(Input::template block<rake>(c))[{0, 0}];
         }
 
         static auto

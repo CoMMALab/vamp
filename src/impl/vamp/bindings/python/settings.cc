@@ -4,6 +4,7 @@
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/planning/planners/aorrtc_settings.hh>
 #include <vamp/planning/planners/grrtstar_settings.hh>
+#include <vamp/planning/planners/task_space_rrtc_settings.hh>
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/planning/constraints/settings.hh>
 
@@ -28,6 +29,13 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("max_samples", &vp::RRTCSettings::max_samples)
         .def_rw("start_tree_first", &vp::RRTCSettings::start_tree_first)
         .def_rw("nn_epsilon", &vp::RRTCSettings::nn_epsilon);
+
+    nb::class_<vp::TaskSpaceRRTCSettings, vp::RRTCSettings>(pymodule, "TaskSpaceRRTCSettings")
+        .def(nb::init<>())
+        .def_rw("max_greedy_steps", &vp::TaskSpaceRRTCSettings::max_greedy_steps)
+        .def_rw("walk_range", &vp::TaskSpaceRRTCSettings::walk_range)
+        .def_rw("ik_rate", &vp::TaskSpaceRRTCSettings::ik_rate)
+        .def_rw("ik_pool_size", &vp::TaskSpaceRRTCSettings::ik_pool_size);
 
     nb::class_<vp::AORRTCSettings>(pymodule, "AORRTCSettings")
         .def(nb::init<>())

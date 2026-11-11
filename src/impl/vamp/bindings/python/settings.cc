@@ -143,7 +143,8 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("connect_slack", &vc::ConstraintSettings::connect_slack)
         .def_rw("reached_radius2", &vc::ConstraintSettings::reached_radius2)
         .def_rw("endpoint_tolerance2", &vc::ConstraintSettings::endpoint_tolerance2)
-        .def_rw("hold_satisfied_rows", &vc::ConstraintSettings::hold_satisfied_rows);
+        .def_rw("hold_satisfied_rows", &vc::ConstraintSettings::hold_satisfied_rows)
+        .def_rw("stacked", &vc::ConstraintSettings::stacked);
 
     nb::class_<vp::BSplineSettings>(pymodule, "BSplineSettings")
         .def(nb::init<>())

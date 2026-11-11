@@ -30,6 +30,7 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     g1_unitree=G1Unitree
     kmriiwa_tool=KMRIiwaTool
     iiwa_tool=IiwaTool
+    rby1_tool=Rby1Tool
   )
 
   if(NOT VAMP_ROBOT_MODULES)

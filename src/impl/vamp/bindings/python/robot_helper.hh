@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 
@@ -16,6 +17,7 @@
 #include <vamp/planning/constraints/manifold/constraint.hh>
 #include <vamp/planning/constraints/manifold/constraint_set.hh>
 #include <vamp/planning/constraints/manifold/lead_screw_constraint.hh>
+#include <vamp/planning/constraints/manifold/lerp_constraint.hh>
 #include <vamp/planning/constraints/manifold/twist_constraint.hh>
 #include <vamp/planning/constraints/local_planner.hh>
 #include <vamp/planning/constraints/settings.hh>
@@ -29,11 +31,13 @@
 #include <vamp/planning/planners/prm.hh>
 #include <vamp/planning/planners/roadmap.hh>
 #include <vamp/planning/planners/rrtc.hh>
+#include <vamp/planning/curve_space.hh>
 #include <vamp/planning/planners/task_space_rrtc.hh>
 #include <vamp/planning/planners/rrtc_settings.hh>
 #include <vamp/planning/simplify.hh>
 #include <vamp/planning/simplify_settings.hh>
 #include <vamp/planning/validate.hh>
+#include <vamp/random/curve.hh>
 #include <vamp/random/halton.hh>
 #include <vamp/random/rng.hh>
 #include <vamp/utils.hh>
@@ -53,6 +57,7 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/array.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
@@ -86,6 +91,10 @@ VAMP_DEFINE_HAS_METHOD(n_cuboids)
 VAMP_DEFINE_ROBOT_FLAG(has_com)
 VAMP_DEFINE_ROBOT_FLAG(has_lead_screw)
 VAMP_DEFINE_ROBOT_FLAG(has_twist)
+
+// Robots generated with the lerp constraints (cricket recipe keys "lerp_r3_constraint" and "lerp_so3r3_constraint")
+// declare the number of points of the straight-line curves their kernels were traced for.
+VAMP_DEFINE_ROBOT_FLAG(lerp_points)
 
 // Robots generated with attachment link tables declare `exempt_link_pairs` and `link_names`.
 template <typename T, typename = void>
@@ -250,6 +259,21 @@ namespace vamp::binding
         {
             return a;
         }
+    };
+
+    // Result of planning along a curve in a robot's CurveSpace: the states of the path as joints and curve parameter side
+    // by side, in path order.
+    template <typename Robot>
+    struct CurveSpaceResult
+    {
+        bool solved{false};
+        std::vector<std::array<float, Robot::dimension>> path;
+        std::vector<float> parameters;
+        float cost{0.F};
+        std::size_t nanoseconds{0};
+        std::size_t iterations{0};
+        std::vector<std::size_t> size;
+        bool interpolated{false};
     };
 
     template <typename Robot, typename Input>
@@ -458,6 +482,277 @@ namespace vamp::binding
             ConstraintSetT region(std::move(constraints), cs);
             return vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution>::solve(
                 Input::to(start), region, make_environment<Robot>(env), s, rng);
+        }
+
+        // The largest change of a joint between two states (the joints' infinity norm; t does not count)
+        static auto largest_joint_step(
+            const typename vamp::planning::CurveSpace<Robot>::State &a,
+            const typename vamp::planning::CurveSpace<Robot>::State &b) -> float
+        {
+            using Space = vamp::planning::CurveSpace<Robot>;
+            const auto qa = Space::to_ambient(a).to_array();
+            const auto qb = Space::to_ambient(b).to_array();
+            float largest = 0.F;
+            for (auto j = 0U; j < Robot::dimension; ++j)
+            {
+                largest = std::max(largest, std::abs(qb[j] - qa[j]));
+            }
+
+            return largest;
+        }
+
+        // Whether the straight line between two states, in the joints, is collision-free. The pieces are short (at most
+        // `step`), so the chord is within about step^2 of the curve, and what matters about an edge is the collisions along
+        // it. The local planner's own validate (a projected chain that has to stay within twice its lane spacing of the
+        // chord) would reject a fine piece on projection noise alone: its allowance shrinks with the piece, the
+        // projection's tolerance does not.
+        static auto chord_collision_free(
+            const typename vamp::planning::CurveSpace<Robot>::State &a,
+            const typename vamp::planning::CurveSpace<Robot>::State &b,
+            const EnvVec &environment) -> bool
+        {
+            using Space = vamp::planning::CurveSpace<Robot>;
+            using Chord = vamp::planning::UnconstrainedLocalPlanner<Robot, rake, Robot::resolution>;
+            return Chord().validate(Space::to_ambient(a), Space::to_ambient(b), environment);
+        }
+
+        // Appends to `dense` the states after `a`, the last being `b`, such that consecutive ones are at most `step`
+        // apart in the joints: a piece is accepted when its ends are, and otherwise bisected: its midpoint is
+        // interpolated in (q, t) (t moves linearly with the joints), projected back onto the manifold with lp.project,
+        // and the two halves are refined in turn. A projection moves a state off the chord, so the pieces have to be
+        // measured after it: a uniform subdivision would leave gaps wider than `step` wherever the curve bends away.
+        // Every accepted piece is checked for collisions along its chord (the first state of a path is the caller's to
+        // check). Fails if a projection fails, a state leaves the joint limits, a piece is in collision, or the
+        // bisection does not converge (a depth or state-count limit).
+        template <typename LP>
+        static auto refine_curve_piece(
+            const LP &lp,
+            const EnvVec &environment,
+            const typename vamp::planning::CurveSpace<Robot>::State &a,
+            const typename vamp::planning::CurveSpace<Robot>::State &b,
+            float step,
+            std::size_t depth,
+            std::vector<typename vamp::planning::CurveSpace<Robot>::State> &dense) -> bool
+        {
+            using Space = vamp::planning::CurveSpace<Robot>;
+            constexpr std::size_t max_depth = 16;
+            constexpr std::size_t max_states = 200000;
+
+            if (largest_joint_step(a, b) <= step)
+            {
+                if (not chord_collision_free(a, b, environment))
+                {
+                    return false;
+                }
+
+                dense.emplace_back(b);
+                return true;
+            }
+
+            if (depth >= max_depth or dense.size() >= max_states)
+            {
+                return false;
+            }
+
+            auto mid = Space::interpolate(a, b, 0.5F);
+            if (not(lp.project(mid) and Robot::in_bounds(Space::to_ambient(mid))))
+            {
+                return false;
+            }
+
+            return refine_curve_piece(lp, environment, a, mid, step, depth + 1, dense) and
+                   refine_curve_piece(lp, environment, mid, b, step, depth + 1, dense);
+        }
+
+        // Inserts states into a path in (q, t) until consecutive ones are at most `step` apart in the joints (infinity
+        // norm), each piece refined as above: constraint-aware, every state of the result is on the manifold (every
+        // constraint of the set: the curves, a center of mass). Like interpolate_and_project (simplify.hh) for
+        // Path<Robot>. Returns false, leaving `dense` unspecified, if any piece fails.
+        template <typename LP>
+        static auto interpolate_curve_states(
+            const LP &lp,
+            const EnvVec &environment,
+            const std::vector<typename vamp::planning::CurveSpace<Robot>::State> &states,
+            float step,
+            std::vector<typename vamp::planning::CurveSpace<Robot>::State> &dense) -> bool
+        {
+            dense.clear();
+            if (states.empty())
+            {
+                return true;
+            }
+
+            dense.emplace_back(states.front());
+            for (auto i = 1U; i < states.size(); ++i)
+            {
+                if (not refine_curve_piece(lp, environment, states[i - 1], states[i], step, 0, dense))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // A path in (q, t) on a curve (the joints of each state and its t), densified to joint steps of at most `step` and
+        // projected onto the manifold (the lerp constraints of the curve, and any other constraint of it, such as a
+        // CoMConstraint), for paths that did not come out of task_space_rrtc_curve. solved is False, and the path the
+        // input unchanged, if a projection fails, a state leaves the joint limits or an edge is in collision.
+        static auto interpolate_curve_path(
+            const Pth &path,
+            const std::vector<float> &parameters,
+            const Env &env,
+            ConstraintVec manifold,
+            const ConstraintSettings &cs,
+            float step) -> CurveSpaceResult<Robot>
+        {
+            using Space = vamp::planning::CurveSpace<Robot>;
+            using CurveLP = vamp::planning::constraint::ConstrainedLocalPlanner<Robot, rake, Robot::resolution, Space>;
+
+            if (path.size() != parameters.size())
+            {
+                throw std::invalid_argument("path and parameters must have the same length");
+            }
+
+            if (not(step > 0.F))
+            {
+                throw std::invalid_argument("step must be positive");
+            }
+
+            const ConstraintSetT manifold_set(std::move(manifold), cs);
+            const CurveLP lp(manifold_set);
+
+            std::vector<typename Space::State> states;
+            for (auto i = 0U; i < path.size(); ++i)
+            {
+                states.emplace_back(Space::make_state(Input::to(path[i]), parameters[i]));
+            }
+
+            std::vector<typename Space::State> dense;
+            CurveSpaceResult<Robot> out;
+            out.solved = interpolate_curve_states(lp, make_environment<Robot>(env), states, step, dense);
+            out.interpolated = out.solved;
+            for (const auto &state : (out.solved) ? dense : states)
+            {
+                const auto array = Space::to_ambient(state).to_array();
+                std::array<float, Robot::dimension> values;
+                for (auto j = 0U; j < Robot::dimension; ++j)
+                {
+                    values[j] = array[j];
+                }
+
+                out.path.emplace_back(values);
+                out.parameters.emplace_back(Space::parameter(state));
+            }
+
+            return out;
+        }
+
+        // Plan along a straight-line curve in (q, t): TaskSpaceRRTC over the robot's CurveSpace. Every state is a
+        // configuration with the curve parameter t it sits at, sampled with the joints and held fixed while a state is
+        // projected onto the curve (see TaskSpaceRRTCSettings::project_samples and ::parameter_weight). `manifold` has to
+        // hold the LerpR3Constraint or the LerpSO3R3Constraint; the start is on the curve at `start_t`, by default at the
+        // closest point of the curve. The goal is the end of the curve: the planner holds a copy of the manifold's
+        // constraint at t = 1 as the goal region. Only instantiated for robots generated with the lerp constraints.
+        static auto solve_task_space_curve(
+            const Cfg &start,
+            const Env &env,
+            const vamp::planning::TaskSpaceRRTCSettings &s,
+            std::shared_ptr<Sampler> rng,
+            ConstraintVec manifold,
+            const ConstraintSettings &cs,
+            std::optional<float> start_t) -> CurveSpaceResult<Robot>
+        {
+            using Space = vamp::planning::CurveSpace<Robot>;
+            using CurveLP = vamp::planning::constraint::
+                ConstrainedLocalPlanner<Robot, rake, Robot::resolution, Space>;
+            using Planner = vamp::planning::TaskSpaceRRTC<Robot, rake, Robot::resolution, Space>;
+            using R3C = vamp::planning::constraint::LerpR3Constraint<Robot, rake>;
+            using PoseC = vamp::planning::constraint::LerpSO3R3Constraint<Robot, rake>;
+
+            const auto q = Input::to(start);
+
+            // The curve the manifold holds: the way to find the start's t on it, and a copy of it as the goal region
+            std::function<float()> closest_start_t;
+            std::shared_ptr<const ConstraintT> curve_end;
+            for (const auto &constraint : manifold)
+            {
+                if (auto found = std::dynamic_pointer_cast<const R3C>(constraint))
+                {
+                    closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
+                    curve_end = std::make_shared<const R3C>(found->fixed_copy());
+                }
+
+                if (auto found = std::dynamic_pointer_cast<const PoseC>(constraint))
+                {
+                    closest_start_t = [found, q]() { return found->closest_parameter(q).first; };
+                    curve_end = std::make_shared<const PoseC>(found->fixed_copy());
+                }
+            }
+
+            if (not closest_start_t)
+            {
+                throw std::invalid_argument(
+                    "manifold_constraints must contain a LerpR3Constraint or a LerpSO3R3Constraint");
+            }
+
+            // a separate instance from the manifold's, which the planner gives the parameter of each state; the planner
+            // holds the region at t = 1
+            ConstraintSetT region(ConstraintVec{curve_end}, cs);
+
+            const ConstraintSetT manifold_set(std::move(manifold), cs);
+
+            const float t = start_t ? *start_t : closest_start_t();
+
+            const auto state = Space::make_state(q, t);
+            const CurveLP lp(manifold_set);
+            if (not lp.satisfied(state))
+            {
+                throw std::invalid_argument("the start configuration is not on the curve at start_t");
+            }
+
+            const auto result = Planner::template solve<CurveLP>(
+                state, region, make_environment<Robot>(env), s, std::make_shared<vamp::rng::CurveRNG<Robot>>(rng), lp);
+
+            CurveSpaceResult<Robot> out;
+            out.solved = result.solved;
+            out.cost = result.cost;
+            out.nanoseconds = result.nanoseconds;
+            out.iterations = result.iterations;
+            out.size = result.size;
+
+            std::vector<typename Space::State> states;
+            for (const auto &path_state : result.path)
+            {
+                states.emplace_back(path_state);
+            }
+
+            // s.interpolate_step: see interpolate_curve_states; any failure keeps the planner's path as it was
+            // (out.interpolated stays false).
+            if (result.solved and s.interpolate_step > 0.F)
+            {
+                std::vector<typename Space::State> dense;
+                if (interpolate_curve_states(lp, make_environment<Robot>(env), states, s.interpolate_step, dense))
+                {
+                    states = std::move(dense);
+                    out.interpolated = true;
+                }
+            }
+
+            for (const auto &path_state : states)
+            {
+                const auto array = Space::to_ambient(path_state).to_array();
+                std::array<float, Robot::dimension> values;
+                for (auto j = 0U; j < Robot::dimension; ++j)
+                {
+                    values[j] = array[j];
+                }
+
+                out.path.emplace_back(values);
+                out.parameters.emplace_back(Space::parameter(path_state));
+            }
+
+            return out;
         }
 
         static auto simplify_constrained(
@@ -801,12 +1096,61 @@ namespace vamp::binding
         }
     };
 
-    template <typename Robot>
+    // The iterates of one projection onto a lerp curve, for looking at it step by step: the joints, the curve parameter and
+    // the squared error at the start and after every step, until the error is within `tolerance` or `max_iterations` steps
+    // were taken. `constraint` is copied, so its own evaluation state is untouched. In the fixed form t stays as given; in
+    // the segment form it is solved for, and every iterate carries the t where the projection stands.
+    template <typename Robot, typename Constraint>
+    inline auto lerp_projection_trail(
+        const Constraint &constraint,
+        const std::array<float, Robot::dimension> &values,
+        float t,
+        vamp::planning::constraint::ProjMethod method,
+        float tolerance,
+        std::size_t max_iterations,
+        float alpha) -> std::vector<std::tuple<std::array<float, Robot::dimension>, float, float>>
+    {
+        using Row = vamp::FloatVector<rake, 1>;
+        using Block = typename Robot::template ConfigurationBlock<rake>;
+
+        Constraint copy(constraint);
+
+        Block block;
+        const typename Robot::Configuration q(values);
+        for (auto i = 0U; i < Robot::dimension; ++i)
+        {
+            block[i] = q.broadcast(i);
+        }
+
+        copy.set_parameter(Row::fill(t));
+
+        std::vector<std::tuple<std::array<float, Robot::dimension>, float, float>> trail;
+        for (std::size_t iteration = 0;; ++iteration)
+        {
+            const float error = copy.squared_error(block)[{0, 0}];
+
+            std::array<float, Robot::dimension> lane;
+            for (auto i = 0U; i < Robot::dimension; ++i)
+            {
+                lane[i] = block[{i, 0}];
+            }
+
+            trail.emplace_back(lane, copy.projected_parameter(Row::fill(t))[{0, 0}], error);
+            if (error <= tolerance or iteration >= max_iterations)
+            {
+                return trail;
+            }
+
+            copy.step(block, method, alpha);
+        }
+    }
+
     // `submodule_name` is the name the robot is exposed under in Python. The build uses the same name
     // (the robot's header name) to list robots and generate stubs, so it has to be what the module is
     // registered as. It defaults to the robot's own name; they differ for generated robots whose name has
     // no underscore but whose header does (e.g., KMRIiwaTool is named "kmriiwatool" but lives in
     // kmriiwa_tool.hh).
+    template <typename Robot>
     inline auto init_robot(nanobind::module_ &pymodule, const char *submodule_name = Robot::name)
         -> nanobind::module_
     {
@@ -1114,6 +1458,221 @@ namespace vamp::binding
                         "world_to_reference"_a,
                         "pitch"_a,
                         "target"_a);
+            }
+
+            if constexpr (robot_lerp_points_v<Robot>)
+            {
+                using LR3 = vc::LerpR3Constraint<Robot, rake>;
+                using LSO3 = vc::LerpSO3R3Constraint<Robot, rake>;
+                using CurveResult = CurveSpaceResult<Robot>;
+
+                submodule.def(
+                    "lerp_points",
+                    []() { return Robot::lerp_points; },
+                    "Number of points of the straight-line curves the kernels were traced for.");
+
+                nb::class_<CurveResult>(
+                    submodule,
+                    "CurveSpacePlanningResult",
+                    "Result of planning along a curve in (q, t): the path's joints and curve parameters.")
+                    .def(nb::init<>(), "Empty constructor.")
+                    .def_ro("solved", &CurveResult::solved, "Whether a solution was found.")
+                    .def_ro("path", &CurveResult::path, "The joints of each state of the path, in order.")
+                    .def_ro("t", &CurveResult::parameters, "The curve parameter of each state of the path.")
+                    .def_ro("cost", &CurveResult::cost, "Length of the path in the joints (t is ignored).")
+                    .def_ro("nanoseconds", &CurveResult::nanoseconds, "Nanoseconds taken.")
+                    .def_ro("iterations", &CurveResult::iterations, "Planner iterations used.")
+                    .def_ro("size", &CurveResult::size, "Sizes of the planner's data structures (tree nodes).")
+                    .def_ro(
+                        "interpolated",
+                        &CurveResult::interpolated,
+                        "Whether settings.interpolate_step was applied (False if it was 0 or the interpolation "
+                        "failed, in which case the path is the planner's own).");
+
+                nb::class_<LR3, ConstraintT>(
+                    submodule,
+                    "LerpR3Constraint",
+                    "Position constraint against the straight-line interpolation of points in R^3, at a curve "
+                    "parameter that is given: for planning in (q, t) with task_space_rrtc_curve, where t is part of "
+                    "the state and a projection solves for the joints alone. Takes lerp_points() distinct points "
+                    "(n x 3); t in [0, 1] is the normalized chord length, so t advances at constant speed along "
+                    "the polyline. The curve is evaluated by the generated kernel. closest_t is a host-side scan "
+                    "for the t of a configuration (a planner's start). With segment=True, t only picks the segment "
+                    "(the one the state's t is on): the end-effector may be anywhere on it, t is solved for next to "
+                    "the joints (bounded to the segment) and a state takes the t where its projection ended.")
+                    .def(
+                        nb::init<const std::array<typename LR3::Point, LR3::n_points> &, bool>(),
+                        "points"_a,
+                        "segment"_a = false)
+                    .def_prop_ro(
+                        "segment",
+                        [](const LR3 &c) { return c.segment_form(); },
+                        "Whether this is the segment form (t solved for on its segment) and not the fixed form.")
+                    .def(
+                        "projection_trail",
+                        [](const LR3 &c,
+                           const std::array<float, Robot::dimension> &q,
+                           float t,
+                           vc::ProjMethod method,
+                           float tolerance,
+                           std::size_t max_iterations,
+                           float alpha)
+                        { return lerp_projection_trail<Robot>(c, q, t, method, tolerance, max_iterations, alpha); },
+                        "q"_a,
+                        "t"_a,
+                        "method"_a,
+                        "tolerance"_a = 1e-8F,
+                        "max_iterations"_a = 50,
+                        "alpha"_a = 1.0F,
+                        "The iterates of one projection from (q, t): a list of (joints, t, squared error), at the "
+                        "start and after each step, until the error is within tolerance or max_iterations steps. In "
+                        "the fixed form t stays as given; in the segment form it moves.")
+                    .def(
+                        "value",
+                        [](const LR3 &c, double t) -> std::array<double, 3>
+                        {
+                            const Eigen::Vector3d point = c.value(t);
+                            return {point[0], point[1], point[2]};
+                        },
+                        "t"_a,
+                        "The point of the curve at t.")
+                    .def(
+                        "closest_t",
+                        [](const LR3 &c, const std::array<float, Robot::dimension> &q) -> std::tuple<float, float>
+                        { return c.closest_parameter(typename Robot::Configuration(q)); },
+                        "q"_a,
+                        "The closest point of the curve to the end-effector at q: (t, squared distance).")
+                    .def(
+                        "parameters",
+                        [](const LR3 &c)
+                        { return std::vector<double>(c.parameters().begin(), c.parameters().end()); },
+                        "The curve parameter t of each point.");
+
+                nb::class_<LSO3, ConstraintT>(
+                    submodule,
+                    "LerpSO3R3Constraint",
+                    "Pose constraint against the straight-line interpolation of poses in SO(3) x R^3 (positions "
+                    "lerped, rotations slerped), at a curve parameter that is given: for planning in (q, t) with "
+                    "task_space_rrtc_curve. Takes lerp_points() positions (n x 3, x y z), as many unit quaternions "
+                    "(n x 4, w x y z, consecutive ones less than 175 degrees apart; poses must be distinct) and the "
+                    "rotation weight (m / rad, adjustable: it scales the rotation error against the translation "
+                    "error and the rotation's share of a segment's length). The error is "
+                    "[R_t^T (p - p_t); weight log(R_t^T R)] against the curve's pose at t. With segment=True, t "
+                    "only picks the segment (the one the state's t is on): the end-effector's pose may be anywhere "
+                    "on it, t is solved for next to the joints (bounded to the segment) and a state takes the t "
+                    "where its projection ended.")
+                    .def(
+                        nb::init<
+                            const std::array<typename LSO3::Position, LSO3::n_points> &,
+                            const std::array<typename LSO3::Quaternion, LSO3::n_points> &,
+                            float,
+                            bool>(),
+                        "points"_a,
+                        "rotations"_a,
+                        "rotation_weight"_a = 1.0F,
+                        "segment"_a = false)
+                    .def_prop_ro(
+                        "segment",
+                        [](const LSO3 &c) { return c.segment_form(); },
+                        "Whether this is the segment form (t solved for on its segment) and not the fixed form.")
+                    .def(
+                        "projection_trail",
+                        [](const LSO3 &c,
+                           const std::array<float, Robot::dimension> &q,
+                           float t,
+                           vc::ProjMethod method,
+                           float tolerance,
+                           std::size_t max_iterations,
+                           float alpha)
+                        { return lerp_projection_trail<Robot>(c, q, t, method, tolerance, max_iterations, alpha); },
+                        "q"_a,
+                        "t"_a,
+                        "method"_a,
+                        "tolerance"_a = 1e-8F,
+                        "max_iterations"_a = 50,
+                        "alpha"_a = 1.0F,
+                        "The iterates of one projection from (q, t): a list of (joints, t, squared error), at the "
+                        "start and after each step, until the error is within tolerance or max_iterations steps. In "
+                        "the fixed form t stays as given; in the segment form it moves.")
+                    .def_prop_rw(
+                        "rotation_weight",
+                        &LSO3::rotation_weight,
+                        &LSO3::set_rotation_weight,
+                        "The weight (m / rad) of the rotation error; setting it recomputes the parameters of the "
+                        "points.")
+                    .def(
+                        "value",
+                        [](const LSO3 &c, double t) -> std::tuple<std::array<double, 3>, std::array<double, 4>>
+                        {
+                            const auto [position, rotation] = c.value(t);
+                            return {
+                                std::array<double, 3>{position[0], position[1], position[2]},
+                                std::array<double, 4>{rotation.w(), rotation.x(), rotation.y(), rotation.z()}};
+                        },
+                        "t"_a,
+                        "The pose of the curve at t: (position, quaternion w x y z).")
+                    .def(
+                        "closest_t",
+                        [](const LSO3 &c, const std::array<float, Robot::dimension> &q) -> std::tuple<float, float>
+                        { return c.closest_parameter(typename Robot::Configuration(q)); },
+                        "q"_a,
+                        "The closest pose of the curve to the end-effector at q, in the curve's metric: "
+                        "(t, squared distance).")
+                    .def(
+                        "parameters",
+                        [](const LSO3 &c)
+                        { return std::vector<double>(c.parameters().begin(), c.parameters().end()); },
+                        "The curve parameter t of each point.");
+
+                // numpy and plain-list inputs, as for the other planners
+                const auto def_curve_planner = [&](auto traits)
+                {
+                    using Traits = decltype(traits);
+                    submodule.def(
+                        "task_space_rrtc_curve",
+                        &Traits::solve_task_space_curve,
+                        "start"_a,
+                        "environment"_a,
+                        "settings"_a,
+                        "sampler"_a,
+                        "manifold_constraints"_a,
+                        "constraint_settings"_a = vc::ConstraintSettings{},
+                        "start_t"_a = nb::none(),
+                        "Plan along a straight-line curve in (q, t) with TaskSpaceRRTC: states carry the curve "
+                        "parameter t, which is sampled with the joints and held fixed while a state is projected "
+                        "onto the curve. manifold_constraints must contain a LerpR3Constraint or a "
+                        "LerpSO3R3Constraint; the start must be on the curve at start_t (default: the closest "
+                        "point of the curve to the start). The goal is the end of the curve: the planner holds "
+                        "a copy of the constraint at t = 1 as the goal region. Tune settings.project_samples, "
+                        "settings.parameter_weight and settings.interpolate_step. Returns a CurveSpacePlanningResult.");
+                };
+
+                def_curve_planner(TA{});
+                def_curve_planner(TC{});
+
+                const auto def_curve_interpolation = [&](auto traits)
+                {
+                    using Traits = decltype(traits);
+                    submodule.def(
+                        "interpolate_curve_path",
+                        &Traits::interpolate_curve_path,
+                        "path"_a,
+                        "t"_a,
+                        "environment"_a,
+                        "manifold_constraints"_a,
+                        "constraint_settings"_a = vc::ConstraintSettings{},
+                        "step"_a = 0.01F,
+                        "Densify a path in (q, t) on a curve: states are inserted until consecutive ones are at most "
+                        "step apart in the joints (infinity norm), each interpolated in (q, t) and projected onto "
+                        "manifold_constraints (the lerp constraints of the curve, and a CoMConstraint if there is one) "
+                        "and checked against the joint limits, and every new edge is revalidated for collisions. path "
+                        "is the joints of each state, t the curve parameter of each. Returns a "
+                        "CurveSpacePlanningResult: solved (and interpolated) is False, and the path is the input "
+                        "unchanged, if any step fails.");
+                };
+
+                def_curve_interpolation(TA{});
+                def_curve_interpolation(TC{});
             }
 
             bind_constraint_methods<TA>(submodule);

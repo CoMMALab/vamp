@@ -18,6 +18,7 @@
 #include <vamp/planning/validate.hh>
 #include <vamp/planning/planners/task_space_rrtc_settings.hh>
 #include <vamp/random/rng.hh>
+#include <vamp/planning/space.hh>
 #include <vamp/utils.hh>
 #include <vamp/vector.hh>
 
@@ -38,12 +39,24 @@ namespace vamp::planning
     // The planner succeeds when a node satisfies the region (error within the set's
     // tolerance). Edges are straight lines checked by the local planner; only the
     // goal-directed steps look at the constraint.
-    template <typename Robot, std::size_t rake, std::size_t resolution>
+    //
+    // The tree's nodes are states of `Space` (the robot's configurations when it is its own Space). A Space with an
+    // extra coordinate (CurveSpace's curve parameter t) is planned in as a whole: samples, extensions and nodes carry
+    // it, while the region and collision checking see the ambient configuration (the first Robot::dimension
+    // coordinates). The metric of the run is the joints' with t weighted, sqrt(|dq|^2 + (w dt)^2), w =
+    // settings.parameter_weight (by default 1 / the number of joints): the nearest-neighbor tree measures in it, and `range` bounds a step in it. The region
+    // is held at the end of the curve (t = 1), and a goal-directed step heads for (the region's LM point, t = 1),
+    // clamped to `range` in that metric, so the joints and t advance together. With a projecting local planner the
+    // step is then projected onto the manifold at its new t (which the local planner holds fixed while it projects the
+    // joints).
+    template <typename Robot, std::size_t rake, std::size_t resolution, typename Space = Robot>
     struct TaskSpaceRRTC
     {
-        using Configuration = typename Robot::Configuration;
-        static constexpr auto dimension = Robot::dimension;
-        using RNG = typename vamp::rng::RNG<Robot>;
+        using Traits = space::SpaceTraits<Robot, Space>;
+        using Configuration = typename Traits::State;
+        static constexpr auto dimension = Traits::dimension;
+        static constexpr auto ambient_dimension = Robot::dimension;
+        using RNG = typename vamp::rng::RNG<Robot, Space>;
         using Region = constraint::ConstraintSet<Robot, rake>;
         using Block = typename Robot::template ConfigurationBlock<rake>;
 
@@ -54,17 +67,29 @@ namespace vamp::planning
             const collision::Environment<FloatVector<rake>> &environment,
             const TaskSpaceRRTCSettings &settings,
             typename RNG::Ptr rng,
-            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot>
+            const LocalPlanner &lp = LocalPlanner()) noexcept -> PlanningResult<Robot, Space>
         {
             size_t extend_counter_failed = 0;
             size_t extend_counter_succeeded = 0;
 
-            PlanningResult<Robot> result;
+            PlanningResult<Robot, Space> result;
             const auto start_time = std::chrono::steady_clock::now();
 
-            NN<Robot> tree;
+            // the weight of the curve parameter in the metric of the run: the setting, or by default 1 / the joints
+            const float parameter_weight = settings.parameter_weight > 0.F
+                                               ? settings.parameter_weight
+                                               : 1.F / static_cast<float>(ambient_dimension);
+
+            NN<Space> tree;
             tree.reserve(settings.max_samples);
             tree.set_epsilon(settings.nn_epsilon);
+            tree.set_parameter_weight(parameter_weight);
+
+            if constexpr (Traits::extra > 0)
+            {
+                // the goal region is the constraint at the end of the curve
+                region.set_parameter(FloatVector<rake, 1>::fill(1.F));
+            }
 
             auto buffer = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(
                 settings.max_samples * Configuration::num_scalars_rounded);
@@ -106,12 +131,24 @@ namespace vamp::planning
                 return lane;
             };
 
+            const auto lane_of = [](const Configuration &c) -> Lane
+            {
+                Lane lane;
+                const auto array = c.to_array();
+                for (auto j = 0U; j < dimension; ++j)
+                {
+                    lane[j] = array[j];
+                }
+
+                return lane;
+            };
+
             // The constraint kernels evaluate `rake` lanes at once; the walk has a single
-            // configuration, so every lane holds a copy of it.
+            // configuration, so every lane holds a copy of its joints.
             const auto broadcast = [](const Lane &q) -> Block
             {
                 Block block;
-                for (auto j = 0U; j < dimension; ++j)
+                for (auto j = 0U; j < ambient_dimension; ++j)
                 {
                     block[j] = FloatVector<rake>::fill(q[j]);
                 }
@@ -120,6 +157,26 @@ namespace vamp::planning
             };
 
             std::optional<std::size_t> solution;
+
+            // monotone_t: whether t stays non-decreasing from `t_from` along a chain of waypoints
+            [[maybe_unused]] const auto monotone_chain = [&](float t_from, const auto &waypoints) -> bool
+            {
+                if constexpr (Traits::extra > 0)
+                {
+                    for (const auto &waypoint : waypoints)
+                    {
+                        const float t = waypoint.to_array()[ambient_dimension];
+                        if (t < t_from - 1e-6F)
+                        {
+                            return false;
+                        }
+
+                        t_from = t;
+                    }
+                }
+
+                return true;
+            };
 
             // Greedy walk from `node` toward the region: one clamped LM step per added node.
             const auto walk = [&](std::size_t node)
@@ -141,12 +198,22 @@ namespace vamp::planning
                     region.step_in_place(proposed);
                     // std::cout << "Step " << step << ": error = " << error << ", proposed = " << proposed << std::endl;
 
-                    Lane next;
+                    Lane next = q;
                     float norm2 = 0.F;
-                    for (auto j = 0U; j < dimension; ++j)
+                    for (auto j = 0U; j < ambient_dimension; ++j)
                     {
                         next[j] = proposed[{j, 0}] - q[j];
                         norm2 += next[j] * next[j];
+                    }
+
+                    // The step heads for (the region's LM point, the end of the curve): t is carried toward 1 along with
+                    // the joints, and counts in the length of the step with its weight
+                    [[maybe_unused]] float parameter_delta = 0.F;
+                    if constexpr (Traits::extra > 0)
+                    {
+                        parameter_delta = 1.F - q[ambient_dimension];
+                        const float weighted = parameter_weight * parameter_delta;
+                        norm2 += weighted * weighted;
                     }
 
                     const float norm = std::sqrt(norm2);
@@ -156,9 +223,60 @@ namespace vamp::planning
                     }
 
                     const float clamp = std::min(1.F, walk_range / norm);
-                    for (auto j = 0U; j < dimension; ++j)
+                    for (auto j = 0U; j < ambient_dimension; ++j)
                     {
                         next[j] = q[j] + next[j] * clamp;
+                    }
+
+                    if constexpr (Traits::extra > 0)
+                    {
+                        // the same fraction of the way to the end of the curve
+                        next[ambient_dimension] = q[ambient_dimension] + parameter_delta * clamp;
+                    }
+
+                    if constexpr (LocalPlanner::projecting and Traits::extra > 0)
+                    {
+                        // On a curve manifold the LM point is only a target: it heads straight for the region and
+                        // leaves the manifold. lp.steer takes the step toward it and projects onto the manifold, as
+                        // every extension of a constrained RRT does (with the continuity and collision checks), and
+                        // returns the chain of on-manifold waypoints. The walk then judges the chain's endpoint.
+                        const Configuration target(next);
+                        const float step_length = std::min(norm, settings.range);
+                        const auto extension = lp.steer(
+                            Configuration(buffer_index(current)), target, step_length, settings.range, true, environment);
+
+                        if (extension.status == SteerStatus::Trapped or extension.status == SteerStatus::Rejected)
+                        {
+                            return;
+                        }
+
+                        if (settings.monotone_t and not monotone_chain(q[ambient_dimension], extension.waypoints))
+                        {
+                            return;
+                        }
+
+                        const Lane endpoint = lane_of(extension.endpoint());
+                        const Block endpoint_block = broadcast(endpoint);
+                        const float endpoint_error = region.squared_error(endpoint_block)[{0, 0}];
+                        if (not(endpoint_error < error))
+                        {
+                            return;
+                        }
+
+                        const auto [last, truncated] = insert_chain<Robot, Space>(
+                            extension.waypoints,
+                            current,
+                            [&](const Configuration &c, std::size_t parent) { return add_node(c, parent); });
+                        if (truncated or last == current)
+                        {
+                            return;
+                        }
+
+                        current = last;
+                        q = endpoint;
+                        block = endpoint_block;  // the region's Jacobian cache now holds this block, for the next step
+                        error = endpoint_error;
+                        continue;
                     }
 
                     Block candidate = broadcast(next);
@@ -171,7 +289,7 @@ namespace vamp::planning
                     }
 
                     const Configuration c(next);
-                    if (not Robot::in_bounds(c))
+                    if (not Traits::in_bounds(c))
                     {
                         return;
                     }
@@ -203,9 +321,18 @@ namespace vamp::planning
             // node added, if any.
             const auto explore = [&]() -> std::optional<std::size_t>
             {
-                const auto sample = rng->next();
+                auto sample = rng->next();
 
-                typename Robot::ConfigurationBuffer sample_array;
+                if constexpr (LocalPlanner::projecting)
+                {
+                    // A sample on the manifold (at its own parameter), so the nearest node is the nearest on it
+                    if (settings.project_samples and not lp.project(sample))
+                    {
+                        return std::nullopt;
+                    }
+                }
+
+                typename Traits::StateBuffer sample_array;
                 sample.to_array(sample_array.data());
 
                 const auto nearest = tree.nearest(sample_array.data());
@@ -215,10 +342,26 @@ namespace vamp::planning
                 }
 
                 const auto [nearest_index, nearest_distance] = *nearest;
+                auto target = sample;
+                float target_distance = nearest_distance;
+                if constexpr (Traits::extra > 0)
+                {
+                    // monotone_t: a sample behind the nearest node in t is steered toward at the node's t
+                    if (settings.monotone_t)
+                    {
+                        const float t_nearest = buffer_index(nearest_index)[ambient_dimension];
+                        if (Space::parameter(sample) < t_nearest)
+                        {
+                            target = Space::make_state(Space::to_ambient(sample), t_nearest);
+                            target_distance = Traits::distance(Configuration(buffer_index(nearest_index)), target);
+                        }
+                    }
+                }
+
                 const auto extension = lp.steer(
                     Configuration(buffer_index(nearest_index)),
-                    sample,
-                    nearest_distance,
+                    target,
+                    target_distance,
                     settings.range,
                     true,
                     environment);
@@ -231,12 +374,22 @@ namespace vamp::planning
                             //   << std::endl;
                     return std::nullopt;
                 }
+
+                if constexpr (Traits::extra > 0)
+                {
+                    if (settings.monotone_t and
+                        not monotone_chain(buffer_index(nearest_index)[ambient_dimension], extension.waypoints))
+                    {
+                        return std::nullopt;
+                    }
+                }
+
                 extend_counter_succeeded++;
                 // std::cout << extend_counter_succeeded << ": Steer succeeded: " << static_cast<int>(extension.status) << " for config "
                         //   << Configuration(buffer_index(nearest_index)) << " toward " << sample
                         //   << std::endl;
 
-                const auto [last, truncated] = insert_chain<Robot>(
+                const auto [last, truncated] = insert_chain<Robot, Space>(
                     extension.waypoints,
                     nearest_index,
                     [&](const Configuration &c, std::size_t parent) { return add_node(c, parent); });
@@ -253,8 +406,10 @@ namespace vamp::planning
             // random samples onto the region. It is grown like the other tree of RRT-Connect: the start tree
             // extends toward a sample, the goal tree extends toward a sample on the IK iterations, and each new node
             // of one tree is connected to the nearest node of the other. Joining the two solves the problem.
-            const std::size_t goal_capacity = (settings.ik_rate > 0.F) ? settings.max_samples : 1;
-            NN<Robot> goal_tree;
+            // The interleaved IK goal tree is for planning in the robot's own space: the region of a curve is held at its end
+            const bool ik_on = Traits::extra == 0 and settings.ik_rate > 0.F;
+            const std::size_t goal_capacity = ik_on ? settings.max_samples : 1;
+            NN<Space> goal_tree;
             goal_tree.reserve(goal_capacity);
             goal_tree.set_epsilon(settings.nn_epsilon);
             auto goal_buffer = vamp::utils::buffer_alloc<float, FloatVectorAlignment>(
@@ -293,7 +448,7 @@ namespace vamp::planning
                 std::size_t prior_index = from_index;
                 for (std::size_t i = 0; i < n_extensions and free_index < settings.max_samples; ++i)
                 {
-                    const float remaining = Robot::distance(prior, target);
+                    const float remaining = Traits::distance(prior, target);
                     const bool final_step = (i == n_extensions - 1) or (remaining <= settings.range);
                     const auto step = lp.steer(
                         prior,
@@ -308,7 +463,7 @@ namespace vamp::planning
                         return std::nullopt;
                     }
 
-                    const auto [step_index, step_truncated] = insert_chain<Robot>(
+                    const auto [step_index, step_truncated] = insert_chain<Robot, Space>(
                         step.waypoints,
                         prior_index,
                         [&](const Configuration &c, std::size_t parent) { return add_node(c, parent); });
@@ -333,7 +488,7 @@ namespace vamp::planning
             const auto join_goal_node = [&](std::size_t g)
             {
                 const Configuration target(goal_at(g));
-                typename Robot::ConfigurationBuffer array;
+                typename Traits::StateBuffer array;
                 target.to_array(array.data());
                 if (const auto nearest = tree.nearest(array.data()))
                 {
@@ -349,7 +504,7 @@ namespace vamp::planning
             // Tries to join the new start-tree node `n` to the nearest goal-tree node.
             const auto join_start_node = [&](std::size_t n)
             {
-                typename Robot::ConfigurationBuffer array;
+                typename Traits::StateBuffer array;
                 Configuration(buffer_index(n)).to_array(array.data());
                 if (const auto nearest = goal_tree.nearest(array.data()))
                 {
@@ -367,16 +522,19 @@ namespace vamp::planning
             // and try to join its new node to the start tree.
             const auto ik_iteration = [&]()
             {
-                auto seed = rng->next();
-                if (goal_roots < settings.ik_pool_size and region.project(seed) and Robot::in_bounds(seed) and
-                    validate_configuration<Robot, rake>(seed, environment))
+                if constexpr (Traits::extra == 0)
                 {
-                    if (const auto root = add_goal_node(seed, goal_free))
+                    auto seed = rng->next();
+                    if (goal_roots < settings.ik_pool_size and region.project(seed) and Robot::in_bounds(seed) and
+                        validate_configuration<Robot, rake>(seed, environment))
                     {
-                        ++goal_roots;
-                        goal_parents[*root] = *root;
-                        join_goal_node(*root);
-                        return;
+                        if (const auto root = add_goal_node(seed, goal_free))
+                        {
+                            ++goal_roots;
+                            goal_parents[*root] = *root;
+                            join_goal_node(*root);
+                            return;
+                        }
                     }
                 }
 
@@ -386,7 +544,7 @@ namespace vamp::planning
                 }
 
                 const auto sample = rng->next();
-                typename Robot::ConfigurationBuffer sample_array;
+                typename Traits::StateBuffer sample_array;
                 sample.to_array(sample_array.data());
                 const auto nearest = goal_tree.nearest(sample_array.data());
                 const auto extension = lp.steer(
@@ -402,7 +560,7 @@ namespace vamp::planning
                     return;
                 }
 
-                const auto [last, truncated] = insert_chain<Robot>(
+                const auto [last, truncated] = insert_chain<Robot, Space>(
                     extension.waypoints,
                     nearest->first,
                     [&](const Configuration &c, std::size_t parent) { return add_goal_node(c, parent); });
@@ -428,7 +586,7 @@ namespace vamp::planning
                     }
                 }
 
-                if (settings.ik_rate > 0.F and not solution)
+                if (ik_on and not solution)
                 {
                     ik_credit += settings.ik_rate;
                     if (ik_credit >= 1.F)
@@ -447,7 +605,7 @@ namespace vamp::planning
                 {
                     const auto parent = parents[current];
                     result.path.emplace_back(buffer_index(parent));
-                    result.cost += Robot::distance(
+                    result.cost += Traits::distance(
                         result.path[result.path.size() - 1], result.path[result.path.size() - 2]);
                     current = parent;
                 }
@@ -462,7 +620,7 @@ namespace vamp::planning
                     {
                         g = goal_parents[g];
                         result.path.emplace_back(goal_at(g));
-                        result.cost += Robot::distance(
+                        result.cost += Traits::distance(
                             result.path[result.path.size() - 1], result.path[result.path.size() - 2]);
                     }
                 }

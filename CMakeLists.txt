@@ -155,6 +155,22 @@ if(VAMP_BUILD_CPP_DEMO)
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(vamp_rrtc_example PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
   endif()
+
+  # Plans along a straight-line curve in (q, t): TaskSpaceRRTC over CurveSpace, with the end-effector held on a lerp curve
+  # in R^3 or SO(3) x R^3 (needs a Panda header generated with "lerp_r3_constraint" and "lerp_so3r3_constraint")
+  add_executable(vamp_lerp_space_rrtc_test scripts/cpp/lerp_space_rrtc_test.cc)
+  target_link_libraries(vamp_lerp_space_rrtc_test PRIVATE vamp_cpp)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(vamp_lerp_space_rrtc_test PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+  endif()
+
+  # Compares the qt projection (t held fixed) with the qs projection (t free on its segment) onto a lerp curve, from the
+  # same starts (needs the lerp constraints' segment forms as well: "lerp_r3_segment_constraint", "lerp_so3r3_segment_constraint")
+  add_executable(vamp_lerp_projection_benchmark scripts/cpp/lerp_projection_benchmark.cc)
+  target_link_libraries(vamp_lerp_projection_benchmark PRIVATE vamp_cpp)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(vamp_lerp_projection_benchmark PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+  endif()
 endif()
 
 # OMPL integration demo

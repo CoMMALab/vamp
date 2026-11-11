@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 
@@ -272,6 +273,7 @@ namespace vamp::binding
         std::size_t nanoseconds{0};
         std::size_t iterations{0};
         std::vector<std::size_t> size;
+        bool interpolated{false};
     };
 
     template <typename Robot, typename Input>
@@ -482,6 +484,170 @@ namespace vamp::binding
                 Input::to(start), region, make_environment<Robot>(env), s, rng);
         }
 
+        // The largest change of a joint between two states (the joints' infinity norm; t does not count)
+        static auto largest_joint_step(
+            const typename vamp::planning::CurveSpace<Robot>::State &a,
+            const typename vamp::planning::CurveSpace<Robot>::State &b) -> float
+        {
+            using Space = vamp::planning::CurveSpace<Robot>;
+            const auto qa = Space::to_ambient(a).to_array();
+            const auto qb = Space::to_ambient(b).to_array();
+            float largest = 0.F;
+            for (auto j = 0U; j < Robot::dimension; ++j)
+            {
+                largest = std::max(largest, std::abs(qb[j] - qa[j]));
+            }
+
+            return largest;
+        }
+
+        // Whether the straight line between two states, in the joints, is collision-free. The pieces are short (at most
+        // `step`), so the chord is within about step^2 of the curve, and what matters about an edge is the collisions along
+        // it. The local planner's own validate (a projected chain that has to stay within twice its lane spacing of the
+        // chord) would reject a fine piece on projection noise alone: its allowance shrinks with the piece, the
+        // projection's tolerance does not.
+        static auto chord_collision_free(
+            const typename vamp::planning::CurveSpace<Robot>::State &a,
+            const typename vamp::planning::CurveSpace<Robot>::State &b,
+            const EnvVec &environment) -> bool
+        {
+            using Space = vamp::planning::CurveSpace<Robot>;
+            using Chord = vamp::planning::UnconstrainedLocalPlanner<Robot, rake, Robot::resolution>;
+            return Chord().validate(Space::to_ambient(a), Space::to_ambient(b), environment);
+        }
+
+        // Appends to `dense` the states after `a`, the last being `b`, such that consecutive ones are at most `step`
+        // apart in the joints: a piece is accepted when its ends are, and otherwise bisected: its midpoint is
+        // interpolated in (q, t) (t moves linearly with the joints), projected back onto the manifold with lp.project,
+        // and the two halves are refined in turn. A projection moves a state off the chord, so the pieces have to be
+        // measured after it: a uniform subdivision would leave gaps wider than `step` wherever the curve bends away.
+        // Every accepted piece is checked for collisions along its chord (the first state of a path is the caller's to
+        // check). Fails if a projection fails, a state leaves the joint limits, a piece is in collision, or the
+        // bisection does not converge (a depth or state-count limit).
+        template <typename LP>
+        static auto refine_curve_piece(
+            const LP &lp,
+            const EnvVec &environment,
+            const typename vamp::planning::CurveSpace<Robot>::State &a,
+            const typename vamp::planning::CurveSpace<Robot>::State &b,
+            float step,
+            std::size_t depth,
+            std::vector<typename vamp::planning::CurveSpace<Robot>::State> &dense) -> bool
+        {
+            using Space = vamp::planning::CurveSpace<Robot>;
+            constexpr std::size_t max_depth = 16;
+            constexpr std::size_t max_states = 200000;
+
+            if (largest_joint_step(a, b) <= step)
+            {
+                if (not chord_collision_free(a, b, environment))
+                {
+                    return false;
+                }
+
+                dense.emplace_back(b);
+                return true;
+            }
+
+            if (depth >= max_depth or dense.size() >= max_states)
+            {
+                return false;
+            }
+
+            auto mid = Space::interpolate(a, b, 0.5F);
+            if (not(lp.project(mid) and Robot::in_bounds(Space::to_ambient(mid))))
+            {
+                return false;
+            }
+
+            return refine_curve_piece(lp, environment, a, mid, step, depth + 1, dense) and
+                   refine_curve_piece(lp, environment, mid, b, step, depth + 1, dense);
+        }
+
+        // Inserts states into a path in (q, t) until consecutive ones are at most `step` apart in the joints (infinity
+        // norm), each piece refined as above: constraint-aware, every state of the result is on the manifold (every
+        // constraint of the set: the curves, a center of mass). Like interpolate_and_project (simplify.hh) for
+        // Path<Robot>. Returns false, leaving `dense` unspecified, if any piece fails.
+        template <typename LP>
+        static auto interpolate_curve_states(
+            const LP &lp,
+            const EnvVec &environment,
+            const std::vector<typename vamp::planning::CurveSpace<Robot>::State> &states,
+            float step,
+            std::vector<typename vamp::planning::CurveSpace<Robot>::State> &dense) -> bool
+        {
+            dense.clear();
+            if (states.empty())
+            {
+                return true;
+            }
+
+            dense.emplace_back(states.front());
+            for (auto i = 1U; i < states.size(); ++i)
+            {
+                if (not refine_curve_piece(lp, environment, states[i - 1], states[i], step, 0, dense))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // A path in (q, t) on a curve (the joints of each state and its t), densified to joint steps of at most `step` and
+        // projected onto the manifold (the lerp constraints of the curve, and any other constraint of it, such as a
+        // CoMConstraint), for paths that did not come out of task_space_rrtc_curve. solved is False, and the path the
+        // input unchanged, if a projection fails, a state leaves the joint limits or an edge is in collision.
+        static auto interpolate_curve_path(
+            const Pth &path,
+            const std::vector<float> &parameters,
+            const Env &env,
+            ConstraintVec manifold,
+            const ConstraintSettings &cs,
+            float step) -> CurveSpaceResult<Robot>
+        {
+            using Space = vamp::planning::CurveSpace<Robot>;
+            using CurveLP = vamp::planning::constraint::ConstrainedLocalPlanner<Robot, rake, Robot::resolution, Space>;
+
+            if (path.size() != parameters.size())
+            {
+                throw std::invalid_argument("path and parameters must have the same length");
+            }
+
+            if (not(step > 0.F))
+            {
+                throw std::invalid_argument("step must be positive");
+            }
+
+            const ConstraintSetT manifold_set(std::move(manifold), cs);
+            const CurveLP lp(manifold_set);
+
+            std::vector<typename Space::State> states;
+            for (auto i = 0U; i < path.size(); ++i)
+            {
+                states.emplace_back(Space::make_state(Input::to(path[i]), parameters[i]));
+            }
+
+            std::vector<typename Space::State> dense;
+            CurveSpaceResult<Robot> out;
+            out.solved = interpolate_curve_states(lp, make_environment<Robot>(env), states, step, dense);
+            out.interpolated = out.solved;
+            for (const auto &state : (out.solved) ? dense : states)
+            {
+                const auto array = Space::to_ambient(state).to_array();
+                std::array<float, Robot::dimension> values;
+                for (auto j = 0U; j < Robot::dimension; ++j)
+                {
+                    values[j] = array[j];
+                }
+
+                out.path.emplace_back(values);
+                out.parameters.emplace_back(Space::parameter(state));
+            }
+
+            return out;
+        }
+
         // Plan along a straight-line curve in (q, t): TaskSpaceRRTC over the robot's CurveSpace. Every state is a
         // configuration with the curve parameter t it sits at, sampled with the joints and held fixed while a state is
         // projected onto the curve (see TaskSpaceRRTCSettings::project_samples and ::parameter_weight). `manifold` has to
@@ -582,7 +748,26 @@ namespace vamp::binding
             out.nanoseconds = result.nanoseconds;
             out.iterations = result.iterations;
             out.size = result.size;
+
+            std::vector<typename Space::State> states;
             for (const auto &path_state : result.path)
+            {
+                states.emplace_back(path_state);
+            }
+
+            // s.interpolate_step: see interpolate_curve_states; any failure keeps the planner's path as it was
+            // (out.interpolated stays false).
+            if (result.solved and s.interpolate_step > 0.F)
+            {
+                std::vector<typename Space::State> dense;
+                if (interpolate_curve_states(lp, make_environment<Robot>(env), states, s.interpolate_step, dense))
+                {
+                    states = std::move(dense);
+                    out.interpolated = true;
+                }
+            }
+
+            for (const auto &path_state : states)
             {
                 const auto array = Space::to_ambient(path_state).to_array();
                 std::array<float, Robot::dimension> values;
@@ -1325,7 +1510,12 @@ namespace vamp::binding
                     .def_ro("cost", &CurveResult::cost, "Length of the path in the joints (t is ignored).")
                     .def_ro("nanoseconds", &CurveResult::nanoseconds, "Nanoseconds taken.")
                     .def_ro("iterations", &CurveResult::iterations, "Planner iterations used.")
-                    .def_ro("size", &CurveResult::size, "Sizes of the planner's data structures (tree nodes).");
+                    .def_ro("size", &CurveResult::size, "Sizes of the planner's data structures (tree nodes).")
+                    .def_ro(
+                        "interpolated",
+                        &CurveResult::interpolated,
+                        "Whether settings.interpolate_step was applied (False if it was 0 or the interpolation "
+                        "failed, in which case the path is the planner's own).");
 
                 nb::class_<LR3, ConstraintT>(
                     submodule,
@@ -1505,12 +1695,36 @@ namespace vamp::binding
                         "onto the curve. manifold_constraints must contain a LerpR3Constraint or a "
                         "LerpSO3R3Constraint; the start must be on the curve at start_t (default: the closest "
                         "point of the curve to the start). The goal is the end of the curve: the planner holds "
-                        "a copy of the constraint at t = 1 as the goal region. Tune settings.project_samples and "
-                        "settings.parameter_weight. Returns a CurveSpacePlanningResult.");
+                        "a copy of the constraint at t = 1 as the goal region. Tune settings.project_samples, "
+                        "settings.parameter_weight and settings.interpolate_step. Returns a CurveSpacePlanningResult.");
                 };
 
                 def_curve_planner(TA{});
                 def_curve_planner(TC{});
+
+                const auto def_curve_interpolation = [&](auto traits)
+                {
+                    using Traits = decltype(traits);
+                    submodule.def(
+                        "interpolate_curve_path",
+                        &Traits::interpolate_curve_path,
+                        "path"_a,
+                        "t"_a,
+                        "environment"_a,
+                        "manifold_constraints"_a,
+                        "constraint_settings"_a = vc::ConstraintSettings{},
+                        "step"_a = 0.01F,
+                        "Densify a path in (q, t) on a curve: states are inserted until consecutive ones are at most "
+                        "step apart in the joints (infinity norm), each interpolated in (q, t) and projected onto "
+                        "manifold_constraints (the lerp constraints of the curve, and a CoMConstraint if there is one) "
+                        "and checked against the joint limits, and every new edge is revalidated for collisions. path "
+                        "is the joints of each state, t the curve parameter of each. Returns a "
+                        "CurveSpacePlanningResult: solved (and interpolated) is False, and the path is the input "
+                        "unchanged, if any step fails.");
+                };
+
+                def_curve_interpolation(TA{});
+                def_curve_interpolation(TC{});
             }
 
             bind_constraint_methods<TA>(submodule);

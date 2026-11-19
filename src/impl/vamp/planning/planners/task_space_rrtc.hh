@@ -158,6 +158,26 @@ namespace vamp::planning
 
             std::optional<std::size_t> solution;
 
+            // monotone_t: whether t stays non-decreasing from `t_from` along a chain of waypoints
+            [[maybe_unused]] const auto monotone_chain = [&](float t_from, const auto &waypoints) -> bool
+            {
+                if constexpr (Traits::extra > 0)
+                {
+                    for (const auto &waypoint : waypoints)
+                    {
+                        const float t = waypoint.to_array()[ambient_dimension];
+                        if (t < t_from - 1e-6F)
+                        {
+                            return false;
+                        }
+
+                        t_from = t;
+                    }
+                }
+
+                return true;
+            };
+
             // Greedy walk from `node` toward the region: one clamped LM step per added node.
             const auto walk = [&](std::size_t node)
             {
@@ -226,6 +246,11 @@ namespace vamp::planning
                             Configuration(buffer_index(current)), target, step_length, settings.range, true, environment);
 
                         if (extension.status == SteerStatus::Trapped or extension.status == SteerStatus::Rejected)
+                        {
+                            return;
+                        }
+
+                        if (settings.monotone_t and not monotone_chain(q[ambient_dimension], extension.waypoints))
                         {
                             return;
                         }
@@ -317,10 +342,26 @@ namespace vamp::planning
                 }
 
                 const auto [nearest_index, nearest_distance] = *nearest;
+                auto target = sample;
+                float target_distance = nearest_distance;
+                if constexpr (Traits::extra > 0)
+                {
+                    // monotone_t: a sample behind the nearest node in t is steered toward at the node's t
+                    if (settings.monotone_t)
+                    {
+                        const float t_nearest = buffer_index(nearest_index)[ambient_dimension];
+                        if (Space::parameter(sample) < t_nearest)
+                        {
+                            target = Space::make_state(Space::to_ambient(sample), t_nearest);
+                            target_distance = Traits::distance(Configuration(buffer_index(nearest_index)), target);
+                        }
+                    }
+                }
+
                 const auto extension = lp.steer(
                     Configuration(buffer_index(nearest_index)),
-                    sample,
-                    nearest_distance,
+                    target,
+                    target_distance,
                     settings.range,
                     true,
                     environment);
@@ -333,6 +374,16 @@ namespace vamp::planning
                             //   << std::endl;
                     return std::nullopt;
                 }
+
+                if constexpr (Traits::extra > 0)
+                {
+                    if (settings.monotone_t and
+                        not monotone_chain(buffer_index(nearest_index)[ambient_dimension], extension.waypoints))
+                    {
+                        return std::nullopt;
+                    }
+                }
+
                 extend_counter_succeeded++;
                 // std::cout << extend_counter_succeeded << ": Steer succeeded: " << static_cast<int>(extension.status) << " for config "
                         //   << Configuration(buffer_index(nearest_index)) << " toward " << sample

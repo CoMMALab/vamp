@@ -54,6 +54,29 @@ namespace vamp::planning::constraint
             }
         }
 
+        // For a planning Space whose states carry a curve parameter t (CurveSpace): hand the constraint the per-lane
+        // values `parameter` of the states about to be projected or checked. The error of a constraint that holds the
+        // end-effector on a curve is then that of q at the state's own t, and the projections that follow solve for the
+        // joints alone. Stays in force until the next set_parameter. Default: nothing, for constraints that do not
+        // depend on a parameter.
+        virtual void set_parameter(const FloatVector<rake, 1> & /*parameter*/) const noexcept
+        {
+        }
+
+        // Back to no parameter given. Default: nothing.
+        virtual void clear_parameter() const noexcept
+        {
+        }
+
+        // For a constraint that solves for the curve parameter t itself (the segment form of the lerp constraints): the
+        // parameter each lane ended at, after a projection that started from the values given to set_parameter. The state
+        // takes this t, so a state's t is where its projection ended. Valid right after a projection (the last evaluation
+        // is at the final q). Default: the parameter given, for constraints that never change it.
+        virtual auto projected_parameter(const FloatVector<rake, 1> &given) const noexcept -> FloatVector<rake, 1>
+        {
+            return given;
+        }
+
         // Whether projection keeps already-satisfied rows in the Jacobian (see
         // ConstraintSettings::hold_satisfied_rows). Set by ConstraintSet from its settings.
         // Default: no-op, for constraints without hinged rows.

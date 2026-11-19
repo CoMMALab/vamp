@@ -404,4 +404,35 @@ namespace vamp::planning::space
         static_assert(detail::has_space_measure<S>::value, "a space needs space_measure() for GRRT*");
         return S::space_measure();
     }
+
+    // What a planner reads off a Space of an ambient Robot, behind one name: the state type and its blocks, how many
+    // coordinates the space adds to the robot's joints (`extra`, a curve parameter for example), and the ambient
+    // configuration, distance and limits of a state. For the robot's own space nothing is added.
+    template <typename Robot, typename Space = Robot>
+    struct SpaceTraits
+    {
+        using State = space::State<Space>;
+        using StateBuffer = space::StateBuffer<Space>;
+
+        template <std::size_t rake>
+        using StateBlock = space::StateBlock<Space, rake>;
+
+        static constexpr std::size_t dimension = Space::dimension;
+        static constexpr std::size_t extra = Space::dimension - Robot::dimension;
+
+        static inline auto ambient(const State &s) noexcept -> typename Robot::Configuration
+        {
+            return space::to_ambient<Space>(s);
+        }
+
+        static inline auto distance(const State &a, const State &b) noexcept -> float
+        {
+            return space::distance<Space>(a, b);
+        }
+
+        static inline auto in_bounds(const State &s) noexcept -> bool
+        {
+            return space::in_bounds<Space>(s);
+        }
+    };
 }  // namespace vamp::planning::space

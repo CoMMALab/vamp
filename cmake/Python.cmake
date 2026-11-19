@@ -29,6 +29,7 @@ if(VAMP_BUILD_PYTHON_BINDINGS)
     bimanual_iiwa_tool=BimanualIiwaTool
     g1_unitree=G1Unitree
     kmriiwa_tool=KMRIiwaTool
+    iiwa_tool=IiwaTool
     ridgeback_dual_panda=RidgebackDualPanda
   )
 

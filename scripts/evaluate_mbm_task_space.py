@@ -66,6 +66,8 @@ def main(
     max_greedy_steps: int = 20,
     max_iterations: int = 1000000,
     max_samples: int = 1000000,
+    walk_range: float = 0.0,               # Step of the goal-directed walk (0: same as range)
+    ik_rate: float = 0.0,                  # Fraction of iterations that try an IK goal and connect to it (0: off)
     simplify: bool = False,                # Simplify the path (unconstrained at the end point)
     **kwargs,
     ):
@@ -99,6 +101,8 @@ def main(
     plan_settings.max_greedy_steps = max_greedy_steps
     plan_settings.max_iterations = max_iterations
     plan_settings.max_samples = max_samples
+    plan_settings.walk_range = walk_range
+    plan_settings.ik_rate = ik_rate
 
     constraint_settings = vamp.ConstraintSettings()
     constraint_settings.method = getattr(vamp.ProjMethod, method)

@@ -92,3 +92,33 @@ The script supports the following arguments:
 - `index`: the problem index to evaluate against.
 - `dataset`: which describes the specific dataset of problems that should be loaded and inspected. See [Datasets](../resources/README.md#supported-planners) for more information.
 - `problem`: which takes in either a single problem name (e.g., `table_pick`) or a list (e.g., `table_pick,table_under_pick`) to evaluate against a specific set of problems.
+
+## `kmriiwa_table.py`
+A mobile manipulation example with the KMR iiwa (an iiwa arm on a mobile base), planned as one 10-DoF robot: base x, y, yaw, then the seven arm joints.
+The robot starts on one side of a table with its arm upright, drives around the table and reaches over it to pick up a block, lifts the block, and carries it to another side of the table.
+Its collision model mixes shapes: spheres cover the arm and a single cuboid covers the base, so the base is checked as the large box it is.
+The block is carried as a cuboid attachment (`Attachment.add_cuboid`), so while it is carried the block itself is checked against the table and the robot, not an approximation of it by spheres.
+
+The robot must be built into VAMP (it is not in the default set of robots you get from older builds), e.g.,
+```
+pip install -e . \
+  -C cmake.define.VAMP_ROBOT_MODULES="kmriiwa_tool" \
+  -C cmake.define.VAMP_ROBOT_STRUCTS="KMRIiwaTool"
+```
+and then
+```
+python scripts/kmriiwa_table.py
+```
+plans the motion, prints the result, and serves a [viser](https://viser.studio/) visualization (open the printed URL).
+The visualization draws the scene, the start and goal, the tool and base paths, and the robot's collision model (the spheres and the cuboid, exactly what VAMP checks), with a slider and play button to step through the path.
+Options:
+- `--visualize=False`: only plan and print results.
+- `--planner=aorrtc`: use another planner VAMP provides for the robot.
+- `--urdf=/path/to/kmriiwa.urdf`: also draw the robot's visual meshes (joint names must match the robot's).
+- `--safety_margin=0.02`: how far to pad obstacles while planning.
+
+**Base yaw limit.** The planner treats the base yaw as an ordinary coordinate within its joint limits. If the URDF gives it a very wide range (e.g., +-1000 rad), planned paths can spin the base around many times.
+The script warns when the range exceeds a full turn. Limit the base yaw joint (`kmr_base/theta`) to +-pi in the URDF and regenerate the robot with cricket.
+
+Cuboids on a robot, or in an attachment, cannot be checked against pointcloud (CAPT) environments (a Python `RuntimeError` is raised), so use spheres, capsules, cuboids, or heightfields for the environment with this robot.
+

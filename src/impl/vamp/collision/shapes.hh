@@ -126,6 +126,98 @@ namespace vamp::collision
         }
     };
 
+    // A lightweight oriented box meant for *robot* collision geometry, i.e., a link cuboid posed by
+    // forward kinematics. It has the same field layout as Cuboid (center, three unit axes, three
+    // half-lengths) so the cuboid_* collision kernels accept either, but it is a plain aggregate: it
+    // carries no name and does not precompute min_distance, which is wasted work for geometry that is
+    // re-posed on every configuration.
+    //
+    // All fields are DataT so, as with the environment's shapes, each SIMD lane can hold a different
+    // pose.
+    template <typename DataT>
+    struct OrientedBox
+    {
+        DataT x;
+        DataT y;
+        DataT z;
+
+        DataT axis_1_x;
+        DataT axis_1_y;
+        DataT axis_1_z;
+        DataT axis_2_x;
+        DataT axis_2_y;
+        DataT axis_2_z;
+        DataT axis_3_x;
+        DataT axis_3_y;
+        DataT axis_3_z;
+
+        DataT axis_1_r;
+        DataT axis_2_r;
+        DataT axis_3_r;
+
+        OrientedBox() = default;
+
+        explicit OrientedBox(
+            DataT x,
+            DataT y,
+            DataT z,  //
+            DataT axis_1_x,
+            DataT axis_1_y,
+            DataT axis_1_z,  //
+            DataT axis_2_x,
+            DataT axis_2_y,
+            DataT axis_2_z,  //
+            DataT axis_3_x,
+            DataT axis_3_y,
+            DataT axis_3_z,  //
+            DataT axis_1_r,
+            DataT axis_2_r,
+            DataT axis_3_r)
+          : x(x)
+          , y(y)
+          , z(z)
+          , axis_1_x(axis_1_x)
+          , axis_1_y(axis_1_y)
+          , axis_1_z(axis_1_z)
+          , axis_2_x(axis_2_x)
+          , axis_2_y(axis_2_y)
+          , axis_2_z(axis_2_z)
+          , axis_3_x(axis_3_x)
+          , axis_3_y(axis_3_y)
+          , axis_3_z(axis_3_z)
+          , axis_1_r(axis_1_r)
+          , axis_2_r(axis_2_r)
+          , axis_3_r(axis_3_r)
+        {
+        }
+
+        explicit OrientedBox(const Cuboid<DataT> &c)
+          : OrientedBox(
+                c.x,
+                c.y,
+                c.z,
+                c.axis_1_x,
+                c.axis_1_y,
+                c.axis_1_z,
+                c.axis_2_x,
+                c.axis_2_y,
+                c.axis_2_z,
+                c.axis_3_x,
+                c.axis_3_y,
+                c.axis_3_z,
+                c.axis_1_r,
+                c.axis_2_r,
+                c.axis_3_r)
+        {
+        }
+
+        // Radius of the smallest sphere centered at (x, y, z) that contains the box.
+        inline constexpr auto bounding_radius() const noexcept -> DataT
+        {
+            return sqrt(dot_3(axis_1_r, axis_2_r, axis_3_r, axis_1_r, axis_2_r, axis_3_r));
+        }
+    };
+
     // A cylinder shape oriented in an arbitrary frame. The cylinder is defined by
     // two endpoints, which we store as the first point (x1, y1, z1) and the vector
     // from the first point to the second point (xv, yv, zv), and its radius (r)

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <type_traits>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -19,6 +20,18 @@ namespace vamp::planning::constraint
 {
     namespace lerp_detail
     {
+        // Whether the robot's header has pose-curve kernels for more than its first end-effector (recipe key
+        // "lerp_end_effectors"): Robot::lerp_so3r3_end_effectors and Robot::lerp_so3r3_error_for
+        template <typename Robot, typename = void>
+        struct has_lerp_end_effectors : std::false_type
+        {
+        };
+
+        template <typename Robot>
+        struct has_lerp_end_effectors<Robot, std::void_t<decltype(Robot::lerp_so3r3_end_effectors)>> : std::true_type
+        {
+        };
+
         // The segment a parameter is on: the first whose end is after t (t = 1 stays in the last one)
         template <std::size_t N>
         inline auto segment_of(const std::array<double, N> &taus, double t) noexcept -> std::size_t
@@ -554,9 +567,30 @@ namespace vamp::planning::constraint
             const std::array<Position, n_points> &positions,
             const std::array<Quaternion, n_points> &quaternions,
             float rotation_weight = 1.F,
-            bool segment = false)
+            bool segment = false,
+            std::size_t end_effector = 0)
         {
             this->segment_mode_ = segment;
+
+            // the end-effector whose pose is held on the curve: the first by default, or another one of a robot generated
+            // with "lerp_end_effectors" (a bimanual robot: one curve per arm). The segment form is the first one's only.
+            std::size_t end_effectors = 1;
+            if constexpr (lerp_detail::has_lerp_end_effectors<Robot>::value)
+            {
+                end_effectors = Robot::lerp_so3r3_end_effectors;
+            }
+
+            if (end_effector >= end_effectors)
+            {
+                throw std::invalid_argument("the robot has no pose-curve kernel for this end-effector (recipe key \"lerp_end_effectors\")");
+            }
+
+            if (segment and end_effector != 0)
+            {
+                throw std::invalid_argument("the segment form is only available for the first end-effector");
+            }
+
+            end_effector_ = end_effector;
 
             for (auto i = 0U; i < n_points; ++i)
             {
@@ -616,29 +650,60 @@ namespace vamp::planning::constraint
 
             weight_ = rotation_weight;
 
-            taus_[0] = 0.0;
-            for (auto i = 1U; i < n_points; ++i)
+            if (not custom_taus_)
             {
-                const double theta = rotations_[i].angularDistance(rotations_[i - 1]);
-                const double length2 = (positions_[i] - positions_[i - 1]).squaredNorm() +
-                                       static_cast<double>(weight_) * weight_ * theta * theta;
-                if (not(length2 > 1e-18))
+                taus_[0] = 0.0;
+                for (auto i = 1U; i < n_points; ++i)
                 {
-                    throw std::invalid_argument("consecutive keyframe poses must be distinct");
+                    const double theta = rotations_[i].angularDistance(rotations_[i - 1]);
+                    const double length2 = (positions_[i] - positions_[i - 1]).squaredNorm() +
+                                           static_cast<double>(weight_) * weight_ * theta * theta;
+                    if (not(length2 > 1e-18))
+                    {
+                        throw std::invalid_argument("consecutive keyframe poses must be distinct");
+                    }
+
+                    taus_[i] = taus_[i - 1] + std::sqrt(length2);
                 }
 
-                taus_[i] = taus_[i - 1] + std::sqrt(length2);
+                for (auto i = 0U; i < n_points; ++i)
+                {
+                    taus_[i] /= taus_[n_points - 1];
+                }
             }
 
-            for (auto i = 0U; i < n_points; ++i)
-            {
-                taus_[i] /= taus_[n_points - 1];
-                input_.taus[i] = Row::fill(static_cast<float>(taus_[i]));
-                segment_input_.taus[i] = input_.taus[i];
-            }
-
+            upload_parameters();
             input_.weight = Row::fill(weight_);
             segment_input_.weight = input_.weight;
+        }
+
+        // Use these parameters for the keyframes instead of the normalized lengths of the segments (which then no longer
+        // follow the rotation weight): for the curves of several end-effectors that share one t, whose keyframes then
+        // have to be reached at the same t. Strictly increasing, from 0 to 1.
+        void set_parameters(const std::array<double, n_points> &taus)
+        {
+            if (std::abs(taus.front()) > 1e-9 or std::abs(taus.back() - 1.0) > 1e-9)
+            {
+                throw std::invalid_argument("the parameters of the keyframes must run from 0 to 1");
+            }
+
+            for (auto i = 1U; i < n_points; ++i)
+            {
+                if (not(taus[i] > taus[i - 1]))
+                {
+                    throw std::invalid_argument("the parameters of the keyframes must be strictly increasing");
+                }
+            }
+
+            taus_ = taus;
+            custom_taus_ = true;
+            upload_parameters();
+        }
+
+        // The end-effector whose pose is held on the curve (an index into the robot's end-effectors)
+        auto end_effector() const noexcept -> std::size_t
+        {
+            return end_effector_;
         }
 
         auto rotation_weight() const noexcept -> float
@@ -690,7 +755,7 @@ namespace vamp::planning::constraint
                 values[j] = array[j];
             }
 
-            const auto pose = Robot::eefk(values);
+            const auto pose = Robot::eefk(values, end_effector_);
             const Eigen::Vector3d x = pose.translation().template cast<double>();
             const Eigen::Quaterniond rotation(pose.rotation().template cast<double>());
             const auto [t, distance2] = lerp_detail::minimize_over_curve(
@@ -714,7 +779,14 @@ namespace vamp::planning::constraint
         {
             input_.q = q;
             input_.t = t;
-            Robot::template lerp_so3r3_error<rake>(input_, solve);
+            if constexpr (lerp_detail::has_lerp_end_effectors<Robot>::value)
+            {
+                Robot::template lerp_so3r3_error_for<rake>(end_effector_, input_, solve);
+            }
+            else
+            {
+                Robot::template lerp_so3r3_error<rake>(input_, solve);
+            }
         }
 
         void solve_step(const Solve &solve, Block &q, ProjMethod method, float alpha) const noexcept
@@ -838,10 +910,21 @@ namespace vamp::planning::constraint
             }
         };
 
+        void upload_parameters() noexcept
+        {
+            for (auto i = 0U; i < n_points; ++i)
+            {
+                input_.taus[i] = Row::fill(static_cast<float>(taus_[i]));
+                segment_input_.taus[i] = input_.taus[i];
+            }
+        }
+
         std::array<Eigen::Vector3d, n_points> positions_;
         std::array<Eigen::Quaterniond, n_points> rotations_;
         std::array<double, n_points> taus_;
         float weight_ = 1.F;
+        bool custom_taus_ = false;
+        std::size_t end_effector_ = 0;
 
         mutable InputT<false> input_;
         mutable InputT<true> segment_input_;

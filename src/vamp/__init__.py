@@ -16,6 +16,7 @@ __all__ = [
     "FCITNeighborParams",
     "AORRTCSettings",
     "GRRTStarSettings",
+    "TaskSpaceRRTCSettings",
     "SimplifySettings",
     "SimplifyRoutine",
     "ProjMethod",
@@ -44,6 +45,7 @@ from ._core import FCITNeighborParams as FCITNeighborParams
 from ._core import FCITSettings as FCITSettings
 from ._core import AORRTCSettings as AORRTCSettings
 from ._core import GRRTStarSettings as GRRTStarSettings
+from ._core import TaskSpaceRRTCSettings as TaskSpaceRRTCSettings
 from ._core import SimplifyRoutine as SimplifyRoutine
 from ._core import SimplifySettings as SimplifySettings
 from ._core import ProjMethod as ProjMethod

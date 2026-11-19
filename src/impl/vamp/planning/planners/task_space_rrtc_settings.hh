@@ -45,6 +45,14 @@ namespace vamp::planning
         // is 1 / the number of joints: the whole curve costs as much as one joint's rad on average.
         float parameter_weight = 0.;
 
+        // For planning in a CurveSpace (the Python task_space_rrtc_curve): after a solve, insert states until consecutive
+        // ones are at most this far apart in the joints (infinity norm, rad), each interpolated in (q, t), projected back
+        // onto every constraint of the manifold (the curves of every end-effector, and a center-of-mass constraint if there
+        // is one), and every new edge revalidated. If anything fails the planner's path is returned unchanged (the
+        // result's `interpolated` is false). 0 (the default) disables it. A linear interpolation of a planned path
+        // leaves the curves between its states, by centimetres for a path of few states; this keeps the dense path on them.
+        float interpolate_step = 0.;
+
         // For a Space with a curve parameter t: keep t non-decreasing along every path the planner returns, so a path
         // never retreats along the curve (a scorer that wants the curve followed in order reads a retreat as leaving
         // the tube). An exploration step toward a sample whose t is below its nearest node's is steered toward the

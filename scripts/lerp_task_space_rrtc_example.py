@@ -228,6 +228,7 @@ def main():
     parser.add_argument("--range", type=float, default=0.3, help="longest extension (in the metric of the run)")
     parser.add_argument("--parameter-weight", type=float, default=0.0, help="the weight of t in the metric (rad per unit of t); 0 is 1 / the number of joints")
     parser.add_argument("--max-iterations", type=int, default=20000)
+    parser.add_argument("--interpolate-step", type=float, default=0.0, help="densify the planned path to joint steps of at most this (rad, infinity norm), each state projected onto the curve (settings.interpolate_step)")
     parser.add_argument("--no-monotone-t", action="store_true", help="let t decrease along the path (it never does by default)")
     parser.add_argument("--project-samples", action="store_true", help="project random samples onto the curve before using them")
     parser.add_argument("--prefix", default="lerp", help="prefix of the output JSON file")
@@ -302,6 +303,7 @@ def main():
     plan_settings.max_samples = 20000
     plan_settings.project_samples = args.project_samples
     plan_settings.monotone_t = not args.no_monotone_t
+    plan_settings.interpolate_step = args.interpolate_step
     plan_settings.parameter_weight = args.parameter_weight
 
     constraint_settings = vamp.ConstraintSettings()  # for the manifold and the goal region
@@ -314,6 +316,23 @@ def main():
     )
     print(f"task_space_rrtc_curve: solved {result.solved}, {result.iterations} iterations, {result.nanoseconds / 1e6:.2f} ms")
     check(result.solved, "the planner solved")
+
+    if args.interpolate_step > 0.0 and result.solved:
+        check(result.interpolated, "the path was densified (result.interpolated)")
+        joints = np.asarray(result.path)
+        largest = float(np.abs(np.diff(joints, axis=0)).max()) if len(joints) > 1 else 0.0
+        check(largest <= args.interpolate_step * 1.001 + 1e-5, f"consecutive states are at most {args.interpolate_step} apart (largest {largest:.4f}, {len(joints)} states)")
+
+        # the same densification of a path that did not come out of the planner: the planner's own, undensified, run again
+        raw_settings = vamp.TaskSpaceRRTCSettings()
+        raw_settings.range, raw_settings.max_greedy_steps = plan_settings.range, plan_settings.max_greedy_steps
+        raw_settings.max_iterations, raw_settings.max_samples = plan_settings.max_iterations, plan_settings.max_samples
+        raw_settings.project_samples, raw_settings.monotone_t = plan_settings.project_samples, plan_settings.monotone_t
+        raw_settings.parameter_weight = plan_settings.parameter_weight
+        raw = module.task_space_rrtc_curve(start, env, raw_settings, module.halton(), [manifold], constraint_settings, start_t=t0)
+        again = module.interpolate_curve_path(raw.path, raw.t, env, [manifold], constraint_settings, args.interpolate_step)
+        check(again.solved and again.interpolated and len(again.path) == len(result.path) and np.allclose(again.path, result.path, atol=1e-5),
+              f"interpolate_curve_path of the planner's undensified path gives the same path ({len(raw.path)} -> {len(again.path)} states)")
 
     if result.solved:
         path = np.asarray(result.path)
@@ -329,10 +348,11 @@ def main():
             target_position, target_rotation = curve_pose(t)
             position_error, rotation_error = errors(q, t)
             worst = max(worst, float(np.hypot(position_error, rotation_error)))
-            print(
-                f"  {i:5d}  {t:7.4f}  {segment:7d}  {s:6.3f}   "
-                f"{position[0]:7.3f} {position[1]:7.3f} {position[2]:7.3f}   {position_error:12.2e}  {rotation_error:12.2e}"
-            )
+            if len(path) <= 60:
+                print(
+                    f"  {i:5d}  {t:7.4f}  {segment:7d}  {s:6.3f}   "
+                    f"{position[0]:7.3f} {position[1]:7.3f} {position[2]:7.3f}   {position_error:12.2e}  {rotation_error:12.2e}"
+                )
 
             step = {
                 "t": float(t),

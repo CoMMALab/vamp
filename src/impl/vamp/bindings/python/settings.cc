@@ -38,6 +38,7 @@ void vamp::binding::init_settings(nanobind::module_ &pymodule)
         .def_rw("ik_pool_size", &vp::TaskSpaceRRTCSettings::ik_pool_size)
         .def_rw("project_samples", &vp::TaskSpaceRRTCSettings::project_samples)
         .def_rw("parameter_weight", &vp::TaskSpaceRRTCSettings::parameter_weight)
+        .def_rw("interpolate_step", &vp::TaskSpaceRRTCSettings::interpolate_step)
         .def_rw("monotone_t", &vp::TaskSpaceRRTCSettings::monotone_t);
 
     nb::class_<vp::AORRTCSettings>(pymodule, "AORRTCSettings")
